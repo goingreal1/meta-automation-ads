@@ -85,7 +85,7 @@ async function ensureMetaMedia(
   return { type: "image", id: first.hash };
 }
 
-async function createCampaign(metaAdAccountId: string, name: string, pixelId: string | null): Promise<string> {
+async function createCampaign(metaAdAccountId: string, name: string, pixelId: string | null, stopTime?: string | null): Promise<string> {
   const payload: Record<string, unknown> = {
     name,
     objective: "OUTCOME_SALES",
@@ -93,6 +93,7 @@ async function createCampaign(metaAdAccountId: string, name: string, pixelId: st
     status: "PAUSED",
     access_token: META_ACCESS_TOKEN,
   };
+  if (stopTime) payload.stop_time = stopTime;
   const res = await fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/campaigns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -116,8 +117,30 @@ async function resolveInterest(name: string): Promise<{ id: string; name: string
   return result;
 }
 
+// Meta region keys must come from Targeting Search too — hand-built strings like "NG-LA" are not
+// real keys. Resolve once per state name and cache both in-memory (this run) and on the preset row
+// (future runs), since region keys never change.
+const regionCache = new Map<string, { key: string; name: string } | null>();
+async function resolveRegion(name: string, countryCode: string): Promise<{ key: string; name: string } | null> {
+  const cacheKey = `${countryCode}:${name}`;
+  if (regionCache.has(cacheKey)) return regionCache.get(cacheKey)!;
+  const params = new URLSearchParams({
+    type: "adgeolocation",
+    q: name,
+    location_types: JSON.stringify(["region"]),
+    limit: "1",
+    access_token: META_ACCESS_TOKEN,
+  });
+  const res = await fetch(`${META_GRAPH_BASE}/search?${params.toString()}`);
+  const data = await res.json();
+  const hit = (data.data ?? []).find((d: { country_code?: string }) => d.country_code === countryCode) ?? data.data?.[0];
+  const result = hit ? { key: hit.key, name: hit.name } : null;
+  regionCache.set(cacheKey, result);
+  return result;
+}
+
 // deno-lint-ignore no-explicit-any
-async function buildTargeting(preset: any): Promise<Record<string, unknown>> {
+async function buildTargeting(preset: any, supabase: any): Promise<Record<string, unknown>> {
   const targeting: Record<string, unknown> = {
     geo_locations: { countries: preset.countries?.length ? preset.countries : ["NG"] },
     age_min: preset.age_min ?? 18,
@@ -126,11 +149,32 @@ async function buildTargeting(preset: any): Promise<Record<string, unknown>> {
   const genders = mapGenders(preset.genders);
   if (genders) targeting.genders = genders;
 
+  if (preset.publisher_platforms?.length) targeting.publisher_platforms = preset.publisher_platforms;
+  if (preset.facebook_positions?.length) targeting.facebook_positions = preset.facebook_positions;
+  if (preset.instagram_positions?.length) targeting.instagram_positions = preset.instagram_positions;
+
   if (preset.states?.length) {
-    // NOTE: these must be real Meta region keys resolved via /search?type=adgeolocation,
-    // not hand-built strings. No current preset sets `states`, so this path is inert for now —
-    // revisit before using a preset with real state targeting.
-    (targeting.geo_locations as Record<string, unknown>).regions = preset.states.map((s: string) => ({ key: s }));
+    const countryCode = preset.countries?.[0] ?? "NG";
+    const cached = (preset.resolved_region_keys ?? {}) as Record<string, string>;
+    const regions: { key: string }[] = [];
+    const newlyResolved: Record<string, string> = {};
+    for (const stateName of preset.states as string[]) {
+      if (cached[stateName]) {
+        regions.push({ key: cached[stateName] });
+        continue;
+      }
+      const hit = await resolveRegion(stateName, countryCode);
+      if (hit) {
+        regions.push({ key: hit.key });
+        newlyResolved[stateName] = hit.key;
+      } else {
+        console.warn(`Could not resolve region "${stateName}" via Targeting Search — skipping it`);
+      }
+    }
+    if (regions.length) (targeting.geo_locations as Record<string, unknown>).regions = regions;
+    if (Object.keys(newlyResolved).length) {
+      await supabase.from("targeting_presets").update({ resolved_region_keys: { ...cached, ...newlyResolved } }).eq("id", preset.id);
+    }
   }
 
   if (preset.targeting_type === "interest" && preset.interests?.length) {
@@ -276,12 +320,6 @@ Deno.serve(async (req: Request) => {
       return json({ message: "No active ad accounts to process.", processed: 0 });
     }
 
-    const { data: presets } = await supabase
-      .from("targeting_presets")
-      .select("*")
-      .eq("is_active", true)
-      .order("slot_number");
-
     const { data: settingsRow } = await supabase.from("system_settings").select("test_budget_per_creative_naira").eq("id", 1).maybeSingle();
     const testBudget = Number(settingsRow?.test_budget_per_creative_naira) || DEFAULT_TEST_BUDGET_NAIRA;
 
@@ -297,11 +335,22 @@ Deno.serve(async (req: Request) => {
 
       const metaAdAccountId = String(account.meta_ad_account_id).replace("act_", "");
 
+      // Global default presets (ad_account_id null) plus this account's own custom presets.
+      const { data: presets } = await supabase
+        .from("targeting_presets")
+        .select("*")
+        .eq("is_active", true)
+        .or(`ad_account_id.is.null,ad_account_id.eq.${account.id}`)
+        .order("slot_number");
+
+      // Only pick up creatives that are unscheduled or whose scheduled launch time has arrived.
+      const nowIso = new Date().toISOString();
       const { data: pendingCreatives } = await supabase
         .from("creative_assets")
         .select("*, products(*)")
         .eq("ad_account_id", account.id)
         .eq("test_status", "untested")
+        .or(`scheduled_for.is.null,scheduled_for.lte.${nowIso}`)
         .order("uploaded_at", { ascending: true })
         .limit(MAX_CREATIVES_PER_RUN);
 
@@ -322,7 +371,7 @@ Deno.serve(async (req: Request) => {
           const media = await ensureMetaMedia(supabase, creative, metaAdAccountId);
 
           const campaignName = `TEST-${new Date().toISOString().slice(0, 10)}-${creative.mechanism ?? "x"}-${creative.format ?? "x"}`.slice(0, 100);
-          const metaCampaignId = await createCampaign(metaAdAccountId, campaignName, account.meta_pixel_id);
+          const metaCampaignId = await createCampaign(metaAdAccountId, campaignName, account.meta_pixel_id, creative.campaign_end_date);
 
           const { data: campaignRow } = await supabase
             .from("campaigns")
@@ -351,7 +400,7 @@ Deno.serve(async (req: Request) => {
               continue; // pool not big enough yet — matches the vision doc's intended behavior
             }
 
-            const targeting = await buildTargeting(preset);
+            const targeting = await buildTargeting(preset, supabase);
             const adsetName = `${preset.preset_name}-${creative.file_name}`.slice(0, 100);
 
             const metaAdsetId = await createAdSet(metaCampaignId, adsetName, targeting, testBudget, account.meta_pixel_id);

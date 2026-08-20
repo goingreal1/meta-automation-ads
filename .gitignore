@@ -6,3 +6,6 @@ supabase/.temp/
 Thumbs.db
 node_modules/
 *.log
+
+.vercel
+sites/

@@ -315,6 +315,7 @@ textarea{resize:vertical;min-height:76px;}
   <div class="tab-btn active" data-tab="overview">Overview</div>
   <div class="tab-btn" data-tab="vault">Creative Vault</div>
   <div class="tab-btn" data-tab="campaigns">Campaigns</div>
+  <div class="tab-btn" data-tab="performance">Performance</div>
   <div class="tab-btn" data-tab="products">Products</div>
   <div class="tab-btn" data-tab="orders">Orders</div>
   <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
@@ -399,10 +400,20 @@ async function init() {
 async function sbQuery(table, queryStr = "") {
   // Append ad account filter if applicable (ignore for system_settings, earnings etc. which are shared/global)
   let finalQuery = queryStr;
-  const filteredTables = ["orders", "ad_sets", "creative_assets", "daily_metrics", "products"];
-  
+  const filteredTables = ["ad_sets", "creative_assets", "daily_metrics", "products"];
+
   if (filteredTables.includes(table) && activeAccountId) {
     finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;
+  }
+
+  // Orders can legitimately have ad_account_id = null — a real customer submitted the form before
+  // any ad set existed to attribute the click to (e.g. testing a sales page pre-launch). Show those
+  // too, not just strictly-matched ones, so real orders don't silently vanish from the dashboard.
+  // NOTE: this means unattributed orders are visible to every buyer, not just the "right" one — fine
+  // for now (pre-launch, few real orders), but revisit before the 40-buyer rollout (Phase 3) so one
+  // buyer's real customers can't be seen by another.
+  if (table === "orders" && activeAccountId) {
+    finalQuery += finalQuery ? `&or=(ad_account_id.eq.${activeAccountId},ad_account_id.is.null)` : `or=(ad_account_id.eq.${activeAccountId},ad_account_id.is.null)`;
   }
 
   const res = await fetch(`${SUPA_URL}/rest/v1/${table}${finalQuery ? "?" + finalQuery : ""}`, {
@@ -419,8 +430,9 @@ async function sbQuery(table, queryStr = "") {
 
 async function sbFn(name, body = null, method = "POST") {
   try {
-    // Inject activeAccountId into the payload so edge functions know which account to process if needed
-    if (body && typeof body === 'object') {
+    // Inject activeAccountId into the payload so edge functions know which account to process if needed,
+    // but don't clobber an ad_account_id the caller explicitly set (e.g. checking a non-active account's balance).
+    if (body && typeof body === 'object' && !body.ad_account_id) {
       body.ad_account_id = activeAccountId;
     }
     
@@ -564,6 +576,7 @@ async function render() {
     if      (activeTab === "overview")  await renderOverview(c);
     else if (activeTab === "vault")     await renderVault(c);
     else if (activeTab === "campaigns") await renderCampaigns(c);
+    else if (activeTab === "performance") await renderPerformance(c);
     else if (activeTab === "products")  await renderProducts(c);
     else if (activeTab === "orders")    await renderOrders(c);
     else if (activeTab === "approvals") await renderApprovals(c);
@@ -579,7 +592,7 @@ async function renderOverview(el) {
   const [settings, orders, creatives, approvals, metrics] = await Promise.all([
     sbQuery("system_settings", "id=eq.1&select=*").then(r => r?.[0] ?? {}),
     sbQuery("orders", "select=order_status,order_value_naira,ordered_at"),
-    sbQuery("creative_assets", "select=test_status,status,uploaded_at"),
+    sbQuery("creative_assets", "select=test_status,uploaded_at"),
     sbQuery("pending_approvals", "status=eq.pending&select=id"),
     sbQuery("daily_metrics", "select=*&order=metric_date.desc&limit=7").catch(() => []),
   ]);
@@ -791,8 +804,28 @@ async function renderVault(el) {
       <form id="uploadForm">
         <div class="fg">
           <div class="field"><label>Product *</label>
-            <select id="f_product">${pOpts || '<option value="">No products — add in Products tab first</option>'}</select>
+            <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none';">
+              ${pOpts}
+              <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
+            </select>
           </div>
+        </div>
+        <div class="fg" id="newProductFields" style="margin-top:11px;display:${!products?.length ? "grid" : "none"};border:1px dashed var(--border);border-radius:8px;padding:12px;">
+          <div class="field"><label>New product name *</label><input id="np_name" placeholder="e.g. Quality Herb — Immune Booster"></div>
+          <div class="field"><label>Currency</label>
+            <select id="np_currency">
+              <option value="NGN">NGN — Naira</option>
+              <option value="USD">USD — US Dollar</option>
+              <option value="CNY">CNY — Yuan</option>
+              <option value="INR">INR — Rupee</option>
+              <option value="GBP">GBP — Pound</option>
+              <option value="EUR">EUR — Euro</option>
+            </select>
+          </div>
+          <div class="field"><label>Default order value *</label><input id="np_val" type="number" value="19000" min="0"></div>
+          <div class="field"><label>Landing page URL *</label><input id="np_url" placeholder="https://…"></div>
+        </div>
+        <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Mechanism</label>
             <select id="f_mechanism">
               <option value="root_cause">Root cause</option>
@@ -828,6 +861,21 @@ async function renderVault(el) {
         </div>
         <div class="field" style="margin-top:11px;"><label>Ad sets to launch at midnight</label>
           ${presetChecks || '<div style="font-size:12px;color:var(--muted);">No targeting presets found.</div>'}
+        </div>
+        <div class="field" style="margin-top:11px;">
+          <label>Custom ad set copies for this creative <span style="font-weight:400;color:var(--muted);">(optional — define your own instead of/alongside the presets above)</span></label>
+          <div id="customCopies"></div>
+          <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:6px;" onclick="addCustomCopy()">+ Add a copy</button>
+        </div>
+        <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Launch date/time (optional)</label>
+            <input id="f_scheduled" type="datetime-local">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to launch in tonight's normal batch.</div>
+          </div>
+          <div class="field"><label>Campaign end date (optional)</label>
+            <input id="f_end_date" type="datetime-local">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to run until you kill/pause it manually.</div>
+          </div>
         </div>
         <button type="submit" class="btn btn-a btn-full" id="uploadBtn">↑ Upload to Vault</button>
         <div id="uploadMsg"></div>
@@ -886,24 +934,56 @@ async function renderVault(el) {
     fd.append("ad_account_id", activeAccountId);
 
     try {
+      // If "+ Add new product…" was chosen, create it now so we have a real product_id before uploading.
+      let productId = document.getElementById("f_product").value;
+      if (productId === "__new__") {
+        const name = document.getElementById("np_name").value.trim();
+        const url = document.getElementById("np_url").value.trim();
+        if (!name || !url) throw new Error("New product needs a name and landing page URL.");
+        const { data: newProduct, error: prodErr } = await supabaseClient.from('products').insert({
+          product_name: name,
+          landing_page_url: url,
+          default_order_value_naira: Number(document.getElementById("np_val").value) || 19000,
+          currency: document.getElementById("np_currency").value,
+          ad_account_id: activeAccountId,
+        }).select('id').single();
+        if (prodErr) throw prodErr;
+        productId = newProduct.id;
+      }
+
       const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, {
-        method: "POST", 
-        headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, 
+        method: "POST",
+        headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
         body: fd,
       });
       const r = await res.json();
       if (r.error) throw new Error(r.error);
-      const pid = document.getElementById("f_product").value;
       const selectedPresetIds = Array.from(document.querySelectorAll(".f_preset:checked")).map(el => el.value);
+
+      // Create any custom ad set copies defined for this creative as real, reusable targeting_presets rows.
+      const customCopies = collectCustomCopies();
+      if (customCopies.length) {
+        const { data: newPresets, error: copyErr } = await supabaseClient.from('targeting_presets').insert(
+          customCopies.map((c, i) => ({ ...c, slot_number: 100 + i, ad_account_id: activeAccountId, is_active: true })),
+        ).select('id');
+        if (copyErr) throw copyErr;
+        (newPresets || []).forEach(p => selectedPresetIds.push(p.id));
+      }
+
+      const scheduledFor = document.getElementById("f_scheduled").value;
+      const endDate = document.getElementById("f_end_date").value;
       if (r.asset?.id) {
         await supabaseClient.from('creative_assets').update({
-          ...(pid ? { product_id: pid } : {}),
+          ...(productId && productId !== "__new__" ? { product_id: productId } : {}),
           selected_preset_ids: selectedPresetIds.length ? selectedPresetIds : null,
+          scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
+          campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
         }).eq('id', r.asset.id);
       }
-      msg.innerHTML = `<div class="msg ok">✅ Uploaded! Will be picked up in tonight's test batch.</div>`;
+      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${scheduledFor ? "Scheduled for " + new Date(scheduledFor).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
       document.getElementById("uploadForm").reset();
       document.getElementById("dzPrev").innerHTML = "";
+      document.getElementById("customCopies").innerHTML = "";
       dz.style.borderColor = "";
       dz.style.background = "";
       setTimeout(render, 1200);
@@ -913,6 +993,68 @@ async function renderVault(el) {
       btn.disabled = false; btn.innerHTML = "↑ Upload to Vault";
     }
   });
+}
+
+// ── CUSTOM AD SET COPY BUILDER ──────────────────────────────────────────────────
+let customCopyCount = 0;
+function addCustomCopy() {
+  const id = customCopyCount++;
+  const wrap = document.getElementById("customCopies");
+  const card = document.createElement("div");
+  card.id = `copy-${id}`;
+  card.style.cssText = "border:1px dashed var(--border);border-radius:8px;padding:12px;margin-top:8px;";
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong style="font-size:12px;">Copy ${wrap.children.length + 1}</strong>
+      <button type="button" onclick="document.getElementById('copy-${id}').remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>
+    </div>
+    <div class="fg">
+      <div class="field"><label>Copy name</label><input id="copy-${id}-name" placeholder="e.g. Female 25-40 Lagos IG-only"></div>
+      <div class="field"><label>Gender</label>
+        <select id="copy-${id}-gender">
+          <option value="all">All</option>
+          <option value="male">Male only</option>
+          <option value="female">Female only</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg" style="margin-top:8px;">
+      <div class="field"><label>Age min</label><input id="copy-${id}-age-min" type="number" value="20" min="13" max="65"></div>
+      <div class="field"><label>Age max</label><input id="copy-${id}-age-max" type="number" value="60" min="13" max="65"></div>
+    </div>
+    <div class="field" style="margin-top:8px;"><label>States / regions <span style="font-weight:400;color:var(--muted);">(comma-separated, e.g. "Lagos, Ogun" or "Texas, California" — leave blank for broad/whole-country)</span></label>
+      <input id="copy-${id}-states" placeholder="Lagos, Ogun">
+    </div>
+    <div class="field" style="margin-top:8px;"><label>Placement</label>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:400;"><input type="checkbox" id="copy-${id}-plat-fb" checked> Facebook</label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:400;"><input type="checkbox" id="copy-${id}-plat-ig" checked> Instagram</label>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave both checked for Advantage+ placements (Meta auto-optimizes). Uncheck one for platform-only.</div>
+    </div>`;
+  wrap.appendChild(card);
+}
+
+function collectCustomCopies() {
+  const wrap = document.getElementById("customCopies");
+  const copies = [];
+  Array.from(wrap.children).forEach(card => {
+    const id = card.id.replace("copy-", "");
+    const statesRaw = document.getElementById(`copy-${id}-states`).value.trim();
+    const platforms = [];
+    if (document.getElementById(`copy-${id}-plat-fb`).checked) platforms.push("facebook");
+    if (document.getElementById(`copy-${id}-plat-ig`).checked) platforms.push("instagram");
+    copies.push({
+      preset_name: document.getElementById(`copy-${id}-name`).value.trim() || `Custom copy ${copies.length + 1}`,
+      genders: [document.getElementById(`copy-${id}-gender`).value],
+      age_min: Number(document.getElementById(`copy-${id}-age-min`).value) || 20,
+      age_max: Number(document.getElementById(`copy-${id}-age-max`).value) || 60,
+      states: statesRaw ? statesRaw.split(",").map(s => s.trim()).filter(Boolean) : null,
+      publisher_platforms: platforms.length ? platforms : null,
+      targeting_type: statesRaw ? "custom_location" : "broad",
+    });
+  });
+  return copies;
 }
 
 function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); }
@@ -934,7 +1076,15 @@ function setFile(file) {
 
 // ── TAB: CAMPAIGNS ────────────────────────────────────────────────────────────
 async function renderCampaigns(el) {
-  const sets = await sbQuery("ad_sets", "select=*,campaigns(campaign_name,campaign_type)&order=created_at.desc&limit=150");
+  const sets = await sbQuery("ad_sets", "select=*,campaigns(campaign_name,campaign_type),daily_metrics(spend_naira,ctr,cost_per_order_naira,metric_date)&order=created_at.desc&limit=150");
+
+  // daily_metrics comes back embedded as an array (one row per day) — reduce to the latest day per ad set.
+  (sets||[]).forEach(a => {
+    const latest = (a.daily_metrics||[]).sort((x,y) => (x.metric_date < y.metric_date ? 1 : -1))[0];
+    a.ctr_latest = latest?.ctr ?? null;
+    a.cpa_latest = latest?.cost_per_order_naira ?? null;
+    a.spend_latest = latest?.spend_naira ?? null;
+  });
 
   const active  = (sets||[]).filter(a => ["ACTIVE","active"].includes(a.status)).length;
   const paused  = (sets||[]).filter(a => ["PAUSED","paused"].includes(a.status)).length;
@@ -970,9 +1120,9 @@ async function renderCampaigns(el) {
           <tr><th>Ad Set</th><th>Type</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
           ${sets.map(a => {
             const h    = hrs(a.created_at);
-            const ctrV = a.ctr != null ? (parseFloat(a.ctr)*100).toFixed(2) : null;
-            const cpaV = a.cpa_naira ?? a.cost_per_result;
-            const spV  = a.spend_naira ?? a.total_spend;
+            const ctrV = a.ctr_latest != null ? parseFloat(a.ctr_latest).toFixed(2) : null;
+            const cpaV = a.cpa_latest;
+            const spV  = a.spend_latest;
             const cpaC = cpaV ? (cpaV <= CPA_WATCH ? "ctr-hot" : cpaV <= CPA_KILL ? "ctr-warm" : "ctr-cold") : "";
             return `<tr>
               <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${a.adset_name}">${a.adset_name}</td>
@@ -1007,9 +1157,86 @@ async function pullAndRefresh() {
   }
 }
 
+// ── TAB: PERFORMANCE ─────────────────────────────────────────────────────────
+async function renderPerformance(el, fromDate, toDate) {
+  const today = new Date();
+  const defaultFrom = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const defaultTo = today.toISOString().slice(0, 10);
+  fromDate = fromDate || defaultFrom;
+  toDate = toDate || defaultTo;
+
+  const rows = await sbQuery(
+    "daily_metrics",
+    `select=*,ad_sets(adset_name,targeting_type,campaigns(campaign_name))&metric_date=gte.${fromDate}&metric_date=lte.${toDate}&order=metric_date.desc&limit=500`,
+  );
+
+  const totals = (rows || []).reduce((t, r) => ({
+    spend: t.spend + (r.spend_naira || 0),
+    impressions: t.impressions + (r.impressions || 0),
+    reach: t.reach + (r.reach || 0),
+    clicks: t.clicks + (r.clicks || 0),
+    orders: t.orders + (r.orders || 0),
+  }), { spend: 0, impressions: 0, reach: 0, clicks: 0, orders: 0 });
+  const blendedCtr = totals.impressions ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0";
+  const blendedCpa = totals.orders ? Math.round(totals.spend / totals.orders) : null;
+
+  el.innerHTML = `
+    <div class="sh">
+      <div class="sh-title">Performance</div>
+      <div class="sh-actions">
+        <input type="date" id="perfFrom" value="${fromDate}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
+        <input type="date" id="perfTo" value="${toDate}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
+        <button class="btn btn-g" id="perfApply">Apply</button>
+      </div>
+    </div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Spend</div><div class="kc-val">${fN(totals.spend)}</div></div>
+      <div class="kc"><div class="kc-lbl">Impressions / Reach</div><div class="kc-val">${totals.impressions.toLocaleString()}</div><div class="kc-sub">${totals.reach.toLocaleString()} reach</div></div>
+      <div class="kc"><div class="kc-lbl">Blended CTR</div><div class="kc-val">${blendedCtr}%</div><div class="kc-sub">${totals.clicks.toLocaleString()} clicks</div></div>
+      <div class="kc"><div class="kc-lbl">Orders / Blended CPA</div><div class="kc-val">${totals.orders}</div><div class="kc-sub">${blendedCpa ? fN(blendedCpa) + " per order" : "no orders yet"}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Daily metrics</div><div class="ph-count">${rows?.length ?? 0} rows</div></div>
+      ${!rows?.length
+        ? `<div class="empty"><div class="empty-ico">📊</div>No metrics in this date range yet.</div>`
+        : `<div class="tbl-wrap"><table>
+          <tr><th>Date</th><th>Ad Set</th><th>Spend</th><th>Impressions</th><th>Reach</th><th>Clicks</th><th>CTR</th><th>CPC</th><th>CPM</th><th>Frequency</th><th>Orders</th><th>Cost/Order</th></tr>
+          ${rows.map(r => `<tr>
+            <td class="n">${r.metric_date}</td>
+            <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.ad_sets?.adset_name ?? ''}">${r.ad_sets?.adset_name ?? "—"}</td>
+            <td>${fN(r.spend_naira)}</td>
+            <td>${(r.impressions ?? 0).toLocaleString()}</td>
+            <td>${(r.reach ?? 0).toLocaleString()}</td>
+            <td>${(r.clicks ?? 0).toLocaleString()}</td>
+            <td class="${ctrCls(r.ctr)}">${r.ctr != null ? parseFloat(r.ctr).toFixed(2) + "%" : "—"}</td>
+            <td>${fN(r.cpc_naira)}</td>
+            <td>${fN(r.cpm_naira)}</td>
+            <td>${r.frequency != null ? parseFloat(r.frequency).toFixed(2) + "×" : "—"}</td>
+            <td>${r.orders ?? 0}</td>
+            <td>${fN(r.cost_per_order_naira)}</td>
+          </tr>`).join("")}
+        </table></div>`}
+    </div>`;
+
+  document.getElementById("perfApply").addEventListener("click", () => {
+    renderPerformance(el, document.getElementById("perfFrom").value, document.getElementById("perfTo").value);
+  });
+}
+
 // ── TAB: PRODUCTS ─────────────────────────────────────────────────────────────
 async function renderProducts(el) {
-  const prods = await sbQuery("products", "order=created_at.desc");
+  const [prods, creatives] = await Promise.all([
+    sbQuery("products", "order=created_at.desc"),
+    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name"),
+  ]);
+  const creativesByProduct = {};
+  (creatives || []).forEach(c => {
+    if (!c.product_id) return;
+    (creativesByProduct[c.product_id] ??= []).push(c);
+  });
+
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Products</div></div>
 
@@ -1040,16 +1267,24 @@ async function renderProducts(el) {
       <div class="ph"><div class="ph-title">Products</div><div class="ph-count">${prods?.length ?? 0}</div></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Name</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th></tr>
-        ${prods.map(p => `<tr>
+        <tr><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th></tr>
+        ${prods.map(p => {
+          const pc = creativesByProduct[p.id] || [];
+          const thumbs = pc.slice(0, 4).map(c => c.asset_type === "video"
+            ? `<div title="${c.file_name}" style="width:28px;height:28px;border-radius:5px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;">🎬</div>`
+            : `<img src="${c.public_url}" title="${c.file_name}" style="width:28px;height:28px;border-radius:5px;object-fit:cover;border:1px solid var(--border);">`
+          ).join("");
+          return `<tr>
           <td class="s n">${p.product_name}</td>
-          <td class="n" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <td><div style="display:flex;gap:4px;align-items:center;">${thumbs || '<span style="color:var(--muted);font-size:11px;">none yet</span>'}${pc.length > 4 ? `<span style="font-size:11px;color:var(--muted);">+${pc.length - 4}</span>` : ""}</div></td>
+          <td class="n" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             <a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>
           </td>
           <td>${p.currency || "NGN"}</td>
           <td>${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : p.default_order_value_naira}</td>
           <td><span class="pill ${p.is_active ? "active" : "paused"}">${p.is_active ? "active" : "inactive"}</span></td>
-        </tr>`).join("")}
+        </tr>`;
+        }).join("")}
       </table></div>`}
     </div>`;
 
@@ -1242,11 +1477,12 @@ async function renderSettings(el) {
       <div class="ph"><div class="ph-title">Linked Ad Accounts</div><div class="ph-count">${accountsList.length} accounts</div></div>
       ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">🔌</div>No ad accounts linked yet. Add one above.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Account Name</th><th>Meta ID</th><th>Page ID</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>Account Name</th><th>Meta ID</th><th>Page ID</th><th>Balance</th><th>Status</th><th>Actions</th></tr>
         ${accountsList.map(a => `<tr>
           <td class="s n">${a.name}</td>
           <td>${a.meta_ad_account_id}</td>
           <td>${a.fb_page_id}</td>
+          <td id="bal-${a.id}" style="font-size:11px;color:var(--muted);">Loading…</td>
           <td><span class="pill ${a.status === 'active' ? 'active' : 'paused'}">${a.status}</span></td>
           <td>
             <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button>
@@ -1255,13 +1491,26 @@ async function renderSettings(el) {
       </table></div>`}
     </div>`;
 
+  // Fetch live balance per account (not just the active one) without blocking the rest of the render.
+  accountsList.forEach(async a => {
+    const cell = document.getElementById(`bal-${a.id}`);
+    if (!cell) return;
+    const r = await sbFn("check-account-status", { ad_account_id: a.id });
+    if (!cell.isConnected) return; // tab may have changed by the time this resolves
+    if (r.error) { cell.textContent = "—"; cell.title = r.error; return; }
+    cell.innerHTML = `<span style="color:var(--text);">${r.current_balance ?? "—"}</span>`;
+    cell.title = `Spend cap: ${r.spend_cap ?? "—"} · Status: ${r.status ?? "—"}`;
+  });
+
   document.getElementById("acctForm").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("acctMsg");
     try {
+      const acctName = document.getElementById("a_name").value;
       const { data, error } = await supabaseClient.from('ad_accounts').insert({
         user_id: sessionData.user.id,
-        name: document.getElementById("a_name").value,
+        name: acctName,
+        nickname: acctName,
         meta_ad_account_id: document.getElementById("a_meta_id").value,
         fb_page_id: document.getElementById("a_fb_id").value,
         status: 'active'

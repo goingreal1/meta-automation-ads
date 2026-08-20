@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ginaris Herbal Tea: Natural Strength &amp; Vitality for Men</title>
+<meta name="description" content="Support your strength, stamina, and vitality naturally with Ginaris Herbal Tea. International shipping available.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0f0d; --panel:#12211c; --panel2:#16281f;
+  --cream:#faf7f0; --text:#1a1a17; --text2:#5a5a52; --muted:#8a8a80;
+  --gold:#c9a24a; --gold-dk:#a9832f;
+  --green:#1f5c3f; --green-dk:#12402a; --green-lt:#e8f2ec;
+  --red:#c0392b; --red-bg:#fdecea;
+  --border:#e5e0d3;
+  --shadow:0 10px 40px rgba(18,40,31,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:'Inter',system-ui,sans-serif;color:var(--text);background:var(--cream);
+  line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;display:block;}
+h1,h2,h3{font-family:'Fraunces',Georgia,serif;line-height:1.15;letter-spacing:-.01em;}
+.wrap{max-width:640px;margin:0 auto;padding:0 20px;}
+a{color:inherit;}
+
+/* ── TOP BAR ─────────────────────────────────────────────────────────── */
+.topbar{
+  background:var(--green-dk);color:#fff;font-size:12.5px;font-weight:600;
+  text-align:center;padding:9px 14px;letter-spacing:.01em;
+}
+.topbar span{color:var(--gold);}
+
+/* ── STICKY ORDER BAR ────────────────────────────────────────────────── */
+.stickybar{
+  position:sticky;top:0;z-index:50;background:rgba(250,247,240,.92);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--border);padding:11px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+}
+.stickybar .brand{font-family:'Fraunces',serif;font-weight:700;font-size:17px;color:var(--green-dk);}
+.stickybar .btn{padding:9px 16px;font-size:13px;}
+
+/* ── BUTTONS ─────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--red);color:#fff;font-weight:700;font-size:15px;
+  padding:15px 22px;border-radius:10px;border:none;cursor:pointer;text-decoration:none;
+  box-shadow:0 6px 18px rgba(192,57,43,.30);transition:transform .12s, box-shadow .12s;
+  width:100%;
+}
+.btn:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(192,57,43,.38);}
+.btn:active{transform:translateY(0);}
+.btn-outline{background:transparent;color:var(--green-dk);border:1.5px solid var(--green-dk);box-shadow:none;}
+
+/* ── HERO ────────────────────────────────────────────────────────────── */
+.hero{padding:38px 0 26px;text-align:center;}
+.hero-eyebrow{
+  display:inline-block;background:var(--green-lt);color:var(--green-dk);font-weight:700;font-size:12px;
+  letter-spacing:.05em;text-transform:uppercase;padding:6px 14px;border-radius:100px;margin-bottom:16px;
+}
+.hero h1{font-size:clamp(26px,6vw,38px);margin-bottom:14px;}
+.hero p.sub{font-size:16px;color:var(--text2);max-width:480px;margin:0 auto 24px;}
+.hero-img{
+  border-radius:18px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:18px;
+}
+.story-img,.benefit-img{
+  border-radius:16px;overflow:hidden;box-shadow:var(--shadow);margin:20px 0;
+}
+.chat-testimonial{
+  max-width:280px;margin:24px auto 0;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);
+  border:1px solid rgba(255,255,255,.12);
+}
+.img-cta{
+  display:block;max-width:320px;margin:14px auto 0;padding:12px 20px;font-size:13.5px;
+}
+.trust-row{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--text2);font-weight:600;margin-top:16px;}
+.trust-row span{display:flex;align-items:center;gap:6px;}
+
+/* ── SECTION SHELL ───────────────────────────────────────────────────── */
+section{padding:34px 0;}
+section.alt{background:var(--panel);color:var(--cream);}
+section.alt h2{color:#fff;}
+section.alt p{color:#cfe0d6;}
+.section-title{font-size:clamp(22px,5vw,28px);text-align:center;margin-bottom:10px;}
+.section-sub{text-align:center;color:var(--text2);font-size:15px;max-width:440px;margin:0 auto 26px;}
+.benefit-title{font-size:19px;margin:28px 0 8px;color:#fff;}
+section.alt .benefit-title{color:#fff;}
+section:not(.alt) .benefit-title{color:var(--text);}
+section.alt p{font-size:14.5px;}
+
+/* ── PROBLEM / STORY ─────────────────────────────────────────────────── */
+.story p{font-size:15.5px;color:var(--text2);margin-bottom:14px;}
+.story strong{color:var(--text);}
+
+/* ── BENEFITS ────────────────────────────────────────────────────────── */
+.benefits{display:flex;flex-direction:column;gap:14px;}
+.benefit{
+  display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--border);
+  border-radius:14px;padding:16px 18px;
+}
+.benefit .num{
+  flex-shrink:0;width:32px;height:32px;border-radius:50%;background:var(--gold);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;
+}
+.benefit h3{font-size:15.5px;font-family:'Inter',sans-serif;font-weight:700;margin-bottom:3px;color:var(--text);}
+.benefit p{font-size:14px;color:var(--text2);}
+
+/* ── VIDEO ───────────────────────────────────────────────────────────── */
+.video-wrap{position:relative;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);aspect-ratio:16/9;background:#000;}
+.video-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
+
+/* ── TESTIMONIAL ─────────────────────────────────────────────────────── */
+.testimonial{
+  background:#fff;border:1px solid var(--border);border-radius:16px;padding:22px 22px 20px;
+  box-shadow:var(--shadow);
+}
+.stars{color:var(--gold);font-size:16px;letter-spacing:2px;margin-bottom:10px;}
+.testimonial blockquote{font-size:15.5px;font-style:italic;color:var(--text);margin-bottom:12px;}
+.testimonial cite{font-size:13px;color:var(--muted);font-style:normal;font-weight:600;}
+
+/* ── PRICING ─────────────────────────────────────────────────────────── */
+.pricing{display:flex;flex-direction:column;gap:14px;}
+.tier{
+  position:relative;background:#fff;border:2px solid var(--border);border-radius:16px;padding:20px;
+  display:flex;justify-content:space-between;align-items:center;gap:14px;cursor:pointer;transition:border-color .15s, transform .15s;
+}
+.tier:hover{transform:translateY(-2px);}
+.tier.best{border-color:var(--gold);background:#fffbf2;}
+.tier .badge{
+  position:absolute;top:-11px;left:18px;background:var(--gold);color:#fff;font-size:11px;font-weight:700;
+  padding:4px 10px;border-radius:100px;letter-spacing:.03em;
+}
+.tier-left .qty{font-weight:700;font-size:16px;margin-bottom:2px;}
+.tier-left .per-unit{font-size:12.5px;color:var(--muted);}
+.tier-right{text-align:right;}
+.tier-right .now{font-size:22px;font-weight:800;color:var(--green-dk);font-family:'Fraunces',serif;}
+.tier-right .before{font-size:13px;color:var(--muted);text-decoration:line-through;}
+.tier input[type="radio"]{position:absolute;opacity:0;pointer-events:none;}
+.tier.selected{border-color:var(--green-dk);box-shadow:0 0 0 3px var(--green-lt);}
+
+/* ── FORM ────────────────────────────────────────────────────────────── */
+.order-panel{background:#fff;border:1px solid var(--border);border-radius:18px;padding:24px 20px;box-shadow:var(--shadow);}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:6px;letter-spacing:.01em;}
+.field input,.field select{
+  width:100%;padding:13px 14px;border-radius:10px;border:1.5px solid var(--border);font-size:15px;
+  font-family:'Inter',sans-serif;background:#fbfaf6;transition:border-color .12s;color:var(--text);
+  appearance:none;-webkit-appearance:none;
+}
+.field select{
+  background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%235a5a52' d='M5.5 7.5l4.5 4.5 4.5-4.5z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;
+}
+.field input:focus,.field select:focus{outline:none;border-color:var(--green-dk);background-color:#fff;}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.order-total{
+  display:flex;justify-content:space-between;align-items:center;padding:12px 0;
+  border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);margin-bottom:16px;font-size:14px;
+}
+.order-total strong{font-size:19px;color:var(--green-dk);font-family:'Fraunces',serif;}
+.secure-note{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--muted);margin-top:12px;}
+.msg{font-size:13px;padding:10px 12px;border-radius:8px;margin-bottom:12px;display:none;}
+.msg.err{display:block;background:var(--red-bg);color:var(--red);}
+
+/* ── THANK YOU STATE ─────────────────────────────────────────────────── */
+#thankyou{display:none;text-align:center;padding:40px 0 60px;}
+#thankyou .check{
+  width:64px;height:64px;border-radius:50%;background:var(--green-lt);color:var(--green-dk);
+  display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 18px;
+}
+#thankyou h1{font-size:30px;margin-bottom:12px;}
+#thankyou p{color:var(--text2);font-size:15.5px;margin-bottom:8px;max-width:440px;margin-left:auto;margin-right:auto;}
+#thankyou .order-ref{
+  display:inline-block;margin-top:16px;background:var(--panel2);color:var(--cream);
+  font-family:'Inter',monospace;font-size:12.5px;padding:8px 14px;border-radius:8px;
+}
+
+/* ── FAQ ─────────────────────────────────────────────────────────────── */
+.faq-item{border-bottom:1px solid var(--border);padding:16px 0;}
+.faq-item summary{font-weight:700;font-size:14.5px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;}
+.faq-item summary::-webkit-details-marker{display:none;}
+.faq-item summary::after{content:'+';font-size:20px;color:var(--muted);}
+.faq-item[open] summary::after{content:'−';}
+.faq-item p{font-size:14px;color:var(--text2);margin-top:10px;}
+
+/* ── FOOTER ──────────────────────────────────────────────────────────── */
+footer{padding:26px 0 40px;text-align:center;font-size:12px;color:var(--muted);}
+
+.floating-cta{
+  position:sticky;bottom:0;z-index:40;background:var(--cream);border-top:1px solid var(--border);
+  padding:12px 20px calc(12px + env(safe-area-inset-bottom));display:none;
+}
+@media (max-width:640px){.floating-cta{display:block;}}
+</style>
+</head>
+<body>
+
+<div class="topbar">🌍 Free Shipping Available</div>
+<div class="stickybar">
+  <div class="brand">Ginaris</div>
+  <a href="#order" class="btn" style="width:auto;">Order Now</a>
+</div>
+
+<div id="page">
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-eyebrow">Ultimate Strength for Men</div>
+    <h1>He Almost Gave Up On His Marriage Bed… Until This Herbal Tea Changed Everything</h1>
+    <p class="sub">Support your strength, stamina, and vitality naturally, with a herbal tea made from Sphenocentrum jollianum, Zingiber officinale, and Tribulus terrestris.</p>
+    <div class="hero-img">
+      <img src="images/img1-hero.jpg" alt="Ginaris Herbal Tea box">
+    </div>
+    <a href="#order" class="btn">Claim Your Discount Now</a>
+    <div class="trust-row">
+      <span>✓ Natural ingredients</span>
+      <span>✓ No prescription needed</span>
+      <span>✓ Worldwide shipping</span>
+    </div>
+  </div>
+</section>
+
+<!-- STORY / PROBLEM -->
+<section>
+  <div class="wrap story">
+    <h2 class="section-title">It's Not Age. It's Depletion.</h2>
+    <p>There's a kind of silence that says more than words ever could: the quiet moments when confidence fades, energy dips, and performance isn't what it used to be.</p>
+    <p>It's not something most men talk about. But it's something <strong>millions</strong> quietly deal with, and it's rarely about age. More often, it's about depletion, of energy, of circulation, of the natural compounds your body relies on.</p>
+    <p><strong>That's exactly what Ginaris Herbal Tea was made to support.</strong></p>
+
+    <div class="story-img">
+      <img src="images/img2-story.jpg" alt="Couple facing a quiet distance between them">
+    </div>
+    <a href="#order" class="btn img-cta">Order Now</a>
+
+    <p>At 44, married 12 years, he was still the hardworking, "responsible" man everyone knew him to be.</p>
+    <p>But something had shifted. He came home drained, with nothing left to give, not even to the woman he loved.</p>
+  </div>
+</section>
+
+<!-- BENEFITS -->
+<section class="alt">
+  <div class="wrap">
+    <h2 class="section-title">Why Thousands of Men Are Choosing Ginaris</h2>
+    <p class="section-sub">A simple herbal tea, taken twice daily. Here's what it's formulated to support.</p>
+    <div class="benefits">
+      <div class="benefit"><div class="num">1</div><div><h3>Stronger, longer-lasting energy</h3><p>Formulated to support sustained stamina, not just a short-lived boost.</p></div></div>
+      <div class="benefit"><div class="num">2</div><div><h3>Better performance where it matters most</h3><p>Supports healthy circulation and natural function.</p></div></div>
+      <div class="benefit"><div class="num">4</div><div><h3>Your confidence comes back</h3><p>When your body feels stronger, everything else follows.</p></div></div>
+    </div>
+
+    <h3 class="benefit-title">Help You Feel Warm, Active, and Less Sluggish</h3>
+    <p>Ginger (Zingiber Officinale) is well known for improving blood circulation and warming the body. Good circulation matters everywhere in the body, including the places that matter most in the bedroom.</p>
+    <div class="benefit-img">
+      <img src="images/img3-warmth.jpg" alt="A couple sharing a warm, close moment">
+    </div>
+    <a href="#order" class="btn img-cta">Order Now</a>
+
+    <h3 class="benefit-title">Convenient (No Cooking, No Stress)</h3>
+    <p>Just one tea bag in a cup of hot water. No boiling herbs for hours, no bitter concoctions, no embarrassment buying strange things at the market.</p>
+    <div class="benefit-img">
+      <img src="images/img4-alone.jpg" alt="A man sitting alone, feeling the weight of the problem">
+    </div>
+    <a href="#order" class="btn img-cta">Order Now</a>
+  </div>
+</section>
+
+<!-- VIDEO -->
+<section>
+  <div class="wrap">
+    <h2 class="section-title">See How It Works</h2>
+    <div class="video-wrap">
+      <iframe src="https://www.youtube-nocookie.com/embed/zCvR_eArl8k" title="Ginaris Herbal Tea" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIAL -->
+<section class="alt">
+  <div class="wrap">
+    <h2 class="section-title">See What Customers Are Saying</h2>
+    <p class="section-sub">Don't just take our word for it.</p>
+    <div class="testimonial">
+      <div class="stars">★★★★★</div>
+      <blockquote>"I won't lie, I tried it with doubt in my mind. But after some weeks my body changed, I got more strength and confidence. My wife is very happy."</blockquote>
+      <cite>Peter M., Verified Customer</cite>
+    </div>
+
+    <div class="chat-testimonial">
+      <img src="images/img6-chat-testimonial.jpg" alt="Customer message thanking us after using Ginaris Herbal Tea">
+    </div>
+    <a href="#order" class="btn img-cta">Order Now</a>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER -->
+<section>
+  <div class="wrap">
+    <p style="font-size:16px;text-align:center;color:var(--text2);margin-bottom:18px;">Weak erections, poor stamina, and finishing too quickly can gradually affect your confidence and relationship. Support stronger performance, better stamina, and renewed vitality naturally with Ginaris Herbal Tea.</p>
+    <div class="story-img">
+      <img src="images/img5-beforeafter.jpg" alt="Before and after using Ginaris Herbal Tea">
+    </div>
+    <a href="#order" class="btn img-cta">Order Now</a>
+  </div>
+</section>
+
+<!-- PRICING + ORDER -->
+<section id="order">
+  <div class="wrap">
+    <h2 class="section-title">Up To 33% Off If You Order Now</h2>
+    <p class="section-sub">Choose your package. Prices in USD, shipped internationally.</p>
+
+    <form id="orderForm">
+      <div class="pricing" id="pricing">
+        <label class="tier" data-qty="1" data-now="50" data-before="70">
+          <input type="radio" name="tier" value="1">
+          <div class="tier-left"><div class="qty">1 Bottle</div><div class="per-unit">$50.00 / bottle</div></div>
+          <div class="tier-right"><div class="before">$70.00</div><div class="now">$50</div></div>
+        </label>
+        <label class="tier best selected" data-qty="3" data-now="140" data-before="199">
+          <span class="badge">MOST POPULAR</span>
+          <input type="radio" name="tier" value="3" checked>
+          <div class="tier-left"><div class="qty">3 Bottles</div><div class="per-unit">$46.67 / bottle</div></div>
+          <div class="tier-right"><div class="before">$199.00</div><div class="now">$140</div></div>
+        </label>
+        <label class="tier" data-qty="5" data-now="200" data-before="299">
+          <div class="tier-left"><div class="qty">5 Bottles</div><div class="per-unit">$40.00 / bottle (Best Value)</div></div>
+          <div class="tier-right"><div class="before">$299.00</div><div class="now">$200</div></div>
+        </label>
+      </div>
+
+      <div style="height:22px;"></div>
+
+      <div class="order-panel">
+        <div id="formMsg" class="msg"></div>
+        <div class="field"><label>Full Name *</label><input type="text" id="f_name" required placeholder="Your full name"></div>
+        <div class="field"><label>Phone Number *</label><input type="tel" id="f_phone" required placeholder="+1 234 567 8900"></div>
+        <div class="field"><label>Email Address *</label><input type="email" id="f_email" required placeholder="you@example.com"></div>
+        <div class="field"><label>Street Address *</label><input type="text" id="f_address" required placeholder="123 Main St, Apt 4B"></div>
+        <div class="fg2">
+          <div class="field"><label>City *</label><input type="text" id="f_city" required placeholder="City"></div>
+          <div class="field"><label>State *</label>
+            <select id="f_state" required>
+              <option value="">Select state</option>
+              <option>Alabama</option><option>Alaska</option><option>Arizona</option><option>Arkansas</option><option>California</option>
+              <option>Colorado</option><option>Connecticut</option><option>Delaware</option><option>Florida</option><option>Georgia</option>
+              <option>Hawaii</option><option>Idaho</option><option>Illinois</option><option>Indiana</option><option>Iowa</option>
+              <option>Kansas</option><option>Kentucky</option><option>Louisiana</option><option>Maine</option><option>Maryland</option>
+              <option>Massachusetts</option><option>Michigan</option><option>Minnesota</option><option>Mississippi</option><option>Missouri</option>
+              <option>Montana</option><option>Nebraska</option><option>Nevada</option><option>New Hampshire</option><option>New Jersey</option>
+              <option>New Mexico</option><option>New York</option><option>North Carolina</option><option>North Dakota</option><option>Ohio</option>
+              <option>Oklahoma</option><option>Oregon</option><option>Pennsylvania</option><option>Rhode Island</option><option>South Carolina</option>
+              <option>South Dakota</option><option>Tennessee</option><option>Texas</option><option>Utah</option><option>Vermont</option>
+              <option>Virginia</option><option>Washington</option><option>West Virginia</option><option>Wisconsin</option><option>Wyoming</option>
+              <option>Washington DC</option>
+            </select>
+          </div>
+        </div>
+        <div class="field"><label>Payment Method *</label>
+          <select id="f_payment" required>
+            <option value="">Select payment method</option>
+            <option>PayPal</option>
+            <option>Cash App</option>
+            <option>Chime</option>
+            <option>Zelle</option>
+            <option>Apple Pay</option>
+            <option>Bank Transfer</option>
+            <option>Bitcoin</option>
+          </select>
+        </div>
+        <div class="order-total">
+          <span>Order total</span>
+          <strong id="totalDisplay">$140</strong>
+        </div>
+        <button type="submit" class="btn" id="submitBtn">Complete My Order (<span id="btnTotal">$140</span>)</button>
+        <div class="secure-note">🔒 Your information is kept private and secure</div>
+      </div>
+    </form>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="alt">
+  <div class="wrap">
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <details class="faq-item"><summary>How do I use Ginaris Herbal Tea?</summary><p>Steep one tea bag in a cup of hot water, allow it to cool slightly, then drink, once in the morning and once at night after meals.</p></details>
+    <details class="faq-item"><summary>Is it safe?</summary><p>Ginaris is made from natural herbal ingredients. As with any supplement, consult a doctor if you have an existing medical condition.</p></details>
+    <details class="faq-item"><summary>How long until I see results?</summary><p>Many customers report noticing a difference within a few weeks of consistent use.</p></details>
+    <details class="faq-item"><summary>Do you ship internationally?</summary><p>Yes, this offer ships worldwide. Our team will confirm shipping details with you after you place your order.</p></details>
+  </div>
+</section>
+
+</div>
+
+<!-- THANK YOU STATE -->
+<div id="thankyou">
+  <div class="wrap">
+    <div class="check">✓</div>
+    <h1>Thank You!</h1>
+    <p><strong>Wait, your order is almost complete.</strong></p>
+    <p>One of our customer care representatives will contact you shortly to confirm your order and arrange secure payment and shipping.</p>
+    <div class="order-ref" id="orderRef"></div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">Ginaris Herbal Tea. Natural Support for Men's Vitality. This product has not been evaluated for medical claims outside its labeled use.</div>
+</footer>
+
+<div class="floating-cta"><a href="#order" class="btn">Order Now (Up to 33% Off)</a></div>
+
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1364082442600221');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1364082442600221&ev=PageView&noscript=1"/></noscript>
+
+<script>
+const SUPABASE_FUNCTION_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/receive-order";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+
+function getParam(name) { return new URLSearchParams(window.location.search).get(name); }
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function uuid() {
+  if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+const asid = getParam("asid");
+const crid = getParam("crid");
+const fbclid = getParam("fbclid");
+
+// ── Pricing tier selection ──────────────────────────────────────────────
+const tiers = document.querySelectorAll(".tier");
+const totalDisplay = document.getElementById("totalDisplay");
+const btnTotal = document.getElementById("btnTotal");
+
+function selectTier(tier) {
+  tiers.forEach((t) => t.classList.remove("selected"));
+  tier.classList.add("selected");
+  tier.querySelector('input[type="radio"]').checked = true;
+  const now = tier.dataset.now;
+  totalDisplay.textContent = "$" + now;
+  btnTotal.textContent = "$" + now;
+}
+tiers.forEach((t) => t.addEventListener("click", () => selectTier(t)));
+
+// ── Order form submit ───────────────────────────────────────────────────
+document.getElementById("orderForm").addEventListener("submit", async function (e) {
+  e.preventDefault();
+  const btn = document.getElementById("submitBtn");
+  const msg = document.getElementById("formMsg");
+  msg.style.display = "none";
+
+  const selectedTier = document.querySelector(".tier.selected");
+  const qty = parseInt(selectedTier.dataset.qty, 10);
+  const value = parseFloat(selectedTier.dataset.now);
+  const eventId = uuid();
+
+  const payload = {
+    event_id: eventId,
+    customer_name: document.getElementById("f_name").value,
+    phone: document.getElementById("f_phone").value,
+    email: document.getElementById("f_email").value,
+    customer_address: document.getElementById("f_address").value,
+    customer_city: document.getElementById("f_city").value,
+    customer_state: document.getElementById("f_state").value,
+    customer_country: "US",
+    payment_method: document.getElementById("f_payment").value,
+    product_name: "Ginaris Herbal Tea",
+    quantity: qty,
+    order_value_naira: value,
+    currency: "USD",
+    ad_set_id: asid || null,
+    creative_id: crid || null,
+    fbclid: fbclid || undefined,
+    fbp: getCookie("_fbp") || undefined,
+    fbc: getCookie("_fbc") || undefined,
+  };
+
+  btn.disabled = true;
+  btn.textContent = "Submitting...";
+
+  try {
+    const res = await fetch(SUPABASE_FUNCTION_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + SUPABASE_ANON_KEY },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (typeof fbq === "function") {
+      fbq("track", "Purchase", { value: value, currency: "USD" }, { eventID: eventId });
+    }
+
+    document.getElementById("page").style.display = "none";
+    document.querySelector(".stickybar").style.display = "none";
+    document.querySelector(".floating-cta").style.display = "none";
+    document.getElementById("orderRef").textContent = "Reference: " + eventId.slice(0, 8).toUpperCase();
+    document.getElementById("thankyou").style.display = "block";
+    window.scrollTo(0, 0);
+  } catch (err) {
+    msg.textContent = "Something went wrong, please try again, or contact us directly. (" + err.message + ")";
+    msg.className = "msg err";
+    msg.style.display = "block";
+    btn.disabled = false;
+    btn.innerHTML = 'Complete My Order (<span id="btnTotal">$' + value + '</span>)';
+  }
+});
+</script>
+
+</body>
+</html>
