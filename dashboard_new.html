@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quality Herb — Media Buying Command Center</title>
+<meta name="description" content="Semi-autonomous Meta Ads command center for Quality Herb — track orders, creatives, campaigns, and earnings in real time.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ── THEME TOKENS ──────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:#09090b; --panel:#111113; --panel2:#18181c;
+  --border:#27272d; --borderStrong:#38383f;
+  --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
+  --accent:#4ec99e; --accentDk:#1a9e75;
+  --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
+  --warn:#f0a828; --warnBg:rgba(240,168,40,.10); --warnBdr:rgba(240,168,40,.22);
+  --danger:#e05555; --dangerBg:rgba(224,85,85,.10); --dangerBdr:rgba(224,85,85,.22);
+  --blue:#5a9fff; --blueBg:rgba(90,159,255,.10); --blueBdr:rgba(90,159,255,.22);
+  --shadow:0 8px 40px rgba(0,0,0,.55);
+  --scroll:rgba(255,255,255,.07);
+}
+[data-theme="light"] {
+  --bg:#f2f2ee; --panel:#ffffff; --panel2:#ededea;
+  --border:#e0e0d8; --borderStrong:#c4c4bb;
+  --text:#111111; --text2:#444448; --muted:#8a8a88;
+  --accent:#1a8a6e; --accentDk:#0d6a54;
+  --accentBg:rgba(26,138,110,.10); --accentBdr:rgba(26,138,110,.28);
+  --warn:#a96e00; --warnBg:rgba(169,110,0,.10); --warnBdr:rgba(169,110,0,.28);
+  --danger:#b83030; --dangerBg:rgba(184,48,48,.10); --dangerBdr:rgba(184,48,48,.28);
+  --blue:#1660cc; --blueBg:rgba(22,96,204,.10); --blueBdr:rgba(22,96,204,.28);
+  --shadow:0 4px 24px rgba(0,0,0,.10);
+  --scroll:rgba(0,0,0,.12);
+}
+
+/* ── RESET ─────────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;
+  transition:background .22s,color .22s;
+}
+a{color:inherit;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:3px;}
+
+/* ── HEADER ────────────────────────────────────────────────────────────────── */
+.hdr{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:13px 20px;background:var(--panel);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:200;transition:background .22s,border-color .22s;
+  gap:12px;
+}
+.hdr-left{display:flex;align-items:center;gap:9px;min-width:0;}
+.live-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--accent);
+  animation:pulse 2.2s ease-in-out infinite;flex-shrink:0;
+}
+.live-dot.off{background:var(--danger);animation:none;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.45;transform:scale(.8);}}
+.brand{font-size:14px;font-weight:700;letter-spacing:-.015em;white-space:nowrap;}
+.brand-sub{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:1px;}
+.hdr-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+
+.acct-selector{
+  background:var(--panel2);border:1px solid var(--border);color:var(--text);
+  border-radius:6px;padding:5px 8px;font-size:12px;font-family:'Inter',sans-serif;
+  max-width: 150px; cursor:pointer; outline:none;
+}
+.logout-btn{
+  background:transparent;border:1px solid var(--border);color:var(--text2);
+  border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;
+  transition:all .14s; font-weight:600;
+}
+.logout-btn:hover{color:var(--danger);border-color:var(--dangerBdr);}
+.theme-btn{
+  width:30px;height:30px;border-radius:50%;background:var(--panel2);
+  border:1px solid var(--border);cursor:pointer;display:flex;
+  align-items:center;justify-content:center;font-size:13px;
+  transition:all .18s;color:var(--text);
+}
+.theme-btn:hover{border-color:var(--accent);transform:rotate(18deg);}
+
+/* ── BADGE ─────────────────────────────────────────────────────────────────── */
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:500;letter-spacing:.03em;}
+.badge.ok{background:var(--accentBg);color:var(--accent);}
+.badge.warn{background:var(--warnBg);color:var(--warn);}
+.badge.err{background:var(--dangerBg);color:var(--danger);}
+
+/* ── TABS ──────────────────────────────────────────────────────────────────── */
+.tabs-bar{
+  display:flex;background:var(--panel);border-bottom:1px solid var(--border);
+  overflow-x:auto;padding:0 18px;position:sticky;top:54px;z-index:199;
+  transition:background .22s;gap:0;
+}
+.tabs-bar::-webkit-scrollbar{height:0;}
+.tab-btn{
+  padding:10px 14px;font-size:12px;font-weight:500;color:var(--muted);
+  cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;
+  user-select:none;transition:color .14s,border-color .14s;letter-spacing:.01em;
+}
+.tab-btn:hover{color:var(--text2);}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-badge{
+  display:none;background:var(--danger);color:#fff;
+  font-size:9px;border-radius:8px;padding:1px 5px;margin-left:4px;
+  font-family:'JetBrains Mono',monospace;vertical-align:middle;
+}
+
+/* ── CONTENT ───────────────────────────────────────────────────────────────── */
+.content{max-width:1160px;margin:0 auto;padding:22px 20px 90px;}
+
+/* ── METRIC CARDS ──────────────────────────────────────────────────────────── */
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:18px;}
+@media(max-width:860px){.g4{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:480px){.g4{grid-template-columns:1fr 1fr;}.g2{grid-template-columns:1fr;}}
+
+.kc{
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;transition:border-color .18s,transform .14s;
+}
+.kc:hover{border-color:var(--borderStrong);transform:translateY(-1px);}
+.kc-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
+.kc-val{font-family:'JetBrains Mono',monospace;font-size:23px;font-weight:600;line-height:1.15;}
+.kc-sub{font-size:10px;color:var(--muted);margin-top:5px;font-family:'JetBrains Mono',monospace;}
+.kc-val.a{color:var(--accent);}
+.kc-val.w{color:var(--warn);}
+.kc-val.d{color:var(--danger);}
+.kc-val.b{color:var(--blue);}
+
+/* ── PROGRESS BAR ──────────────────────────────────────────────────────────── */
+.pbar{height:3px;border-radius:2px;background:var(--border);margin-top:8px;overflow:hidden;}
+.pbar-fill{height:100%;border-radius:2px;transition:width .7s ease;}
+
+/* ── PANELS ────────────────────────────────────────────────────────────────── */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;transition:background .22s,border-color .22s;}
+.ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;gap:10px;}
+.ph-title{font-size:13px;font-weight:600;letter-spacing:-.01em;}
+.ph-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+
+/* ── SECTION HEADER ────────────────────────────────────────────────────────── */
+.sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;}
+.sh-title{font-size:17px;font-weight:700;letter-spacing:-.02em;}
+.sh-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* ── TABLES ────────────────────────────────────────────────────────────────── */
+.tbl-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;padding:7px 10px;color:var(--muted);font-weight:500;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;color:var(--text2);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--panel2);}
+td.s{color:var(--text);font-weight:500;}
+td.n{font-family:'Inter',sans-serif;}
+
+/* ── EMPTY ─────────────────────────────────────────────────────────────────── */
+.empty{padding:38px;text-align:center;color:var(--muted);font-size:13px;}
+.empty-ico{font-size:28px;margin-bottom:8px;opacity:.5;}
+
+/* ── FORMS ─────────────────────────────────────────────────────────────────── */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+@media(max-width:580px){.fg{grid-template-columns:1fr;}}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:11px;color:var(--text2);font-weight:500;letter-spacing:.02em;}
+input,select,textarea{
+  background:var(--panel2);border:1px solid var(--border);color:var(--text);
+  border-radius:7px;padding:8px 11px;font-size:13px;font-family:'Inter',sans-serif;
+  width:100%;transition:border-color .14s;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accentDk);}
+textarea{resize:vertical;min-height:76px;}
+
+/* ── BUTTONS ───────────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 13px;border-radius:7px;font-size:12px;font-weight:600;
+  cursor:pointer;transition:all .14s;border:1px solid transparent;
+  white-space:nowrap;font-family:'Inter',sans-serif;letter-spacing:.01em;
+}
+.btn-a{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
+.btn-a:hover{background:rgba(78,201,158,.18);}
+.btn-g{background:transparent;color:var(--text2);border-color:var(--border);}
+.btn-g:hover{border-color:var(--borderStrong);color:var(--text);}
+.btn-d{background:var(--dangerBg);color:var(--danger);border-color:var(--dangerBdr);}
+.btn-w{background:var(--warnBg);color:var(--warn);border-color:var(--warnBdr);}
+.btn-b{background:var(--blueBg);color:var(--blue);border-color:var(--blueBdr);}
+.btn:disabled{opacity:.42;cursor:not-allowed;}
+.btn-full{width:100%;justify-content:center;margin-top:13px;padding:10px;}
+
+/* ── PILLS ─────────────────────────────────────────────────────────────────── */
+.pill{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+.pill.untested,.pill.pending_test{background:var(--panel2);color:var(--muted);}
+.pill.testing,.pill.active,.pill.ACTIVE,.pill.winner,.pill.winning,.pill.approved,.pill.delivered,.pill.valid{background:var(--accentBg);color:var(--accent);}
+.pill.pending,.pill.pending_approval,.pill.staged,.pill.watch,.pill.awaiting_approval{background:var(--warnBg);color:var(--warn);}
+.pill.loser,.pill.killed,.pill.paused,.pill.PAUSED,.pill.returned,.pill.cancelled,.pill.rejected{background:var(--dangerBg);color:var(--danger);}
+.pill.scaling,.pill.scale{background:var(--blueBg);color:var(--blue);}
+.pill.warmup,.pill.warming_up{background:var(--panel2);color:var(--muted);}
+
+/* ── CTR SIGNALS ───────────────────────────────────────────────────────────── */
+.ctr-hot{color:var(--accent);font-weight:600;}
+.ctr-warm{color:var(--warn);}
+.ctr-cold{color:var(--danger);}
+.ctr-neu{color:var(--muted);}
+
+/* ── MESSAGES ──────────────────────────────────────────────────────────────── */
+.msg{font-size:11px;padding:8px 12px;border-radius:7px;margin-top:9px;font-family:'JetBrains Mono',monospace;border:1px solid transparent;}
+.msg.ok{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
+.msg.err{background:var(--dangerBg);color:var(--danger);border-color:var(--dangerBdr);}
+.msg.info{background:var(--blueBg);color:var(--blue);border-color:var(--blueBdr);}
+
+/* ── QUICK ACTIONS ─────────────────────────────────────────────────────────── */
+.qa{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;align-items:center;}
+
+/* ── SYSTEM STATUS BAR ─────────────────────────────────────────────────────── */
+.sysbar{
+  display:flex;gap:0;background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:0;margin-bottom:18px;overflow-x:auto;
+}
+.sysbar::-webkit-scrollbar{height:0;}
+.sys-item{
+  display:flex;flex-direction:column;gap:3px;
+  padding:12px 18px;border-right:1px solid var(--border);white-space:nowrap;
+}
+.sys-item:last-child{border-right:none;}
+.sys-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.sys-val{font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text2);}
+.sys-val.a{color:var(--accent);}
+
+/* ── DRAG & DROP ───────────────────────────────────────────────────────────── */
+.dz{
+  border:2px dashed var(--border);border-radius:10px;padding:36px 20px;
+  text-align:center;cursor:pointer;transition:all .18s;background:var(--panel2);
+  margin-bottom:15px;
+}
+.dz:hover,.dz.over{border-color:var(--accent);background:var(--accentBg);}
+.dz-ico{font-size:32px;margin-bottom:8px;opacity:.55;}
+.dz-txt{font-size:13px;color:var(--text2);margin-bottom:3px;}
+.dz-hint{font-size:11px;color:var(--muted);}
+.dz-prev{margin-top:12px;font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace;}
+.dz-thumb{max-height:72px;max-width:120px;border-radius:6px;margin-top:8px;border:1px solid var(--border);display:block;margin-left:auto;margin-right:auto;}
+
+/* ── AI CHAT ───────────────────────────────────────────────────────────────── */
+.chat-toggle{
+  position:fixed;bottom:22px;right:22px;width:48px;height:48px;border-radius:50%;
+  background:var(--accent);color:#09090b;border:none;font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(0,0,0,.35);transition:all .18s;z-index:1000;font-weight:700;
+}
+.chat-toggle:hover{transform:scale(1.09);}
+.chat-panel{
+  position:fixed;bottom:82px;right:22px;width:350px;height:500px;
+  background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;z-index:999;
+  transform:translateY(18px) scale(.95);opacity:0;pointer-events:none;
+  transition:all .2s cubic-bezier(.34,1.5,.64,1);overflow:hidden;
+}
+.chat-panel.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all;}
+.ch-head{
+  padding:12px 14px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:9px;background:var(--panel2);
+}
+.ch-avatar{width:30px;height:30px;border-radius:50%;background:var(--accentBg);border:1px solid var(--accentBdr);display:flex;align-items:center;justify-content:center;font-size:14px;}
+.ch-name{font-size:12px;font-weight:600;}
+.ch-status{font-size:10px;color:var(--muted);}
+.ch-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}
+.ch-msg{max-width:88%;padding:8px 11px;border-radius:9px;font-size:12px;line-height:1.5;}
+.ch-msg.bot{background:var(--panel2);color:var(--text);align-self:flex-start;}
+.ch-msg.user{background:var(--accentBg);color:var(--accent);border:1px solid var(--accentBdr);align-self:flex-end;}
+.ch-suggs{padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid var(--border);}
+.ch-sugg{font-size:10px;padding:3px 9px;border-radius:20px;border:1px solid var(--border);color:var(--text2);cursor:pointer;transition:all .13s;background:transparent;}
+.ch-sugg:hover{border-color:var(--accent);color:var(--accent);}
+.ch-inp{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--border);}
+.ch-inp input{flex:1;padding:7px 10px;font-size:12px;border-radius:7px;}
+.ch-inp button{padding:7px 11px;border-radius:7px;background:var(--accent);color:#09090b;border:none;font-size:12px;font-weight:700;cursor:pointer;}
+
+/* ── SPINNER ───────────────────────────────────────────────────────────────── */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rot .65s linear infinite;vertical-align:middle;}
+@keyframes rot{to{transform:rotate(360deg);}}
+
+/* ── MOBILE ────────────────────────────────────────────────────────────────── */
+@media(max-width:620px){
+  .chat-panel{width:calc(100vw - 32px);right:16px;}
+  .hdr-right{flex-wrap:wrap;}
+  .sh{flex-direction:column;align-items:flex-start;}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="live-dot" id="liveDot"></div>
+    <div>
+      <div class="brand">Quality Herb — Command Center</div>
+      <div class="brand-sub" id="lastSync">connecting…</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <select class="acct-selector" id="acctSelector" title="Switch Ad Account">
+      <option value="">Loading accounts...</option>
+    </select>
+    <button class="logout-btn" id="logoutBtn">Log out</button>
+    <button class="theme-btn" id="themeBtn" title="Toggle theme">☀️</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs-bar" id="tabsBar">
+  <div class="tab-btn active" data-tab="overview">Overview</div>
+  <div class="tab-btn" data-tab="vault">Creative Vault</div>
+  <div class="tab-btn" data-tab="campaigns">Campaigns</div>
+  <div class="tab-btn" data-tab="products">Products</div>
+  <div class="tab-btn" data-tab="orders">Orders</div>
+  <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
+  <div class="tab-btn" data-tab="earnings">Earnings</div>
+  <div class="tab-btn" data-tab="settings">Settings</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="content" id="mainContent">
+  <div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>
+</div>
+
+<!-- AI CHAT -->
+<div class="chat-panel" id="chatPanel">
+  <div class="ch-head">
+    <div class="ch-avatar">🤖</div>
+    <div>
+      <div class="ch-name">AI Media Buyer</div>
+      <div class="ch-status">Grounded in your live data</div>
+    </div>
+  </div>
+  <div class="ch-msgs" id="chMsgs">
+    <div class="ch-msg bot">Hey 👋 I'm trained on senior buyer patterns. I can analyze your CTR, CPA, delivery rate, creative performance, and scaling decisions. What do you want to know?</div>
+  </div>
+  <div class="ch-suggs" id="chSuggs">
+    <button class="ch-sugg" onclick="askChat('Which creative has the best CTR this week?')">Best CTR this week?</button>
+    <button class="ch-sugg" onclick="askChat('Why was the last creative killed?')">Last creative killed?</button>
+    <button class="ch-sugg" onclick="askChat('Should I scale any ad sets right now?')">Scale any ad sets?</button>
+    <button class="ch-sugg" onclick="askChat('What is my delivery rate this month?')">Delivery rate?</button>
+    <button class="ch-sugg" onclick="askChat('Which targeting type is performing best?')">Best targeting?</button>
+  </div>
+  <div class="ch-inp">
+    <input type="text" id="chInput" placeholder="Ask about campaigns, creatives…" onkeydown="if(event.key==='Enter')sendChat()">
+    <button onclick="sendChat()">→</button>
+  </div>
+</div>
+<button class="chat-toggle" id="chatToggle" title="AI Assistant">💬</button>
+
+<script>
+// ── CONFIG & SUPABASE ─────────────────────────────────────────────────────────
+const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+const ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+const supabase = window.supabase.createClient(SUPA_URL, ANON);
+
+let sessionData = null;
+let activeAccountId = null; // Currently selected UUID from ad_accounts
+let accountsList = [];
+
+// Thresholds
+const CTR_KILL   = 0.7;
+const CTR_WATCH  = 1.2;
+const CTR_WIN    = 1.5;
+const CPA_WATCH  = 1500;
+const CPA_KILL   = 2500;
+const MIN_HRS    = 10;
+
+// ── AUTH & INITIALIZATION ─────────────────────────────────────────────────────
+async function init() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) {
+    window.location.href = "index.html"; // Not logged in
+    return;
+  }
+  sessionData = session;
+  
+  // Set up Logout listener
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  // Load user's ad accounts
+  await loadAccounts();
+  loadApprovalCount();
+  render();
+
+  setInterval(loadAccounts, 60000);
+  setInterval(loadApprovalCount, 30000);
+}
+
+// ── API HELPERS ───────────────────────────────────────────────────────────────
+async function sbQuery(table, queryStr = "") {
+  // Append ad account filter if applicable (ignore for products, system_settings, earnings etc.)
+  let finalQuery = queryStr;
+  const filteredTables = ["orders", "ad_sets", "creative_assets", "daily_metrics"];
+  
+  if (filteredTables.includes(table) && activeAccountId) {
+    finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;
+  }
+
+  const res = await fetch(`${SUPA_URL}/rest/v1/${table}${finalQuery ? "?" + finalQuery : ""}`, {
+    headers: {
+      apikey: ANON, 
+      Authorization: `Bearer ${sessionData?.access_token || ANON}`,
+      "Content-Type": "application/json"
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const t = await res.text();
+  return t ? JSON.parse(t) : null;
+}
+
+async function sbFn(name, body = null, method = "POST") {
+  try {
+    // Inject activeAccountId into the payload so edge functions know which account to process if needed
+    if (body && typeof body === 'object') {
+      body.ad_account_id = activeAccountId;
+    }
+    
+    const res = await fetch(`${SUPA_URL}/functions/v1/${name}`, {
+      method,
+      headers: { 
+        Authorization: `Bearer ${sessionData?.access_token || ANON}`, 
+        "Content-Type": "application/json" 
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return await res.json();
+  } catch(e) { return { error: e.message }; }
+}
+
+// ── MULTI-ACCOUNT MANAGEMENT ──────────────────────────────────────────────────
+async function loadAccounts() {
+  const dot = document.getElementById("liveDot");
+  try {
+    const data = await sbQuery("ad_accounts", "order=created_at.desc");
+    accountsList = data || [];
+    
+    const sel = document.getElementById("acctSelector");
+    
+    if (accountsList.length === 0) {
+      sel.innerHTML = `<option value="">No Ad Accounts</option>`;
+      activeAccountId = null;
+      dot.classList.add("off");
+      return;
+    }
+
+    // Preserve selection or set default
+    if (!activeAccountId || !accountsList.find(a => a.id === activeAccountId)) {
+      activeAccountId = accountsList[0].id;
+    }
+
+    sel.innerHTML = accountsList.map(a => 
+      `<option value="${a.id}" ${a.id === activeAccountId ? "selected" : ""}>${a.name}</option>`
+    ).join("");
+    
+    dot.classList.remove("off");
+  } catch(err) {
+    console.error("Failed to load accounts:", err);
+    dot.classList.add("off");
+  }
+}
+
+document.getElementById("acctSelector").addEventListener("change", (e) => {
+  activeAccountId = e.target.value;
+  render(); // Re-render everything for the new account context
+});
+
+async function loadApprovalCount() {
+  try {
+    const rows = await sbQuery("pending_approvals", "status=eq.pending&select=id");
+    const badge = document.getElementById("approvalBadge");
+    if (rows?.length > 0) {
+      badge.textContent = rows.length;
+      badge.style.display = "inline";
+    } else {
+      badge.style.display = "none";
+    }
+  } catch {}
+}
+
+// ── FORMATTERS ────────────────────────────────────────────────────────────────
+const fN  = n => n == null ? "—" : "₦" + Number(n).toLocaleString("en-NG", {maximumFractionDigits:0});
+const fP  = n => n == null ? "—" : Number(n).toFixed(1) + "%";
+const fK  = n => n == null ? "—" : Number(n) >= 1000 ? (Number(n)/1000).toFixed(1)+"k" : String(n);
+
+function ago(iso) {
+  if (!iso) return "—";
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60)    return s + "s ago";
+  if (s < 3600)  return Math.floor(s/60)  + "m ago";
+  if (s < 86400) return Math.floor(s/3600) + "h ago";
+  return Math.floor(s/86400) + "d ago";
+}
+
+function hrs(iso) {
+  if (!iso) return 0;
+  return Math.floor((Date.now() - new Date(iso)) / 3600000);
+}
+
+function ctrCls(v) {
+  if (!v) return "ctr-neu";
+  const n = parseFloat(v);
+  if (n >= CTR_WIN)   return "ctr-hot";
+  if (n >= CTR_KILL)  return "ctr-warm";
+  return "ctr-cold";
+}
+
+function decision(ctr, spend, h) {
+  if (!h || h < MIN_HRS) return `<span class="pill warmup">warming up (${h}h)</span>`;
+  const c = parseFloat(ctr || 0);
+  const s = parseFloat(spend || 0);
+  if (c >= CTR_WIN)  return `<span class="pill scaling">✦ scale ↑</span>`;
+  if (c >= CTR_WATCH) return `<span class="pill watch">👁 watch</span>`;
+  if (s > 3000 || c < CTR_KILL) return `<span class="pill loser">✕ kill</span>`;
+  return `<span class="pill watch">👁 watch</span>`;
+}
+
+// ── THEME TOGGLE ──────────────────────────────────────────────────────────────
+let theme = localStorage.getItem("qh_theme") || "dark";
+function setTheme(t) {
+  theme = t;
+  document.documentElement.setAttribute("data-theme", t);
+  document.getElementById("themeBtn").textContent = t === "dark" ? "☀️" : "🌙";
+  localStorage.setItem("qh_theme", t);
+}
+setTheme(theme);
+document.getElementById("themeBtn").addEventListener("click", () => setTheme(theme === "dark" ? "light" : "dark"));
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+let activeTab = "overview";
+document.getElementById("tabsBar").addEventListener("click", e => {
+  const t = e.target.closest(".tab-btn");
+  if (!t) return;
+  activeTab = t.dataset.tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === t));
+  render();
+});
+
+// ── RENDER ROUTER ─────────────────────────────────────────────────────────────
+async function render() {
+  document.getElementById("lastSync").textContent = "synced " + new Date().toLocaleTimeString();
+  const c = document.getElementById("mainContent");
+  
+  if (activeTab !== "settings" && !activeAccountId && accountsList.length === 0) {
+    c.innerHTML = `
+      <div class="empty">
+        <div class="empty-ico">🔌</div>
+        <div style="margin-bottom: 12px;">No Ad Accounts linked yet.</div>
+        <button class="btn btn-a" onclick="activeTab='settings'; document.querySelector('[data-tab=settings]').click();">Go to Settings to Link Account</button>
+      </div>`;
+    return;
+  }
+  
+  c.innerHTML = `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>`;
+  try {
+    if      (activeTab === "overview")  await renderOverview(c);
+    else if (activeTab === "vault")     await renderVault(c);
+    else if (activeTab === "campaigns") await renderCampaigns(c);
+    else if (activeTab === "products")  await renderProducts(c);
+    else if (activeTab === "orders")    await renderOrders(c);
+    else if (activeTab === "approvals") await renderApprovals(c);
+    else if (activeTab === "earnings")  await renderEarnings(c);
+    else if (activeTab === "settings")  await renderSettings(c);
+  } catch(e) {
+    c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
+  }
+}
+
+// ── TAB: OVERVIEW ─────────────────────────────────────────────────────────────
+async function renderOverview(el) {
+  const [settings, orders, creatives, approvals, metrics] = await Promise.all([
+    sbQuery("system_settings", "id=eq.1&select=*").then(r => r?.[0] ?? {}),
+    sbQuery("orders", "select=order_status,order_value_naira,ordered_at"),
+    sbQuery("creative_assets", "select=test_status,status,uploaded_at"),
+    sbQuery("pending_approvals", "status=eq.pending&select=id"),
+    sbQuery("daily_metrics", "select=*&order=metric_date.desc&limit=7").catch(() => []),
+  ]);
+
+  const tot       = orders?.length ?? 0;
+  const deliv     = orders?.filter(o => o.order_status === "delivered").length ?? 0;
+  const returned  = orders?.filter(o => o.order_status === "returned").length ?? 0;
+  const rate      = tot ? (deliv / tot * 100).toFixed(1) : "0";
+  const rateClr   = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
+  const target    = settings.monthly_order_target ?? 20000;
+  const pacing    = (tot / target * 100).toFixed(1);
+
+  const testing  = creatives?.filter(c => ["testing","active"].includes(c.test_status ?? c.status)).length ?? 0;
+  const winners  = creatives?.filter(c => ["winner","winning"].includes(c.test_status ?? c.status)).length ?? 0;
+  const untested = creatives?.filter(c => ["untested","pending_test"].includes(c.test_status ?? c.status)).length ?? 0;
+  const losers   = creatives?.filter(c => ["loser","killed"].includes(c.test_status ?? c.status)).length ?? 0;
+
+  const totalSpend = metrics?.reduce((s,m) => s + (m.spend_naira||0), 0) ?? 0;
+  const metOrders  = metrics?.reduce((s,m) => s + (m.orders||0), 0) ?? 0;
+  const blendCPA   = metOrders > 0 ? Math.round(totalSpend / metOrders) : null;
+  const cpaTarget  = settings.company_target_cpa_naira ?? 2500;
+  const cpaClr     = !blendCPA ? "" : blendCPA <= cpaTarget ? "a" : blendCPA <= cpaTarget * 1.3 ? "w" : "d";
+
+  const todayS     = metrics?.[0]?.spend_naira ?? 0;
+  const dailyBudg  = settings.daily_ad_spend_budget_naira ?? 0;
+  const budPct     = dailyBudg ? Math.min((todayS / dailyBudg * 100), 100).toFixed(0) : 0;
+
+  el.innerHTML = `
+    <div class="sh">
+      <div class="sh-title">Overview</div>
+      <div class="sh-actions" id="qaActions"></div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="qa">
+      <button class="btn btn-a" id="btnBatch" onclick="triggerBatch()">⚡ Run Tonight's Batch</button>
+      <button class="btn btn-b" id="btnPull"  onclick="triggerMetrics()">📊 Pull Meta Metrics</button>
+      <button class="btn btn-g" id="btnSync"  onclick="triggerSync()">🔄 Sync Audiences</button>
+      <button class="btn btn-g" onclick="render()">↺ Refresh</button>
+    </div>
+    <div id="actionMsg"></div>
+
+    <!-- System Settings Bar -->
+    <div class="sysbar">
+      <div class="sys-item"><div class="sys-lbl">Monthly target</div><div class="sys-val">${target.toLocaleString()} orders</div></div>
+      <div class="sys-item"><div class="sys-lbl">Target CPA</div><div class="sys-val a">${fN(cpaTarget)}</div></div>
+      <div class="sys-item"><div class="sys-lbl">Test budget</div><div class="sys-val">${fN(settings.test_budget_per_creative_naira)} / creative</div></div>
+      <div class="sys-item"><div class="sys-lbl">Daily budget</div><div class="sys-val">${fN(dailyBudg)}</div></div>
+      <div class="sys-item"><div class="sys-lbl">Kill threshold</div><div class="sys-val">CTR &lt; ${CTR_KILL}%</div></div>
+      <div class="sys-item"><div class="sys-lbl">Scale threshold</div><div class="sys-val">CTR ≥ ${CTR_WIN}%</div></div>
+      <div class="sys-item"><div class="sys-lbl">Min test window</div><div class="sys-val">${settings.min_hours_before_kill ?? MIN_HRS}h before kill</div></div>
+    </div>
+
+    <!-- KPI Row 1 -->
+    <div class="g4">
+      <div class="kc">
+        <div class="kc-lbl">Orders this month</div>
+        <div class="kc-val">${tot}</div>
+        <div class="kc-sub">of ${target.toLocaleString()} target · ${pacing}% pacing</div>
+        <div class="pbar"><div class="pbar-fill" style="width:${Math.min(pacing,100)}%;background:var(--accent);"></div></div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Delivery rate</div>
+        <div class="kc-val ${rateClr}">${rate}%</div>
+        <div class="kc-sub">${deliv} delivered · ${returned} returned</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Blended CPA</div>
+        <div class="kc-val ${cpaClr}">${fN(blendCPA)}</div>
+        <div class="kc-sub">target ${fN(cpaTarget)} · ${blendCPA ? (blendCPA <= cpaTarget ? "✓ on target" : "↑ above target") : "no data yet"}</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Today's spend</div>
+        <div class="kc-val">${fN(todayS)}</div>
+        <div class="kc-sub">of ${fN(dailyBudg)} budget · ${budPct}% used</div>
+        <div class="pbar"><div class="pbar-fill" style="width:${budPct}%;background:${budPct > 90 ? "var(--danger)" : "var(--accent)"};"></div></div>
+      </div>
+    </div>
+
+    <!-- KPI Row 2 -->
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Untested</div><div class="kc-val">${untested}</div><div class="kc-sub">ready to queue tonight</div></div>
+      <div class="kc"><div class="kc-lbl">Testing now</div><div class="kc-val w">${testing}</div><div class="kc-sub">live ad sets running</div></div>
+      <div class="kc"><div class="kc-lbl">Winners</div><div class="kc-val a">${winners}</div><div class="kc-sub">proven · scaling</div></div>
+      <div class="kc"><div class="kc-lbl">Pending approvals</div><div class="kc-val ${approvals?.length ? "w" : ""}">${approvals?.length ?? 0}</div><div class="kc-sub">${approvals?.length ? "⚠ reply on WhatsApp" : "all clear ✓"}</div></div>
+    </div>
+
+    <!-- 7-Day Performance -->
+    <div class="panel">
+      <div class="ph">
+        <div class="ph-title">Last 7-day performance</div>
+        <div class="ph-count">${metrics?.length ?? 0} days tracked</div>
+      </div>
+      ${!metrics?.length
+        ? `<div class="empty"><div class="empty-ico">📈</div>No metrics yet — click "Pull Meta Metrics" to fetch live data.</div>`
+        : `<div class="tbl-wrap"><table>
+            <tr><th>Date</th><th>Spend</th><th>Orders</th><th>CPA</th><th>CTR</th><th>Clicks</th><th>Reach</th></tr>
+            ${metrics.map(m => {
+              const cpa = m.orders > 0 ? Math.round(m.spend_naira / m.orders) : null;
+              const cpaC = cpa ? (cpa <= cpaTarget ? "ctr-hot" : cpa <= cpaTarget*1.3 ? "ctr-warm" : "ctr-cold") : "";
+              const ctrV = m.ctr ? (m.ctr * 100).toFixed(2) : null;
+              return `<tr>
+                <td class="s">${m.metric_date ?? "—"}</td>
+                <td>${fN(m.spend_naira)}</td>
+                <td class="s">${m.orders ?? "—"}</td>
+                <td class="${cpaC}">${fN(cpa)}</td>
+                <td class="${ctrCls(ctrV)}">${ctrV ? ctrV+"%" : "—"}</td>
+                <td>${m.clicks?.toLocaleString() ?? "—"}</td>
+                <td>${m.reach?.toLocaleString() ?? "—"}</td>
+              </tr>`;
+            }).join("")}
+          </table></div>`}
+    </div>
+    <div id="actionResult"></div>`;
+}
+
+// ── QUICK ACTION HANDLERS ─────────────────────────────────────────────────────
+async function triggerBatch() {
+  const btn = document.getElementById("btnBatch");
+  const res = document.getElementById("actionResult");
+  if (!btn) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Running…';
+  res.innerHTML = "";
+  try {
+    const r = await sbFn("ai-auto-launch-tests", { ad_account_id: activeAccountId });
+    res.innerHTML = r.error
+      ? `<div class="msg err">❌ ${r.error}</div>`
+      : `<div class="msg ok">✅ ${r.message ?? "Batch staged. Check WhatsApp for approval request."}</div>`;
+    if (!r.error) setTimeout(render, 1500);
+  } catch(e) {
+    res.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = "⚡ Run Tonight's Batch"; }
+  }
+}
+
+async function triggerMetrics() {
+  const btn = document.getElementById("btnPull");
+  const res = document.getElementById("actionResult");
+  if (!btn) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Pulling…';
+  try {
+    const r = await sbFn("pull-meta-metrics", { ad_account_id: activeAccountId });
+    if (res) res.innerHTML = r.error
+      ? `<div class="msg err">❌ ${r.error}</div>`
+      : `<div class="msg ok">✅ Metrics updated. ${r.processed ?? ""} ad sets processed.</div>`;
+    if (!r.error) setTimeout(render, 1200);
+  } catch(e) {
+    if (res) res.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = "📊 Pull Meta Metrics"; }
+  }
+}
+
+async function triggerSync() {
+  const btn = document.getElementById("btnSync");
+  const res = document.getElementById("actionResult");
+  if (!btn) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Syncing…';
+  try {
+    const r = await sbFn("sync-meta-audiences", { ad_account_id: activeAccountId });
+    if (res) res.innerHTML = r.error
+      ? `<div class="msg err">❌ Sync failed: ${r.error}</div>`
+      : `<div class="msg ok">✅ Audiences synced to Meta successfully.</div>`;
+  } catch(e) {
+    if (res) res.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = "🔄 Sync Audiences"; }
+  }
+}
+
+// ── TAB: CREATIVE VAULT ───────────────────────────────────────────────────────
+async function renderVault(el) {
+  const [assets, products] = await Promise.all([
+    sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100"),
+    sbQuery("products", "is_active=eq.true&select=id,product_name"),
+  ]);
+
+  const pOpts  = (products||[]).map(p => `<option value="${p.id}">${p.product_name}</option>`).join("");
+  const all    = assets?.length ?? 0;
+  const untest = (assets||[]).filter(a => ["untested","pending_test"].includes(a.test_status ?? a.status)).length;
+  const test   = (assets||[]).filter(a => ["testing","active"].includes(a.test_status ?? a.status)).length;
+  const wins   = (assets||[]).filter(a => ["winner","winning"].includes(a.test_status ?? a.status)).length;
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Creative Vault</div></div>
+
+    <div class="g4" style="margin-bottom:18px;">
+      <div class="kc"><div class="kc-lbl">Total</div><div class="kc-val">${all}</div><div class="kc-sub">in vault</div></div>
+      <div class="kc"><div class="kc-lbl">Untested</div><div class="kc-val">${untest}</div><div class="kc-sub">ready to queue</div></div>
+      <div class="kc"><div class="kc-lbl">Testing</div><div class="kc-val w">${test}</div><div class="kc-sub">live now</div></div>
+      <div class="kc"><div class="kc-lbl">Winners</div><div class="kc-val a">${wins}</div><div class="kc-sub">proven</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Upload new creative</div></div>
+      <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
+        <div class="dz-ico">🎬</div>
+        <div class="dz-txt">Drag & drop your video or image here</div>
+        <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
+        <div class="dz-prev" id="dzPrev"></div>
+        <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
+      </div>
+      <form id="uploadForm">
+        <div class="fg">
+          <div class="field"><label>Product *</label>
+            <select id="f_product">${pOpts || '<option value="">No products — add in Products tab first</option>'}</select>
+          </div>
+          <div class="field"><label>Mechanism</label>
+            <select id="f_mechanism">
+              <option value="root_cause">Root cause</option>
+              <option value="why_others_failed">Why others failed</option>
+              <option value="lifestyle_factors">Lifestyle factors</option>
+              <option value="major_symptoms">Major symptoms</option>
+              <option value="why_product_works">Why product works</option>
+            </select>
+          </div>
+          <div class="field"><label>Format</label>
+            <select id="f_format">
+              <option value="customer_review">Customer review</option>
+              <option value="before_after">Before / After</option>
+              <option value="street_interview">Street interview</option>
+              <option value="case_study">Case study</option>
+              <option value="ugly_text">Ugly text ad</option>
+            </select>
+          </div>
+          <div class="field"><label>CTA</label>
+            <select id="f_cta">
+              <option value="SHOP_NOW">Shop Now</option>
+              <option value="LEARN_MORE">Learn More</option>
+              <option value="ORDER_NOW">Order Now</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-top:11px;"><label>Primary text (ad copy) *</label>
+          <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad…" required></textarea>
+        </div>
+        <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
+          <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" id="uploadBtn">↑ Upload to Vault</button>
+        <div id="uploadMsg"></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="ph">
+        <div class="ph-title">All creatives</div>
+        <div class="ph-count">${all} total</div>
+      </div>
+      ${!all ? `<div class="empty"><div class="empty-ico">🎨</div>No creatives uploaded yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>File</th><th>Product</th><th>Mechanism</th><th>Format</th><th>Status</th><th>Uploaded</th></tr>
+        ${assets.map(a => `<tr>
+          <td class="s n" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.file_name ?? a.asset_name ?? "—"}</td>
+          <td class="n">${a.products?.product_name ?? "—"}</td>
+          <td>${(a.mechanism ?? "—").replace(/_/g," ")}</td>
+          <td>${(a.format ?? "—").replace(/_/g," ")}</td>
+          <td><span class="pill ${(a.test_status ?? a.status ?? "untested").replace(/ /g,"_")}">${(a.test_status ?? a.status ?? "untested").replace(/_/g," ")}</span></td>
+          <td>${ago(a.uploaded_at)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+
+  // Drag-and-drop
+  const dz = document.getElementById("dropZone");
+  dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+  dz.addEventListener("drop", e => {
+    e.preventDefault(); dz.classList.remove("over");
+    const f = e.dataTransfer?.files?.[0];
+    if (f) setFile(f);
+  });
+
+  document.getElementById("uploadForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = document.getElementById("uploadBtn");
+    const msg = document.getElementById("uploadMsg");
+    const file = document.getElementById("f_file").files[0];
+    if (!file) { msg.innerHTML = `<div class="msg err">Please select or drop a file first.</div>`; return; }
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Uploading…';
+    msg.innerHTML = "";
+    
+    // We can't easily upload to an edge function via fetch if RLS needs ad_account_id,
+    // so we pass the ad_account_id in the FormData.
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("primary_text", document.getElementById("f_primary").value);
+    fd.append("headline", document.getElementById("f_headline").value);
+    fd.append("description", document.getElementById("f_desc").value);
+    fd.append("mechanism", document.getElementById("f_mechanism").value);
+    fd.append("format", document.getElementById("f_format").value);
+    fd.append("cta_type", document.getElementById("f_cta").value);
+    fd.append("uploaded_by", "dashboard");
+    fd.append("ad_account_id", activeAccountId);
+
+    try {
+      const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, {
+        method: "POST", 
+        headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, 
+        body: fd,
+      });
+      const r = await res.json();
+      if (r.error) throw new Error(r.error);
+      const pid = document.getElementById("f_product").value;
+      if (pid && r.asset?.id) {
+        await supabase.from('creative_assets').update({ product_id: pid }).eq('id', r.asset.id);
+      }
+      msg.innerHTML = `<div class="msg ok">✅ Uploaded! Will be picked up in tonight's test batch.</div>`;
+      document.getElementById("uploadForm").reset();
+      document.getElementById("dzPrev").innerHTML = "";
+      dz.style.borderColor = "";
+      dz.style.background = "";
+      setTimeout(render, 1200);
+    } catch(err) {
+      msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+    } finally {
+      btn.disabled = false; btn.innerHTML = "↑ Upload to Vault";
+    }
+  });
+}
+
+function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); }
+function setFile(file) {
+  const dz   = document.getElementById("dropZone");
+  const prev = document.getElementById("dzPrev");
+  const inp  = document.getElementById("f_file");
+  try { const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files; } catch {}
+  dz.style.borderColor = "var(--accent)";
+  dz.style.background  = "var(--accentBg)";
+  if (file.type.startsWith("image/")) {
+    const r = new FileReader();
+    r.onload = e => { prev.innerHTML = `✓ ${file.name}<br><img src="${e.target.result}" class="dz-thumb">`; };
+    r.readAsDataURL(file);
+  } else {
+    prev.innerHTML = `✓ ${file.name} · ${(file.size/1024/1024).toFixed(1)} MB`;
+  }
+}
+
+// ── TAB: CAMPAIGNS ────────────────────────────────────────────────────────────
+async function renderCampaigns(el) {
+  const sets = await sbQuery("ad_sets", "select=*,campaigns(campaign_name,campaign_type)&order=created_at.desc&limit=150");
+
+  const active  = (sets||[]).filter(a => ["ACTIVE","active"].includes(a.status)).length;
+  const paused  = (sets||[]).filter(a => ["PAUSED","paused"].includes(a.status)).length;
+  const scaling = (sets||[]).filter(a => a.status === "scaling").length;
+  const killed  = (sets||[]).filter(a => ["killed","loser"].includes(a.status)).length;
+
+  el.innerHTML = `
+    <div class="sh">
+      <div class="sh-title">Campaigns & Ad Sets</div>
+      <div class="sh-actions">
+        <button class="btn btn-b" id="btnPull2" onclick="pullAndRefresh()">📊 Pull & Refresh</button>
+      </div>
+    </div>
+    <div id="campMsg"></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total ad sets</div><div class="kc-val">${sets?.length ?? 0}</div></div>
+      <div class="kc"><div class="kc-lbl">Active</div><div class="kc-val a">${active}</div></div>
+      <div class="kc"><div class="kc-lbl">Paused</div><div class="kc-val">${paused}</div></div>
+      <div class="kc"><div class="kc-lbl">Killed</div><div class="kc-val d">${killed}</div><div class="kc-sub">${scaling} scaling</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph">
+        <div class="ph-title">All ad sets</div>
+        <div class="ph-count" style="font-size:10px;color:var(--muted);">
+          Kill: CTR &lt; ${CTR_KILL}% · Watch: ${CTR_KILL}–${CTR_WIN}% · Scale: ≥ ${CTR_WIN}% &amp; CPA ≤ ${fN(CPA_KILL)}
+        </div>
+      </div>
+      ${!sets?.length
+        ? `<div class="empty"><div class="empty-ico">🚀</div>No ad sets yet. Run a batch from Overview to stage your first test.</div>`
+        : `<div class="tbl-wrap"><table>
+          <tr><th>Ad Set</th><th>Type</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
+          ${sets.map(a => {
+            const h    = hrs(a.created_at);
+            const ctrV = a.ctr != null ? (parseFloat(a.ctr)*100).toFixed(2) : null;
+            const cpaV = a.cpa_naira ?? a.cost_per_result;
+            const spV  = a.spend_naira ?? a.total_spend;
+            const cpaC = cpaV ? (cpaV <= CPA_WATCH ? "ctr-hot" : cpaV <= CPA_KILL ? "ctr-warm" : "ctr-cold") : "";
+            return `<tr>
+              <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${a.adset_name}">${a.adset_name}</td>
+              <td style="text-transform:lowercase;">${a.targeting_type ?? "—"}</td>
+              <td>${fN(a.budget_naira)}</td>
+              <td class="${ctrCls(ctrV)}">${ctrV ? ctrV+"%" : "—"}</td>
+              <td class="${cpaC}">${fN(cpaV)}</td>
+              <td>${fN(spV)}</td>
+              <td>${h}h</td>
+              <td>${decision(ctrV, spV, h)}</td>
+              <td><span class="pill ${(a.status||"").toLowerCase().replace(/ /g,"_")}">${a.status ?? "—"}</span></td>
+            </tr>`;
+          }).join("")}
+        </table></div>`}
+    </div>`;
+}
+
+async function pullAndRefresh() {
+  const btn = document.getElementById("btnPull2");
+  const msg = document.getElementById("campMsg");
+  if (!btn) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Pulling…';
+  try {
+    const r = await sbFn("pull-meta-metrics", { ad_account_id: activeAccountId });
+    if (msg) msg.innerHTML = r.error
+      ? `<div class="msg err">❌ ${r.error}</div>`
+      : `<div class="msg ok">✅ Metrics pulled. Refreshing…</div>`;
+    setTimeout(render, 1300);
+  } catch(e) {
+    if (msg) msg.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+    if (btn) { btn.disabled = false; btn.innerHTML = "📊 Pull & Refresh"; }
+  }
+}
+
+// ── TAB: PRODUCTS ─────────────────────────────────────────────────────────────
+async function renderProducts(el) {
+  const prods = await sbQuery("products", "order=created_at.desc");
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Products</div></div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Add product</div></div>
+      <form id="prodForm">
+        <div class="fg">
+          <div class="field"><label>Product name *</label><input id="p_name" required placeholder="e.g. Quality Herb — Immune Booster"></div>
+          <div class="field"><label>Default order value (₦)</label><input id="p_val" type="number" value="19000" min="0"></div>
+        </div>
+        <div class="field" style="margin-top:11px;"><label>Landing page URL *</label><input id="p_url" required placeholder="https://…"></div>
+        <button type="submit" class="btn btn-a btn-full">+ Add product</button>
+        <div id="prodMsg"></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Products</div><div class="ph-count">${prods?.length ?? 0}</div></div>
+      ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Name</th><th>Landing URL</th><th>Order value</th><th>Status</th></tr>
+        ${prods.map(p => `<tr>
+          <td class="s n">${p.product_name}</td>
+          <td class="n" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            <a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>
+          </td>
+          <td>${fN(p.default_order_value_naira)}</td>
+          <td><span class="pill ${p.is_active ? "active" : "paused"}">${p.is_active ? "active" : "inactive"}</span></td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+
+  document.getElementById("prodForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("prodMsg");
+    try {
+      const { error } = await supabase.from('products').insert({
+        product_name: document.getElementById("p_name").value,
+        landing_page_url: document.getElementById("p_url").value,
+        default_order_value_naira: Number(document.getElementById("p_val").value) || 19000,
+      });
+      if (error) throw error;
+      msg.innerHTML = `<div class="msg ok">✅ Product added.</div>`;
+      setTimeout(render, 800);
+    } catch(err) {
+      msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+    }
+  });
+}
+
+// ── TAB: ORDERS ───────────────────────────────────────────────────────────────
+async function renderOrders(el) {
+  const orders = await sbQuery("orders", "select=*&order=ordered_at.desc&limit=150");
+
+  const tot   = orders?.length ?? 0;
+  const deliv = orders?.filter(o => o.order_status === "delivered").length ?? 0;
+  const ret   = orders?.filter(o => o.order_status === "returned").length ?? 0;
+  const pend  = orders?.filter(o => o.order_status === "pending").length ?? 0;
+  const rate  = tot ? (deliv / tot * 100).toFixed(1) : "0";
+  const rC    = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Orders</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total orders</div><div class="kc-val">${tot}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${deliv}</div></div>
+      <div class="kc"><div class="kc-lbl">Returned</div><div class="kc-val d">${ret}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rC}">${rate}%</div><div class="kc-sub">${pend} still pending</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">All orders</div><div class="ph-count">${pend} pending</div></div>
+      ${!tot ? `<div class="empty"><div class="empty-ico">📦</div>No orders yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
+        ${orders.map(o => `<tr>
+          <td class="s n">${o.customer_name ?? "—"}</td>
+          <td class="n">${o.customer_phone
+            ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">📱 ${o.customer_phone}</a>`
+            : "—"}</td>
+          <td class="n">${o.product_name ?? "—"}</td>
+          <td>${fN(o.order_value_naira)}</td>
+          <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span></td>
+          <td>${ago(o.ordered_at)}</td>
+          <td>
+            <select data-oid="${o.id}" class="oSel" style="padding:3px 7px;font-size:11px;width:auto;">
+              <option value="pending"   ${o.order_status==="pending"   ?"selected":""}>Pending</option>
+              <option value="valid"     ${o.order_status==="valid"     ?"selected":""}>Valid</option>
+              <option value="delivered" ${o.order_status==="delivered" ?"selected":""}>Delivered</option>
+              <option value="returned"  ${o.order_status==="returned"  ?"selected":""}>Returned</option>
+              <option value="cancelled" ${o.order_status==="cancelled" ?"selected":""}>Cancelled</option>
+            </select>
+          </td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+
+  document.querySelectorAll(".oSel").forEach(sel => {
+    sel.addEventListener("change", async e => {
+      const id = e.target.dataset.oid;
+      const ns = e.target.value;
+      try {
+        const body = { order_status: ns };
+        if (ns === "delivered") body.delivered_at = new Date().toISOString();
+        const { error } = await supabase.from('orders').update(body).eq('id', id);
+        if (error) throw error;
+      } catch(err) { alert("Update failed: " + err.message); }
+    });
+  });
+}
+
+// ── TAB: APPROVALS ────────────────────────────────────────────────────────────
+async function renderApprovals(el) {
+  const rows = await sbQuery("pending_approvals", "order=requested_at.desc&limit=100");
+
+  const pend = (rows||[]).filter(a => a.status === "pending").length;
+  const appr = (rows||[]).filter(a => a.status === "approved").length;
+  const rej  = (rows||[]).filter(a => a.status === "rejected").length;
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Approvals</div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Pending</div><div class="kc-val ${pend?"w":""}">${pend}</div><div class="kc-sub">${pend ? "⚠ reply on WhatsApp" : "all clear ✓"}</div></div>
+      <div class="kc"><div class="kc-lbl">Approved</div><div class="kc-val a">${appr}</div></div>
+      <div class="kc"><div class="kc-lbl">Rejected</div><div class="kc-val d">${rej}</div></div>
+      <div class="kc"><div class="kc-lbl">Total logged</div><div class="kc-val">${rows?.length ?? 0}</div></div>
+    </div>
+
+    ${pend > 0 ? `<div class="msg info" style="margin-bottom:14px;">⚠ You have ${pend} pending approval${pend>1?"s":""}. Reply <b>APPROVE &lt;id&gt;</b> or <b>REJECT &lt;id&gt;</b> on WhatsApp to act on them.</div>` : ""}
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Approval log</div><div class="ph-count">${rows?.length ?? 0} total</div></div>
+      ${!rows?.length ? `<div class="empty"><div class="empty-ico">✅</div>No approval requests yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Type</th><th>Reason / Summary</th><th>Status</th><th>Requested</th><th>ID</th></tr>
+        ${rows.map(a => `<tr>
+          <td class="s n">${(a.approval_type ?? "—").replace(/_/g," ")}</td>
+          <td class="n" style="max-width:260px;color:var(--text2);">${a.reason ?? a.summary ?? "—"}</td>
+          <td><span class="pill ${a.status === "approved" ? "approved" : a.status === "rejected" ? "rejected" : "pending"}">${a.status ?? "pending"}</span></td>
+          <td>${ago(a.requested_at)}</td>
+          <td style="font-size:10px;color:var(--muted);">${(a.id ?? "").slice(0,8)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+}
+
+// ── TAB: EARNINGS ─────────────────────────────────────────────────────────────
+async function renderEarnings(el) {
+  const [earnings, monthly] = await Promise.all([
+    sbQuery("personal_earnings", "order=earning_date.desc&limit=60"),
+    sbQuery("monthly_summary", "order=month.desc&limit=3").catch(() => []),
+  ]);
+  const total = (earnings||[]).reduce((s,e) => s + Number(e.amount_naira||0), 0);
+  const cur   = monthly?.[0];
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Earnings</div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total logged</div><div class="kc-val a">${fN(total)}</div><div class="kc-sub">all entries</div></div>
+      <div class="kc"><div class="kc-lbl">Base salary</div><div class="kc-val">${fN(cur?.base_salary_naira ?? 150000)}</div><div class="kc-sub">monthly</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val">${fP(cur?.delivery_rate_pct)}</div><div class="kc-sub">this month</div></div>
+      <div class="kc"><div class="kc-lbl">Projected total</div><div class="kc-val w">${fN(cur?.total_earnings_naira)}</div><div class="kc-sub">salary + commission</div></div>
+    </div>
+
+    ${monthly?.length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Monthly breakdown</div></div>
+      <div class="tbl-wrap"><table>
+        <tr><th>Month</th><th>Base salary</th><th>Delivery rate</th><th>Commission</th><th>Total</th></tr>
+        ${monthly.map(m => `<tr>
+          <td class="s">${m.month ?? "—"}</td>
+          <td>${fN(m.base_salary_naira)}</td>
+          <td class="${parseFloat(m.delivery_rate_pct||0) >= 70 ? "ctr-hot" : "ctr-warm"}">${fP(m.delivery_rate_pct)}</td>
+          <td>${fN(m.commission_naira)}</td>
+          <td class="s">${fN(m.total_earnings_naira)}</td>
+        </tr>`).join("")}
+      </table></div>
+    </div>` : ""}
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Earnings log</div><div class="ph-count">${earnings?.length ?? 0} entries</div></div>
+      ${!earnings?.length ? `<div class="empty"><div class="empty-ico">💰</div>No earnings logged yet. Salary payments and commissions appear here automatically.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Date</th><th>Source</th><th>Amount</th><th>Notes</th></tr>
+        ${earnings.map(e => `<tr>
+          <td>${e.earning_date ?? "—"}</td>
+          <td class="n">${(e.source||"").replace(/_/g," ")}</td>
+          <td class="s">${fN(e.amount_naira)}</td>
+          <td class="n" style="color:var(--muted);max-width:200px;">${e.notes ?? ""}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+}
+
+// ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
+async function renderSettings(el) {
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Settings & Ad Accounts</div></div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Link New Meta Ad Account</div></div>
+      <form id="acctForm">
+        <div class="fg">
+          <div class="field"><label>Account Name *</label><input id="a_name" required placeholder="e.g. Quality Herb - Main"></div>
+          <div class="field"><label>Meta Ad Account ID *</label><input id="a_meta_id" required placeholder="act_123456789"></div>
+          <div class="field"><label>Facebook Page ID *</label><input id="a_fb_id" required placeholder="1029384756"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:14px;">+ Link Account</button>
+        <div id="acctMsg"></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Linked Ad Accounts</div><div class="ph-count">${accountsList.length} accounts</div></div>
+      ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">🔌</div>No ad accounts linked yet. Add one above.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Account Name</th><th>Meta ID</th><th>Page ID</th><th>Status</th><th>Actions</th></tr>
+        ${accountsList.map(a => `<tr>
+          <td class="s n">${a.name}</td>
+          <td>${a.meta_ad_account_id}</td>
+          <td>${a.fb_page_id}</td>
+          <td><span class="pill ${a.status === 'active' ? 'active' : 'paused'}">${a.status}</span></td>
+          <td>
+            <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button>
+          </td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+
+  document.getElementById("acctForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("acctMsg");
+    try {
+      const { data, error } = await supabase.from('ad_accounts').insert({
+        user_id: sessionData.user.id,
+        name: document.getElementById("a_name").value,
+        meta_ad_account_id: document.getElementById("a_meta_id").value,
+        fb_page_id: document.getElementById("a_fb_id").value,
+        status: 'active'
+      }).select();
+      
+      if (error) throw error;
+      msg.innerHTML = `<div class="msg ok">✅ Ad Account linked successfully.</div>`;
+      
+      await loadAccounts(); // Refresh the dropdown
+      if (!activeAccountId) activeAccountId = data[0].id; // Set as active if it was the first
+      
+      setTimeout(render, 800);
+    } catch(err) {
+      msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+    }
+  });
+}
+
+window.deleteAccount = async function(id) {
+  if(!confirm("Are you sure you want to remove this Ad Account? All associated metrics will remain but won't be updated.")) return;
+  try {
+    const { error } = await supabase.from('ad_accounts').delete().eq('id', id);
+    if(error) throw error;
+    if(activeAccountId === id) activeAccountId = null; // Clear if we deleted the active one
+    await loadAccounts();
+    render();
+  } catch(e) {
+    alert("Error deleting account: " + e.message);
+  }
+}
+
+// ── AI CHAT ───────────────────────────────────────────────────────────────────
+let chatOpen = false;
+document.getElementById("chatToggle").addEventListener("click", () => {
+  chatOpen = !chatOpen;
+  document.getElementById("chatPanel").classList.toggle("open", chatOpen);
+  document.getElementById("chatToggle").textContent = chatOpen ? "✕" : "💬";
+  if (chatOpen) document.getElementById("chInput").focus();
+});
+
+function appendMsg(text, role) {
+  const msgs = document.getElementById("chMsgs");
+  const d = document.createElement("div");
+  d.className = "ch-msg " + role;
+  d.textContent = text;
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+
+async function askChat(q) {
+  document.getElementById("chSuggs").style.display = "none";
+  appendMsg(q, "user");
+  const thinking = appendMsg("Analyzing your data…", "bot");
+  try {
+    const r = await sbFn("ai-chat", { question: q, context: "media_buying_dashboard" });
+    thinking.textContent = r?.answer ?? r?.message ?? "I don't have enough live data to answer that right now. Pull the latest metrics from Meta first, then ask again.";
+  } catch {
+    thinking.textContent = "Connection error. Try pulling metrics first, then ask again.";
+  }
+}
+
+function sendChat() {
+  const inp = document.getElementById("chInput");
+  const q   = inp.value.trim();
+  if (!q) return;
+  inp.value = "";
+  askChat(q);
+}
+
+// Kickoff
+init();
+</script>
+</body>
+</html>

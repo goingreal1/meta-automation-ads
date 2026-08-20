@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Automation Command Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.4"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #000000;
+            --secondary: #333333;
+            --dark-bg: #ffffff;
+            --glass-bg: rgba(0, 0, 0, 0.03);
+            --glass-border: rgba(0, 0, 0, 0.1);
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --overlay: rgba(255, 255, 255, 0.9);
+            --accent: #1f2937;
+        }
+
+        body {
+            background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+        }
+
+        /* Header */
+        .header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #000000 0%, #333333 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .stat-item {
+            text-align: right;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #000000;
+            margin-top: 5px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Container */
+        .container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 200px;
+            padding: 30px 0;
+            border-right: 1px solid var(--glass-border);
+            background: var(--dark-bg);
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-item:hover {
+            background: var(--glass-bg);
+        }
+
+        .sidebar-item.active {
+            background: var(--glass-bg);
+            border-left-color: var(--primary);
+            font-weight: 600;
+        }
+
+        .sidebar-icon {
+            font-size: 18px;
+        }
+
+        /* Content */
+        .content {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Grid Layout */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            background: rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .card-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 10px;
+        }
+
+        /* Table */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .table th {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid var(--glass-border);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 13px;
+        }
+
+        .table tr:hover {
+            background: var(--glass-bg);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .badge-warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .badge-danger { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.8;
+        }
+
+        .btn-secondary {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--primary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        /* Drop Zone */
+        .drop-zone {
+            border: 2px dashed var(--glass-border);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(0, 0, 0, 0.01);
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: var(--primary);
+            background: rgba(0, 0, 0, 0.03);
+        }
+
+        .drop-zone-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 10px;
+        }
+
+        .loading {
+            display: inline-block;
+            opacity: 0.6;
+        }
+
+        @media (max-width: 1024px) {
+            .grid-3 { grid-template-columns: 1fr 1fr; }
+            .sidebar { width: 150px; }
+            .content { padding: 20px; }
+        }
+
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .sidebar { width: 100%; height: 80px; display: flex; overflow-x: auto; }
+            .content { padding: 20px; }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+            .header-stats { gap: 15px; }
+            .stat-value { font-size: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">🎯 Meta Ads Automation</div>
+        <div class="header-stats">
+            <div class="stat-item">
+                <div class="stat-label">Daily Budget</div>
+                <div class="stat-value" id="dailyBudget">₦0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Today's Orders</div>
+                <div class="stat-value" id="todayOrders">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Avg CPA</div>
+                <div class="stat-value" id="avgCPA">₦0</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Status</div>
+                <div class="status-indicator"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-item active" onclick="switchTab('overview', this)">
+                <span class="sidebar-icon">📊</span>
+                <span>Overview</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('creative', this)">
+                <span class="sidebar-icon">🎨</span>
+                <span>Creative Vault</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('campaigns', this)">
+                <span class="sidebar-icon">🚀</span>
+                <span>Campaigns</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('products', this)">
+                <span class="sidebar-icon">📦</span>
+                <span>Products</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('orders', this)">
+                <span class="sidebar-icon">📦</span>
+                <span>Orders</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('approval', this)">
+                <span class="sidebar-icon">✅</span>
+                <span>Approval</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('earnings', this)">
+                <span class="sidebar-icon">💰</span>
+                <span>Earnings</span>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- OVERVIEW TAB -->
+            <div id="overview" class="tab-content active">
+                <h1 style="margin-bottom: 30px;">📊 Overview</h1>
+                
+                <div class="grid-3">
+                    <div class="card">
+                        <div class="card-title">Total Spend</div>
+                        <div class="card-value" id="totalSpend">₦0</div>
+                        <div class="card-subtitle" id="totalSpendChange">↑ This week</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Total Orders</div>
+                        <div class="card-value" id="totalOrders">0</div>
+                        <div class="card-subtitle" id="ordersTrend">↑ This month</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Win Rate</div>
+                        <div class="card-value" id="winRate">0%</div>
+                        <div class="card-subtitle">Successful campaigns</div>
+                    </div>
+                </div>
+
+                <div class="grid-3">
+                    <div class="card">
+                        <div class="card-title">Avg CPC</div>
+                        <div class="card-value" id="avgCPC">₦0</div>
+                        <div class="card-subtitle">Cost per click</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Avg CTR</div>
+                        <div class="card-value" id="avgCTR">0%</div>
+                        <div class="card-subtitle">Click-through rate</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Active Tests</div>
+                        <div class="card-value" id="activeTests">0</div>
+                        <div class="card-subtitle">Running now</div>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 40px; margin-bottom: 20px;">Recent Performance</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Campaign</th>
+                            <th>Status</th>
+                            <th>Spend</th>
+                            <th>Orders</th>
+                            <th>CPA</th>
+                            <th>CTR</th>
+                        </tr>
+                    </thead>
+                    <tbody id="overviewTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px;">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- CREATIVE VAULT TAB -->
+            <div id="creative" class="tab-content">
+                <h1 style="margin-bottom: 30px;">🎨 Creative Vault</h1>
+                
+                <div class="drop-zone" id="dropZone">
+                    <div style="font-size: 32px;">📹</div>
+                    <div class="drop-zone-text">Drag & drop your creative or <strong>click to upload</strong></div>
+                    <div class="drop-zone-text" style="font-size: 11px; margin-top: 10px;">Supported: MP4, JPG, PNG, GIF (Max 100MB)</div>
+                    <input type="file" id="fileInput" style="display: none;" multiple accept="video/*,image/*" onchange="handleFileSelect(event)">
+                </div>
+
+                <div class="grid-3" style="margin-top: 30px;">
+                    <div class="card">
+                        <div class="card-title">Total Uploaded</div>
+                        <div class="card-value" id="totalCreatives">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Pending Test</div>
+                        <div class="card-value" id="pendingTest">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Winning</div>
+                        <div class="card-value" id="winningCreatives">0</div>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 40px; margin-bottom: 20px;">Recent Creatives</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Creative Name</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Tests Run</th>
+                            <th>Uploaded</th>
+                        </tr>
+                    </thead>
+                    <tbody id="creativeTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 30px;">No creatives yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- CAMPAIGNS TAB -->
+            <div id="campaigns" class="tab-content">
+                <h1 style="margin-bottom: 30px;">🚀 Campaigns</h1>
+                
+                <div class="grid-3">
+                    <div class="card">
+                        <div class="card-title">Active Campaigns</div>
+                        <div class="card-value" id="activeCampaigns">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Paused</div>
+                        <div class="card-value" id="pausedCampaigns">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Total Tested</div>
+                        <div class="card-value" id="totalTested">0</div>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 40px; margin-bottom: 20px;">Running Tests</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Campaign</th>
+                            <th>Audience</th>
+                            <th>Status</th>
+                            <th>CTA</th>
+                            <th>Budget</th>
+                            <th>Orders</th>
+                            <th>CPA</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="campaignTableBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 30px;">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- PRODUCTS TAB -->
+            <div id="products" class="tab-content">
+                <h1 style="margin-bottom: 30px;">📦 Products</h1>
+                
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Price</th>
+                            <th>Total Sold</th>
+                            <th>Revenue</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 30px;">Loading products...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ORDERS TAB -->
+            <div id="orders" class="tab-content">
+                <h1 style="margin-bottom: 30px;">📦 Orders</h1>
+                
+                <div class="grid-3">
+                    <div class="card">
+                        <div class="card-title">Total Orders</div>
+                        <div class="card-value" id="ordersCount">0</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Total Revenue</div>
+                        <div class="card-value" id="ordersRevenue">₦0</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Avg Order Value</div>
+                        <div class="card-value" id="avgOrderValue">₦0</div>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 40px; margin-bottom: 20px;">Recent Orders</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Product</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Campaign</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px;">Loading orders...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- APPROVAL TAB -->
+            <div id="approval" class="tab-content">
+                <h1 style="margin-bottom: 30px;">✅ Approval</h1>
+                
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Requested</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="approvalTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 30px;">No pending approvals</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- EARNINGS TAB -->
+            <div id="earnings" class="tab-content">
+                <h1 style="margin-bottom: 30px;">💰 Earnings</h1>
+                
+                <div class="grid-3">
+                    <div class="card">
+                        <div class="card-title">Total Earnings</div>
+                        <div class="card-value" id="totalEarnings">₦0</div>
+                        <div class="card-subtitle" id="earningsTrend">↑ This month</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Commission Rate</div>
+                        <div class="card-value" id="commissionRate">0%</div>
+                        <div class="card-subtitle">Per order</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">This Month</div>
+                        <div class="card-value" id="monthlyEarnings">₦0</div>
+                        <div class="card-subtitle" id="monthlyOrderCount">0 orders</div>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 40px; margin-bottom: 20px;">Earnings Breakdown</h2>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Orders</th>
+                            <th>Revenue</th>
+                            <th>Commission %</th>
+                            <th>Earnings</th>
+                        </tr>
+                    </thead>
+                    <tbody id="earningsTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 30px;">Loading earnings...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // ===== SUPABASE INITIALIZATION =====
+        const SUPABASE_URL = 'https://rrkhkhgdxhmogxxtbvyt.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.VDO_KJBrK9-tqxRxfzQfRBm5nYb5rRl3jnQz-2wOlCE';
+        
+        const { createClient } = window.supabase;
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ===== TAB SWITCHING =====
+        function switchTab(tabName, element) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            
+            // Remove active from all sidebar items
+            document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            
+            // Activate sidebar item
+            element.classList.add('active');
+            
+            // Load tab data
+            if (tabName === 'overview') loadOverviewData();
+            else if (tabName === 'creative') loadCreativeData();
+            else if (tabName === 'campaigns') loadCampaignData();
+            else if (tabName === 'products') loadProductData();
+            else if (tabName === 'orders') loadOrdersData();
+            else if (tabName === 'earnings') loadEarningsData();
+        }
+
+        // ===== LOAD OVERVIEW DATA =====
+        async function loadOverviewData() {
+            try {
+                // Get metrics
+                const { data: metrics } = await supabase
+                    .from('daily_metrics')
+                    .select('*')
+                    .order('metric_date', { ascending: false })
+                    .limit(30);
+
+                if (metrics && metrics.length > 0) {
+                    const totalSpend = metrics.reduce((sum, m) => sum + (m.spend_naira || 0), 0);
+                    const totalOrdersCount = metrics.reduce((sum, m) => sum + (m.orders || 0), 0);
+                    const avgCPA = totalOrdersCount > 0 ? totalSpend / totalOrdersCount : 0;
+                    const avgCTR = metrics.reduce((sum, m) => sum + (m.ctr || 0), 0) / metrics.length;
+                    
+                    document.getElementById('totalSpend').textContent = `₦${totalSpend.toLocaleString()}`;
+                    document.getElementById('totalOrders').textContent = totalOrdersCount;
+                    document.getElementById('avgCPA').textContent = `₦${Math.round(avgCPA)}`;
+                    document.getElementById('avgCTR').textContent = (avgCTR * 100).toFixed(1) + '%';
+                    document.getElementById('winRate').textContent = '75%';
+                }
+
+                // Get test campaigns
+                const { data: campaigns } = await supabase
+                    .from('test_campaigns')
+                    .select('*')
+                    .order('launched_at', { ascending: false })
+                    .limit(5);
+
+                if (campaigns) {
+                    const tbody = document.getElementById('overviewTableBody');
+                    tbody.innerHTML = campaigns.map(c => `
+                        <tr>
+                            <td>${c.id.substring(0, 8)}</td>
+                            <td><span class="badge badge-${c.status === 'active' ? 'success' : 'warning'}">${c.status || 'testing'}</span></td>
+                            <td>₦${c.daily_budget_naira || 0}</td>
+                            <td>0</td>
+                            <td>₦0</td>
+                            <td>0%</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Error loading overview:', err);
+            }
+        }
+
+        // ===== LOAD CREATIVE DATA =====
+        async function loadCreativeData() {
+            try {
+                const { data: creatives } = await supabase
+                    .from('creative_assets')
+                    .select('*')
+                    .order('uploaded_at', { ascending: false });
+
+                if (creatives) {
+                    document.getElementById('totalCreatives').textContent = creatives.length;
+                    document.getElementById('pendingTest').textContent = creatives.filter(c => c.status === 'pending_test').length;
+                    document.getElementById('winningCreatives').textContent = creatives.filter(c => c.status === 'winning').length;
+
+                    const tbody = document.getElementById('creativeTableBody');
+                    tbody.innerHTML = creatives.slice(0, 10).map(c => `
+                        <tr>
+                            <td>${c.asset_name || 'Unnamed'}</td>
+                            <td>${c.asset_type || 'video'}</td>
+                            <td><span class="badge badge-${c.status === 'testing' ? 'warning' : c.status === 'winning' ? 'success' : 'danger'}">${c.status || 'pending'}</span></td>
+                            <td>${c.test_count || 0}</td>
+                            <td>${new Date(c.uploaded_at).toLocaleDateString()}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Error loading creatives:', err);
+            }
+        }
+
+        // ===== LOAD CAMPAIGN DATA =====
+        async function loadCampaignData() {
+            try {
+                const { data: campaigns } = await supabase
+                    .from('test_campaigns')
+                    .select('*')
+                    .order('launched_at', { ascending: false });
+
+                if (campaigns) {
+                    document.getElementById('activeCampaigns').textContent = campaigns.filter(c => c.status === 'active').length;
+                    document.getElementById('totalTested').textContent = campaigns.length;
+
+                    const tbody = document.getElementById('campaignTableBody');
+                    tbody.innerHTML = campaigns.slice(0, 10).map(c => `
+                        <tr>
+                            <td>${c.id.substring(0, 8)}</td>
+                            <td>${c.ai_targeting_rule || 'broad'}</td>
+                            <td><span class="badge badge-${c.status === 'active' ? 'success' : 'danger'}">${c.status || 'testing'}</span></td>
+                            <td>${c.ad_copy ? c.ad_copy.split(':')[0] : 'N/A'}</td>
+                            <td>₦${c.daily_budget_naira || 0}</td>
+                            <td>0</td>
+                            <td>₦0</td>
+                            <td><button class="btn btn-secondary" onclick="alert('Scale/Pause functionality')">Action</button></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Error loading campaigns:', err);
+            }
+        }
+
+        // ===== LOAD PRODUCTS DATA =====
+        async function loadProductData() {
+            try {
+                const { data: products } = await supabase
+                    .from('products')
+                    .select('*');
+
+                if (products && products.length > 0) {
+                    const tbody = document.getElementById('productTableBody');
+                    tbody.innerHTML = products.map(p => `
+                        <tr>
+                            <td>${p.name || 'Product'}</td>
+                            <td>₦${p.price || 0}</td>
+                            <td>${p.total_sold || 0}</td>
+                            <td>₦${(p.price * p.total_sold) || 0}</td>
+                            <td><span class="badge badge-success">Active</span></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    document.getElementById('productTableBody').innerHTML = `
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 30px;">No products in database</td>
+                        </tr>
+                    `;
+                }
+            } catch (err) {
+                console.error('Error loading products:', err);
+            }
+        }
+
+        // ===== LOAD ORDERS DATA =====
+        async function loadOrdersData() {
+            try {
+                const { data: orders } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (orders && orders.length > 0) {
+                    const totalRevenue = orders.reduce((sum, o) => sum + (o.amount || 0), 0);
+                    const avgOrder = totalRevenue / orders.length;
+                    
+                    document.getElementById('ordersCount').textContent = orders.length;
+                    document.getElementById('ordersRevenue').textContent = `₦${totalRevenue.toLocaleString()}`;
+                    document.getElementById('avgOrderValue').textContent = `₦${Math.round(avgOrder)}`;
+
+                    const tbody = document.getElementById('orderTableBody');
+                    tbody.innerHTML = orders.slice(0, 10).map(o => `
+                        <tr>
+                            <td>${o.id.substring(0, 8)}</td>
+                            <td>${o.product_name || 'Product'}</td>
+                            <td>₦${o.amount || 0}</td>
+                            <td><span class="badge badge-success">${o.status || 'completed'}</span></td>
+                            <td>${new Date(o.created_at).toLocaleDateString()}</td>
+                            <td>${o.campaign_id ? o.campaign_id.substring(0, 8) : 'organic'}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    document.getElementById('orderTableBody').innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px;">No orders yet</td>
+                        </tr>
+                    `;
+                }
+            } catch (err) {
+                console.error('Error loading orders:', err);
+            }
+        }
+
+        // ===== LOAD EARNINGS DATA =====
+        async function loadEarningsData() {
+            try {
+                const { data: earnings } = await supabase
+                    .from('earnings')
+                    .select('*')
+                    .order('earning_date', { ascending: false });
+
+                if (earnings && earnings.length > 0) {
+                    const totalEarnings = earnings.reduce((sum, e) => sum + (e.total_earnings || 0), 0);
+                    const thisMonth = earnings.filter(e => {
+                        const date = new Date(e.earning_date);
+                        const now = new Date();
+                        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                    });
+                    const monthlyEarnings = thisMonth.reduce((sum, e) => sum + (e.total_earnings || 0), 0);
+                    const monthlyOrders = thisMonth.reduce((sum, e) => sum + (e.orders_count || 0), 0);
+
+                    document.getElementById('totalEarnings').textContent = `₦${totalEarnings.toLocaleString()}`;
+                    document.getElementById('monthlyEarnings').textContent = `₦${monthlyEarnings.toLocaleString()}`;
+                    document.getElementById('monthlyOrderCount').textContent = `${monthlyOrders} orders`;
+                    document.getElementById('commissionRate').textContent = '15%'; // Default
+
+                    const tbody = document.getElementById('earningsTableBody');
+                    tbody.innerHTML = earnings.slice(0, 30).map(e => `
+                        <tr>
+                            <td>${new Date(e.earning_date).toLocaleDateString()}</td>
+                            <td>${e.orders_count || 0}</td>
+                            <td>₦${e.revenue || 0}</td>
+                            <td>${e.commission_rate || 15}%</td>
+                            <td><strong>₦${e.total_earnings || 0}</strong></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    document.getElementById('earningsTableBody').innerHTML = `
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 30px;">No earnings data yet</td>
+                        </tr>
+                    `;
+                }
+            } catch (err) {
+                console.error('Error loading earnings:', err);
+            }
+        }
+
+        // ===== FILE UPLOAD =====
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFileSelect({ target: { files: e.dataTransfer.files } });
+        });
+
+        async function handleFileSelect(event) {
+            const files = event.target.files;
+            for (let file of files) {
+                try {
+                    // Upload to Supabase Storage
+                    const fileName = `${Date.now()}_${file.name}`;
+                    const { data, error } = await supabase.storage
+                        .from('creative-vault')
+                        .upload(fileName, file);
+
+                    if (error) throw error;
+
+                    // Get public URL
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('creative-vault')
+                        .getPublicUrl(fileName);
+
+                    // Save to database
+                    const { error: dbError } = await supabase
+                        .from('creative_assets')
+                        .insert({
+                            asset_name: file.name,
+                            file_url: publicUrl,
+                            asset_type: file.type.includes('video') ? 'video' : 'image',
+                            status: 'pending_test',
+                            uploaded_at: new Date().toISOString(),
+                            test_count: 0
+                        });
+
+                    if (dbError) throw dbError;
+                    
+                    alert(`✅ ${file.name} uploaded successfully! AI will test it at 12 AM.`);
+                    loadCreativeData();
+                } catch (err) {
+                    console.error('Upload error:', err);
+                    alert(`❌ Error uploading ${file.name}`);
+                }
+            }
+        }
+
+        // ===== INITIAL DATA LOAD =====
+        loadOverviewData();
+        
+        // Refresh header stats every minute
+        setInterval(async () => {
+            try {
+                const { data: today } = await supabase
+                    .from('daily_metrics')
+                    .select('*')
+                    .eq('metric_date', new Date().toISOString().split('T')[0])
+                    .single();
+                
+                if (today) {
+                    document.getElementById('todayOrders').textContent = today.orders || 0;
+                    document.getElementById('avgCPA').textContent = today.orders > 0 
+                        ? `₦${Math.round(today.spend_naira / today.orders)}`
+                        : '₦0';
+                }
+            } catch (err) {
+                console.error('Error refreshing stats:', err);
+            }
+        }, 60000);
+    </script>
+</body>
+</html>

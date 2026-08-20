@@ -1,0 +1,64 @@
+
+[functions.receive-order]
+enabled = true
+verify_jwt = false
+import_map = "./functions/receive-order/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/receive-order/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/receive-order/*.html" ]
+
+[functions.sync-meta-audiences]
+enabled = true
+verify_jwt = false
+import_map = "./functions/sync-meta-audiences/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/sync-meta-audiences/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/sync-meta-audiences/*.html" ]
+
+[functions.upload-creative]
+enabled = true
+verify_jwt = false
+import_map = "./functions/upload-creative/deno.json"
+entrypoint = "./functions/upload-creative/index.ts"
+
+[functions.auto-duplicate-adsets]
+enabled = true
+verify_jwt = false
+import_map = "./functions/auto-duplicate-adsets/deno.json"
+entrypoint = "./functions/auto-duplicate-adsets/index.ts"
+
+[functions.auto-launch-tests]
+enabled = true
+verify_jwt = false
+import_map = "./functions/auto-launch-tests/deno.json"
+entrypoint = "./functions/auto-launch-tests/index.ts"
+
+[functions.ai-auto-launch-tests]
+enabled = true
+verify_jwt = false
+import_map = "./functions/ai-auto-launch-tests/deno.json"
+entrypoint = "./functions/ai-auto-launch-tests/index.ts"
+
+[functions.handle-whatsapp-reply]
+enabled = true
+verify_jwt = false
+import_map = "./functions/handle-whatsapp-reply/deno.json"
+entrypoint = "./functions/handle-whatsapp-reply/index.ts"
+
+[functions.sync-meta-structure]
+enabled = true
+verify_jwt = false
+import_map = "./functions/sync-meta-structure/deno.json"
+entrypoint = "./functions/sync-meta-structure/index.ts"
+
+[functions.check-account-status]
+enabled = true
+verify_jwt = false
+import_map = "./functions/check-account-status/deno.json"
+entrypoint = "./functions/check-account-status/index.ts"

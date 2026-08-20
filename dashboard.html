@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Automation Command Center</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #000000;
+            --secondary: #333333;
+            --dark-bg: #ffffff;
+            --glass-bg: rgba(0, 0, 0, 0.03);
+            --glass-border: rgba(0, 0, 0, 0.1);
+            --text-primary: #000000;
+            --text-secondary: #666666;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --overlay: rgba(255, 255, 255, 0.9);
+            --accent: #1f2937;
+        }
+
+        body {
+            background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Glassmorphism Base */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+        }
+
+        /* Header */
+        .header {
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #000000 0%, #333333 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .stat-item {
+            text-align: right;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #000000;
+            margin-top: 5px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Container */
+        .container {
+            display: flex;
+            height: calc(100vh - 80px);
+        }
+
+        .sidebar {
+            width: 250px;
+            padding: 30px 20px;
+            border-right: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            overflow-y: auto;
+        }
+
+        .sidebar-item {
+            padding: 15px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: var(--text-secondary);
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-item:hover {
+            background: var(--glass-bg);
+            color: #000000;
+            transform: translateX(5px);
+        }
+
+        .sidebar-item.active {
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.1), rgba(51, 51, 51, 0.1));
+            color: #000000;
+            border-left: 3px solid #000000;
+        }
+
+        .sidebar-icon {
+            font-size: 20px;
+        }
+
+        /* Content Area */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 40px;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Grid Systems */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            padding: 25px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .card-title {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #000000;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Heatmap */
+        .heatmap-container {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .heatmap-item {
+            aspect-ratio: 1;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .heatmap-item:hover {
+            transform: scale(1.1);
+        }
+
+        .heatmap-hot {
+            background: rgba(239, 68, 68, 0.6);
+        }
+
+        .heatmap-warm {
+            background: rgba(245, 158, 11, 0.6);
+        }
+
+        .heatmap-cool {
+            background: rgba(16, 185, 129, 0.6);
+        }
+
+        /* Drag & Drop Zone */
+        .drop-zone {
+            border: 2px dashed var(--glass-border);
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--glass-bg);
+            margin-bottom: 30px;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: #000000;
+            background: rgba(0, 0, 0, 0.05);
+            transform: scale(1.02);
+        }
+
+        .drop-zone-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.7;
+        }
+
+        .drop-zone-text {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        .drop-zone-hint {
+            font-size: 12px;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        /* File Input */
+        #fileInput {
+            display: none;
+        }
+
+        /* Creative Grid */
+        .creative-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .creative-card {
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: transform 0.3s;
+        }
+
+        .creative-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .creative-preview {
+            width: 100%;
+            height: 150px;
+            background: linear-gradient(135deg, var(--secondary), var(--primary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        .creative-info {
+            padding: 15px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .creative-name {
+            font-weight: bold;
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        .creative-status {
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+        }
+
+        .status-testing {
+            background: rgba(0, 212, 255, 0.2);
+            color: var(--primary);
+        }
+
+        .status-winning {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .status-failed {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        /* Campaign Manager */
+        .campaign-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #000000, #333333);
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-secondary {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        /* Toggle Switch */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+            background: var(--glass-bg);
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+
+        .toggle-label {
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .toggle-switch {
+            width: 60px;
+            height: 32px;
+            background: var(--text-secondary);
+            border-radius: 16px;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: var(--success);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: left 0.3s;
+        }
+
+        .toggle-switch.active::after {
+            left: 30px;
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 15px;
+            border-bottom: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid var(--glass-border);
+            color: var(--text-primary);
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--overlay);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #ffffff;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #000000;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #000000;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Chart Container (Placeholder) */
+        .chart-container {
+            height: 300px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* AI Chat Widget */
+        .ai-chat-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 380px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            background: #ffffff;
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            z-index: 999;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .ai-chat-container.active {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .ai-chat-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #f9fafb, #ffffff);
+        }
+
+        .ai-chat-title {
+            font-weight: bold;
+            color: #000000;
+        }
+
+        .ai-chat-close {
+            cursor: pointer;
+            font-size: 20px;
+            color: #666666;
+        }
+
+        .ai-chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .ai-message {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .ai-message.user {
+            justify-content: flex-end;
+        }
+
+        .ai-message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .ai-message.bot .ai-message-avatar {
+            background: linear-gradient(135deg, #000000, #333333);
+            color: white;
+        }
+
+        .ai-message.user .ai-message-avatar {
+            background: #e5e7eb;
+            color: #000000;
+        }
+
+        .ai-message-content {
+            max-width: 250px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .ai-message.bot .ai-message-content {
+            background: #f3f4f6;
+            color: #000000;
+        }
+
+        .ai-message.user .ai-message-content {
+            background: #000000;
+            color: #ffffff;
+        }
+
+        .ai-chat-input-area {
+            padding: 15px;
+            border-top: 1px solid var(--glass-border);
+            display: flex;
+            gap: 10px;
+        }
+
+        .ai-chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            font-size: 12px;
+            color: #000000;
+            background: #ffffff;
+        }
+
+        .ai-chat-input:focus {
+            outline: none;
+            border-color: #000000;
+        }
+
+        .ai-chat-send {
+            padding: 10px 15px;
+            background: #000000;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .ai-chat-send:hover {
+            background: #333333;
+        }
+
+        .ai-chat-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #000000, #333333);
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            z-index: 998;
+        }
+
+        .ai-chat-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .ai-chat-toggle.hidden {
+            display: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .ai-chat-container {
+                width: calc(100vw - 40px);
+                height: 400px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--glass-border);
+                flex-direction: row;
+                overflow-x: auto;
+                height: auto;
+                padding: 15px;
+            }
+
+            .sidebar-item {
+                flex-shrink: 0;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 20px;
+                padding: 15px 20px;
+            }
+
+            .header-stats {
+                flex-direction: column;
+                gap: 15px;
+                width: 100%;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .creative-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">🚀 Command Center</div>
+        <div class="header-stats">
+            <div class="stat-item">
+                <div class="stat-label">Balance</div>
+                <div class="stat-value">₦27,259</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Daily Target</div>
+                <div class="stat-value">20,000</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Today Orders</div>
+                <div class="stat-value" id="todayOrders">0</div>
+            </div>
+            <div class="status-indicator"></div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-item active" onclick="switchTab('analytics')">
+                <span class="sidebar-icon">📊</span>
+                <span>Live Analytics</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('creative')">
+                <span class="sidebar-icon">🎬</span>
+                <span>Creative Vault</span>
+            </div>
+            <div class="sidebar-item" onclick="switchTab('campaigns')">
+                <span class="sidebar-icon">📢</span>
+                <span>Campaign Manager</span>
+            </div>
+            <div style="flex: 1;"></div>
+            <div class="sidebar-item" onclick="alert('Settings coming soon')">
+                <span class="sidebar-icon">⚙️</span>
+                <span>Settings</span>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content">
+
+            <!-- TAB 1: LIVE ANALYTICS -->
+            <div id="analytics" class="tab-content active">
+                <h2 style="margin-bottom: 30px; font-size: 28px;">📊 Live Analytics & Pacing</h2>
+
+                <div class="grid">
+                    <div class="card glass">
+                        <div class="card-title">Today's Spend</div>
+                        <div class="card-value">₦15,420</div>
+                        <div class="card-subtitle">73% of daily ₦21K limit</div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-title">Orders Today</div>
+                        <div class="card-value">34</div>
+                        <div class="card-subtitle">Pacing: 1.7x target</div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-title">Avg CPA</div>
+                        <div class="card-value">₦453</div>
+                        <div class="card-subtitle">53% better than target</div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-title">Avg CTR</div>
+                        <div class="card-value">1.84%</div>
+                        <div class="card-subtitle">Up from 1.62% yesterday</div>
+                    </div>
+                </div>
+
+                <!-- Geographic Heatmap -->
+                <div class="card glass" style="padding: 30px;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 20px;">🗺️ Geographic Performance (Top States)</div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>State</th>
+                                <th>Spend</th>
+                                <th>Orders</th>
+                                <th>CPA</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Lagos</td>
+                                <td>₦6,200</td>
+                                <td>18</td>
+                                <td>₦344</td>
+                                <td><span style="color: var(--success);">✓ Scaling</span></td>
+                            </tr>
+                            <tr>
+                                <td>Ogun</td>
+                                <td>₦3,450</td>
+                                <td>8</td>
+                                <td>₦431</td>
+                                <td><span style="color: var(--success);">✓ Winner</span></td>
+                            </tr>
+                            <tr>
+                                <td>Rivers</td>
+                                <td>₦2,100</td>
+                                <td>5</td>
+                                <td>₦420</td>
+                                <td><span style="color: var(--warning);">⚠ Watch</span></td>
+                            </tr>
+                            <tr>
+                                <td>Delta</td>
+                                <td>₦1,920</td>
+                                <td>2</td>
+                                <td>₦960</td>
+                                <td><span style="color: var(--danger);">✗ Kill</span></td>
+                            </tr>
+                            <tr>
+                                <td>Kano</td>
+                                <td>₦1,750</td>
+                                <td>1</td>
+                                <td>₦1750</td>
+                                <td><span style="color: var(--text-secondary);">- Pending</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Day-Parting Heatmap -->
+                <div class="card glass" style="padding: 30px; margin-top: 30px;">
+                    <div style="font-size: 16px; font-weight: bold; margin-bottom: 20px;">⏰ Day-Parting Performance (Orders by Hour)</div>
+                    <div class="heatmap-container">
+                        <div class="heatmap-item heatmap-cool">00:00 - 4</div>
+                        <div class="heatmap-item heatmap-cool">06:00 - 2</div>
+                        <div class="heatmap-item heatmap-warm">12:00 - 12</div>
+                        <div class="heatmap-item heatmap-hot">18:00 - 28</div>
+                        <div class="heatmap-item heatmap-hot">20:00 - 31</div>
+                        <div class="heatmap-item heatmap-warm">22:00 - 8</div>
+                    </div>
+                    <div style="margin-top: 15px; font-size: 12px; color: var(--text-secondary);">
+                        Peak performance: 8 PM - 10 PM. Consider pausing non-peak hours after 11 PM.
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: CREATIVE VAULT -->
+            <div id="creative" class="tab-content">
+                <h2 style="margin-bottom: 30px; font-size: 28px;">🎬 Creative Vault & Testing</h2>
+
+                <!-- Drag & Drop Upload -->
+                <div class="card glass" style="padding: 30px;">
+                    <div class="drop-zone" onclick="document.getElementById('fileInput').click()">
+                        <div class="drop-zone-icon">📤</div>
+                        <div class="drop-zone-text">Drag & drop your creatives here</div>
+                        <div class="drop-zone-hint">or click to browse (Video/Image)</div>
+                    </div>
+                    <input type="file" id="fileInput" multiple accept="video/*,image/*" onchange="handleFileSelect(event)">
+                    
+                    <!-- Upload Button Alternative -->
+                    <button class="btn btn-primary" style="width: 100%; margin-top: 15px;" onclick="document.getElementById('fileInput').click()">
+                        📤 Select Files to Upload
+                    </button>
+                </div>
+
+                <!-- Creative Status Summary -->
+                <div class="grid" style="margin-top: 30px;">
+                    <div class="card glass">
+                        <div class="card-title">Pending Tests</div>
+                        <div class="card-value">3</div>
+                        <div class="card-subtitle">Ready to launch</div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-title">Currently Testing</div>
+                        <div class="card-value">5</div>
+                        <div class="card-subtitle">Burning ₦5K each</div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-title">Winning Creatives</div>
+                        <div class="card-value">8</div>
+                        <div class="card-subtitle">Graduated to scaling</div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-title">Failed Tests</div>
+                        <div class="card-value">2</div>
+                        <div class="card-subtitle">Archived</div>
+                    </div>
+                </div>
+
+                <!-- Creative Grid -->
+                <h3 style="margin: 30px 0 20px 0; color: var(--text-secondary);">All Creatives</h3>
+                <div class="creative-grid">
+                    <!-- Sample creative cards -->
+                    <div class="creative-card glass">
+                        <div class="creative-preview">🎥</div>
+                        <div class="creative-info">
+                            <div class="creative-name">Holiday Promo V1</div>
+                            <div class="creative-status status-testing">Testing</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: auto;">
+                                Spend: ₦2,340 | Orders: 8
+                            </div>
+                        </div>
+                    </div>
+                    <div class="creative-card glass">
+                        <div class="creative-preview">🖼️</div>
+                        <div class="creative-info">
+                            <div class="creative-name">Black Friday Mix</div>
+                            <div class="creative-status status-winning">Winning</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: auto;">
+                                Spend: ₦15,200 | Orders: 42
+                            </div>
+                        </div>
+                    </div>
+                    <div class="creative-card glass">
+                        <div class="creative-preview">📸</div>
+                        <div class="creative-info">
+                            <div class="creative-name">Summer Collection</div>
+                            <div class="creative-status status-pending">Pending Test</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: auto;">
+                                Not yet tested
+                            </div>
+                        </div>
+                    </div>
+                    <div class="creative-card glass">
+                        <div class="creative-preview">🎬</div>
+                        <div class="creative-info">
+                            <div class="creative-name">Flash Sale V2</div>
+                            <div class="creative-status status-failed">Failed</div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-top: auto;">
+                                CPA exceeded ₦2,500
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: CAMPAIGN MANAGER -->
+            <div id="campaigns" class="tab-content">
+                <h2 style="margin-bottom: 30px; font-size: 28px;">📢 Campaign Manager</h2>
+
+                <!-- Auto-Tester Toggle -->
+                <div class="toggle-container">
+                    <div class="toggle-label">
+                        <div style="font-weight: bold; margin-bottom: 5px;">🤖 Auto-Tester Engine</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Launch new test creatives automatically</div>
+                    </div>
+                    <div class="toggle-switch active" id="autoTesterToggle" onclick="toggleAutoTester(this)"></div>
+                </div>
+
+                <!-- Campaign Controls -->
+                <div class="campaign-controls">
+                    <button class="btn btn-primary" onclick="openCampaignModal()">+ Create Campaign</button>
+                    <button class="btn btn-secondary" onclick="alert('Duplicate coming soon')">📋 Duplicate Campaign</button>
+                    <button class="btn btn-secondary" onclick="alert('Schedule coming soon')">📅 Schedule Test</button>
+                </div>
+
+                <!-- Active Campaigns Table -->
+                <div class="card glass" style="padding: 30px;">
+                    <h3 style="margin-bottom: 20px; color: var(--primary);">Active Campaigns</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Campaign Name</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Spend</th>
+                                <th>Orders</th>
+                                <th>CPA</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Q4 Scaling Campaign</td>
+                                <td>Broad + Narrow</td>
+                                <td><span style="color: var(--success);">✓ Active</span></td>
+                                <td>₦8,950</td>
+                                <td>24</td>
+                                <td>₦373</td>
+                                <td><button class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px;">View</button></td>
+                            </tr>
+                            <tr>
+                                <td>Creative Testing #5</td>
+                                <td>Test</td>
+                                <td><span style="color: var(--primary);">⧗ Testing</span></td>
+                                <td>₦3,200</td>
+                                <td>6</td>
+                                <td>₦533</td>
+                                <td><button class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px;">View</button></td>
+                            </tr>
+                            <tr>
+                                <td>Regional Expansion</td>
+                                <td>Broad</td>
+                                <td><span style="color: var(--warning);">⚠ Watch</span></td>
+                                <td>₦2,150</td>
+                                <td>4</td>
+                                <td>₦537</td>
+                                <td><button class="btn btn-secondary" style="padding: 5px 10px; font-size: 12px;">View</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Auto-Duplication Settings -->
+                <div class="card glass" style="padding: 30px; margin-top: 30px;">
+                    <h3 style="margin-bottom: 20px; color: var(--primary);">⚙️ Auto-Duplication Settings</h3>
+                    <div style="background: rgba(0, 212, 255, 0.1); border-left: 3px solid var(--primary); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 5px;">INFO</div>
+                        <div>When you create a Broad ad set, the system automatically creates 2 Narrow copies using your configured targeting rules.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Targeting Rules Preset</label>
+                        <select class="form-input">
+                            <option>Standard Narrow Split (Default)</option>
+                            <option>Aggressive Testing</option>
+                            <option>Regional Focus</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Auto-Duplicate Delay (minutes)</label>
+                        <input class="form-input" type="number" value="30" min="5" max="480">
+                    </div>
+
+                    <button class="btn btn-primary" style="width: 100%;">Save Duplication Settings</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Campaign Creation Modal -->
+    <div id="campaignModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">Create New Campaign</div>
+
+            <div class="form-group">
+                <label class="form-label">Campaign Name</label>
+                <input class="form-input" type="text" placeholder="e.g., Q4 Holiday Push">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Campaign Type</label>
+                <select class="form-input">
+                    <option>Broad + Narrow Testing</option>
+                    <option>Broad Only</option>
+                    <option>Narrow Only</option>
+                    <option>Creative Testing</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Daily Budget (₦)</label>
+                <input class="form-input" type="number" placeholder="e.g., 5000">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Targeting Preset</label>
+                <select class="form-input">
+                    <option>Standard Split</option>
+                    <option>Lagos Focus</option>
+                    <option>South-South Push</option>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn btn-primary" style="flex: 1;" onclick="closeCampaignModal()">Create Campaign</button>
+                <button class="btn btn-secondary" style="flex: 1;" onclick="closeCampaignModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Chat Toggle Button -->
+    <button class="ai-chat-toggle" id="aiChatToggle" onclick="toggleAIChat()">🤖</button>
+
+    <!-- AI Chat Widget -->
+    <div class="ai-chat-container" id="aiChatContainer">
+        <div class="ai-chat-header">
+            <div class="ai-chat-title">🤖 Analytics AI</div>
+            <div class="ai-chat-close" onclick="toggleAIChat()">✕</div>
+        </div>
+        
+        <div class="ai-chat-messages" id="aiChatMessages">
+            <div class="ai-message bot">
+                <div class="ai-message-avatar">🤖</div>
+                <div class="ai-message-content">
+                    Hi! I'm your Analytics AI. I can see all your campaign data and help you optimize. Ask me anything about your ads! 📊
+                </div>
+            </div>
+        </div>
+
+        <div class="ai-chat-input-area">
+            <input type="text" class="ai-chat-input" id="aiChatInput" placeholder="Ask me about winning ads..." onkeypress="handleAIChatInput(event)">
+            <button class="ai-chat-send" onclick="sendAIMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // AI Chat Toggle
+        function toggleAIChat() {
+            const container = document.getElementById('aiChatContainer');
+            const toggle = document.getElementById('aiChatToggle');
+            container.classList.toggle('active');
+        }
+
+        // Send AI Message
+        function sendAIMessage() {
+            const input = document.getElementById('aiChatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+
+            const messagesContainer = document.getElementById('aiChatMessages');
+
+            // Add user message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'ai-message user';
+            userDiv.innerHTML = `
+                <div class="ai-message-avatar">👤</div>
+                <div class="ai-message-content">${message}</div>
+            `;
+            messagesContainer.appendChild(userDiv);
+
+            input.value = '';
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            // Simulate AI response (will be replaced with real API)
+            setTimeout(() => {
+                const botDiv = document.createElement('div');
+                botDiv.className = 'ai-message bot';
+                
+                // AI suggestions based on keywords
+                let response = '';
+                if (message.toLowerCase().includes('winning')) {
+                    response = '📈 Your winning ads:\n\n• Black Friday Mix: ₦15,200 spend, 42 orders, CPA ₦362\n• Holiday Promo V1: ₦2,340 spend, 8 orders, CPA ₦293\n\nScale these immediately! ✅';
+                } else if (message.toLowerCase().includes('fix')) {
+                    response = '🔧 Suggested fixes:\n\n1. Regional Expansion has high CPA (₦537). Try narrower targeting.\n2. Delta state underperforming. Pause it, focus on Lagos/Ogun.\n3. Creative fatigue on highest frequency ads. Rotate in new creatives.';
+                } else if (message.toLowerCase().includes('suggest')) {
+                    response = '💡 Next actions:\n\n1. Upload 2-3 new video creatives for testing\n2. Increase budget on Lagos-Male demographic (2.1% CTR)\n3. Try day-parting pause after 11 PM\n4. Test different age ranges (30-45 is trending)';
+                } else if (message.toLowerCase().includes('cpa') || message.toLowerCase().includes('cost')) {
+                    response = '💰 CPA Analysis:\n\nAverage CPA: ₦453 (53% better than ₦2,500 target)\n\nBest performing:\n• Lagos: ₦344\n• Ogun: ₦431\n\nWorst performing:\n• Delta: ₦960 (consider pausing)';
+                } else {
+                    response = '📊 I can help with:\n• 💰 CPA & cost analysis\n• 🏆 Your winning ads\n• 🔧 Fixes needed\n• 💡 Next actions to scale\n• 🗺️ Geographic insights\n\nWhat would you like to know?';
+                }
+                
+                botDiv.innerHTML = `
+                    <div class="ai-message-avatar">🤖</div>
+                    <div class="ai-message-content">${response}</div>
+                `;
+                messagesContainer.appendChild(botDiv);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 500);
+        }
+
+        function handleAIChatInput(event) {
+            if (event.key === 'Enter') {
+                sendAIMessage();
+            }
+        }
+
+        // Tab Switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Deactivate all sidebar items
+            document.querySelectorAll('.sidebar-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+
+            // Activate corresponding sidebar item
+            event.target.closest('.sidebar-item').classList.add('active');
+        }
+
+        // File Upload
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            for (let file of files) {
+                console.log('File selected:', file.name);
+                // TODO: Upload to Supabase Storage
+            }
+        }
+
+        // Campaign Modal
+        function openCampaignModal() {
+            document.getElementById('campaignModal').classList.add('active');
+        }
+
+        function closeCampaignModal() {
+            document.getElementById('campaignModal').classList.remove('active');
+        }
+
+        // Auto-Tester Toggle
+        function toggleAutoTester(element) {
+            element.classList.toggle('active');
+            const status = element.classList.contains('active') ? 'ON' : 'OFF';
+            console.log('Auto-Tester:', status);
+            // TODO: Send to Supabase
+        }
+
+        // Drag & Drop
+        const dropZone = document.querySelector('.drop-zone');
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFileSelect({ target: { files: e.dataTransfer.files } });
+        });
+
+        // Close modal on outside click
+        document.getElementById('campaignModal').addEventListener('click', (e) => {
+            if (e.target.id === 'campaignModal') {
+                closeCampaignModal();
+            }
+        });
+
+        // Demo: Update today's orders
+        setInterval(() => {
+            const orders = Math.floor(Math.random() * 50);
+            document.getElementById('todayOrders').textContent = orders;
+        }, 5000);
+    </script>
+</body>
+</html>

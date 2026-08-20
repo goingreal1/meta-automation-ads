@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quality Herb — Media Buying System</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── THEME TOKENS ──────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:#09090b; --panel:#111113; --panel2:#18181c;
+  --border:#27272d; --borderStrong:#38383f;
+  --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
+  --accent:#4ec99e; --accentDk:#1a9e75;
+  --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
+}
+
+/* ── RESET ─────────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;
+  display:flex;justify-content:center;align-items:center;min-height:100vh;
+}
+a{color:var(--accent);text-decoration:none;font-weight:500;}
+a:hover{text-decoration:underline;}
+
+/* ── LAYOUT ────────────────────────────────────────────────────────────────── */
+.wrap {
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+}
+.box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 28px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.55);
+}
+.logo {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.logo-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.logo-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 4px;
+}
+
+/* ── FORMS ─────────────────────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.field label {
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+input {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+  transition: border-color .14s;
+}
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── BUTTONS ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .14s;
+  border: 1px solid transparent;
+  font-family: 'Inter', sans-serif;
+}
+.btn-a {
+  background: var(--accentBg);
+  color: var(--accent);
+  border-color: var(--accentBdr);
+}
+.btn-a:hover {
+  background: rgba(78,201,158,.18);
+}
+.btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ── UTILS ─────────────────────────────────────────────────────────────────── */
+.switch {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.msg {
+  font-size: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  display: none;
+}
+.msg.err {
+  display: block;
+  background: rgba(224,85,85,.10);
+  color: #e05555;
+  border: 1px solid rgba(224,85,85,.22);
+}
+.msg.ok {
+  display: block;
+  background: var(--accentBg);
+  color: var(--accent);
+  border: 1px solid var(--accentBdr);
+}
+
+.spin {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: rot .65s linear infinite;
+}
+@keyframes rot { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="box">
+    <div class="logo">
+      <div class="logo-title">Quality Herb AI</div>
+      <div class="logo-sub">Senior Media Buying Engine</div>
+    </div>
+
+    <div id="statusMsg" class="msg"></div>
+
+    <form id="authForm">
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="f_email" required placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="f_pass" required placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn btn-a" id="authBtn">Log In</button>
+    </form>
+
+    <div class="switch">
+      <span id="switchText">Don't have an account? <a href="#" id="switchMode">Sign up</a></span>
+    </div>
+  </div>
+</div>
+
+<!-- SUPABASE CLIENT JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Supabase Initialization
+  const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+  const ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+  const supaClient = window.supabase.createClient(SUPA_URL, ANON);
+
+  // Form State
+  let isLogin = true;
+  const form = document.getElementById('authForm');
+  const authBtn = document.getElementById('authBtn');
+  const switchMode = document.getElementById('switchMode');
+  const statusMsg = document.getElementById('statusMsg');
+
+  // Check if already logged in
+  async function checkSession() {
+    const { data: { session } } = await supaClient.auth.getSession();
+    if (session) {
+      window.location.href = 'dashboard_new.html';
+    }
+  }
+  checkSession();
+
+  // Toggle Login/Signup
+  function toggleMode(e) {
+    if(e) e.preventDefault();
+    isLogin = !isLogin;
+    authBtn.textContent = isLogin ? "Log In" : "Sign Up";
+    document.getElementById('switchText').innerHTML = isLogin 
+      ? `Don't have an account? <a href="#" id="switchMode">Sign up</a>`
+      : `Already have an account? <a href="#" id="switchMode">Log in</a>`;
+    
+    // re-bind because we replaced the HTML
+    document.getElementById('switchMode').addEventListener('click', toggleMode);
+    statusMsg.className = "msg";
+  }
+  switchMode.addEventListener('click', toggleMode);
+
+  // Handle Form Submit
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('f_email').value;
+    const password = document.getElementById('f_pass').value;
+
+    authBtn.disabled = true;
+    authBtn.innerHTML = '<div class="spin"></div> Working...';
+    statusMsg.className = "msg";
+
+    try {
+      if (isLogin) {
+        // LOGIN FLOW
+        const { data, error } = await supaClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        statusMsg.textContent = "Login successful. Redirecting...";
+        statusMsg.className = "msg ok";
+        setTimeout(() => window.location.href = 'dashboard_new.html', 800);
+      } else {
+        // SIGNUP FLOW
+        const { data, error } = await supaClient.auth.signUp({ email, password });
+        if (error) throw error;
+        if (data.session) {
+          statusMsg.textContent = "Account created. Redirecting...";
+          statusMsg.className = "msg ok";
+          setTimeout(() => window.location.href = 'dashboard_new.html', 800);
+        } else {
+          statusMsg.textContent = "Check your email for the confirmation link.";
+          statusMsg.className = "msg ok";
+          authBtn.disabled = false;
+          authBtn.textContent = "Sign Up";
+        }
+      }
+    } catch (err) {
+      statusMsg.textContent = err.message;
+      statusMsg.className = "msg err";
+      authBtn.disabled = false;
+      authBtn.textContent = isLogin ? "Log In" : "Sign Up";
+    }
+  });
+</script>
+</body>
+</html>
