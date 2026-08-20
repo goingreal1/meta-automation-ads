@@ -186,9 +186,13 @@ async function createAdCreative(
   // deno-lint-ignore no-explicit-any
   creative: any,
   landingPageUrl: string,
+  adSetDbId: string,
 ): Promise<string> {
+  // asid/crid let the landing page read back exactly which ad set/creative drove the click,
+  // and forward that attribution to receive-order when the visitor submits the order form.
   const sep = landingPageUrl.includes("?") ? "&" : "?";
-  const link = `${landingPageUrl}${sep}utm_source=meta&utm_medium=paid&utm_campaign=${encodeURIComponent(creative.file_name ?? creative.id)}`;
+  const link = `${landingPageUrl}${sep}utm_source=meta&utm_medium=paid&utm_campaign=${encodeURIComponent(creative.file_name ?? creative.id)}` +
+    `&asid=${encodeURIComponent(adSetDbId)}&crid=${encodeURIComponent(creative.id)}`;
   const cta = { type: creative.cta_type || "SHOP_NOW", value: { link } };
 
   const storySpec: Record<string, unknown> = { page_id: pageId };
@@ -337,7 +341,12 @@ Deno.serve(async (req: Request) => {
           // deno-lint-ignore no-explicit-any
           const createdAdSets: any[] = [];
 
-          for (const preset of presets ?? []) {
+          // Respect a per-creative preset selection if one was made; otherwise use every active preset (prior behavior).
+          const presetsForCreative = creative.selected_preset_ids?.length
+            ? (presets ?? []).filter((p) => creative.selected_preset_ids.includes(p.id))
+            : (presets ?? []);
+
+          for (const preset of presetsForCreative) {
             if (preset.targeting_type === "retargeting" && !preset.custom_audience_id) {
               continue; // pool not big enough yet — matches the vision doc's intended behavior
             }
@@ -346,15 +355,16 @@ Deno.serve(async (req: Request) => {
             const adsetName = `${preset.preset_name}-${creative.file_name}`.slice(0, 100);
 
             const metaAdsetId = await createAdSet(metaCampaignId, adsetName, targeting, testBudget, account.meta_pixel_id);
-            const metaCreativeId = await createAdCreative(metaAdAccountId, account.fb_page_id, media, creative, landingPageUrl);
-            const metaAdId = await createAd(metaAdAccountId, metaAdsetId, metaCreativeId, `AD-${adsetName}`);
 
+            // Insert the ad_sets row first so its DB id exists to embed as `asid` in the ad creative's link.
             const { data: adsetRow } = await supabase
               .from("ad_sets")
               .insert({
                 meta_adset_id: metaAdsetId,
                 campaign_id: campaignRow?.id,
-                creative_id: creative.id,
+                // creative_id intentionally omitted: ad_sets.creative_id references `creatives`
+                // (the Meta-synced table), not `creative_assets` (this Vault row) — sync-meta-structure
+                // links it later once the ad is live and pulled back from Meta.
                 adset_name: adsetName,
                 targeting_type: preset.targeting_type,
                 budget_naira: testBudget,
@@ -365,10 +375,16 @@ Deno.serve(async (req: Request) => {
                 states: preset.states,
                 countries: preset.countries,
                 ad_account_id: account.id,
-                meta_raw: { meta_creative_id: metaCreativeId, meta_ad_id: metaAdId },
               })
               .select()
               .single();
+
+            const metaCreativeId = await createAdCreative(metaAdAccountId, account.fb_page_id, media, creative, landingPageUrl, adsetRow?.id);
+            const metaAdId = await createAd(metaAdAccountId, metaAdsetId, metaCreativeId, `AD-${adsetName}`);
+
+            if (adsetRow?.id) {
+              await supabase.from("ad_sets").update({ meta_raw: { meta_creative_id: metaCreativeId, meta_ad_id: metaAdId } }).eq("id", adsetRow.id);
+            }
 
             createdAdSets.push({ preset: preset.preset_name, meta_adset_id: metaAdsetId, db_id: adsetRow?.id });
           }

@@ -357,7 +357,7 @@ textarea{resize:vertical;min-height:76px;}
 // ── CONFIG & SUPABASE ─────────────────────────────────────────────────────────
 const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
 const ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
-const supabase = window.supabase.createClient(SUPA_URL, ANON);
+const supabaseClient = window.supabase.createClient(SUPA_URL, ANON);
 
 let sessionData = null;
 let activeAccountId = null; // Currently selected UUID from ad_accounts
@@ -373,7 +373,7 @@ const MIN_HRS    = 10;
 
 // ── AUTH & INITIALIZATION ─────────────────────────────────────────────────────
 async function init() {
-  const { data: { session }, error } = await supabase.auth.getSession();
+  const { data: { session }, error } = await supabaseClient.auth.getSession();
   if (error || !session) {
     window.location.href = "index.html"; // Not logged in
     return;
@@ -382,7 +382,7 @@ async function init() {
   
   // Set up Logout listener
   document.getElementById("logoutBtn").addEventListener("click", async () => {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     window.location.href = "index.html";
   });
 
@@ -397,9 +397,9 @@ async function init() {
 
 // ── API HELPERS ───────────────────────────────────────────────────────────────
 async function sbQuery(table, queryStr = "") {
-  // Append ad account filter if applicable (ignore for products, system_settings, earnings etc.)
+  // Append ad account filter if applicable (ignore for system_settings, earnings etc. which are shared/global)
   let finalQuery = queryStr;
-  const filteredTables = ["orders", "ad_sets", "creative_assets", "daily_metrics"];
+  const filteredTables = ["orders", "ad_sets", "creative_assets", "daily_metrics", "products"];
   
   if (filteredTables.includes(table) && activeAccountId) {
     finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;
@@ -753,12 +753,17 @@ async function triggerSync() {
 
 // ── TAB: CREATIVE VAULT ───────────────────────────────────────────────────────
 async function renderVault(el) {
-  const [assets, products] = await Promise.all([
+  const [assets, products, presets] = await Promise.all([
     sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100"),
     sbQuery("products", "is_active=eq.true&select=id,product_name"),
+    sbQuery("targeting_presets", "is_active=eq.true&select=id,preset_name,slot_number&order=slot_number.asc"),
   ]);
 
   const pOpts  = (products||[]).map(p => `<option value="${p.id}">${p.product_name}</option>`).join("");
+  const presetChecks = (presets||[]).map(p => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;margin-bottom:6px;">
+      <input type="checkbox" class="f_preset" value="${p.id}" checked> ${p.preset_name}
+    </label>`).join("");
   const all    = assets?.length ?? 0;
   const untest = (assets||[]).filter(a => ["untested","pending_test"].includes(a.test_status ?? a.status)).length;
   const test   = (assets||[]).filter(a => ["testing","active"].includes(a.test_status ?? a.status)).length;
@@ -820,6 +825,9 @@ async function renderVault(el) {
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
           <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
+        </div>
+        <div class="field" style="margin-top:11px;"><label>Ad sets to launch at midnight</label>
+          ${presetChecks || '<div style="font-size:12px;color:var(--muted);">No targeting presets found.</div>'}
         </div>
         <button type="submit" class="btn btn-a btn-full" id="uploadBtn">↑ Upload to Vault</button>
         <div id="uploadMsg"></div>
@@ -886,8 +894,12 @@ async function renderVault(el) {
       const r = await res.json();
       if (r.error) throw new Error(r.error);
       const pid = document.getElementById("f_product").value;
-      if (pid && r.asset?.id) {
-        await supabase.from('creative_assets').update({ product_id: pid }).eq('id', r.asset.id);
+      const selectedPresetIds = Array.from(document.querySelectorAll(".f_preset:checked")).map(el => el.value);
+      if (r.asset?.id) {
+        await supabaseClient.from('creative_assets').update({
+          ...(pid ? { product_id: pid } : {}),
+          selected_preset_ids: selectedPresetIds.length ? selectedPresetIds : null,
+        }).eq('id', r.asset.id);
       }
       msg.innerHTML = `<div class="msg ok">✅ Uploaded! Will be picked up in tonight's test batch.</div>`;
       document.getElementById("uploadForm").reset();
@@ -1006,8 +1018,18 @@ async function renderProducts(el) {
       <form id="prodForm">
         <div class="fg">
           <div class="field"><label>Product name *</label><input id="p_name" required placeholder="e.g. Quality Herb — Immune Booster"></div>
-          <div class="field"><label>Default order value (₦)</label><input id="p_val" type="number" value="19000" min="0"></div>
+          <div class="field"><label>Currency *</label>
+            <select id="p_currency">
+              <option value="NGN">NGN — Naira</option>
+              <option value="USD">USD — US Dollar</option>
+              <option value="CNY">CNY — Yuan</option>
+              <option value="INR">INR — Rupee</option>
+              <option value="GBP">GBP — Pound</option>
+              <option value="EUR">EUR — Euro</option>
+            </select>
+          </div>
         </div>
+        <div class="field" style="margin-top:11px;"><label>Default order value *</label><input id="p_val" type="number" value="19000" min="0"></div>
         <div class="field" style="margin-top:11px;"><label>Landing page URL *</label><input id="p_url" required placeholder="https://…"></div>
         <button type="submit" class="btn btn-a btn-full">+ Add product</button>
         <div id="prodMsg"></div>
@@ -1018,13 +1040,14 @@ async function renderProducts(el) {
       <div class="ph"><div class="ph-title">Products</div><div class="ph-count">${prods?.length ?? 0}</div></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Name</th><th>Landing URL</th><th>Order value</th><th>Status</th></tr>
+        <tr><th>Name</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th></tr>
         ${prods.map(p => `<tr>
           <td class="s n">${p.product_name}</td>
           <td class="n" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             <a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>
           </td>
-          <td>${fN(p.default_order_value_naira)}</td>
+          <td>${p.currency || "NGN"}</td>
+          <td>${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : p.default_order_value_naira}</td>
           <td><span class="pill ${p.is_active ? "active" : "paused"}">${p.is_active ? "active" : "inactive"}</span></td>
         </tr>`).join("")}
       </table></div>`}
@@ -1034,10 +1057,12 @@ async function renderProducts(el) {
     e.preventDefault();
     const msg = document.getElementById("prodMsg");
     try {
-      const { error } = await supabase.from('products').insert({
+      const { error } = await supabaseClient.from('products').insert({
         product_name: document.getElementById("p_name").value,
         landing_page_url: document.getElementById("p_url").value,
         default_order_value_naira: Number(document.getElementById("p_val").value) || 19000,
+        currency: document.getElementById("p_currency").value,
+        ad_account_id: activeAccountId,
       });
       if (error) throw error;
       msg.innerHTML = `<div class="msg ok">✅ Product added.</div>`;
@@ -1103,7 +1128,7 @@ async function renderOrders(el) {
       try {
         const body = { order_status: ns };
         if (ns === "delivered") body.delivered_at = new Date().toISOString();
-        const { error } = await supabase.from('orders').update(body).eq('id', id);
+        const { error } = await supabaseClient.from('orders').update(body).eq('id', id);
         if (error) throw error;
       } catch(err) { alert("Update failed: " + err.message); }
     });
@@ -1234,7 +1259,7 @@ async function renderSettings(el) {
     e.preventDefault();
     const msg = document.getElementById("acctMsg");
     try {
-      const { data, error } = await supabase.from('ad_accounts').insert({
+      const { data, error } = await supabaseClient.from('ad_accounts').insert({
         user_id: sessionData.user.id,
         name: document.getElementById("a_name").value,
         meta_ad_account_id: document.getElementById("a_meta_id").value,
@@ -1258,7 +1283,7 @@ async function renderSettings(el) {
 window.deleteAccount = async function(id) {
   if(!confirm("Are you sure you want to remove this Ad Account? All associated metrics will remain but won't be updated.")) return;
   try {
-    const { error } = await supabase.from('ad_accounts').delete().eq('id', id);
+    const { error } = await supabaseClient.from('ad_accounts').delete().eq('id', id);
     if(error) throw error;
     if(activeAccountId === id) activeAccountId = null; // Clear if we deleted the active one
     await loadAccounts();

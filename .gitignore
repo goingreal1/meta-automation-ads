@@ -1,4 +1,7 @@
 supabase/.temp/
+.env
+.env.*
+.env_test
 .DS_Store
 Thumbs.db
 node_modules/

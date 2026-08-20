@@ -33,7 +33,7 @@ async function hashData(value: string | undefined): Promise<string | undefined> 
 Deno.serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST' } });
+    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' } });
   }
 
   try {
@@ -46,9 +46,18 @@ Deno.serve(async (req: Request) => {
     const quantity = payload.quantity ? parseInt(payload.quantity) : 1;
     const customer_name = payload.customer_name || payload.first_name + " " + (payload.last_name || "");
     const customer_address = payload.customer_address || payload.address;
+    const customer_city = payload.customer_city as string | undefined;
+    const customer_state = payload.customer_state as string | undefined;
+    const customer_country = (payload.customer_country as string | undefined) || "NG";
+    const payment_method = payload.payment_method as string | undefined;
     const order_value_naira = payload.order_value_naira ? parseFloat(payload.order_value_naira) : 19000 * quantity;
+    const currency = (payload.currency as string | undefined)?.toUpperCase() || "NGN";
     const ad_set_id = payload.ad_set_id;
     const creative_id = payload.creative_id;
+    // Meta click/browser IDs for CAPI match quality — fbc can also be reconstructed from a bare fbclid
+    const fbp = payload.fbp as string | undefined;
+    const fbc = (payload.fbc as string | undefined) ??
+      (payload.fbclid ? `fb.1.${Math.floor(Date.now() / 1000)}.${payload.fbclid}` : undefined);
 
     if (!event_id) {
       return new Response(JSON.stringify({ error: "Missing event_id" }), { status: 400 });
@@ -79,9 +88,11 @@ Deno.serve(async (req: Request) => {
               ln: hashedLn ? [hashedLn] : undefined,
               client_ip_address: req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip"),
               client_user_agent: req.headers.get("user-agent"),
+              fbp: fbp || undefined,
+              fbc: fbc || undefined,
             },
             custom_data: {
-              currency: "NGN",
+              currency: currency,
               value: order_value_naira,
             }
           }
@@ -91,7 +102,7 @@ Deno.serve(async (req: Request) => {
       try {
         const capiRes = await fetch(`${META_GRAPH_BASE}/${META_PIXEL_ID}/events?access_token=${META_ACCESS_TOKEN}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(capiPayload),
         });
         
@@ -109,10 +120,43 @@ Deno.serve(async (req: Request) => {
 
     // Insert into Supabase
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    
+
     // Convert empty string ad_set_id / creative_id to null for UUID columns
-    const finalAdSetId = (ad_set_id && ad_set_id.trim() !== '') ? ad_set_id : null;
-    const finalCreativeId = (creative_id && creative_id.trim() !== '') ? creative_id : null;
+    let finalAdSetId = (ad_set_id && ad_set_id.trim() !== '') ? ad_set_id : null;
+    let finalCreativeId = (creative_id && creative_id.trim() !== '') ? creative_id : null;
+
+    // orders.creative_id references `creatives` (the Meta-synced table sync-meta-structure
+    // populates), NOT `creative_assets` (the pre-launch Vault) — the crid param from the ad
+    // link is a creative_assets id, which won't exist there until sync-meta-structure links
+    // it up later (via creative_assets.linked_creative_id). So this is expected to null out
+    // for most orders placed before that sync catches up — that's fine, not an error case;
+    // creative-level attribution is joined later via ad_sets.creative_id once populated.
+    if (finalCreativeId) {
+      const { data: creativeRow } = await supabase
+        .from('creatives')
+        .select('id')
+        .eq('id', finalCreativeId)
+        .maybeSingle();
+      if (!creativeRow) finalCreativeId = null;
+    }
+
+    // Derive ad_account_id from the ad set so the dashboard's per-account order filter
+    // (which matches on ad_account_id, not ad_set_id) actually finds this order.
+    // If ad_set_id doesn't correspond to a real row (stale link, deleted ad set, bad
+    // input), fall back to null rather than letting the FK constraint reject the whole order.
+    let finalAdAccountId: string | null = null;
+    if (finalAdSetId) {
+      const { data: adSetRow } = await supabase
+        .from('ad_sets')
+        .select('ad_account_id')
+        .eq('id', finalAdSetId)
+        .maybeSingle();
+      if (adSetRow) {
+        finalAdAccountId = adSetRow.ad_account_id ?? null;
+      } else {
+        finalAdSetId = null;
+      }
+    }
 
     const { error: dbError } = await supabase.from('orders').upsert({
       event_id,
@@ -120,12 +164,18 @@ Deno.serve(async (req: Request) => {
       customer_phone: phone,
       customer_name,
       customer_address,
+      customer_city,
+      customer_state,
+      customer_country,
+      payment_method,
       product_name,
       quantity,
       order_value_naira,
+      currency,
       capi_sent: capiSuccess,
       ad_set_id: finalAdSetId,
       creative_id: finalCreativeId,
+      ad_account_id: finalAdAccountId,
       order_status: 'pending'
     }, { onConflict: 'event_id' });
 
