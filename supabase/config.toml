@@ -68,3 +68,15 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/send-whatsapp-message/deno.json"
 entrypoint = "./functions/send-whatsapp-message/index.ts"
+
+[functions.send-whatsapp-media]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-whatsapp-media/deno.json"
+entrypoint = "./functions/send-whatsapp-media/index.ts"
+
+[functions.send-whatsapp-flow]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-whatsapp-flow/deno.json"
+entrypoint = "./functions/send-whatsapp-flow/index.ts"

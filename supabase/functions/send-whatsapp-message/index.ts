@@ -4,14 +4,19 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // Lets a human agent reply directly to a Beoliv WhatsApp customer from the
 // dashboard's Conversations tab -- used for the "AI hand-off" case where a
 // customer needs a real person, not just viewing the read-only thread.
-// Shares the same WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID secrets
-// handle-whatsapp-reply already uses (one WhatsApp number, one set of secrets).
+//
+// IMPORTANT: this project's generic WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID
+// secrets belong to a DIFFERENT WhatsApp Business number ("Drive Shift", +49...),
+// confirmed by calling the Graph API's own phone-number-identity endpoint -- not
+// the Beoliv customer number. Beoliv's real credentials are stored separately as
+// BEOLIV_WHATSAPP_ACCESS_TOKEN / BEOLIV_WHATSAPP_PHONE_NUMBER_ID. Do not switch
+// this back to the generic names without re-checking the identity response below.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "";
-const WHATSAPP_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
-const META_GRAPH_BASE = "https://graph.facebook.com/v20.0";
+const WHATSAPP_TOKEN = Deno.env.get("BEOLIV_WHATSAPP_ACCESS_TOKEN") ?? "";
+const WHATSAPP_PHONE_ID = Deno.env.get("BEOLIV_WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const META_GRAPH_BASE = "https://graph.facebook.com/v18.0";
 
 function json(obj: any, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -33,6 +38,20 @@ Deno.serve(async (req: Request) => {
 
   if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) {
     return json({ error: "WhatsApp is not configured (missing WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID secrets)." }, 500);
+  }
+
+  // DIAGNOSTIC (temporary): report which WhatsApp number these secrets actually
+  // belong to on every call, since a reply sent here didn't reach the expected
+  // customer's phone and we need to confirm this project's WHATSAPP_* secrets
+  // are really the Beoliv bot's number, not a different internal/alerts number.
+  let whatsappIdentity: any = null;
+  try {
+    const idRes = await fetch(
+      `${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}?fields=display_phone_number,verified_name&access_token=${WHATSAPP_TOKEN}`
+    );
+    whatsappIdentity = await idRes.json();
+  } catch (e) {
+    whatsappIdentity = { error: String(e) };
   }
 
   try {
@@ -70,7 +89,7 @@ Deno.serve(async (req: Request) => {
 
     if (!waRes.ok) {
       console.error("WhatsApp send failed:", waData);
-      return json({ error: waData?.error?.message || "WhatsApp send failed." }, 502);
+      return json({ error: waData?.error?.message || "WhatsApp send failed.", whatsapp_identity: whatsappIdentity, to: conv.phone }, 502);
     }
 
     // message_type "agent_text" (not "text") so the dashboard can show it was a
@@ -83,10 +102,10 @@ Deno.serve(async (req: Request) => {
     });
     await supabase
       .from("beoliv_conversations")
-      .update({ last_message_at: new Date().toISOString() })
+      .update({ last_message_at: new Date().toISOString(), human_handling: true })
       .eq("id", conv.id);
 
-    return json({ success: true });
+    return json({ success: true, whatsapp_identity: whatsappIdentity, to: conv.phone });
   } catch (err: any) {
     console.error("send-whatsapp-message error:", err);
     return json({ error: err.message }, 500);
