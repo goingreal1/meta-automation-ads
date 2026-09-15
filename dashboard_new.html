@@ -1433,6 +1433,7 @@ async function renderOrders(el) {
 // ── TAB: CONVERSATIONS (Beoliv WhatsApp bot) ────────────────────────────────────
 let bvConversations = [];
 let bvSelectedConvId = null;
+let bvRealtimeChannel = null;
 
 function bvEscape(s) {
   return String(s ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -1471,6 +1472,63 @@ async function renderConversations(el) {
     </div>`;
 
   bvRenderList(bvConversations);
+  bvSubscribeRealtime();
+}
+
+// Live updates so the tab never needs a manual reload: new inbound customer
+// messages, new outbound bot/agent messages, a brand-new conversation starting,
+// or a conversation's state/human_handling flipping all show up immediately.
+// Requires beoliv_messages/beoliv_conversations to be in the supabase_realtime
+// publication (added via `alter publication supabase_realtime add table ...`)
+// and RLS to permit SELECT for the authenticated role, which it already does.
+function bvSubscribeRealtime() {
+  if (bvRealtimeChannel) {
+    supabaseClient.removeChannel(bvRealtimeChannel);
+    bvRealtimeChannel = null;
+  }
+  bvRealtimeChannel = supabaseClient
+    .channel("beoliv-conversations-tab")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "beoliv_messages" }, (payload) => bvOnRealtimeMessage(payload.new))
+    .on("postgres_changes", { event: "*", schema: "public", table: "beoliv_conversations" }, (payload) => bvOnRealtimeConversation(payload.new))
+    .subscribe();
+}
+
+function bvOnRealtimeMessage(m) {
+  // Always bump/refresh the conversation list so a new inbound message (even on
+  // an unselected or brand-new conversation) is reflected without a reload.
+  const conv = bvConversations.find((c) => c.id === m.conversation_id);
+  if (conv) {
+    conv.last_message_at = m.created_at;
+    bvConversations.sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+    bvFilterList();
+  }
+
+  if (m.conversation_id !== bvSelectedConvId) return;
+  const msgsEl = document.getElementById("convMsgs");
+  if (!msgsEl) return;
+  msgsEl.querySelector(".empty")?.remove();
+  const div = document.createElement("div");
+  div.className = `bubble ${m.direction === "outbound" ? "out" : "in"}`;
+  const time = new Date(m.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  div.innerHTML = `${bvMediaThumb(m.metadata)}${bvFmtMsg(m)}${bvRenderChips(m.metadata)}<div class="bubble-time">${time}</div>`;
+  msgsEl.appendChild(div);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+function bvOnRealtimeConversation(row) {
+  const idx = bvConversations.findIndex((c) => c.id === row.id);
+  if (idx >= 0) {
+    bvConversations[idx] = { ...bvConversations[idx], ...row };
+  } else {
+    bvConversations.unshift({ ...row, beoliv_customers: null });
+  }
+  bvConversations.sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
+  bvFilterList();
+
+  if (row.id === bvSelectedConvId) {
+    const badge = document.getElementById("convHandoffBadge");
+    if (badge) badge.innerHTML = row.human_handling ? bvHandoffBadgeHtml() : "";
+  }
 }
 
 function bvRenderList(list) {
@@ -1623,18 +1681,6 @@ function bvAfterAgentSend() {
   if (badge) badge.innerHTML = bvHandoffBadgeHtml();
 }
 
-function bvAppendBubble(html) {
-  const msgsEl = document.getElementById("convMsgs");
-  if (!msgsEl) return;
-  msgsEl.querySelector(".empty")?.remove();
-  const div = document.createElement("div");
-  div.className = "bubble out";
-  const time = new Date().toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  div.innerHTML = `${html}<div class="bubble-time">${time}</div>`;
-  msgsEl.appendChild(div);
-  msgsEl.scrollTop = msgsEl.scrollHeight;
-}
-
 async function bvResumeAI() {
   if (!bvSelectedConvId) return;
   try {
@@ -1668,7 +1714,8 @@ async function bvSendReply() {
     }
 
     input.value = "";
-    bvAppendBubble(bvFmtMsg({ message_type: "agent_text", content: text }));
+    // The new bubble arrives via the realtime subscription (bvOnRealtimeMessage)
+    // once send-whatsapp-message's insert lands -- no need to append it here too.
     bvAfterAgentSend();
   } catch (e) {
     alert("Failed to send: " + e.message);
@@ -1709,7 +1756,6 @@ async function bvSendMedia() {
       return;
     }
 
-    bvAppendBubble(`${bvMediaThumb({ url: data.url, media_type: data.media_type })}<div class="agent-tag">Agent</div>`);
     bvAfterAgentSend();
   } catch (e) {
     tempDiv.remove();
@@ -1728,9 +1774,6 @@ async function bvSendOrderForm() {
       alert("Failed to send order form: " + res.error);
       return;
     }
-    bvAppendBubble(
-      `<div class="agent-tag">Agent</div>${bvFmtMsg({ message_type: "flow", content: "order_flow" })}${bvRenderChips({ flow_cta: "Start Order" })}`
-    );
     bvAfterAgentSend();
   } catch (e) {
     alert("Failed to send order form: " + e.message);
