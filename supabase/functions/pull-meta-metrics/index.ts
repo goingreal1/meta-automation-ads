@@ -112,12 +112,17 @@ Deno.serve(async (req: Request) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     
-    // Parse manual ad_account_id if triggered from dashboard
+    // Parse manual ad_account_id or historical sync if triggered from dashboard
     let targetAccountId = null;
+    let datePreset = "today";
+    let isBackfill = false;
+
     if (req.method === 'POST') {
       try {
         const body = await req.json();
         targetAccountId = body.ad_account_id;
+        if (body.date_preset) datePreset = body.date_preset;
+        if (body.backfill) isBackfill = body.backfill;
       } catch(e) {}
     }
 
@@ -151,14 +156,73 @@ Deno.serve(async (req: Request) => {
       console.log(`\n--- Processing Account: ${account.name} (${account.meta_ad_account_id}) ---`);
       const META_AD_ACCOUNT_ID = account.meta_ad_account_id.replace('act_', '');
 
+      // ── 2.1 Sync Campaigns ────────────────────────────────────────────────
+      try {
+        const campUrl = `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/campaigns?fields=id,name,objective,status,daily_budget,lifetime_budget,created_time&limit=50&access_token=${META_ACCESS_TOKEN}`;
+        const campRes = await fetch(campUrl);
+        const campData = await campRes.json();
+        
+        if (campData.data) {
+          for (const c of campData.data) {
+            let status = c.status?.toLowerCase();
+            if (status !== 'active' && status !== 'paused') status = 'ended';
+            
+            await supabase.from("campaigns").upsert({
+              ad_account_id: account.id,
+              meta_campaign_id: c.id,
+              campaign_name: c.name,
+              objective_raw: c.objective,
+              status: status,
+              daily_budget_naira: c.daily_budget ? parseInt(c.daily_budget) / 100 : null,
+              lifetime_budget_naira: c.lifetime_budget ? parseInt(c.lifetime_budget) / 100 : null,
+              launched_at: c.created_time || new Date().toISOString(),
+              meta_raw: c
+            }, { onConflict: "meta_campaign_id" });
+          }
+        }
+      } catch(e) { console.error("Campaign sync error", e); }
+
+      // ── 2.2 Sync Ads / Creatives ──────────────────────────────────────────
+      try {
+        const adsUrl = `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/ads?fields=id,name,status,creative{body,image_url,video_url,object_story_spec,name,title,thumbnail_url},created_time,campaign_id,adset_id&limit=100&access_token=${META_ACCESS_TOKEN}`;
+        const adsRes = await fetch(adsUrl);
+        const adsData = await adsRes.json();
+        
+        if (adsData.data) {
+          for (const ad of adsData.data) {
+            const cr = ad.creative || {};
+            const primaryText = cr.body || "";
+            const headline = cr.title || "";
+            let imgUrl = cr.image_url || cr.thumbnail_url || "";
+            let vidUrl = cr.video_url || "";
+            
+            if (cr.object_story_spec && cr.object_story_spec.video_data) {
+                vidUrl = cr.object_story_spec.video_data.video_url || vidUrl;
+                imgUrl = cr.object_story_spec.video_data.image_url || imgUrl;
+            }
+
+            await supabase.from("creatives").upsert({
+              meta_ad_id: ad.id,
+              creative_name: ad.name,
+              primary_text: primaryText,
+              headline: headline,
+              image_url: imgUrl,
+              video_url: vidUrl,
+              meta_raw: ad
+            }, { onConflict: "meta_ad_id" });
+          }
+        }
+      } catch(e) { console.error("Ad sync error", e); }
+
       const fields = [
         "adset_id", "adset_name", "spend", "impressions", "reach",
         "clicks", "ctr", "cpc", "cpm", "frequency", "actions",
       ].join(",");
 
+      const incrementStr = isBackfill ? "&time_increment=1" : "";
       const insightsUrl =
         `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/insights` +
-        `?level=adset&fields=${fields}&date_preset=today&access_token=${META_ACCESS_TOKEN}`;
+        `?level=adset&fields=${fields}&date_preset=${datePreset}${incrementStr}&access_token=${META_ACCESS_TOKEN}`;
 
       const res = await fetch(insightsUrl);
       const data = await res.json();
@@ -194,21 +258,55 @@ Deno.serve(async (req: Request) => {
         const costPerOrder = orders > 0 ? spend / orders : null;
 
         // Look up local ad set record (filter by ad_account_id)
-        const { data: adSetRow } = await supabase
+        let { data: adSetRow } = await supabase
           .from("ad_sets")
           .select("id, adset_name, meta_adset_id, created_at, meta_launched_at, budget_naira, status")
           .eq("meta_adset_id", metaAdsetId)
           .eq("ad_account_id", account.id)
           .maybeSingle();
 
-        if (!adSetRow) continue;
+        if (!adSetRow) {
+          // AUTO-IMPORT MISSING AD SET
+          console.log(`Auto-importing missing ad set: ${metaAdsetId}`);
+          
+          const adsetDetailsUrl = `${META_GRAPH_BASE}/${metaAdsetId}?fields=name,daily_budget,status,created_time&access_token=${META_ACCESS_TOKEN}`;
+          const adsetRes = await fetch(adsetDetailsUrl);
+          const adsetData = await adsetRes.json();
+
+          if (adsetData.error) {
+             console.error(`Failed to fetch adset details for auto-import:`, adsetData.error);
+             continue;
+          }
+
+          const budgetNaira = adsetData.daily_budget ? (parseInt(adsetData.daily_budget) / 100) : null;
+          
+          const { data: newAdSet, error: insertErr } = await supabase.from("ad_sets").insert({
+            meta_adset_id: metaAdsetId,
+            ad_account_id: account.id,
+            adset_name: adsetData.name || row.adset_name,
+            budget_naira: budgetNaira,
+            status: adsetData.status?.toLowerCase() === 'active' ? 'active' : 'paused',
+            meta_launched_at: adsetData.created_time || new Date().toISOString(),
+            meta_raw: adsetData
+          }).select('id, adset_name, meta_adset_id, created_at, meta_launched_at, budget_naira, status').single();
+
+          if (insertErr || !newAdSet) {
+            console.error(`Failed to auto-import ad set ${metaAdsetId}:`, insertErr);
+            continue;
+          }
+          
+          adSetRow = newAdSet;
+          console.log(`Successfully imported ad set: ${adSetRow.adset_name}`);
+        }
+
+        const metricDate = row.date_start || today;
 
         // Upsert daily metrics
         const { error: upsertErr } = await supabase.from("daily_metrics").upsert(
           {
             ad_set_id:            adSetRow.id,
             ad_account_id:        account.id,
-            metric_date:          today,
+            metric_date:          metricDate,
             spend_naira:          spend,
             impressions,
             reach,
@@ -229,6 +327,11 @@ Deno.serve(async (req: Request) => {
         const hoursSinceLaunch = launchTimestamp
           ? (Date.now() - new Date(launchTimestamp).getTime()) / (1000 * 60 * 60)
           : 0;
+        // Skip alert/decision logic if this is a historical backfill
+        if (isBackfill) {
+          accountResults.push({ adset: adSetRow.adset_name, metricDate, spend, orders, decision: "backfilled" });
+          continue;
+        }
 
         // Creative fatigue check
         if (frequency >= FREQUENCY_FATIGUE) {

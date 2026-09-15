@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const (creative.ad_accounts?.meta_ad_account_id?.replace('act_', '') || '') = Deno.env.get("(creative.ad_accounts?.meta_ad_account_id?.replace('act_', '') || '')") ?? "1624710972577463";
+// META_AD_ACCOUNT_ID is resolved per-creative from ad_accounts table at runtime
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -224,46 +224,11 @@ function matchSegment(
     const statesMatch = states.some(s => segment.states.includes(s));
     const gendersMatch = genders.some(g => segment.genders.includes(g));
     const ageMatch = ageMin >= segment.ageMin && ageMax <= segment.ageMax;
-    
     if (statesMatch && gendersMatch && ageMatch) {
       return segment;
     }
   }
   return null;
-}
-
-// ─── CREATE AD WITH OPTIMIZED CTA ──────────────────────────────────────────────
-
-async function createAdWithCTA(
-  campaignId: string,
-  adsetId: string,
-  creativeId: string,
-  callToAction: string
-): Promise<string | null> {
-  try {
-    const adPayload = {
-      adset_id: adsetId,
-      creative: {
-        creative_id: creativeId,
-      },
-      status: 'ACTIVE',
-      name: `AD-${callToAction}-${Date.now()}`,
-      call_to_action_type: callToAction, // Meta API CTA
-      access_token: META_ACCESS_TOKEN,
-    };
-
-    const res = await fetch(`${META_GRAPH_BASE}/act_${(creative.ad_accounts?.meta_ad_account_id?.replace('act_', '') || '')}/ads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(adPayload),
-    });
-
-    const data = await res.json();
-    return data.id || null;
-  } catch (err) {
-    console.error('Error creating ad with CTA:', err);
-    return null;
-  }
 }
 
 // ─── WHATSAPP HELPER ──────────────────────────────────────────────────────────
@@ -296,17 +261,47 @@ async function sendWhatsAppApproval(message: string): Promise<boolean> {
         }),
       }
     );
-
     if (!resp.ok) {
       console.error(`WhatsApp failed: ${resp.status}`);
       return false;
     }
-
     console.log("✅ WhatsApp approval request sent");
     return true;
   } catch (err) {
     console.error("WhatsApp error:", err);
     return false;
+  }
+}
+
+// ─── CREATE AD WITH OPTIMIZED CTA ──────────────────────────────────────────────
+
+async function createAdWithCTA(
+  campaignId: string,
+  adsetId: string,
+  creativeId: string,
+  callToAction: string,
+  accountId: string
+): Promise<string | null> {
+  try {
+    const adPayload = {
+      adset_id: adsetId,
+      creative: { creative_id: creativeId },
+      status: "ACTIVE",
+      name: `AD-${callToAction}-${Date.now()}`,
+      call_to_action_type: callToAction,
+      access_token: META_ACCESS_TOKEN,
+    };
+    const cleanId = (accountId || "").replace("act_", "");
+    const res = await fetch(`${META_GRAPH_BASE}/act_${cleanId}/ads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adPayload),
+    });
+    const data = await res.json();
+    return data.id || null;
+  } catch (err) {
+    console.error("Error creating ad with CTA:", err);
+    return null;
   }
 }
 
@@ -322,16 +317,20 @@ async function launchAdSetGroup(
   narrow_v2: { meta_id: string; db_id: string } | null;
 } | null> {
   try {
+    const accountId = (creative.ad_accounts?.meta_ad_account_id || "").replace("act_", "");
+
     // 1. Create campaign
     const campaignRes = await fetch(
-      `${META_GRAPH_BASE}/act_${(creative.ad_accounts?.meta_ad_account_id?.replace('act_', '') || '')}/campaigns`,
+      `${META_GRAPH_BASE}/act_${accountId}/campaigns`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: `Campaign-${creative.asset_name}-${Date.now()}`,
           objective: "LINK_CLICKS",
-          status: "ACTIVE",
+          // Created PAUSED -- stays paused until a human approves via WhatsApp
+          // (handle-whatsapp-reply flips this + its ad sets to ACTIVE on approval).
+          status: "PAUSED",
           access_token: META_ACCESS_TOKEN,
         }),
       }
@@ -367,7 +366,7 @@ async function launchAdSetGroup(
             ],
           },
         },
-        status: "ACTIVE",
+        status: "PAUSED",
         access_token: META_ACCESS_TOKEN,
       }),
     });
@@ -388,8 +387,8 @@ async function launchAdSetGroup(
         creative_id: creative.id,
         targeting_type: "broad",
         budget_naira: 5000,
-          ad_account_id: creative.ad_account_id,
-        status: "ACTIVE",
+        ad_account_id: creative.ad_account_id,
+        status: "paused",
         age_min: 20,
         age_max: 60,
         genders: [1, 2],
@@ -402,7 +401,7 @@ async function launchAdSetGroup(
     // 3. Create NARROW_V1 (with first targeting rule)
     const { data: ruleV1 } = await supabase
       .from("targeting_rules")
-      .select("*, ad_accounts(*)")
+      .select("*")
       .eq("targeting_type", "narrow_v1")
       .eq("is_active", true)
       .order("created_at", { ascending: false })
@@ -430,13 +429,12 @@ async function launchAdSetGroup(
             })),
           },
         },
-        status: "ACTIVE",
+        status: "PAUSED",
         access_token: META_ACCESS_TOKEN,
       }),
     });
 
     const narrowV1Data = await narrowV1Res.json();
-
     let narrowV1Row: any = null;
     if (narrowV1Data.id && broadRow?.id) {
       const { data: nv1 } = await supabase
@@ -451,7 +449,7 @@ async function launchAdSetGroup(
           created_from: "auto_duplicate",
           budget_naira: 5000,
           ad_account_id: creative.ad_account_id,
-          status: "ACTIVE",
+          status: "paused",
           age_min: ruleV1?.age_min || 20,
           age_max: ruleV1?.age_max || 60,
           genders: narrowV1Genders,
@@ -460,7 +458,6 @@ async function launchAdSetGroup(
         })
         .select("id")
         .single();
-
       narrowV1Row = nv1;
     }
 
@@ -495,13 +492,12 @@ async function launchAdSetGroup(
             })),
           },
         },
-        status: "ACTIVE",
+        status: "PAUSED",
         access_token: META_ACCESS_TOKEN,
       }),
     });
 
     const narrowV2Data = await narrowV2Res.json();
-
     let narrowV2Row: any = null;
     if (narrowV2Data.id && broadRow?.id) {
       const { data: nv2 } = await supabase
@@ -516,7 +512,7 @@ async function launchAdSetGroup(
           created_from: "auto_duplicate",
           budget_naira: 5000,
           ad_account_id: creative.ad_account_id,
-          status: "ACTIVE",
+          status: "paused",
           age_min: ruleV2?.age_min || 20,
           age_max: ruleV2?.age_max || 60,
           genders: narrowV2Genders,
@@ -525,15 +521,12 @@ async function launchAdSetGroup(
         })
         .select("id")
         .single();
-
       narrowV2Row = nv2;
     }
 
     return {
       campaign_id: campaignId,
-      broad_adset: broadRow
-        ? { meta_id: broadData.id, db_id: broadRow.id }
-        : null,
+      broad_adset: broadRow ? { meta_id: broadData.id, db_id: broadRow.id } : null,
       narrow_v1: narrowV1Row ? { meta_id: narrowV1Data.id, db_id: narrowV1Row.id } : null,
       narrow_v2: narrowV2Row ? { meta_id: narrowV2Data.id, db_id: narrowV2Row.id } : null,
     };
@@ -542,8 +535,6 @@ async function launchAdSetGroup(
     return null;
   }
 }
-
-// ─── MAIN HANDLER ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -561,7 +552,7 @@ Deno.serve(async (req: Request) => {
     // 1. Get up to 5 pending creatives
     const { data: pendingCreatives } = await supabase
       .from("creative_assets")
-      .select("*")
+      .select("*, ad_accounts(meta_ad_account_id)")
       .eq("status", "pending_test")
       .order("uploaded_at", { ascending: true })
       .limit(5);
@@ -583,18 +574,47 @@ Deno.serve(async (req: Request) => {
     const totalAdSets = pendingCreatives.length * 3; // 1 broad + 2 narrow per creative
     const totalBudget = totalAdSets * 5000; // ₦5k per ad set
 
+    // Every campaign/ad set is created PAUSED (see launchAdSetGroup) -- nothing
+    // spends until a real APPROVE reply flips it ACTIVE via handle-whatsapp-reply.
+    // One `pending_approvals` row per creative/campaign (that table -- not the
+    // nonexistent `launch_approvals` -- is what both the dashboard's Approvals tab
+    // and handle-whatsapp-reply actually read).
     for (const creative of pendingCreatives) {
       const result = await launchAdSetGroup(supabase, creative);
+      if (!result) continue;
 
-      if (result) {
-        launchPlans.push({
-          creative_name: creative.asset_name,
-          campaign_id: result.campaign_id,
-          broad_meta_id: result.broad_adset?.meta_id,
-          narrow_v1_meta_id: result.narrow_v1?.meta_id,
-          narrow_v2_meta_id: result.narrow_v2?.meta_id,
-        });
+      const adSetMetaIds = [
+        result.broad_adset?.meta_id,
+        result.narrow_v1?.meta_id,
+        result.narrow_v2?.meta_id,
+      ].filter(Boolean) as string[];
+
+      const { data: approvalRow, error: approvalErr } = await supabase
+        .from("pending_approvals")
+        .insert({
+          approval_type: "launch_test",
+          creative_asset_id: creative.id,
+          ad_account_id: creative.ad_account_id,
+          proposed_action: {
+            meta_campaign_id: result.campaign_id,
+            ad_set_ids: adSetMetaIds,
+          },
+          reason: `AI auto-launch: "${creative.asset_name}" -- 3 ad sets (broad + 2 narrow), ₦15,000 total test budget.`,
+          status: "pending",
+        })
+        .select("id")
+        .single();
+
+      if (approvalErr || !approvalRow) {
+        console.error(`Failed to record approval for ${creative.asset_name}:`, approvalErr);
+        continue;
       }
+
+      launchPlans.push({
+        creative_name: creative.asset_name,
+        campaign_id: result.campaign_id,
+        approval_id: approvalRow.id,
+      });
     }
 
     if (launchPlans.length === 0) {
@@ -604,45 +624,22 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 3. Send WhatsApp approval request
+    // 3. Send WhatsApp approval request -- real APPROVE/REJECT <id> commands that
+    // handle-whatsapp-reply actually parses, one line per creative so each can be
+    // approved/rejected independently.
     const approvalMessage = `
 🚀 *AI AUTO-LAUNCH READY*
 
-📊 *DETAILS:*
-Creatives: ${launchPlans.length}
-Total Ad Sets: ${launchPlans.length * 3} (${launchPlans.length} broad + ${launchPlans.length * 2} narrow)
-Total Budget: ₦${totalBudget.toLocaleString()}
+${launchPlans.length} creative(s) tested, ₦15,000 each (₦${totalBudget.toLocaleString()} total if all approved). Created PAUSED -- nothing spends until approved.
 
-*CREATIVES:*
-${launchPlans.map((p) => `• ${p.creative_name}`).join("\n")}
+${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n  REJECT ${p.approval_id}`).join("\n\n")}
 
-⏰ *Status: PENDING YOUR APPROVAL*
-
-Reply:
-✅ YES - Launch all ads
-❌ NO - Cancel & save budget
-
-(You can manually manage from Meta Ads Manager anytime)
+(You can also manage from Meta Ads Manager anytime)
     `.trim();
 
     await sendWhatsAppApproval(approvalMessage);
 
-    // 4. Save approval state
-    const { error: approvalErr } = await supabase
-      .from("launch_approvals")
-      .insert({
-        batch_id: `batch_${Date.now()}`,
-        creative_count: launchPlans.length,
-        ad_set_count: launchPlans.length * 3,
-        budget_naira: totalBudget,
-        launch_plan: JSON.stringify(launchPlans),
-        status: "pending_approval",
-        created_at: new Date().toISOString(),
-      });
-
-    if (approvalErr) console.warn("Approval record error:", approvalErr);
-
-    // 5. Mark creatives as awaiting approval
+    // 4. Mark creatives as awaiting approval
     for (const creative of pendingCreatives) {
       await supabase
         .from("creative_assets")
@@ -657,7 +654,7 @@ Reply:
         creatives: launchPlans.length,
         ad_sets: launchPlans.length * 3,
         budget_naira: totalBudget,
-        message: `✅ WhatsApp approval message sent. Reply YES/NO to launch all ads together.`,
+        message: `✅ WhatsApp approval message sent. Reply APPROVE <id> or REJECT <id> per creative.`,
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );

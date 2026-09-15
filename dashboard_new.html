@@ -244,6 +244,27 @@ textarea{resize:vertical;min-height:76px;}
 .dz-prev{margin-top:12px;font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace;}
 .dz-thumb{max-height:72px;max-width:120px;border-radius:6px;margin-top:8px;border:1px solid var(--border);display:block;margin-left:auto;margin-right:auto;}
 
+/* ── CONVERSATIONS (Beoliv WhatsApp bot) ──────────────────────────────────── */
+.conv-wrap{display:grid;grid-template-columns:290px 1fr;gap:14px;align-items:start;}
+@media(max-width:820px){.conv-wrap{grid-template-columns:1fr;}}
+.conv-search{padding:10px;border-bottom:1px solid var(--border);}
+.conv-search input{font-size:12px;padding:7px 10px;}
+.conv-list-items{max-height:660px;overflow-y:auto;}
+.conv-row{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.conv-row:hover{background:var(--panel2);}
+.conv-row.active{background:var(--accentBg);}
+.conv-row-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px;}
+.conv-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.conv-time{font-size:9.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;}
+.conv-phone{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;}
+.conv-thread{min-height:400px;display:flex;flex-direction:column;}
+.conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.conv-msgs{padding:14px;display:flex;flex-direction:column;gap:10px;max-height:640px;overflow-y:auto;}
+.bubble{max-width:74%;padding:9px 12px;border-radius:11px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+.bubble.in{background:var(--panel2);color:var(--text);align-self:flex-start;border-bottom-left-radius:3px;}
+.bubble.out{background:var(--accentBg);color:var(--text);border:1px solid var(--accentBdr);align-self:flex-end;border-bottom-right-radius:3px;}
+.bubble-time{font-size:9px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;}
+
 /* ── AI CHAT ───────────────────────────────────────────────────────────────── */
 .chat-toggle{
   position:fixed;bottom:22px;right:22px;width:48px;height:48px;border-radius:50%;
@@ -318,6 +339,7 @@ textarea{resize:vertical;min-height:76px;}
   <div class="tab-btn" data-tab="performance">Performance</div>
   <div class="tab-btn" data-tab="products">Products</div>
   <div class="tab-btn" data-tab="orders">Orders</div>
+  <div class="tab-btn" data-tab="conversations">Conversations</div>
   <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
   <div class="tab-btn" data-tab="earnings">Earnings</div>
   <div class="tab-btn" data-tab="settings">Settings</div>
@@ -579,6 +601,7 @@ async function render() {
     else if (activeTab === "performance") await renderPerformance(c);
     else if (activeTab === "products")  await renderProducts(c);
     else if (activeTab === "orders")    await renderOrders(c);
+    else if (activeTab === "conversations") await renderConversations(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
     else if (activeTab === "settings")  await renderSettings(c);
@@ -1370,6 +1393,136 @@ async function renderOrders(el) {
   });
 }
 
+// ── TAB: CONVERSATIONS (Beoliv WhatsApp bot) ────────────────────────────────────
+let bvConversations = [];
+let bvSelectedConvId = null;
+
+function bvEscape(s) {
+  return String(s ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+function bvName(c) {
+  return c.beoliv_customers?.name || c.phone || "Unknown";
+}
+
+async function renderConversations(el) {
+  const convs = await sbQuery("beoliv_conversations", "select=*,beoliv_customers(name,state,city,address)&order=last_message_at.desc&limit=150");
+  bvConversations = convs || [];
+  bvSelectedConvId = null;
+
+  const tot  = bvConversations.length;
+  const nw   = bvConversations.filter(c => c.current_state === "NEW").length;
+  const eng  = bvConversations.filter(c => c.current_state === "ENGAGED" || c.current_state === "IN_QA").length;
+  const done = bvConversations.filter(c => c.current_state === "COMPLETED").length;
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Conversations</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total</div><div class="kc-val">${tot}</div></div>
+      <div class="kc"><div class="kc-lbl">New</div><div class="kc-val b">${nw}</div></div>
+      <div class="kc"><div class="kc-lbl">Engaged</div><div class="kc-val w">${eng}</div></div>
+      <div class="kc"><div class="kc-lbl">Completed</div><div class="kc-val a">${done}</div></div>
+    </div>
+    <div class="conv-wrap">
+      <div class="panel" style="padding:0;">
+        <div class="conv-search"><input id="convSearch" placeholder="Search name or phone…" oninput="bvFilterList()"></div>
+        <div class="conv-list-items" id="convListItems"></div>
+      </div>
+      <div class="panel conv-thread" id="convThread">
+        <div class="empty"><div class="empty-ico">💬</div>Select a conversation to view messages</div>
+      </div>
+    </div>`;
+
+  bvRenderList(bvConversations);
+}
+
+function bvRenderList(list) {
+  const wrap = document.getElementById("convListItems");
+  if (!wrap) return;
+  if (!list.length) { wrap.innerHTML = `<div class="empty" style="padding:24px;">No conversations yet.</div>`; return; }
+  wrap.innerHTML = list.map(c => `
+    <div class="conv-row ${c.id === bvSelectedConvId ? "active" : ""}" onclick="bvSelectConversation('${c.id}')">
+      <div class="conv-row-top">
+        <span class="conv-name">${bvEscape(bvName(c))}</span>
+        <span class="conv-time">${ago(c.last_message_at)}</span>
+      </div>
+      <div class="conv-phone">${bvEscape(c.phone)}</div>
+      <span class="pill ${c.current_state === "COMPLETED" ? "delivered" : c.current_state === "NEW" ? "pending" : "active"}">${c.current_state}</span>
+    </div>`).join("");
+}
+
+function bvFilterList() {
+  const q = (document.getElementById("convSearch")?.value || "").toLowerCase();
+  const filtered = !q ? bvConversations : bvConversations.filter(c =>
+    bvName(c).toLowerCase().includes(q) || (c.phone || "").includes(q));
+  bvRenderList(filtered);
+}
+
+// message_type values written by the bot: text, audio, audio_transcript, button,
+// list, flow, url_button, interactive, flow_reply -- see botController.ts logMessage
+// calls. Outbound button/list content is the real body text sent; inbound
+// button/list/interactive content is just the tapped option's id.
+function bvFmtMsg(m) {
+  const t = m.message_type;
+  const c = m.content || "";
+  if (t === "text" || t === "audio_transcript") return bvEscape(c);
+  if (t === "audio") return `<span style="color:var(--muted);font-style:italic;">🎙️ Voice note</span>`;
+  if (t === "button" || t === "list") {
+    return m.direction === "outbound" ? bvEscape(c) : `👆 Tapped: <b>${bvEscape(c)}</b>`;
+  }
+  if (t === "interactive") return `👆 Tapped: <b>${bvEscape(c)}</b>`;
+  if (t === "flow") {
+    if (c === "warmup_solution") return "📸 Sent: warm-up message (photo + buttons)";
+    if (c.startsWith("offer_")) return `🛒 Sent: ${bvEscape(c.replace("offer_", "").replace(/_/g, " "))} offer card`;
+    if (c === "order_flow") return "📝 Sent: order form";
+    return `📋 Sent: ${bvEscape(c)}`;
+  }
+  if (t === "url_button") return `🔗 Sent link: <a href="${bvEscape(c)}" target="_blank" style="color:var(--accent);">${bvEscape(c)}</a>`;
+  if (t === "flow_reply") {
+    try {
+      const d = JSON.parse(c);
+      return `✅ <b>Order submitted</b><br>${bvEscape(d.full_name || "")} · ${bvEscape(d.phone_number || "")}<br>${bvEscape(d.address || "")}, ${bvEscape(d.city || "")}, ${bvEscape(d.state || "")}<br>Package: ${bvEscape(d.package || "")}`;
+    } catch { return bvEscape(c); }
+  }
+  return bvEscape(c);
+}
+
+async function bvSelectConversation(id) {
+  bvSelectedConvId = id;
+  bvFilterList();
+
+  const conv = bvConversations.find(c => c.id === id);
+  const thread = document.getElementById("convThread");
+  thread.innerHTML = `<div class="empty"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div></div>`;
+
+  let msgs;
+  try {
+    msgs = await sbQuery("beoliv_messages", `conversation_id=eq.${id}&order=created_at.asc&limit=500`);
+  } catch (e) {
+    thread.innerHTML = `<div class="msg err">❌ Couldn't load messages: ${bvEscape(e.message)}</div>`;
+    return;
+  }
+
+  thread.innerHTML = `
+    <div class="conv-thread-head">
+      <div>
+        <div style="font-weight:600;font-size:13px;">${bvEscape(bvName(conv))}</div>
+        <div style="font-size:11px;color:var(--muted);">${bvEscape(conv.phone)} · ${bvEscape(conv.source || "")} · ${conv.current_state}</div>
+      </div>
+      <a href="https://wa.me/${(conv.phone || "").replace(/\D/g, "")}" target="_blank" class="btn btn-a">📱 Open in WhatsApp</a>
+    </div>
+    <div class="conv-msgs" id="convMsgs">
+      ${!msgs?.length ? `<div class="empty">No messages yet.</div>` : msgs.map(m => `
+        <div class="bubble ${m.direction === "outbound" ? "out" : "in"}">
+          ${bvFmtMsg(m)}
+          <div class="bubble-time">${new Date(m.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+        </div>`).join("")}
+    </div>`;
+
+  const msgsEl = document.getElementById("convMsgs");
+  if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
 // ── TAB: APPROVALS ────────────────────────────────────────────────────────────
 async function renderApprovals(el) {
   const rows = await sbQuery("pending_approvals", "order=requested_at.desc&limit=100");
@@ -1474,7 +1627,7 @@ async function renderSettings(el) {
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Linked Ad Accounts</div><div class="ph-count">${accountsList.length} accounts</div></div>
+      <div class="ph"><div class="ph-title">Linked Ad Accounts <button class="btn btn-g" style="padding:3px 6px; font-size:10px; margin-left:6px;" onclick="refreshBalances()" id="refreshBalBtn" title="Sync live balances from Meta">↻ Refresh</button></div><div class="ph-count">${accountsList.length} accounts</div></div>
       ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">🔌</div>No ad accounts linked yet. Add one above.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Account Name</th><th>Meta ID</th><th>Page ID</th><th>Balance</th><th>Status</th><th>Actions</th></tr>
@@ -1482,7 +1635,10 @@ async function renderSettings(el) {
           <td class="s n">${a.name}</td>
           <td>${a.meta_ad_account_id}</td>
           <td>${a.fb_page_id}</td>
-          <td id="bal-${a.id}" style="font-size:11px;color:var(--muted);">Loading…</td>
+          <td id="bal-${a.id}">
+            <div style="color:var(--text);font-size:12px;">${fN(a.balance_naira)}</div>
+            ${a.balance_updated_at ? `<div style="font-size:9px;color:var(--muted);">synced ${ago(a.balance_updated_at)}</div>` : `<div style="font-size:9px;color:var(--muted);">not synced</div>`}
+          </td>
           <td><span class="pill ${a.status === 'active' ? 'active' : 'paused'}">${a.status}</span></td>
           <td>
             <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button>
@@ -1491,16 +1647,19 @@ async function renderSettings(el) {
       </table></div>`}
     </div>`;
 
-  // Fetch live balance per account (not just the active one) without blocking the rest of the render.
-  accountsList.forEach(async a => {
-    const cell = document.getElementById(`bal-${a.id}`);
-    if (!cell) return;
-    const r = await sbFn("check-account-status", { ad_account_id: a.id });
-    if (!cell.isConnected) return; // tab may have changed by the time this resolves
-    if (r.error) { cell.textContent = "—"; cell.title = r.error; return; }
-    cell.innerHTML = `<span style="color:var(--text);">${r.current_balance ?? "—"}</span>`;
-    cell.title = `Spend cap: ${r.spend_cap ?? "—"} · Status: ${r.status ?? "—"}`;
-  });
+window.refreshBalances = async function() {
+  const btn = document.getElementById("refreshBalBtn");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin" style="width:10px;height:10px;border-width:1px;"></span>'; }
+  try {
+    for (const a of accountsList) {
+      await sbFn("check-account-status", { ad_account_id: a.id });
+    }
+    await loadAccounts(); // reload the updated balance data from DB
+    if (activeTab === "settings") renderSettings(document.getElementById("mainContent"));
+  } catch (err) {
+    alert("Error refreshing balances: " + err.message);
+  }
+}
 
   document.getElementById("acctForm").addEventListener("submit", async e => {
     e.preventDefault();

@@ -82,19 +82,24 @@ Deno.serve(async (req: Request) => {
       const action = approval.proposed_action as any;
 
       if (approval.approval_type === "launch_test" && action?.meta_campaign_id) {
+        // ai-auto-launch-tests stores the ad sets' real Meta ids directly in
+        // proposed_action.ad_set_ids -- activate those, not a DB lookup by
+        // ad_sets.campaign_id (that column holds the Meta campaign id, not a
+        // local campaigns.id, so the old join-based lookup here always matched
+        // zero rows and left ad sets stuck PAUSED even after "approval").
         await setStatus(action.meta_campaign_id, "ACTIVE");
-        // Activate every ad set + ad under this campaign too
-        const { data: adSets } = await supabase
-          .from("ad_sets")
-          .select("meta_adset_id, creative_id")
-          .eq("campaign_id", (await supabase.from("campaigns").select("id").eq("meta_campaign_id", action.meta_campaign_id).single()).data?.id);
 
-        for (const as of adSets ?? []) {
-          if (as.meta_adset_id) await setStatus(as.meta_adset_id, "ACTIVE");
+        const adSetMetaIds: string[] = Array.isArray(action.ad_set_ids) ? action.ad_set_ids : [];
+        for (const metaAdsetId of adSetMetaIds) {
+          await setStatus(metaAdsetId, "ACTIVE");
         }
 
+        // campaigns row may not exist yet for a brand-new batch (pull-meta-metrics
+        // upserts it on its next hourly sync) -- update is a no-op if so, not an error.
         await supabase.from("campaigns").update({ status: "active", launched_at: new Date().toISOString() }).eq("meta_campaign_id", action.meta_campaign_id);
-        await supabase.from("ad_sets").update({ status: "active" }).in("meta_adset_id", (adSets ?? []).map((a) => a.meta_adset_id));
+        if (adSetMetaIds.length) {
+          await supabase.from("ad_sets").update({ status: "active" }).in("meta_adset_id", adSetMetaIds);
+        }
         await supabase.from("creative_assets").update({ test_status: "testing", tested_at: new Date().toISOString() }).eq("id", approval.creative_asset_id);
       }
 
