@@ -20,6 +20,7 @@
   --danger:#e05555; --dangerBg:rgba(224,85,85,.10); --dangerBdr:rgba(224,85,85,.22);
   --blue:#5a9fff; --blueBg:rgba(90,159,255,.10); --blueBdr:rgba(90,159,255,.22);
   --shadow:0 8px 40px rgba(0,0,0,.55);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4), 0 4px 14px -6px rgba(0,0,0,.4);
   --scroll:rgba(255,255,255,.07);
 }
 [data-theme="light"] {
@@ -32,6 +33,7 @@
   --danger:#b83030; --dangerBg:rgba(184,48,48,.10); --dangerBdr:rgba(184,48,48,.28);
   --blue:#1660cc; --blueBg:rgba(22,96,204,.10); --blueBdr:rgba(22,96,204,.28);
   --shadow:0 4px 24px rgba(0,0,0,.10);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05), 0 4px 14px -6px rgba(0,0,0,.10);
   --scroll:rgba(0,0,0,.12);
 }
 
@@ -122,9 +124,9 @@ a{color:inherit;}
 
 .kc{
   background:var(--panel);border:1px solid var(--border);border-radius:10px;
-  padding:14px 16px;transition:border-color .18s,transform .14s;
+  padding:14px 16px;box-shadow:var(--shadow-sm);transition:border-color .18s,transform .14s,box-shadow .18s;
 }
-.kc:hover{border-color:var(--borderStrong);transform:translateY(-1px);}
+.kc:hover{border-color:var(--borderStrong);transform:translateY(-1px);box-shadow:0 4px 16px -6px rgba(0,0,0,.3);}
 .kc-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px;}
 .kc-val{font-family:'JetBrains Mono',monospace;font-size:23px;font-weight:600;line-height:1.15;}
 .kc-sub{font-size:10px;color:var(--muted);margin-top:5px;font-family:'JetBrains Mono',monospace;}
@@ -138,7 +140,7 @@ a{color:inherit;}
 .pbar-fill{height:100%;border-radius:2px;transition:width .7s ease;}
 
 /* ── PANELS ────────────────────────────────────────────────────────────────── */
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;transition:background .22s,border-color .22s;}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow-sm);transition:background .22s,border-color .22s;}
 .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;gap:10px;}
 .ph-title{font-size:13px;font-weight:600;letter-spacing:-.01em;}
 .ph-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
@@ -259,11 +261,11 @@ textarea{resize:vertical;min-height:76px;}
 .conv-phone{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;}
 .conv-thread{min-height:400px;display:flex;flex-direction:column;}
 .conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
-.conv-msgs{padding:14px;display:flex;flex-direction:column;gap:10px;max-height:640px;overflow-y:auto;}
-.bubble{max-width:74%;padding:9px 12px;border-radius:11px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
-.bubble.in{background:var(--panel2);color:var(--text);align-self:flex-start;border-bottom-left-radius:3px;}
-.bubble.out{background:var(--accentBg);color:var(--text);border:1px solid var(--accentBdr);align-self:flex-end;border-bottom-right-radius:3px;}
-.bubble-time{font-size:9px;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;}
+.conv-msgs{padding:14px;display:flex;flex-direction:column;gap:5px;max-height:640px;overflow-y:auto;}
+.bubble{max-width:65%;width:fit-content;padding:6px 9px;border-radius:8px;font-size:13px;line-height:1.4;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.2);}
+.bubble.in{background:var(--panel2);color:var(--text);align-self:flex-start;border-bottom-left-radius:2px;}
+.bubble.out{background:var(--accentBg);color:var(--text);border:1px solid var(--accentBdr);align-self:flex-end;border-bottom-right-radius:2px;}
+.bubble-time{font-size:9px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace;text-align:right;}
 
 /* ── AI CHAT ───────────────────────────────────────────────────────────────── */
 .chat-toggle{
@@ -327,7 +329,7 @@ textarea{resize:vertical;min-height:76px;}
       <option value="">Loading accounts...</option>
     </select>
     <button class="logout-btn" id="logoutBtn">Log out</button>
-    <button class="theme-btn" id="themeBtn" title="Toggle theme">☀️</button>
+    <button class="theme-btn" id="themeBtn" title="Toggle theme"></button>
   </div>
 </div>
 
@@ -374,13 +376,26 @@ textarea{resize:vertical;min-height:76px;}
     <button onclick="sendChat()">→</button>
   </div>
 </div>
-<button class="chat-toggle" id="chatToggle" title="AI Assistant">💬</button>
+<button class="chat-toggle" id="chatToggle" title="AI Assistant"></button>
 
 <script>
 // ── CONFIG & SUPABASE ─────────────────────────────────────────────────────────
 const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
 const ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
 const supabaseClient = window.supabase.createClient(SUPA_URL, ANON);
+
+// ── ICONS (inline SVG, replaces emoji) ──────────────────────────────────────
+const ICON_PATHS = {
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
+  moon: '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>',
+  chat: '<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  phone: '<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z"/>',
+  mic: '<path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>',
+};
+function icon(name, size = 16) {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
+}
 
 let sessionData = null;
 let activeAccountId = null; // Currently selected UUID from ad_accounts
@@ -562,7 +577,7 @@ let theme = localStorage.getItem("qh_theme") || "dark";
 function setTheme(t) {
   theme = t;
   document.documentElement.setAttribute("data-theme", t);
-  document.getElementById("themeBtn").textContent = t === "dark" ? "☀️" : "🌙";
+  document.getElementById("themeBtn").innerHTML = icon(t === "dark" ? "sun" : "moon", 15);
   localStorage.setItem("qh_theme", t);
 }
 setTheme(theme);
@@ -1360,7 +1375,7 @@ async function renderOrders(el) {
         ${orders.map(o => `<tr>
           <td class="s n">${o.customer_name ?? "—"}</td>
           <td class="n">${o.customer_phone
-            ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">📱 ${o.customer_phone}</a>`
+            ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${o.customer_phone}</a>`
             : "—"}</td>
           <td class="n">${o.product_name ?? "—"}</td>
           <td>${fN(o.order_value_naira)}</td>
@@ -1429,7 +1444,7 @@ async function renderConversations(el) {
         <div class="conv-list-items" id="convListItems"></div>
       </div>
       <div class="panel conv-thread" id="convThread">
-        <div class="empty"><div class="empty-ico">💬</div>Select a conversation to view messages</div>
+        <div class="empty"><div class="empty-ico" style="display:flex;justify-content:center;">${icon("chat",28)}</div>Select a conversation to view messages</div>
       </div>
     </div>`;
 
@@ -1466,7 +1481,7 @@ function bvFmtMsg(m) {
   const t = m.message_type;
   const c = m.content || "";
   if (t === "text" || t === "audio_transcript") return bvEscape(c);
-  if (t === "audio") return `<span style="color:var(--muted);font-style:italic;">🎙️ Voice note</span>`;
+  if (t === "audio") return `<span style="color:var(--muted);font-style:italic;display:inline-flex;align-items:center;gap:5px;">${icon("mic",13)} Voice note</span>`;
   if (t === "button" || t === "list") {
     return m.direction === "outbound" ? bvEscape(c) : `👆 Tapped: <b>${bvEscape(c)}</b>`;
   }
@@ -1509,7 +1524,7 @@ async function bvSelectConversation(id) {
         <div style="font-weight:600;font-size:13px;">${bvEscape(bvName(conv))}</div>
         <div style="font-size:11px;color:var(--muted);">${bvEscape(conv.phone)} · ${bvEscape(conv.source || "")} · ${conv.current_state}</div>
       </div>
-      <a href="https://wa.me/${(conv.phone || "").replace(/\D/g, "")}" target="_blank" class="btn btn-a">📱 Open in WhatsApp</a>
+      <a href="https://wa.me/${(conv.phone || "").replace(/\D/g, "")}" target="_blank" class="btn btn-a">${icon("phone",14)} Open in WhatsApp</a>
     </div>
     <div class="conv-msgs" id="convMsgs">
       ${!msgs?.length ? `<div class="empty">No messages yet.</div>` : msgs.map(m => `
@@ -1703,10 +1718,11 @@ window.deleteAccount = async function(id) {
 
 // ── AI CHAT ───────────────────────────────────────────────────────────────────
 let chatOpen = false;
+document.getElementById("chatToggle").innerHTML = icon("chat", 20);
 document.getElementById("chatToggle").addEventListener("click", () => {
   chatOpen = !chatOpen;
   document.getElementById("chatPanel").classList.toggle("open", chatOpen);
-  document.getElementById("chatToggle").textContent = chatOpen ? "✕" : "💬";
+  document.getElementById("chatToggle").innerHTML = icon(chatOpen ? "x" : "chat", 20);
   if (chatOpen) document.getElementById("chInput").focus();
 });
 
