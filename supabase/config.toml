@@ -62,3 +62,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/check-account-status/deno.json"
 entrypoint = "./functions/check-account-status/index.ts"
+
+[functions.send-whatsapp-message]
+enabled = true
+verify_jwt = false
+import_map = "./functions/send-whatsapp-message/deno.json"
+entrypoint = "./functions/send-whatsapp-message/index.ts"
