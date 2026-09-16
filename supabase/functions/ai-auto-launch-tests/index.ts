@@ -315,37 +315,75 @@ async function ensureMetaMedia(supabase: any, accountId: string, creative: any):
   }
 }
 
+// destinationType "whatsapp": click-to-WhatsApp sales creative -- opens a chat
+// with the product's connected WhatsApp number (the Beoliv AI salesperson bot)
+// instead of a website link. Shape per Meta's Click-to-WhatsApp docs: link_data
+// (even for a video asset -- video_data doesn't carry page_welcome_message) with
+// link "https://api.whatsapp.com/send", a WHATSAPP_MESSAGE CTA, and an autofill
+// opening message. Needs live verification against a real PAUSED object before
+// this is fully trusted -- flagged in the launch summary, not assumed correct.
 async function createAdCreative(
   accountId: string,
   pageId: string,
   creative: any,
   media: { videoId?: string; imageHash?: string },
   destinationLink: string,
-  ctaType: string
+  ctaType: string,
+  destinationType: "website" | "whatsapp",
+  productName: string
 ): Promise<string | null> {
   try {
-    const cta = { type: ctaType, value: { link: destinationLink } };
-    const objectStorySpec = media.videoId
-      ? {
-          page_id: pageId,
-          video_data: {
-            video_id: media.videoId,
-            title: creative.headline || undefined,
-            message: creative.primary_text || "",
-            call_to_action: cta,
+    let objectStorySpec: Record<string, any>;
+
+    if (destinationType === "whatsapp") {
+      objectStorySpec = {
+        page_id: pageId,
+        link_data: {
+          image_hash: media.imageHash || undefined,
+          link: "https://api.whatsapp.com/send",
+          message: creative.primary_text || "",
+          name: creative.headline || undefined,
+          description: creative.description || undefined,
+          call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+          page_welcome_message: {
+            type: "VISUAL_EDITOR",
+            version: 2,
+            landing_screen_type: "welcome_message",
+            media_type: "text",
+            text_format: {
+              customer_action_type: "autofill_message",
+              message: {
+                text: `Hi! Interested in ${productName}? 👋`,
+                autofill_message: { content: `Hi, I'm interested in ${productName}` },
+              },
+            },
           },
-        }
-      : {
-          page_id: pageId,
-          link_data: {
-            image_hash: media.imageHash,
-            link: destinationLink,
-            message: creative.primary_text || "",
-            name: creative.headline || undefined,
-            description: creative.description || undefined,
-            call_to_action: cta,
-          },
-        };
+        },
+      };
+    } else {
+      const cta = { type: ctaType, value: { link: destinationLink } };
+      objectStorySpec = media.videoId
+        ? {
+            page_id: pageId,
+            video_data: {
+              video_id: media.videoId,
+              title: creative.headline || undefined,
+              message: creative.primary_text || "",
+              call_to_action: cta,
+            },
+          }
+        : {
+            page_id: pageId,
+            link_data: {
+              image_hash: media.imageHash,
+              link: destinationLink,
+              message: creative.primary_text || "",
+              name: creative.headline || undefined,
+              description: creative.description || undefined,
+              call_to_action: cta,
+            },
+          };
+    }
 
     const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
       method: "POST",
@@ -353,6 +391,10 @@ async function createAdCreative(
       body: JSON.stringify({
         name: `Creative-${creative.file_name}-${Date.now()}`,
         object_story_spec: objectStorySpec,
+        // Opt out of Meta showing this ad bundled with other advertisers' ads
+        // in the same unit (Reels etc.) -- confirmed field via Meta's own docs,
+        // still worth reconfirming against a live response the first time this runs.
+        contextual_multi_ads: { enroll_status: "OPT_OUT" },
         access_token: META_ACCESS_TOKEN,
       }),
     });
@@ -463,23 +505,28 @@ function buildTargetingFromPreset(preset: any): Record<string, any> {
 function buildAdSetPayload(opts: {
   name: string;
   budgetNaira: number;
+  budgetType: "abo" | "cbo";
   targeting: Record<string, any>;
-  pixelId: string;
+  promotedObject: Record<string, any>;
+  optimizationGoal: string;
   startTime?: string | null;
   endTime?: string | null;
 }) {
   const payload: Record<string, any> = {
     name: opts.name,
-    optimization_goal: REAL_OPTIMIZATION_GOAL,
+    optimization_goal: opts.optimizationGoal,
     bid_strategy: REAL_BID_STRATEGY,
     billing_event: "IMPRESSIONS",
-    daily_budget: Math.round(opts.budgetNaira * 100),
     targeting: opts.targeting,
-    // OFFSITE_CONVERSIONS requires promoted_object naming the pixel + event.
-    promoted_object: { pixel_id: opts.pixelId, custom_event_type: "PURCHASE" },
+    promoted_object: opts.promotedObject,
     status: "PAUSED",
     access_token: META_ACCESS_TOKEN,
   };
+  // CBO: budget lives on the campaign, not here -- Meta rejects an ad set that
+  // sets its own budget under a campaign-budget-optimized campaign.
+  if (opts.budgetType === "abo") {
+    payload.daily_budget = Math.round(opts.budgetNaira * 100);
+  }
   if (opts.startTime) payload.start_time = opts.startTime;
   if (opts.endTime) payload.end_time = opts.endTime;
   return payload;
@@ -488,25 +535,48 @@ function buildAdSetPayload(opts: {
 async function launchAdSetGroup(
   supabase: any,
   creative: any
-): Promise<{ campaign_id: string; ad_sets: { meta_id: string; db_id: string; label: string }[] } | null> {
+): Promise<{ campaign_id: string; ad_sets: { meta_id: string; db_id: string; label: string }[] } | { error: string }> {
   try {
     const accountId = (creative.ad_accounts?.meta_ad_account_id || "").replace("act_", "");
     const pixelId = creative.ad_accounts?.meta_pixel_id || Deno.env.get("META_PIXEL_ID") || "";
     const pageId = creative.ad_accounts?.fb_page_id || "";
+    const destinationType: "website" | "whatsapp" = creative.products?.destination_type === "whatsapp" ? "whatsapp" : "website";
+    const whatsappNumber = creative.products?.whatsapp_number || "";
     const destinationLink = creative.products?.landing_page_url || "";
     const ctaType = creative.cta_type || "SHOP_NOW";
+    const productName = creative.products?.product_name || "this product";
+    const budgetType: "abo" | "cbo" = creative.budget_type === "cbo" ? "cbo" : "abo";
     const budgetNaira = 5000;
     // Real column the dashboard's upload form actually writes to is
     // scheduled_for (creative_assets.launch_at exists too but is unused/orphaned).
     const startTime = creative.scheduled_for || null;
     const endTime = creative.campaign_end_date || null;
 
-    if (!pixelId || !pageId || !destinationLink) {
-      console.error(
-        `Missing pixel_id/page_id/landing_page_url for creative ${creative.id} -- check ad_accounts and products rows.`
-      );
-      return null;
+    if (!pageId) {
+      const msg = `Missing fb_page_id for creative ${creative.id} -- check the ad_accounts row.`;
+      console.error(msg);
+      return { error: msg };
     }
+    if (destinationType === "whatsapp" && !whatsappNumber) {
+      const msg = `Product "${productName}" is set to WhatsApp destination but has no whatsapp_number.`;
+      console.error(msg);
+      return { error: msg };
+    }
+    if (destinationType === "website" && (!pixelId || !destinationLink)) {
+      const msg = `Missing pixel_id/landing_page_url for creative ${creative.id} -- check ad_accounts and products rows.`;
+      console.error(msg);
+      return { error: msg };
+    }
+
+    // Optimization goal + promoted_object depend entirely on the destination:
+    // website sales optimizes for the pixel's Purchase event; WhatsApp sales
+    // optimizes for CONVERSATIONS against the connected WhatsApp number --
+    // per Meta's Click-to-WhatsApp docs for Sales-objective campaigns.
+    const optimizationGoal = destinationType === "whatsapp" ? "CONVERSATIONS" : REAL_OPTIMIZATION_GOAL;
+    const promotedObject =
+      destinationType === "whatsapp"
+        ? { page_id: pageId, whatsapp_phone_number: whatsappNumber }
+        : { pixel_id: pixelId, custom_event_type: "PURCHASE" };
 
     // Presets this creative was launched against (selected at upload time in the
     // dashboard). Falls back to the baseline "Advantage+ Broad Control" (slot 1)
@@ -525,32 +595,51 @@ async function launchAdSetGroup(
       presets = data || [];
     }
     if (!presets.length) {
-      console.error(`No active targeting presets available for creative ${creative.id}`);
-      return null;
+      const msg = `No active targeting presets available for creative ${creative.id}`;
+      console.error(msg);
+      return { error: msg };
     }
 
-    // 1. Create campaign
+    // 1. Create campaign. CBO: campaign carries the total daily budget and its
+    // own bid strategy; ABO: budget stays on each ad set (unchanged).
+    const campaignPayload: Record<string, any> = {
+      name: `${productName}-${creative.file_name}-${Date.now()}`,
+      objective: "OUTCOME_SALES",
+      // Required by Meta on every campaign since their special-ads-category
+      // compliance rollout (housing/employment/credit/social issues) --
+      // "NONE" for an ordinary product. Missing this hard-fails campaign
+      // creation with error #100, unrelated to anything else in this payload.
+      special_ad_categories: ["NONE"],
+      // Created PAUSED -- stays paused until a human approves via WhatsApp
+      // (handle-whatsapp-reply flips this + its ad sets to ACTIVE on approval).
+      status: "PAUSED",
+      access_token: META_ACCESS_TOKEN,
+    };
+    if (budgetType === "cbo") {
+      campaignPayload.daily_budget = Math.round(budgetNaira * presets.length * 100);
+      campaignPayload.bid_strategy = REAL_BID_STRATEGY;
+    } else {
+      // Meta now requires this explicitly for ABO campaigns: whether ad sets
+      // can share up to 20% of budget with each other for overall performance.
+      // False matches your real historical pattern -- each ad set's budget
+      // stays independent, no sharing.
+      campaignPayload.is_adset_budget_sharing_enabled = false;
+    }
     const campaignRes = await fetch(`${META_GRAPH_BASE}/act_${accountId}/campaigns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `${creative.products?.product_name || "Campaign"}-${creative.file_name}-${Date.now()}`,
-        objective: "OUTCOME_SALES",
-        // Created PAUSED -- stays paused until a human approves via WhatsApp
-        // (handle-whatsapp-reply flips this + its ad sets to ACTIVE on approval).
-        status: "PAUSED",
-        access_token: META_ACCESS_TOKEN,
-      }),
+      body: JSON.stringify(campaignPayload),
     });
     const campaignData = await campaignRes.json();
     if (!campaignData.id) {
       console.error("Failed to create campaign:", campaignData);
-      return null;
+      return { error: `Campaign creation failed: ${JSON.stringify(campaignData.error || campaignData)}` };
     }
     const campaignId = campaignData.id;
 
     // 2. Create one ad set per selected preset
     const createdAdSets: { row: any; metaId: string; label: string }[] = [];
+    const adSetErrors: string[] = [];
     for (const preset of presets) {
       const targeting = buildTargetingFromPreset(preset);
       const label = preset.preset_name;
@@ -562,8 +651,10 @@ async function launchAdSetGroup(
           buildAdSetPayload({
             name: `${label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
             budgetNaira,
+            budgetType,
             targeting,
-            pixelId,
+            promotedObject,
+            optimizationGoal,
             startTime,
             endTime,
           })
@@ -572,6 +663,7 @@ async function launchAdSetGroup(
       const adsetData = await adsetRes.json();
       if (!adsetData.id) {
         console.error(`Failed to create ad set for preset "${label}":`, adsetData);
+        adSetErrors.push(`"${label}": ${JSON.stringify(adsetData.error || adsetData)}`);
         continue;
       }
 
@@ -583,7 +675,7 @@ async function launchAdSetGroup(
           adset_name: `${label}-${creative.file_name}`,
           creative_id: creative.id,
           targeting_type: preset.targeting_type || "broad",
-          budget_naira: budgetNaira,
+          budget_naira: budgetType === "abo" ? budgetNaira : null,
           ad_account_id: creative.ad_account_id,
           status: "paused",
           age_min: preset.age_min,
@@ -592,7 +684,7 @@ async function launchAdSetGroup(
           states: preset.states,
           countries: preset.countries || ["NG"],
           interests: preset.interests?.length ? { interests: preset.interests } : null,
-          optimization_goal: REAL_OPTIMIZATION_GOAL,
+          optimization_goal: optimizationGoal,
           bid_strategy: REAL_BID_STRATEGY,
         })
         .select("id")
@@ -602,8 +694,9 @@ async function launchAdSetGroup(
     }
 
     if (!createdAdSets.length) {
-      console.error(`No ad sets were successfully created for creative ${creative.id}`);
-      return null;
+      const msg = `No ad sets were successfully created for creative ${creative.id}. ${adSetErrors.join(" | ")}`;
+      console.error(msg);
+      return { error: msg };
     }
 
     // 3. Upload the creative to Meta once, create ONE ad creative from it, then
@@ -612,7 +705,7 @@ async function launchAdSetGroup(
     // would stay empty and deliver nothing even once approved/active.
     const media = await ensureMetaMedia(supabase, accountId, creative);
     if (media) {
-      const adCreativeId = await createAdCreative(accountId, pageId, creative, media, destinationLink, ctaType);
+      const adCreativeId = await createAdCreative(accountId, pageId, creative, media, destinationLink, ctaType, destinationType, productName);
       if (adCreativeId) {
         for (const a of createdAdSets) {
           const adId = await createAdWithCTA(
@@ -634,9 +727,9 @@ async function launchAdSetGroup(
       campaign_id: campaignId,
       ad_sets: createdAdSets.map((a) => ({ meta_id: a.metaId, db_id: a.row.id, label: a.label })),
     };
-  } catch (err) {
+  } catch (err: any) {
     console.error("Launch ad set group error:", err);
-    return null;
+    return { error: `Unhandled error: ${err.message || err}` };
   }
 }
 
@@ -660,7 +753,9 @@ Deno.serve(async (req: Request) => {
     // a creative only auto-launches if the product it's linked to has opted in.
     const { data: pendingCreatives, error: pendingErr } = await supabase
       .from("creative_assets")
-      .select("*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id), products!inner(product_name, landing_page_url, auto_post_enabled)")
+      .select(
+        "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
+      )
       .eq("test_status", "untested")
       .eq("products.auto_post_enabled", true)
       .order("uploaded_at", { ascending: true })
@@ -695,9 +790,13 @@ Deno.serve(async (req: Request) => {
     // One `pending_approvals` row per creative/campaign (that table -- not the
     // nonexistent `launch_approvals` -- is what both the dashboard's Approvals tab
     // and handle-whatsapp-reply actually read).
+    const launchErrors: string[] = [];
     for (const creative of pendingCreatives) {
       const result = await launchAdSetGroup(supabase, creative);
-      if (!result) continue;
+      if ("error" in result) {
+        launchErrors.push(`"${creative.file_name}": ${result.error}`);
+        continue;
+      }
 
       const adSetMetaIds = result.ad_sets.map((a) => a.meta_id);
       totalAdSetsCreated += result.ad_sets.length;
@@ -733,7 +832,7 @@ Deno.serve(async (req: Request) => {
 
     if (launchPlans.length === 0) {
       return new Response(
-        JSON.stringify({ error: "Failed to create any ad sets" }),
+        JSON.stringify({ error: "Failed to create any ad sets", details: launchErrors }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
