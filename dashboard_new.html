@@ -1201,11 +1201,19 @@ async function bvShowCreativeDetail(creativeId) {
   overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
   document.body.appendChild(overlay);
 
-  const [creatives, configs, approvals] = await Promise.all([
-    sbQuery("creative_assets", `id=eq.${creativeId}&select=*,products(product_name,destination_type,whatsapp_number,landing_page_url)`),
-    sbQuery("ad_set_configs", `creative_id=eq.${creativeId}&select=*&order=sort_order.asc`),
-    sbQuery("pending_approvals", `creative_asset_id=eq.${creativeId}&select=*&order=created_at.desc&limit=1`),
-  ]);
+  let creatives, configs, approvals;
+  try {
+    [creatives, configs, approvals] = await Promise.all([
+      sbQuery("creative_assets", `id=eq.${creativeId}&select=*,products(product_name,destination_type,whatsapp_number,landing_page_url)`),
+      sbQuery("ad_set_configs", `creative_id=eq.${creativeId}&select=*&order=sort_order.asc`),
+      sbQuery("pending_approvals", `creative_asset_id=eq.${creativeId}&select=*&order=created_at.desc&limit=1`),
+    ]);
+  } catch (err) {
+    document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="msg err">❌ Failed to load: ${err.message}</div>`;
+    return;
+  }
   const a = creatives?.[0];
   if (!a) {
     document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `<div class="msg err">Creative not found.</div>`;

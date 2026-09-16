@@ -7,6 +7,18 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
+// Browser callers (the dashboard's Publish button, Run Tonight's Batch) send
+// Authorization + Content-Type headers, which triggers a CORS preflight. Every
+// response -- not just the OPTIONS preflight -- needs Access-Control-Allow-Origin
+// or the browser blocks it outright and fetch() throws "Failed to fetch" with
+// no further detail, regardless of the actual HTTP status. Confirmed live: curl
+// (no CORS enforcement) never surfaced this.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+};
+
 // ─── AI SYSTEM: TRAINED ON SENIOR BUYER BEHAVIOR ──────────────────────────────
 
 /**
@@ -837,12 +849,7 @@ async function launchAdSetGroup(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST",
-      },
-    });
+    return new Response("ok", { headers: CORS_HEADERS });
   }
 
   try {
@@ -885,7 +892,7 @@ Deno.serve(async (req: Request) => {
       console.error("Failed to fetch pending creatives:", pendingErr);
       return new Response(JSON.stringify({ error: pendingErr.message }), {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...CORS_HEADERS },
       });
     }
 
@@ -895,7 +902,7 @@ Deno.serve(async (req: Request) => {
           message: "No pending creatives to launch",
           launched: 0,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
       );
     }
 
@@ -955,7 +962,7 @@ Deno.serve(async (req: Request) => {
     if (launchPlans.length === 0) {
       return new Response(
         JSON.stringify({ error: "Failed to create any ad sets", details: launchErrors }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
+        { status: 500, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
       );
     }
 
@@ -992,13 +999,13 @@ ${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n
         budget_naira: totalBudget,
         message: `✅ WhatsApp approval message sent. Reply APPROVE <id> or REJECT <id> per creative.`,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
     );
   } catch (err: any) {
     console.error("Error:", err);
     return new Response(
       JSON.stringify({ error: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
     );
   }
 });
