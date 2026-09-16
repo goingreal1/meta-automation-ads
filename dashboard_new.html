@@ -465,6 +465,16 @@ async function init() {
 
   setInterval(loadAccounts, 60000);
   setInterval(loadApprovalCount, 30000);
+
+  // sessionData was only ever captured once here at page load -- after the
+  // token's normal ~1hr expiry, every request across the whole dashboard was
+  // silently sending a dead Bearer token and failing, making every tab look
+  // empty with no visible error. Refresh it periodically so a long-open tab
+  // (this app has no "session expired" prompt) keeps working.
+  setInterval(async () => {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session) sessionData = session;
+  }, 5 * 60 * 1000);
 }
 
 // ── API HELPERS ───────────────────────────────────────────────────────────────
