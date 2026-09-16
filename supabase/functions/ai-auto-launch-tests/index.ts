@@ -448,16 +448,18 @@ async function createAdWithCTA(
 // old hardcoded broad/narrow_v1/narrow_v2-from-targeting_rules approach, which
 // ignored that system entirely and only ever produced 3 fixed variants.
 
-// Real settings from your actual historical campaigns (pulled from
-// campaigns/ad_sets.meta_raw) -- ABO, OFFSITE_CONVERSIONS, LOWEST_COST_WITHOUT_CAP,
-// Advantage+ audience on. Placements/positions come from the preset when set,
-// falling back to this real historical placement set otherwise.
+// Real settings, refreshed from your most recent actual launch ("New Sales
+// campaign", ad sets 1-5, act_643541631210844) -- ABO, OFFSITE_CONVERSIONS,
+// LOWEST_COST_WITHOUT_CAP, Advantage+ audience with individual_setting (a
+// newer sub-field Meta added -- which specific dimensions, age/gender, it's
+// allowed to expand), broader placements than the earlier Lunessa-retargeting
+// data this was first based on, and location_types alongside bare countries.
 const REAL_OPTIMIZATION_GOAL = "OFFSITE_CONVERSIONS";
 const REAL_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
 const REAL_PLACEMENTS = {
   publisher_platforms: ["facebook", "instagram"],
-  facebook_positions: ["feed"],
-  instagram_positions: ["stream", "reels"],
+  facebook_positions: ["feed", "marketplace", "facebook_reels", "profile_feed", "notification"],
+  instagram_positions: ["stream", "story", "reels", "explore_home", "profile_feed"],
   device_platforms: ["mobile"],
 };
 const GENDER_MAP: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
@@ -468,7 +470,7 @@ function buildTargetingFromPreset(preset: any): Record<string, any> {
     genders: genders.length ? genders : [1, 2],
     age_min: preset.age_min ?? 20,
     age_max: preset.age_max ?? 60,
-    targeting_automation: { advantage_audience: 1 },
+    targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: 1 } },
     publisher_platforms: preset.publisher_platforms?.length ? preset.publisher_platforms : REAL_PLACEMENTS.publisher_platforms,
     facebook_positions: preset.facebook_positions?.length ? preset.facebook_positions : REAL_PLACEMENTS.facebook_positions,
     instagram_positions: preset.instagram_positions?.length ? preset.instagram_positions : REAL_PLACEMENTS.instagram_positions,
@@ -493,7 +495,10 @@ function buildTargetingFromPreset(preset: any): Record<string, any> {
   if (preset.resolved_region_keys?.length) {
     targeting.geo_locations = { regions: preset.resolved_region_keys.map((key: string) => ({ key })) };
   } else {
-    targeting.geo_locations = { countries: preset.countries?.length ? preset.countries : ["NG"] };
+    targeting.geo_locations = {
+      countries: preset.countries?.length ? preset.countries : ["NG"],
+      location_types: ["frequently_in", "home", "recent"],
+    };
     if (preset.states?.length) {
       console.warn(`Preset "${preset.preset_name}" has states set but no resolved_region_keys yet -- using whole-country targeting instead of guessing region keys.`);
     }

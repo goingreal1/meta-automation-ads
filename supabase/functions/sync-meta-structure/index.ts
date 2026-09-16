@@ -52,7 +52,11 @@ Deno.serve(async (_req: Request) => {
     }
 
     for (const account of adAccounts) {
-      const acctPath = `act_${account.meta_ad_account_id}`;
+      // Some ad_accounts rows have meta_ad_account_id stored WITH the "act_"
+      // prefix already baked in (data entry inconsistency, not this account's
+      // fault) -- strip it first so this never doubles up into "act_act_...",
+      // which Meta rejects as a nonexistent object.
+      const acctPath = `act_${(account.meta_ad_account_id || "").replace(/^act_/, "")}`;
 
       // 1. Pull all campaigns for this account
       let metaCampaigns: any[] = [];
@@ -143,7 +147,11 @@ Deno.serve(async (_req: Request) => {
             await supabase.from("creatives").upsert({
               meta_ad_id: ad.id,
               creative_name: ad.name,
-              status: (ad.status ?? "").toLowerCase() === "active" ? "testing" : (ad.status ?? "").toLowerCase(),
+              // creatives.status has a check constraint allowing only testing/winner/
+              // scaling/fatiguing/killed/retired -- Meta's real statuses (PAUSED,
+              // ARCHIVED, DELETED, etc.) don't match any of those and were failing
+              // this upsert entirely, silently dropping every non-ACTIVE ad's creative.
+              status: (ad.status ?? "").toLowerCase() === "active" ? "testing" : "retired",
               post_id: ad.id,
               primary_text: primaryText,
               headline: headline,
