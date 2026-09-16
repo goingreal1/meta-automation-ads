@@ -709,6 +709,17 @@ async function launchAdSetGroup(
     }
     const localCampaignId = campaignRow.id;
 
+    // If anything below fails before any ad set exists, delete the campaign
+    // we just created instead of leaving an empty orphaned shell on the real
+    // ad account -- confirmed via live testing this was happening on every
+    // failed launch (media upload failures especially, since that's an early,
+    // easy-to-hit failure point).
+    const abortAndCleanup = async (errorMsg: string) => {
+      await fetch(`${META_GRAPH_BASE}/${campaignId}?access_token=${META_ACCESS_TOKEN}`, { method: "DELETE" }).catch(() => {});
+      await supabase.from("campaigns").delete().eq("id", localCampaignId);
+      return { error: errorMsg };
+    };
+
     // 2. Upload the creative to Meta and create ONE ad creative from it, before
     // any ad sets -- ad_sets.creative_id is a local uuid FK into the `creatives`
     // table (not creative_assets, a separate legacy table), so ad sets can't be
@@ -716,11 +727,11 @@ async function launchAdSetGroup(
     // creative.
     const media = await ensureMetaMedia(supabase, accountId, creative);
     if (!media || media.error) {
-      return { error: `Failed to upload media to Meta for creative ${creative.id}: ${media?.error || "unknown error"}` };
+      return await abortAndCleanup(`Failed to upload media to Meta for creative ${creative.id}: ${media?.error || "unknown error"}`);
     }
     const adCreativeId = await createAdCreative(accountId, pageId, creative, media, destinationLink, ctaType, destinationType, productName);
     if (!adCreativeId) {
-      return { error: `Failed to create ad creative on Meta for creative ${creative.id}.` };
+      return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${creative.id}.`);
     }
     const { data: localCreativeRow, error: localCreativeErr } = await supabase
       .from("creatives")
@@ -743,7 +754,7 @@ async function launchAdSetGroup(
       .single();
     if (localCreativeErr || !localCreativeRow) {
       console.error("Failed to record local creative row:", localCreativeErr);
-      return { error: `Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}` };
+      return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
     }
     const localCreativeId = localCreativeRow.id;
 
@@ -822,7 +833,7 @@ async function launchAdSetGroup(
     if (!createdAdSets.length) {
       const msg = `No ad sets were successfully created for creative ${creative.id}. ${adSetErrors.join(" | ")}`;
       console.error(msg);
-      return { error: msg };
+      return await abortAndCleanup(msg);
     }
 
     // 4. Attach an ad under every ad set that was actually created, all reusing

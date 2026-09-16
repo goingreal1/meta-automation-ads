@@ -1206,7 +1206,7 @@ async function bvShowCreativeDetail(creativeId) {
     [creatives, configs, approvals] = await Promise.all([
       sbQuery("creative_assets", `id=eq.${creativeId}&select=*,products(product_name,destination_type,whatsapp_number,landing_page_url)`),
       sbQuery("ad_set_configs", `creative_id=eq.${creativeId}&select=*&order=sort_order.asc`),
-      sbQuery("pending_approvals", `creative_asset_id=eq.${creativeId}&select=*&order=created_at.desc&limit=1`),
+      sbQuery("pending_approvals", `creative_asset_id=eq.${creativeId}&select=*&order=requested_at.desc&limit=1`),
     ]);
   } catch (err) {
     document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
