@@ -24,8 +24,42 @@ interface AdSet {
   meta_raw: Record<string, any>;
 }
 
+// Copies every ad (and its existing Meta ad-creative -- no re-upload needed)
+// from the parent ad set onto the newly-created one, so a "duplicate" actually
+// delivers instead of sitting empty like ad sets created by this function used to.
+async function copyAdsToNewAdSet(parentMetaAdsetId: string, newMetaAdsetId: string, accountId: string): Promise<number> {
+  let copied = 0;
+  try {
+    const res = await fetch(
+      `${META_GRAPH_BASE}/${parentMetaAdsetId}/ads?fields=name,creative{id}&access_token=${META_ACCESS_TOKEN}`
+    );
+    const data = await res.json();
+    for (const ad of data.data ?? []) {
+      if (!ad.creative?.id) continue;
+      const adRes = await fetch(`${META_GRAPH_BASE}/act_${accountId}/ads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adset_id: newMetaAdsetId,
+          creative: { creative_id: ad.creative.id },
+          status: 'PAUSED',
+          name: `${ad.name || 'AD'}-copy-${Date.now()}`,
+          access_token: META_ACCESS_TOKEN,
+        }),
+      });
+      const adData = await adRes.json();
+      if (adData.id) copied++;
+      else console.error('Failed to copy ad:', adData);
+    }
+  } catch (err) {
+    console.error('copyAdsToNewAdSet error:', err);
+  }
+  return copied;
+}
+
 async function createNarrowAdSet(
   parentAdSet: AdSet,
+  accountId: string,
   narrowType: 'narrow_v1' | 'narrow_v2',
   narrowStates: string[],
   narrowGenders: number[]
@@ -48,9 +82,15 @@ async function createNarrowAdSet(
 
     const narrowAdsetName = `${parentAdSet.adset_name} - ${narrowType.replace('_', ' ').toUpperCase()}`;
 
+    // Duplicating an already-running ad set is a deliberate, manual action (not
+    // unattended automation), so this creates ACTIVE like the original always
+    // intended -- unlike the nightly auto-launch pipeline, which stays PAUSED
+    // until a human approves via WhatsApp.
     const payload = {
       name: narrowAdsetName,
-      optimization_goal: parentAdSet.optimization_goal || 'LINK_CLICKS',
+      campaign_id: parentAdSet.campaign_id, // real Meta campaign id -- required, was missing entirely before
+      optimization_goal: parentAdSet.optimization_goal || 'OFFSITE_CONVERSIONS',
+      bid_strategy: parentAdSet.bid_strategy || 'LOWEST_COST_WITHOUT_CAP',
       billing_event: 'IMPRESSIONS',
       daily_budget: parentAdSet.budget_naira * 100, // Convert to kobo
       targeting: targeting,
@@ -58,8 +98,10 @@ async function createNarrowAdSet(
       access_token: META_ACCESS_TOKEN,
     };
 
-    // Call Meta API to create ad set
-    const res = await fetch(`${META_GRAPH_BASE}/${parentAdSet.meta_raw?.campaign_id || 'act_' + META_AD_ACCOUNT_ID}/adsets`, {
+    // Fixed: this used to POST to `{campaign_id}/adsets` (wrong resource, and
+    // campaign_id was undefined anyway since meta_raw never held it) -- the
+    // correct call is POST act_{account}/adsets with campaign_id in the body.
+    const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adsets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -67,8 +109,8 @@ async function createNarrowAdSet(
 
     const data = await res.json();
 
-    if (data.error) {
-      console.error(`Error creating ${narrowType} on Meta:`, data.error);
+    if (data.error || !data.id) {
+      console.error(`Error creating ${narrowType} on Meta:`, data.error || data);
       return null;
     }
 
@@ -108,10 +150,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 1. Fetch the broad ad set
+    // 1. Fetch the broad ad set (joined to its ad account for the real Meta
+    // account id -- this used to fall back to a single hardcoded account,
+    // which was wrong for every account except one).
     const { data: broadAdSet, error: adSetError } = await supabase
       .from('ad_sets')
-      .select('*')
+      .select('*, ad_accounts(meta_ad_account_id)')
       .eq('id', adSetId)
       .eq('targeting_type', 'broad')
       .single();
@@ -122,6 +166,8 @@ Deno.serve(async (req: Request) => {
         { status: 404, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
+    const accountId = ((broadAdSet as any).ad_accounts?.meta_ad_account_id || META_AD_ACCOUNT_ID).replace('act_', '');
 
     // 2. Fetch narrow targeting rules
     const { data: ruleV1 } = await supabase
@@ -146,6 +192,7 @@ Deno.serve(async (req: Request) => {
     // 3. Create Narrow V1 on Meta
     const narrowV1Result = await createNarrowAdSet(
       broadAdSet as AdSet,
+      accountId,
       'narrow_v1',
       ruleV1.states || [],
       ruleV1.genders || []
@@ -154,6 +201,7 @@ Deno.serve(async (req: Request) => {
     // 4. Create Narrow V2 on Meta
     const narrowV2Result = await createNarrowAdSet(
       broadAdSet as AdSet,
+      accountId,
       'narrow_v2',
       ruleV2.states || [],
       ruleV2.genders || []
@@ -165,6 +213,13 @@ Deno.serve(async (req: Request) => {
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
+    // Copy the parent's existing ad(s)/creative onto each new ad set -- no
+    // re-upload needed, this is what makes the duplicate actually deliver.
+    const [copiedV1, copiedV2] = await Promise.all([
+      copyAdsToNewAdSet(broadAdSet.meta_adset_id, narrowV1Result.meta_adset_id, accountId),
+      copyAdsToNewAdSet(broadAdSet.meta_adset_id, narrowV2Result.meta_adset_id, accountId),
+    ]);
 
     // 5. Insert Narrow V1 into database
     const { data: narrowV1Data, error: narrowV1Error } = await supabase
@@ -240,6 +295,7 @@ Deno.serve(async (req: Request) => {
         narrow_v1_meta_id: narrowV1Result.meta_adset_id,
         narrow_v2_id: narrowV2Data?.id,
         narrow_v2_meta_id: narrowV2Result.meta_adset_id,
+        ads_copied: { narrow_v1: copiedV1, narrow_v2: copiedV2 },
         message: 'Successfully created narrow ad set duplicates',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }

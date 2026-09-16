@@ -1327,7 +1327,7 @@ async function renderProducts(el) {
       <div class="ph"><div class="ph-title">Products</div><div class="ph-count">${prods?.length ?? 0}</div></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th></tr>
+        <tr><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th></tr>
         ${prods.map(p => {
           const pc = creativesByProduct[p.id] || [];
           const thumbs = pc.slice(0, 4).map(c => c.asset_type === "video"
@@ -1343,6 +1343,12 @@ async function renderProducts(el) {
           <td>${p.currency || "NGN"}</td>
           <td>${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : p.default_order_value_naira}</td>
           <td><span class="pill ${p.is_active ? "active" : "paused"}">${p.is_active ? "active" : "inactive"}</span></td>
+          <td>
+            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:var(--text2);">
+              <input type="checkbox" class="autoPostToggle" data-pid="${p.id}" ${p.auto_post_enabled ? "checked" : ""}>
+              ${p.auto_post_enabled ? "On" : "Off"}
+            </label>
+          </td>
         </tr>`;
         }).join("")}
       </table></div>`}
@@ -1365,6 +1371,26 @@ async function renderProducts(el) {
     } catch(err) {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
     }
+  });
+
+  // Gate for ai-auto-launch-tests: a creative only auto-launches if the product
+  // it's linked to has this on. Off by default, so nothing posts until you opt in.
+  document.querySelectorAll(".autoPostToggle").forEach(cb => {
+    cb.addEventListener("change", async e => {
+      const pid = e.target.dataset.pid;
+      const enabled = e.target.checked;
+      e.target.disabled = true;
+      try {
+        const { error } = await supabaseClient.from('products').update({ auto_post_enabled: enabled }).eq('id', pid);
+        if (error) throw error;
+        e.target.nextSibling.textContent = enabled ? "On" : "Off";
+      } catch (err) {
+        alert("Failed to update auto-post: " + err.message);
+        e.target.checked = !enabled;
+      } finally {
+        e.target.disabled = false;
+      }
+    });
   });
 }
 

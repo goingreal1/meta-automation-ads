@@ -37,6 +37,8 @@ Deno.serve(async (req: Request) => {
     const ctaType = (formData.get('cta_type') as string) || 'SHOP_NOW';
     const uploadedBy = (formData.get('uploaded_by') as string) || null;
     const adAccountId = formData.get('ad_account_id') as string;
+    const productId = (formData.get('product_id') as string) || null;
+    const launchAt = (formData.get('launch_at') as string) || null;
     let assetType = formData.get('asset_type') as string;
 
     if (!file || !adAccountId) {
@@ -107,6 +109,8 @@ Deno.serve(async (req: Request) => {
         cta_type: ctaType,
         uploaded_by: uploadedBy,
         ad_account_id: adAccountId,
+        product_id: productId,
+        launch_at: launchAt,
         test_status: 'untested',
         uploaded_at: new Date().toISOString(),
       })

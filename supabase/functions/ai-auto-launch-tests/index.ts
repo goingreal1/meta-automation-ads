@@ -273,262 +273,366 @@ async function sendWhatsAppApproval(message: string): Promise<boolean> {
   }
 }
 
-// ─── CREATE AD WITH OPTIMIZED CTA ──────────────────────────────────────────────
+// ─── UPLOAD CREATIVE TO META + CREATE THE AD CREATIVE ──────────────────────────
+// This is the piece that was entirely missing before: nothing ever pushed the
+// uploaded video/image to Meta or created a real ad-creative object, so
+// createAdWithCTA (below) had no real creative_id to reference and was never
+// even called. Caches the result on creative_assets.meta_video_id /
+// meta_image_hash (columns already existed, unused) so a re-launch or
+// duplicate doesn't re-upload the same file.
+
+async function ensureMetaMedia(supabase: any, accountId: string, creative: any): Promise<{ videoId?: string; imageHash?: string } | null> {
+  if (creative.meta_video_id) return { videoId: creative.meta_video_id };
+  if (creative.meta_image_hash) return { imageHash: creative.meta_image_hash };
+
+  const isVideo = creative.asset_type === "video";
+  try {
+    if (isVideo) {
+      const params = new URLSearchParams({ file_url: creative.public_url, access_token: META_ACCESS_TOKEN });
+      const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/advideos`, { method: "POST", body: params });
+      const data = await res.json();
+      if (!data.id) {
+        console.error("Video upload failed:", data);
+        return null;
+      }
+      await supabase.from("creative_assets").update({ meta_video_id: data.id }).eq("id", creative.id);
+      return { videoId: data.id };
+    } else {
+      const params = new URLSearchParams({ url: creative.public_url, access_token: META_ACCESS_TOKEN });
+      const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adimages`, { method: "POST", body: params });
+      const data = await res.json();
+      const hash = Object.values(data.images ?? {})[0] as any;
+      if (!hash?.hash) {
+        console.error("Image upload failed:", data);
+        return null;
+      }
+      await supabase.from("creative_assets").update({ meta_image_hash: hash.hash }).eq("id", creative.id);
+      return { imageHash: hash.hash };
+    }
+  } catch (err) {
+    console.error("ensureMetaMedia error:", err);
+    return null;
+  }
+}
+
+async function createAdCreative(
+  accountId: string,
+  pageId: string,
+  creative: any,
+  media: { videoId?: string; imageHash?: string },
+  destinationLink: string,
+  ctaType: string
+): Promise<string | null> {
+  try {
+    const cta = { type: ctaType, value: { link: destinationLink } };
+    const objectStorySpec = media.videoId
+      ? {
+          page_id: pageId,
+          video_data: {
+            video_id: media.videoId,
+            title: creative.headline || undefined,
+            message: creative.primary_text || "",
+            call_to_action: cta,
+          },
+        }
+      : {
+          page_id: pageId,
+          link_data: {
+            image_hash: media.imageHash,
+            link: destinationLink,
+            message: creative.primary_text || "",
+            name: creative.headline || undefined,
+            description: creative.description || undefined,
+            call_to_action: cta,
+          },
+        };
+
+    const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `Creative-${creative.file_name}-${Date.now()}`,
+        object_story_spec: objectStorySpec,
+        access_token: META_ACCESS_TOKEN,
+      }),
+    });
+    const data = await res.json();
+    if (!data.id) {
+      console.error("Ad creative creation failed:", data);
+      return null;
+    }
+    return data.id;
+  } catch (err) {
+    console.error("createAdCreative error:", err);
+    return null;
+  }
+}
+
+// ─── CREATE THE AD (attaches the ad creative under one ad set) ────────────────
 
 async function createAdWithCTA(
-  campaignId: string,
   adsetId: string,
   creativeId: string,
-  callToAction: string,
+  adName: string,
   accountId: string
 ): Promise<string | null> {
   try {
     const adPayload = {
       adset_id: adsetId,
       creative: { creative_id: creativeId },
-      status: "ACTIVE",
-      name: `AD-${callToAction}-${Date.now()}`,
-      call_to_action_type: callToAction,
+      status: "PAUSED", // stays paused until the campaign/ad set is approved
+      name: adName,
       access_token: META_ACCESS_TOKEN,
     };
-    const cleanId = (accountId || "").replace("act_", "");
-    const res = await fetch(`${META_GRAPH_BASE}/act_${cleanId}/ads`, {
+    const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/ads`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(adPayload),
     });
     const data = await res.json();
+    if (!data.id) console.error("Ad creation failed:", data);
     return data.id || null;
   } catch (err) {
-    console.error("Error creating ad with CTA:", err);
+    console.error("Error creating ad:", err);
     return null;
   }
 }
 
-// ─── CREATE BROAD & NARROW AD SETS ────────────────────────────────────────────
+// ─── CREATE ONE AD SET PER SELECTED TARGETING PRESET ───────────────────────────
+// The dashboard's upload form already lets you pick which targeting_presets to
+// launch a creative against (creative_assets.selected_preset_ids) -- real,
+// already-populated presets like "Male Broad 25-65", "Retargeting Pool" (with a
+// real custom_audience_id), "Converting States (NG)", etc. This replaces the
+// old hardcoded broad/narrow_v1/narrow_v2-from-targeting_rules approach, which
+// ignored that system entirely and only ever produced 3 fixed variants.
+
+// Real settings from your actual historical campaigns (pulled from
+// campaigns/ad_sets.meta_raw) -- ABO, OFFSITE_CONVERSIONS, LOWEST_COST_WITHOUT_CAP,
+// Advantage+ audience on. Placements/positions come from the preset when set,
+// falling back to this real historical placement set otherwise.
+const REAL_OPTIMIZATION_GOAL = "OFFSITE_CONVERSIONS";
+const REAL_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
+const REAL_PLACEMENTS = {
+  publisher_platforms: ["facebook", "instagram"],
+  facebook_positions: ["feed"],
+  instagram_positions: ["stream", "reels"],
+  device_platforms: ["mobile"],
+};
+const GENDER_MAP: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
+
+function buildTargetingFromPreset(preset: any): Record<string, any> {
+  const genders = (preset.genders ?? ["all"]).flatMap((g: string) => GENDER_MAP[g] ?? []);
+  const targeting: Record<string, any> = {
+    genders: genders.length ? genders : [1, 2],
+    age_min: preset.age_min ?? 20,
+    age_max: preset.age_max ?? 60,
+    targeting_automation: { advantage_audience: 1 },
+    publisher_platforms: preset.publisher_platforms?.length ? preset.publisher_platforms : REAL_PLACEMENTS.publisher_platforms,
+    facebook_positions: preset.facebook_positions?.length ? preset.facebook_positions : REAL_PLACEMENTS.facebook_positions,
+    instagram_positions: preset.instagram_positions?.length ? preset.instagram_positions : REAL_PLACEMENTS.instagram_positions,
+    device_platforms: REAL_PLACEMENTS.device_platforms,
+  };
+
+  if (preset.custom_audience_id) {
+    targeting.custom_audiences = [{ id: preset.custom_audience_id }];
+  }
+  if (preset.interests?.length) {
+    // Best-effort: Meta's real interest targeting needs interest IDs (resolved via
+    // /search?type=adinterest), not just names. Passing names through may be
+    // rejected -- flagging rather than silently pretending this is solid.
+    targeting.flexible_spec = [{ interests: preset.interests.map((name: string) => ({ name })) }];
+  }
+
+  // preset.states holds human-readable names ("Lagos State"), not valid Meta
+  // region keys -- only resolved_region_keys (not yet populated on any preset as
+  // of this build) are safe to send as geo_locations.regions. Guessing the
+  // mapping risks silently targeting the wrong place with real spend, so this
+  // falls back to whole-country instead when keys aren't resolved.
+  if (preset.resolved_region_keys?.length) {
+    targeting.geo_locations = { regions: preset.resolved_region_keys.map((key: string) => ({ key })) };
+  } else {
+    targeting.geo_locations = { countries: preset.countries?.length ? preset.countries : ["NG"] };
+    if (preset.states?.length) {
+      console.warn(`Preset "${preset.preset_name}" has states set but no resolved_region_keys yet -- using whole-country targeting instead of guessing region keys.`);
+    }
+  }
+
+  return targeting;
+}
+
+function buildAdSetPayload(opts: {
+  name: string;
+  budgetNaira: number;
+  targeting: Record<string, any>;
+  pixelId: string;
+  startTime?: string | null;
+  endTime?: string | null;
+}) {
+  const payload: Record<string, any> = {
+    name: opts.name,
+    optimization_goal: REAL_OPTIMIZATION_GOAL,
+    bid_strategy: REAL_BID_STRATEGY,
+    billing_event: "IMPRESSIONS",
+    daily_budget: Math.round(opts.budgetNaira * 100),
+    targeting: opts.targeting,
+    // OFFSITE_CONVERSIONS requires promoted_object naming the pixel + event.
+    promoted_object: { pixel_id: opts.pixelId, custom_event_type: "PURCHASE" },
+    status: "PAUSED",
+    access_token: META_ACCESS_TOKEN,
+  };
+  if (opts.startTime) payload.start_time = opts.startTime;
+  if (opts.endTime) payload.end_time = opts.endTime;
+  return payload;
+}
 
 async function launchAdSetGroup(
   supabase: any,
   creative: any
-): Promise<{
-  campaign_id: string;
-  broad_adset: { meta_id: string; db_id: string } | null;
-  narrow_v1: { meta_id: string; db_id: string } | null;
-  narrow_v2: { meta_id: string; db_id: string } | null;
-} | null> {
+): Promise<{ campaign_id: string; ad_sets: { meta_id: string; db_id: string; label: string }[] } | null> {
   try {
     const accountId = (creative.ad_accounts?.meta_ad_account_id || "").replace("act_", "");
+    const pixelId = creative.ad_accounts?.meta_pixel_id || Deno.env.get("META_PIXEL_ID") || "";
+    const pageId = creative.ad_accounts?.fb_page_id || "";
+    const destinationLink = creative.products?.landing_page_url || "";
+    const ctaType = creative.cta_type || "SHOP_NOW";
+    const budgetNaira = 5000;
+    // Real column the dashboard's upload form actually writes to is
+    // scheduled_for (creative_assets.launch_at exists too but is unused/orphaned).
+    const startTime = creative.scheduled_for || null;
+    const endTime = creative.campaign_end_date || null;
+
+    if (!pixelId || !pageId || !destinationLink) {
+      console.error(
+        `Missing pixel_id/page_id/landing_page_url for creative ${creative.id} -- check ad_accounts and products rows.`
+      );
+      return null;
+    }
+
+    // Presets this creative was launched against (selected at upload time in the
+    // dashboard). Falls back to the baseline "Advantage+ Broad Control" (slot 1)
+    // if none were selected -- matches that preset's own documented purpose.
+    let presets: any[] = [];
+    if (creative.selected_preset_ids?.length) {
+      const { data } = await supabase
+        .from("targeting_presets")
+        .select("*")
+        .in("id", creative.selected_preset_ids)
+        .eq("is_active", true);
+      presets = data || [];
+    }
+    if (!presets.length) {
+      const { data } = await supabase.from("targeting_presets").select("*").eq("slot_number", 1).eq("is_active", true).limit(1);
+      presets = data || [];
+    }
+    if (!presets.length) {
+      console.error(`No active targeting presets available for creative ${creative.id}`);
+      return null;
+    }
 
     // 1. Create campaign
-    const campaignRes = await fetch(
-      `${META_GRAPH_BASE}/act_${accountId}/campaigns`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `Campaign-${creative.asset_name}-${Date.now()}`,
-          objective: "LINK_CLICKS",
-          // Created PAUSED -- stays paused until a human approves via WhatsApp
-          // (handle-whatsapp-reply flips this + its ad sets to ACTIVE on approval).
-          status: "PAUSED",
-          access_token: META_ACCESS_TOKEN,
-        }),
-      }
-    );
-
+    const campaignRes = await fetch(`${META_GRAPH_BASE}/act_${accountId}/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${creative.products?.product_name || "Campaign"}-${creative.file_name}-${Date.now()}`,
+        objective: "OUTCOME_SALES",
+        // Created PAUSED -- stays paused until a human approves via WhatsApp
+        // (handle-whatsapp-reply flips this + its ad sets to ACTIVE on approval).
+        status: "PAUSED",
+        access_token: META_ACCESS_TOKEN,
+      }),
+    });
     const campaignData = await campaignRes.json();
     if (!campaignData.id) {
-      console.error("Failed to create campaign");
+      console.error("Failed to create campaign:", campaignData);
       return null;
     }
-
     const campaignId = campaignData.id;
 
-    // 2. Create BROAD ad set (all ages 20-60, all genders)
-    const broadRes = await fetch(`${META_GRAPH_BASE}/${campaignId}/adsets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `BROAD-${creative.asset_name.substring(0, 20)}-${Date.now()}`,
-        optimization_goal: "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        daily_budget: 5000 * 100, // ₦5k in kobo
-        targeting: {
-          genders: [1, 2],
-          age_min: 20,
-          age_max: 60,
-          geo_locations: {
-            regions: [
-              { key: "NG-LA" },
-              { key: "NG-OG" },
-              { key: "NG-OY" },
-              { key: "NG-KN" },
-            ],
-          },
-        },
-        status: "PAUSED",
-        access_token: META_ACCESS_TOKEN,
-      }),
-    });
+    // 2. Create one ad set per selected preset
+    const createdAdSets: { row: any; metaId: string; label: string }[] = [];
+    for (const preset of presets) {
+      const targeting = buildTargetingFromPreset(preset);
+      const label = preset.preset_name;
 
-    const broadData = await broadRes.json();
-    if (!broadData.id) {
-      console.error("Failed to create broad ad set");
+      const adsetRes = await fetch(`${META_GRAPH_BASE}/${campaignId}/adsets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          buildAdSetPayload({
+            name: `${label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
+            budgetNaira,
+            targeting,
+            pixelId,
+            startTime,
+            endTime,
+          })
+        ),
+      });
+      const adsetData = await adsetRes.json();
+      if (!adsetData.id) {
+        console.error(`Failed to create ad set for preset "${label}":`, adsetData);
+        continue;
+      }
+
+      const { data: row } = await supabase
+        .from("ad_sets")
+        .insert({
+          campaign_id: campaignId,
+          meta_adset_id: adsetData.id,
+          adset_name: `${label}-${creative.file_name}`,
+          creative_id: creative.id,
+          targeting_type: preset.targeting_type || "broad",
+          budget_naira: budgetNaira,
+          ad_account_id: creative.ad_account_id,
+          status: "paused",
+          age_min: preset.age_min,
+          age_max: preset.age_max,
+          genders: targeting.genders,
+          states: preset.states,
+          countries: preset.countries || ["NG"],
+          interests: preset.interests?.length ? { interests: preset.interests } : null,
+          optimization_goal: REAL_OPTIMIZATION_GOAL,
+          bid_strategy: REAL_BID_STRATEGY,
+        })
+        .select("id")
+        .single();
+
+      if (row) createdAdSets.push({ row, metaId: adsetData.id, label });
+    }
+
+    if (!createdAdSets.length) {
+      console.error(`No ad sets were successfully created for creative ${creative.id}`);
       return null;
     }
 
-    // Save BROAD to DB
-    const { data: broadRow } = await supabase
-      .from("ad_sets")
-      .insert({
-        campaign_id: campaignId,
-        meta_adset_id: broadData.id,
-        adset_name: `BROAD-${creative.asset_name}`,
-        creative_id: creative.id,
-        targeting_type: "broad",
-        budget_naira: 5000,
-        ad_account_id: creative.ad_account_id,
-        status: "paused",
-        age_min: 20,
-        age_max: 60,
-        genders: [1, 2],
-        states: ["Lagos", "Ogun", "Oyo", "Kano"],
-        countries: ["NG"],
-      })
-      .select("id")
-      .single();
-
-    // 3. Create NARROW_V1 (with first targeting rule)
-    const { data: ruleV1 } = await supabase
-      .from("targeting_rules")
-      .select("*")
-      .eq("targeting_type", "narrow_v1")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const narrowV1States = ruleV1?.states || ["Lagos", "Ogun"];
-    const narrowV1Genders = ruleV1?.genders || [1];
-
-    const narrowV1Res = await fetch(`${META_GRAPH_BASE}/${campaignId}/adsets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `NARROW_V1-${creative.asset_name.substring(0, 20)}-${Date.now()}`,
-        optimization_goal: "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        daily_budget: 5000 * 100,
-        targeting: {
-          genders: narrowV1Genders,
-          age_min: ruleV1?.age_min || 20,
-          age_max: ruleV1?.age_max || 60,
-          geo_locations: {
-            regions: narrowV1States.map((s: string) => ({
-              key: `NG-${s.substring(0, 2).toUpperCase()}`,
-            })),
-          },
-        },
-        status: "PAUSED",
-        access_token: META_ACCESS_TOKEN,
-      }),
-    });
-
-    const narrowV1Data = await narrowV1Res.json();
-    let narrowV1Row: any = null;
-    if (narrowV1Data.id && broadRow?.id) {
-      const { data: nv1 } = await supabase
-        .from("ad_sets")
-        .insert({
-          campaign_id: campaignId,
-          meta_adset_id: narrowV1Data.id,
-          adset_name: `NARROW_V1-${creative.asset_name}`,
-          creative_id: creative.id,
-          targeting_type: "narrow_v1",
-          parent_adset_id: broadRow.id,
-          created_from: "auto_duplicate",
-          budget_naira: 5000,
-          ad_account_id: creative.ad_account_id,
-          status: "paused",
-          age_min: ruleV1?.age_min || 20,
-          age_max: ruleV1?.age_max || 60,
-          genders: narrowV1Genders,
-          states: narrowV1States,
-          countries: ["NG"],
-        })
-        .select("id")
-        .single();
-      narrowV1Row = nv1;
-    }
-
-    // 4. Create NARROW_V2 (with second targeting rule)
-    const { data: ruleV2 } = await supabase
-      .from("targeting_rules")
-      .select("*")
-      .eq("targeting_type", "narrow_v2")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const narrowV2States = ruleV2?.states || ["Abuja", "Rivers"];
-    const narrowV2Genders = ruleV2?.genders || [2];
-
-    const narrowV2Res = await fetch(`${META_GRAPH_BASE}/${campaignId}/adsets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `NARROW_V2-${creative.asset_name.substring(0, 20)}-${Date.now()}`,
-        optimization_goal: "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        daily_budget: 5000 * 100,
-        targeting: {
-          genders: narrowV2Genders,
-          age_min: ruleV2?.age_min || 20,
-          age_max: ruleV2?.age_max || 60,
-          geo_locations: {
-            regions: narrowV2States.map((s: string) => ({
-              key: `NG-${s.substring(0, 2).toUpperCase()}`,
-            })),
-          },
-        },
-        status: "PAUSED",
-        access_token: META_ACCESS_TOKEN,
-      }),
-    });
-
-    const narrowV2Data = await narrowV2Res.json();
-    let narrowV2Row: any = null;
-    if (narrowV2Data.id && broadRow?.id) {
-      const { data: nv2 } = await supabase
-        .from("ad_sets")
-        .insert({
-          campaign_id: campaignId,
-          meta_adset_id: narrowV2Data.id,
-          adset_name: `NARROW_V2-${creative.asset_name}`,
-          creative_id: creative.id,
-          targeting_type: "narrow_v2",
-          parent_adset_id: broadRow.id,
-          created_from: "auto_duplicate",
-          budget_naira: 5000,
-          ad_account_id: creative.ad_account_id,
-          status: "paused",
-          age_min: ruleV2?.age_min || 20,
-          age_max: ruleV2?.age_max || 60,
-          genders: narrowV2Genders,
-          states: narrowV2States,
-          countries: ["NG"],
-        })
-        .select("id")
-        .single();
-      narrowV2Row = nv2;
+    // 3. Upload the creative to Meta once, create ONE ad creative from it, then
+    // attach that same ad creative under every ad set that was actually created.
+    // This is the step that never existed before -- without it these ad sets
+    // would stay empty and deliver nothing even once approved/active.
+    const media = await ensureMetaMedia(supabase, accountId, creative);
+    if (media) {
+      const adCreativeId = await createAdCreative(accountId, pageId, creative, media, destinationLink, ctaType);
+      if (adCreativeId) {
+        for (const a of createdAdSets) {
+          const adId = await createAdWithCTA(
+            a.metaId,
+            adCreativeId,
+            `AD-${a.label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
+            accountId
+          );
+          if (!adId) console.error(`Failed to create ad for "${a.label}" ad set (creative ${creative.id})`);
+        }
+      } else {
+        console.error(`Failed to create ad creative for creative ${creative.id} -- ad sets exist but have no ads.`);
+      }
+    } else {
+      console.error(`Failed to upload media to Meta for creative ${creative.id} -- ad sets exist but have no ads.`);
     }
 
     return {
       campaign_id: campaignId,
-      broad_adset: broadRow ? { meta_id: broadData.id, db_id: broadRow.id } : null,
-      narrow_v1: narrowV1Row ? { meta_id: narrowV1Data.id, db_id: narrowV1Row.id } : null,
-      narrow_v2: narrowV2Row ? { meta_id: narrowV2Data.id, db_id: narrowV2Row.id } : null,
+      ad_sets: createdAdSets.map((a) => ({ meta_id: a.metaId, db_id: a.row.id, label: a.label })),
     };
   } catch (err) {
     console.error("Launch ad set group error:", err);
@@ -549,13 +653,26 @@ Deno.serve(async (req: Request) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // 1. Get up to 5 pending creatives
-    const { data: pendingCreatives } = await supabase
+    // 1. Get up to 5 pending creatives. Real column is test_status (not the
+    // nonexistent "status" this used to filter on -- that silently matched
+    // zero rows every single run, regardless of anything uploaded).
+    // !inner on products so the auto_post_enabled filter actually applies --
+    // a creative only auto-launches if the product it's linked to has opted in.
+    const { data: pendingCreatives, error: pendingErr } = await supabase
       .from("creative_assets")
-      .select("*, ad_accounts(meta_ad_account_id)")
-      .eq("status", "pending_test")
+      .select("*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id), products!inner(product_name, landing_page_url, auto_post_enabled)")
+      .eq("test_status", "untested")
+      .eq("products.auto_post_enabled", true)
       .order("uploaded_at", { ascending: true })
       .limit(5);
+
+    if (pendingErr) {
+      console.error("Failed to fetch pending creatives:", pendingErr);
+      return new Response(JSON.stringify({ error: pendingErr.message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     if (!pendingCreatives || pendingCreatives.length === 0) {
       return new Response(
@@ -569,10 +686,9 @@ Deno.serve(async (req: Request) => {
 
     console.log(`📊 Processing ${pendingCreatives.length} creatives`);
 
-    // 2. Create BROAD + NARROW copies for each creative
+    // 2. Create one ad set per selected preset, for each creative
     const launchPlans: any[] = [];
-    const totalAdSets = pendingCreatives.length * 3; // 1 broad + 2 narrow per creative
-    const totalBudget = totalAdSets * 5000; // ₦5k per ad set
+    let totalAdSetsCreated = 0;
 
     // Every campaign/ad set is created PAUSED (see launchAdSetGroup) -- nothing
     // spends until a real APPROVE reply flips it ACTIVE via handle-whatsapp-reply.
@@ -583,11 +699,9 @@ Deno.serve(async (req: Request) => {
       const result = await launchAdSetGroup(supabase, creative);
       if (!result) continue;
 
-      const adSetMetaIds = [
-        result.broad_adset?.meta_id,
-        result.narrow_v1?.meta_id,
-        result.narrow_v2?.meta_id,
-      ].filter(Boolean) as string[];
+      const adSetMetaIds = result.ad_sets.map((a) => a.meta_id);
+      totalAdSetsCreated += result.ad_sets.length;
+      const adSetBudget = result.ad_sets.length * 5000;
 
       const { data: approvalRow, error: approvalErr } = await supabase
         .from("pending_approvals")
@@ -599,19 +713,19 @@ Deno.serve(async (req: Request) => {
             meta_campaign_id: result.campaign_id,
             ad_set_ids: adSetMetaIds,
           },
-          reason: `AI auto-launch: "${creative.asset_name}" -- 3 ad sets (broad + 2 narrow), ₦15,000 total test budget.`,
+          reason: `AI auto-launch: "${creative.file_name}" (${creative.products?.product_name}) -- ${result.ad_sets.length} ad set(s) [${result.ad_sets.map((a) => a.label).join(", ")}], ₦${adSetBudget.toLocaleString()} total test budget.`,
           status: "pending",
         })
         .select("id")
         .single();
 
       if (approvalErr || !approvalRow) {
-        console.error(`Failed to record approval for ${creative.asset_name}:`, approvalErr);
+        console.error(`Failed to record approval for ${creative.file_name}:`, approvalErr);
         continue;
       }
 
       launchPlans.push({
-        creative_name: creative.asset_name,
+        creative_name: `${creative.file_name} (${creative.products?.product_name})`,
         campaign_id: result.campaign_id,
         approval_id: approvalRow.id,
       });
@@ -627,10 +741,11 @@ Deno.serve(async (req: Request) => {
     // 3. Send WhatsApp approval request -- real APPROVE/REJECT <id> commands that
     // handle-whatsapp-reply actually parses, one line per creative so each can be
     // approved/rejected independently.
+    const totalBudget = totalAdSetsCreated * 5000;
     const approvalMessage = `
 🚀 *AI AUTO-LAUNCH READY*
 
-${launchPlans.length} creative(s) tested, ₦15,000 each (₦${totalBudget.toLocaleString()} total if all approved). Created PAUSED -- nothing spends until approved.
+${launchPlans.length} creative(s) tested across ${totalAdSetsCreated} ad set(s), ₦${totalBudget.toLocaleString()} total if all approved. Created PAUSED -- nothing spends until approved.
 
 ${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n  REJECT ${p.approval_id}`).join("\n\n")}
 
@@ -639,11 +754,11 @@ ${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n
 
     await sendWhatsAppApproval(approvalMessage);
 
-    // 4. Mark creatives as awaiting approval
+    // 4. Mark creatives as awaiting approval (real column is test_status)
     for (const creative of pendingCreatives) {
       await supabase
         .from("creative_assets")
-        .update({ status: "awaiting_approval" })
+        .update({ test_status: "awaiting_approval" })
         .eq("id", creative.id);
     }
 
@@ -652,7 +767,7 @@ ${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n
         success: true,
         status: "approval_requested",
         creatives: launchPlans.length,
-        ad_sets: launchPlans.length * 3,
+        ad_sets: totalAdSetsCreated,
         budget_naira: totalBudget,
         message: `✅ WhatsApp approval message sent. Reply APPROVE <id> or REJECT <id> per creative.`,
       }),
