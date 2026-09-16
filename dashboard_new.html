@@ -712,6 +712,7 @@ async function renderOverview(el) {
     <div class="qa">
       <button class="btn btn-a" id="btnBatch" onclick="triggerBatch()">⚡ Run Tonight's Batch</button>
       <button class="btn btn-b" id="btnPull"  onclick="triggerMetrics()">📊 Pull Meta Metrics</button>
+      <button class="btn btn-b" id="btnStructSync" onclick="triggerStructureSync()" title="Pulls every campaign/ad set/ad from Meta into this dashboard, whether launched from here or directly in Ads Manager">☁️ Sync from Meta</button>
       <button class="btn btn-g" id="btnSync"  onclick="triggerSync()">🔄 Sync Audiences</button>
       <button class="btn btn-g" onclick="render()">↺ Refresh</button>
     </div>
@@ -826,6 +827,30 @@ async function triggerMetrics() {
     if (res) res.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = "📊 Pull Meta Metrics"; }
+  }
+}
+
+// Pulls every real campaign/ad set/ad directly from Meta and writes them into
+// this dashboard's tables -- the only thing that makes campaigns launched
+// straight in Ads Manager (not through this dashboard) show up here at all.
+// There was no button calling this anywhere before; it only ever ran when
+// triggered directly against the API.
+async function triggerStructureSync() {
+  const btn = document.getElementById("btnStructSync");
+  const res = document.getElementById("actionResult");
+  if (!btn) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Syncing…';
+  try {
+    const r = await sbFn("sync-meta-structure", {});
+    if (res) res.innerHTML = r.error
+      ? `<div class="msg err">❌ Sync failed: ${r.error}</div>`
+      : `<div class="msg ok">✅ Synced from Meta: ${r.summary?.campaigns ?? 0} campaigns, ${r.summary?.ad_sets ?? 0} ad sets, ${r.summary?.ads ?? 0} ads.${r.summary?.errors?.length ? ` (${r.summary.errors.length} account error(s), check console)` : ""}</div>`;
+    if (r.summary?.errors?.length) console.warn("sync-meta-structure errors:", r.summary.errors);
+    setTimeout(render, 1200);
+  } catch(e) {
+    if (res) res.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = "☁️ Sync from Meta"; }
   }
 }
 
@@ -2338,21 +2363,44 @@ window.refreshBalances = async function() {
     const msg = document.getElementById("acctMsg");
     try {
       const acctName = document.getElementById("a_name").value;
-      const { data, error } = await supabaseClient.from('ad_accounts').insert({
-        user_id: sessionData.user.id,
-        name: acctName,
-        nickname: acctName,
-        meta_ad_account_id: document.getElementById("a_meta_id").value,
-        fb_page_id: document.getElementById("a_fb_id").value,
-        status: 'active'
-      }).select();
-      
-      if (error) throw error;
-      msg.innerHTML = `<div class="msg ok">✅ Ad Account linked successfully.</div>`;
-      
+      // meta_ad_account_id has shown up stored both with and without the "act_"
+      // prefix -- confirmed this exact mismatch has silently created duplicate
+      // rows for the same real Meta account three separate times this session
+      // (re-adding/refreshing an account you already have, just typed slightly
+      // differently, looked like a fresh add). Always store it normalized, and
+      // check for an existing match (either format) before inserting at all.
+      const rawId = document.getElementById("a_meta_id").value.trim();
+      const normalizedId = rawId.replace(/^act_/, "");
+      const existing = accountsList.find(a => (a.meta_ad_account_id || "").replace(/^act_/, "") === normalizedId);
+
+      let accountId;
+      if (existing) {
+        const { error } = await supabaseClient.from('ad_accounts').update({
+          name: acctName,
+          nickname: acctName,
+          fb_page_id: document.getElementById("a_fb_id").value,
+          status: 'active',
+        }).eq('id', existing.id);
+        if (error) throw error;
+        accountId = existing.id;
+        msg.innerHTML = `<div class="msg ok">✅ This account was already linked (as "${existing.nickname}") -- updated it instead of adding a duplicate.</div>`;
+      } else {
+        const { data, error } = await supabaseClient.from('ad_accounts').insert({
+          user_id: sessionData.user.id,
+          name: acctName,
+          nickname: acctName,
+          meta_ad_account_id: normalizedId,
+          fb_page_id: document.getElementById("a_fb_id").value,
+          status: 'active'
+        }).select();
+        if (error) throw error;
+        accountId = data[0].id;
+        msg.innerHTML = `<div class="msg ok">✅ Ad Account linked successfully.</div>`;
+      }
+
       await loadAccounts(); // Refresh the dropdown
-      if (!activeAccountId) activeAccountId = data[0].id; // Set as active if it was the first
-      
+      if (!activeAccountId) activeAccountId = accountId; // Set as active if it was the first
+
       setTimeout(render, 800);
     } catch(err) {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;

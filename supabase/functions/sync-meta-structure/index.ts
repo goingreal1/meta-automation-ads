@@ -102,6 +102,12 @@ Deno.serve(async (_req: Request) => {
           const { data: adSetRow } = await supabase.from("ad_sets").upsert({
             meta_adset_id: as.id,
             campaign_id: campaignRow?.id,
+            // Never set here before -- every freshly-synced ad set ended up with
+            // ad_account_id null, which silently broke both pull-meta-metrics'
+            // lookup (filters by it) and the dashboard (auto-filters every query
+            // by the active account). Confirmed live: real synced ad sets with
+            // real spend were invisible everywhere downstream because of this.
+            ad_account_id: account.id,
             adset_name: as.name,
             targeting_type: targetingType,
             budget_naira: as.daily_budget ? Number(as.daily_budget) / 100 : (as.lifetime_budget ? Number(as.lifetime_budget) / 100 : null),
