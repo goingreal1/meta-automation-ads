@@ -854,17 +854,12 @@ function bvShowProductDestination(productId) {
 
 // ── TAB: CREATIVE VAULT ───────────────────────────────────────────────────────
 async function renderVault(el) {
-  const [assets, products, presets] = await Promise.all([
+  const [assets, products] = await Promise.all([
     sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100"),
     sbQuery("products", "is_active=eq.true&select=id,product_name,destination_type,landing_page_url,whatsapp_number"),
-    sbQuery("targeting_presets", "is_active=eq.true&select=id,preset_name,slot_number&order=slot_number.asc"),
   ]);
 
   const pOpts  = (products||[]).map(p => `<option value="${p.id}">${p.product_name}</option>`).join("");
-  const presetChecks = (presets||[]).map(p => `
-    <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;margin-bottom:6px;">
-      <input type="checkbox" class="f_preset" value="${p.id}" checked> ${p.preset_name}
-    </label>`).join("");
   const all    = assets?.length ?? 0;
   const untest = (assets||[]).filter(a => ["untested","pending_test"].includes(a.test_status ?? a.status)).length;
   const test   = (assets||[]).filter(a => ["testing","active"].includes(a.test_status ?? a.status)).length;
@@ -952,13 +947,20 @@ async function renderVault(el) {
           <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
           <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
         </div>
-        <div class="field" style="margin-top:11px;"><label>Ad sets to launch at midnight</label>
-          ${presetChecks || '<div style="font-size:12px;color:var(--muted);">No targeting presets found.</div>'}
+        <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager — make it recognizable)</span></label>
+            <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch">
+          </div>
+          <div class="field"><label>Budget type</label>
+            <select id="f_budget_type">
+              <option value="abo">ABO — budget set per ad set</option>
+              <option value="cbo">CBO — one total budget, Meta splits it</option>
+            </select>
+          </div>
         </div>
         <div class="field" style="margin-top:11px;">
-          <label>Custom ad set copies for this creative <span style="font-weight:400;color:var(--muted);">(optional — define your own instead of/alongside the presets above)</span></label>
-          <div id="customCopies"></div>
-          <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:6px;" onclick="addCustomCopy()">+ Add a copy</button>
+          <label>Ad sets</label>
+          <div id="adSetRows"></div>
         </div>
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Launch date/time (optional)</label>
@@ -996,6 +998,7 @@ async function renderVault(el) {
 
   window.bvVaultProductsCache = products || [];
   bvShowProductDestination(document.getElementById("f_product")?.value);
+  bvResetAdSetBuilder();
 
   // Drag-and-drop
   const dz = document.getElementById("dropZone");
@@ -1054,32 +1057,42 @@ async function renderVault(el) {
       });
       const r = await res.json();
       if (r.error) throw new Error(r.error);
-      const selectedPresetIds = Array.from(document.querySelectorAll(".f_preset:checked")).map(el => el.value);
-
-      // Create any custom ad set copies defined for this creative as real, reusable targeting_presets rows.
-      const customCopies = collectCustomCopies();
-      if (customCopies.length) {
-        const { data: newPresets, error: copyErr } = await supabaseClient.from('targeting_presets').insert(
-          customCopies.map((c, i) => ({ ...c, slot_number: 100 + i, ad_account_id: activeAccountId, is_active: true })),
-        ).select('id');
-        if (copyErr) throw copyErr;
-        (newPresets || []).forEach(p => selectedPresetIds.push(p.id));
-      }
 
       const scheduledFor = document.getElementById("f_scheduled").value;
       const endDate = document.getElementById("f_end_date").value;
       if (r.asset?.id) {
         await supabaseClient.from('creative_assets').update({
           ...(productId && productId !== "__new__" ? { product_id: productId } : {}),
-          selected_preset_ids: selectedPresetIds.length ? selectedPresetIds : null,
+          campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
+          budget_type: document.getElementById("f_budget_type").value,
           scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
           campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
         }).eq('id', r.asset.id);
+
+        // The ad-set builder rows -- real fields (budget/age/gender/geography)
+        // the user set directly, no abstract presets.
+        const { error: adSetErr } = await supabaseClient.from('ad_set_configs').insert(
+          bvAdSetRows.map((row, i) => ({
+            creative_id: r.asset.id,
+            label: row.label,
+            budget_naira: Number(row.budget_naira) || 5000,
+            age_min: Number(row.age_min) || 25,
+            age_max: Number(row.age_max) || 65,
+            gender: row.gender,
+            geo_type: row.geo_type,
+            states: row.geo_type === 'states' && row.states
+              ? row.states.split(',').map(s => s.trim()).filter(Boolean)
+              : null,
+            sort_order: i,
+          }))
+        );
+        if (adSetErr) throw adSetErr;
       }
-      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${scheduledFor ? "Scheduled for " + new Date(scheduledFor).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
+      const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledFor ? "Scheduled for " + new Date(scheduledFor).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
       document.getElementById("uploadForm").reset();
       document.getElementById("dzPrev").innerHTML = "";
-      document.getElementById("customCopies").innerHTML = "";
+      bvResetAdSetBuilder();
       dz.style.borderColor = "";
       dz.style.background = "";
       setTimeout(render, 1200);
@@ -1091,66 +1104,72 @@ async function renderVault(el) {
   });
 }
 
-// ── CUSTOM AD SET COPY BUILDER ──────────────────────────────────────────────────
-let customCopyCount = 0;
-function addCustomCopy() {
-  const id = customCopyCount++;
-  const wrap = document.getElementById("customCopies");
-  const card = document.createElement("div");
-  card.id = `copy-${id}`;
-  card.style.cssText = "border:1px dashed var(--border);border-radius:8px;padding:12px;margin-top:8px;";
-  card.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <strong style="font-size:12px;">Copy ${wrap.children.length + 1}</strong>
-      <button type="button" onclick="document.getElementById('copy-${id}').remove()" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>
-    </div>
-    <div class="fg">
-      <div class="field"><label>Copy name</label><input id="copy-${id}-name" placeholder="e.g. Female 25-40 Lagos IG-only"></div>
-      <div class="field"><label>Gender</label>
-        <select id="copy-${id}-gender">
-          <option value="all">All</option>
-          <option value="male">Male only</option>
-          <option value="female">Female only</option>
-        </select>
-      </div>
-    </div>
-    <div class="fg" style="margin-top:8px;">
-      <div class="field"><label>Age min</label><input id="copy-${id}-age-min" type="number" value="20" min="13" max="65"></div>
-      <div class="field"><label>Age max</label><input id="copy-${id}-age-max" type="number" value="60" min="13" max="65"></div>
-    </div>
-    <div class="field" style="margin-top:8px;"><label>States / regions <span style="font-weight:400;color:var(--muted);">(comma-separated, e.g. "Lagos, Ogun" or "Texas, California" — leave blank for broad/whole-country)</span></label>
-      <input id="copy-${id}-states" placeholder="Lagos, Ogun">
-    </div>
-    <div class="field" style="margin-top:8px;"><label>Placement</label>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:4px;">
-        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:400;"><input type="checkbox" id="copy-${id}-plat-fb" checked> Facebook</label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:400;"><input type="checkbox" id="copy-${id}-plat-ig" checked> Instagram</label>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave both checked for Advantage+ placements (Meta auto-optimizes). Uncheck one for platform-only.</div>
-    </div>`;
-  wrap.appendChild(card);
+// ── AD SET BUILDER ───────────────────────────────────────────────────────────
+// Direct, real fields per ad set (budget/age/gender/geography) -- no abstract
+// named presets. "Duplicate this ad set" clones the last row's current values
+// into a new one, so the visible row count always matches exactly how many ad
+// sets will actually launch.
+let bvAdSetRows = [];
+
+function bvResetAdSetBuilder() {
+  bvAdSetRows = [{ label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: "" }];
+  bvRenderAdSetRows();
 }
 
-function collectCustomCopies() {
-  const wrap = document.getElementById("customCopies");
-  const copies = [];
-  Array.from(wrap.children).forEach(card => {
-    const id = card.id.replace("copy-", "");
-    const statesRaw = document.getElementById(`copy-${id}-states`).value.trim();
-    const platforms = [];
-    if (document.getElementById(`copy-${id}-plat-fb`).checked) platforms.push("facebook");
-    if (document.getElementById(`copy-${id}-plat-ig`).checked) platforms.push("instagram");
-    copies.push({
-      preset_name: document.getElementById(`copy-${id}-name`).value.trim() || `Custom copy ${copies.length + 1}`,
-      genders: [document.getElementById(`copy-${id}-gender`).value],
-      age_min: Number(document.getElementById(`copy-${id}-age-min`).value) || 20,
-      age_max: Number(document.getElementById(`copy-${id}-age-max`).value) || 60,
-      states: statesRaw ? statesRaw.split(",").map(s => s.trim()).filter(Boolean) : null,
-      publisher_platforms: platforms.length ? platforms : null,
-      targeting_type: statesRaw ? "custom_location" : "broad",
-    });
-  });
-  return copies;
+function bvUpdateAdSetRow(i, key, value) {
+  bvAdSetRows[i][key] = value;
+  bvRenderAdSetRows();
+}
+
+function bvDuplicateAdSetRow() {
+  const last = bvAdSetRows[bvAdSetRows.length - 1];
+  bvAdSetRows.push({ ...last, label: `Ad Set ${bvAdSetRows.length + 1}` });
+  bvRenderAdSetRows();
+}
+
+function bvRemoveAdSetRow(i) {
+  bvAdSetRows.splice(i, 1);
+  bvAdSetRows.forEach((row, idx) => { row.label = `Ad Set ${idx + 1}`; });
+  bvRenderAdSetRows();
+}
+
+function bvRenderAdSetRows() {
+  const wrap = document.getElementById("adSetRows");
+  if (!wrap) return;
+  const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+  wrap.innerHTML = bvAdSetRows.map((row, i) => `
+    <div style="border:1px dashed var(--border);border-radius:8px;padding:12px;margin-top:${i === 0 ? 0 : 8}px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:12px;">${row.label}${i === 0 ? " (original)" : " (copy)"}</strong>
+        ${i > 0 ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>` : ""}
+      </div>
+      <div class="fg">
+        <div class="field"><label>Daily budget (₦)</label><input type="number" min="100" step="100" value="${row.budget_naira}" onchange="bvUpdateAdSetRow(${i}, 'budget_naira', this.value)"></div>
+        <div class="field"><label>Gender</label>
+          <select onchange="bvUpdateAdSetRow(${i}, 'gender', this.value)">
+            <option value="all" ${row.gender === "all" ? "selected" : ""}>All</option>
+            <option value="male" ${row.gender === "male" ? "selected" : ""}>Male only</option>
+            <option value="female" ${row.gender === "female" ? "selected" : ""}>Female only</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:8px;">
+        <div class="field"><label>Age min</label><input type="number" min="13" max="65" value="${row.age_min}" onchange="bvUpdateAdSetRow(${i}, 'age_min', this.value)"></div>
+        <div class="field"><label>Age max</label><input type="number" min="13" max="65" value="${row.age_max}" onchange="bvUpdateAdSetRow(${i}, 'age_max', this.value)"></div>
+      </div>
+      <div class="field" style="margin-top:8px;"><label>Geography</label>
+        <select onchange="bvUpdateAdSetRow(${i}, 'geo_type', this.value)">
+          <option value="nationwide" ${row.geo_type === "nationwide" ? "selected" : ""}>Nationwide (Nigeria)</option>
+          <option value="states" ${row.geo_type === "states" ? "selected" : ""}>Specific states</option>
+        </select>
+        ${row.geo_type === "states" ? `<input style="margin-top:6px;" placeholder="Lagos, Ogun, Abuja..." value="${row.states || ""}" onchange="bvUpdateAdSetRow(${i}, 'states', this.value)">` : ""}
+      </div>
+    </div>
+  `).join("") + `
+    <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvDuplicateAdSetRow()">+ Duplicate this ad set</button>
+      <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
+    </div>`;
 }
 
 function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); }

@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
     `${META_GRAPH_BASE}/act_${ACCOUNT_ID}/campaigns?fields=id,name,status,created_time,objective&limit=100&access_token=${META_ACCESS_TOKEN}`
   );
   const listData = await listRes.json();
-  const campaigns = (listData?.data || []).filter((c: any) => c.name?.startsWith("Yorvix SB-"));
+  const campaigns = (listData?.data || []).filter((c: any) => c.name?.startsWith("Yorvix"));
 
   const result: Record<string, any> = { found: campaigns.length, campaigns };
 
