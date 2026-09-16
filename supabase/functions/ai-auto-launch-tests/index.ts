@@ -297,34 +297,30 @@ async function ensureMetaMedia(
   supabase: any,
   accountId: string,
   creative: any
-): Promise<{ videoId?: string; imageHash?: string; error?: string } | null> {
+): Promise<{ videoId?: string; imageUrl?: string; error?: string } | null> {
   if (creative.meta_video_id) return { videoId: creative.meta_video_id };
-  if (creative.meta_image_hash) return { imageHash: creative.meta_image_hash };
 
   const isVideo = creative.asset_type === "video";
+  if (!isVideo) {
+    // Images skip Meta's ad-image-library pre-upload (/adimages) entirely --
+    // confirmed live that this app's access to that specific endpoint is
+    // blocked ("(#3) Application does not have the capability to make this
+    // API call"), while ad-creative creation itself works fine. link_data
+    // accepts a direct external "picture" URL, which Meta fetches itself when
+    // building the creative -- verified working via a real test ad creative.
+    return { imageUrl: creative.public_url };
+  }
+
   try {
-    if (isVideo) {
-      const params = new URLSearchParams({ file_url: creative.public_url, access_token: META_ACCESS_TOKEN });
-      const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/advideos`, { method: "POST", body: params });
-      const data = await res.json();
-      if (!data.id) {
-        console.error("Video upload failed:", data);
-        return { error: JSON.stringify(data.error || data) };
-      }
-      await supabase.from("creative_assets").update({ meta_video_id: data.id }).eq("id", creative.id);
-      return { videoId: data.id };
-    } else {
-      const params = new URLSearchParams({ url: creative.public_url, access_token: META_ACCESS_TOKEN });
-      const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adimages`, { method: "POST", body: params });
-      const data = await res.json();
-      const hash = Object.values(data.images ?? {})[0] as any;
-      if (!hash?.hash) {
-        console.error("Image upload failed:", data);
-        return { error: JSON.stringify(data.error || data) };
-      }
-      await supabase.from("creative_assets").update({ meta_image_hash: hash.hash }).eq("id", creative.id);
-      return { imageHash: hash.hash };
+    const params = new URLSearchParams({ file_url: creative.public_url, access_token: META_ACCESS_TOKEN });
+    const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/advideos`, { method: "POST", body: params });
+    const data = await res.json();
+    if (!data.id) {
+      console.error("Video upload failed:", data);
+      return { error: JSON.stringify(data.error || data) };
     }
+    await supabase.from("creative_assets").update({ meta_video_id: data.id }).eq("id", creative.id);
+    return { videoId: data.id };
   } catch (err: any) {
     console.error("ensureMetaMedia error:", err);
     return { error: err.message || String(err) };
@@ -342,7 +338,7 @@ async function createAdCreative(
   accountId: string,
   pageId: string,
   creative: any,
-  media: { videoId?: string; imageHash?: string },
+  media: { videoId?: string; imageUrl?: string },
   destinationLink: string,
   ctaType: string,
   destinationType: "website" | "whatsapp",
@@ -355,7 +351,7 @@ async function createAdCreative(
       objectStorySpec = {
         page_id: pageId,
         link_data: {
-          image_hash: media.imageHash || undefined,
+          picture: media.imageUrl || undefined,
           link: "https://api.whatsapp.com/send",
           message: creative.primary_text || "",
           name: creative.headline || undefined,
@@ -391,7 +387,7 @@ async function createAdCreative(
         : {
             page_id: pageId,
             link_data: {
-              image_hash: media.imageHash,
+              picture: media.imageUrl,
               link: destinationLink,
               message: creative.primary_text || "",
               name: creative.headline || undefined,
@@ -743,7 +739,7 @@ async function launchAdSetGroup(
         primary_text: creative.primary_text,
         headline: creative.headline,
         description: creative.description,
-        image_url: media.imageHash ? creative.public_url : null,
+        image_url: media.imageUrl || null,
         video_id: media.videoId || null,
         destination_link: destinationLink || null,
         cta_type: ctaType,
