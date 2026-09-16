@@ -854,16 +854,19 @@ async function renderVault(el) {
 
     <div class="panel">
       <div class="ph"><div class="ph-title">Upload new creative</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin:-4px 0 12px;line-height:1.5;">
+        This is <b style="color:var(--text2);">ad content for Meta</b> — the video/image people see in the Facebook/Instagram feed, linked to a product below. It's not the product's own photo; upload that on the <b style="color:var(--text2);">Products</b> tab instead, for what the WhatsApp bot shows customers.
+      </div>
       <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
         <div class="dz-ico">🎬</div>
-        <div class="dz-txt">Drag & drop your video or image here</div>
+        <div class="dz-txt">Drag & drop your ad video or image here</div>
         <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
         <div class="dz-prev" id="dzPrev"></div>
         <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
       </div>
       <form id="uploadForm">
         <div class="fg">
-          <div class="field"><label>Product *</label>
+          <div class="field"><label>Link to product *</label>
             <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none';">
               ${pOpts}
               <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
@@ -1301,9 +1304,21 @@ async function renderProducts(el) {
     <div class="sh"><div class="sh-title">Products</div></div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Add product</div></div>
+      <div class="ph"><div class="ph-title" id="prodFormTitle">Add product</div><div class="sh-actions"><button type="button" class="btn btn-g" id="prodCancelEdit" style="display:none;" onclick="bvCancelProductEdit()">Cancel edit</button></div></div>
       <form id="prodForm">
-        <div class="fg">
+        <input type="hidden" id="p_id">
+        <div class="field">
+          <label>Product photo <span style="font-weight:400;color:var(--muted);">(the real product — what the WhatsApp bot shows/sends to customers. Not ad creative — that's in Creative Vault.)</span></label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+            <div id="prodImgPreview" style="width:64px;height:64px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:10px;color:var(--muted);text-align:center;">No image</div>
+            <div>
+              <input type="file" id="p_image_file" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="bvUploadProductImage(this)">
+              <button type="button" class="btn btn-g" id="prodImgBtn" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('p_image_file').click()" disabled>Upload photo</button>
+              <div id="prodImgHint" style="font-size:11px;color:var(--muted);margin-top:4px;">Save the product first, then upload its photo.</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Product name *</label><input id="p_name" required placeholder="e.g. Quality Herb — Immune Booster"></div>
           <div class="field"><label>Currency *</label>
             <select id="p_currency">
@@ -1316,9 +1331,30 @@ async function renderProducts(el) {
             </select>
           </div>
         </div>
-        <div class="field" style="margin-top:11px;"><label>Default order value *</label><input id="p_val" type="number" value="19000" min="0"></div>
-        <div class="field" style="margin-top:11px;"><label>Landing page URL *</label><input id="p_url" required placeholder="https://…"></div>
-        <button type="submit" class="btn btn-a btn-full">+ Add product</button>
+        <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Default order value *</label><input id="p_val" type="number" value="19000" min="0"></div>
+          <div class="field"><label>Landing page URL</label><input id="p_url" placeholder="https://…"></div>
+        </div>
+        <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Destination</label>
+            <select id="p_destination">
+              <option value="website">Website landing page</option>
+              <option value="whatsapp">WhatsApp (click-to-chat)</option>
+            </select>
+          </div>
+          <div class="field"><label>WhatsApp number <span style="font-weight:400;color:var(--muted);">(if WhatsApp destination)</span></label><input id="p_whatsapp" placeholder="234..."></div>
+        </div>
+        <div class="field" style="margin-top:11px;"><label>Description <span style="font-weight:400;color:var(--muted);">(what the AI tells customers this product is)</span></label>
+          <textarea id="p_description" rows="2" placeholder="Plain, factual description..."></textarea>
+        </div>
+        <div class="field" style="margin-top:11px;"><label>Benefits / claims <span style="font-weight:400;color:var(--muted);">(only what you can actually substantiate)</span></label>
+          <textarea id="p_benefits" rows="2" placeholder="Real, approved benefit claims..."></textarea>
+        </div>
+        <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Safety notes</label><input id="p_safety" placeholder="e.g. For adult use only, consult a doctor if..."></div>
+          <div class="field"><label>NAFDAC Reg. No.</label><input id="p_nafdac" placeholder="e.g. A7-104257L"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" id="prodSubmitBtn">+ Add product</button>
         <div id="prodMsg"></div>
       </form>
     </div>
@@ -1327,7 +1363,7 @@ async function renderProducts(el) {
       <div class="ph"><div class="ph-title">Products</div><div class="ph-count">${prods?.length ?? 0}</div></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th></tr>
+        <tr><th>Photo</th><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th><th></th></tr>
         ${prods.map(p => {
           const pc = creativesByProduct[p.id] || [];
           const thumbs = pc.slice(0, 4).map(c => c.asset_type === "video"
@@ -1335,10 +1371,13 @@ async function renderProducts(el) {
             : `<img src="${c.public_url}" title="${c.file_name}" style="width:28px;height:28px;border-radius:5px;object-fit:cover;border:1px solid var(--border);">`
           ).join("");
           return `<tr>
+          <td>${p.product_image_url
+            ? `<img src="${p.product_image_url}" title="Product photo" style="width:32px;height:32px;border-radius:6px;object-fit:cover;border:1px solid var(--border);">`
+            : `<div style="width:32px;height:32px;border-radius:6px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);">—</div>`}</td>
           <td class="s n">${p.product_name}</td>
           <td><div style="display:flex;gap:4px;align-items:center;">${thumbs || '<span style="color:var(--muted);font-size:11px;">none yet</span>'}${pc.length > 4 ? `<span style="font-size:11px;color:var(--muted);">+${pc.length - 4}</span>` : ""}</div></td>
           <td class="n" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-            <a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>
+            ${p.landing_page_url ? `<a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>` : `<span style="color:var(--muted);">${p.destination_type === "whatsapp" ? "WhatsApp: " + (p.whatsapp_number || "—") : "—"}</span>`}
           </td>
           <td>${p.currency || "NGN"}</td>
           <td>${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : p.default_order_value_naira}</td>
@@ -1349,25 +1388,44 @@ async function renderProducts(el) {
               ${p.auto_post_enabled ? "On" : "Off"}
             </label>
           </td>
+          <td><button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="bvEditProduct('${p.id}')">Edit</button></td>
         </tr>`;
         }).join("")}
       </table></div>`}
     </div>`;
 
+  window.bvProductsCache = prods || [];
+
   document.getElementById("prodForm").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("prodMsg");
+    const editingId = document.getElementById("p_id").value;
+    const fields = {
+      product_name: document.getElementById("p_name").value,
+      landing_page_url: document.getElementById("p_url").value || null,
+      default_order_value_naira: Number(document.getElementById("p_val").value) || 19000,
+      currency: document.getElementById("p_currency").value,
+      destination_type: document.getElementById("p_destination").value,
+      whatsapp_number: document.getElementById("p_whatsapp").value || null,
+      description: document.getElementById("p_description").value || null,
+      benefits: document.getElementById("p_benefits").value || null,
+      safety_notes: document.getElementById("p_safety").value || null,
+      nafdac_reg_no: document.getElementById("p_nafdac").value || null,
+    };
     try {
-      const { error } = await supabaseClient.from('products').insert({
-        product_name: document.getElementById("p_name").value,
-        landing_page_url: document.getElementById("p_url").value,
-        default_order_value_naira: Number(document.getElementById("p_val").value) || 19000,
-        currency: document.getElementById("p_currency").value,
-        ad_account_id: activeAccountId,
-      });
-      if (error) throw error;
-      msg.innerHTML = `<div class="msg ok">✅ Product added.</div>`;
-      setTimeout(render, 800);
+      if (editingId) {
+        const { error } = await supabaseClient.from('products').update(fields).eq('id', editingId);
+        if (error) throw error;
+        bvCancelProductEdit();
+        await renderProducts(el);
+        document.getElementById("prodMsg").innerHTML = `<div class="msg ok">✅ Product updated.</div>`;
+      } else {
+        const { data, error } = await supabaseClient.from('products').insert({ ...fields, ad_account_id: activeAccountId }).select('id').single();
+        if (error) throw error;
+        await renderProducts(el);
+        bvEditProduct(data.id);
+        document.getElementById("prodMsg").innerHTML = `<div class="msg ok">✅ Product added — now upload its photo below.</div>`;
+      }
     } catch(err) {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
     }
@@ -1392,6 +1450,76 @@ async function renderProducts(el) {
       }
     });
   });
+}
+
+function bvEditProduct(id) {
+  const p = (window.bvProductsCache || []).find((x) => x.id === id);
+  if (!p) return;
+  document.getElementById("p_id").value = p.id;
+  document.getElementById("p_name").value = p.product_name || "";
+  document.getElementById("p_currency").value = p.currency || "NGN";
+  document.getElementById("p_val").value = p.default_order_value_naira || 19000;
+  document.getElementById("p_url").value = p.landing_page_url || "";
+  document.getElementById("p_destination").value = p.destination_type || "website";
+  document.getElementById("p_whatsapp").value = p.whatsapp_number || "";
+  document.getElementById("p_description").value = p.description || "";
+  document.getElementById("p_benefits").value = p.benefits || "";
+  document.getElementById("p_safety").value = p.safety_notes || "";
+  document.getElementById("p_nafdac").value = p.nafdac_reg_no || "";
+  document.getElementById("prodFormTitle").textContent = `Editing: ${p.product_name}`;
+  document.getElementById("prodSubmitBtn").textContent = "Save changes";
+  document.getElementById("prodCancelEdit").style.display = "";
+  document.getElementById("prodImgBtn").disabled = false;
+  document.getElementById("prodImgHint").textContent = p.product_image_url ? "Click to replace the photo." : "Click to upload the product photo.";
+  document.getElementById("prodImgPreview").innerHTML = p.product_image_url
+    ? `<img src="${p.product_image_url}" style="width:100%;height:100%;object-fit:cover;">`
+    : "No image";
+  document.getElementById("prodForm").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function bvCancelProductEdit() {
+  const form = document.getElementById("prodForm");
+  if (!form) return;
+  form.reset();
+  document.getElementById("p_id").value = "";
+  document.getElementById("prodFormTitle").textContent = "Add product";
+  document.getElementById("prodSubmitBtn").textContent = "+ Add product";
+  document.getElementById("prodCancelEdit").style.display = "none";
+  document.getElementById("prodImgBtn").disabled = true;
+  document.getElementById("prodImgHint").textContent = "Save the product first, then upload its photo.";
+  document.getElementById("prodImgPreview").innerHTML = "No image";
+}
+
+async function bvUploadProductImage(inputEl) {
+  const file = inputEl.files?.[0];
+  const productId = document.getElementById("p_id").value;
+  if (!file || !productId) return;
+  const hint = document.getElementById("prodImgHint");
+  const preview = document.getElementById("prodImgPreview");
+  const btn = document.getElementById("prodImgBtn");
+  btn.disabled = true;
+  hint.textContent = "Uploading…";
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("product_id", productId);
+    const res = await fetch(`${SUPA_URL}/functions/v1/upload-product-image`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
+      body: fd,
+    });
+    const r = await res.json();
+    if (r.error) throw new Error(r.error);
+    preview.innerHTML = `<img src="${r.product_image_url}" style="width:100%;height:100%;object-fit:cover;">`;
+    hint.textContent = "Click to replace the photo.";
+    const cached = (window.bvProductsCache || []).find(p => p.id === productId);
+    if (cached) cached.product_image_url = r.product_image_url;
+  } catch (err) {
+    hint.textContent = `❌ ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    inputEl.value = "";
+  }
 }
 
 // ── TAB: ORDERS ───────────────────────────────────────────────────────────────
