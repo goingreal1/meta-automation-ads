@@ -1517,10 +1517,11 @@ function bvCancelProductEdit() {
 async function bvUploadProductImage(inputEl) {
   const file = inputEl.files?.[0];
   const hint = document.getElementById("prodImgHint");
+  const msg = document.getElementById("prodMsg");
   if (!file) return;
   const productId = document.getElementById("p_id").value;
   if (!productId) {
-    hint.textContent = "Save the product first (below), then come back up here to upload its photo.";
+    msg.innerHTML = `<div class="msg err">❌ Save the product first (below), then come back up here to upload its photo.</div>`;
     inputEl.value = "";
     return;
   }
@@ -1528,6 +1529,7 @@ async function bvUploadProductImage(inputEl) {
   const btn = document.getElementById("prodImgBtn");
   btn.disabled = true;
   hint.textContent = "Uploading…";
+  msg.innerHTML = "";
   try {
     const fd = new FormData();
     fd.append("file", file);
@@ -1541,10 +1543,12 @@ async function bvUploadProductImage(inputEl) {
     if (r.error) throw new Error(r.error);
     preview.innerHTML = `<img src="${r.product_image_url}" style="width:100%;height:100%;object-fit:cover;">`;
     hint.textContent = "Click to replace the photo.";
+    msg.innerHTML = `<div class="msg ok">✅ Photo uploaded.</div>`;
     const cached = (window.bvProductsCache || []).find(p => p.id === productId);
     if (cached) cached.product_image_url = r.product_image_url;
   } catch (err) {
-    hint.textContent = `❌ ${err.message}`;
+    hint.textContent = "Click to upload the product photo.";
+    msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
   } finally {
     btn.disabled = false;
     inputEl.value = "";
