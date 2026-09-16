@@ -5,7 +5,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const META_GRAPH_BASE = "https://graph.facebook.com/v18.0";
+const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
 // ─── AI SYSTEM: TRAINED ON SENIOR BUYER BEHAVIOR ──────────────────────────────
 
@@ -459,12 +459,41 @@ const REAL_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
 const REAL_PLACEMENTS = {
   publisher_platforms: ["facebook", "instagram"],
   facebook_positions: ["feed", "marketplace", "facebook_reels", "profile_feed", "notification"],
-  instagram_positions: ["stream", "story", "reels", "explore_home", "profile_feed"],
+  // "explore_home" requires "explore" also be selected -- confirmed live
+  // (Meta rejects explore_home alone with "You must also select Instagram Explore").
+  instagram_positions: ["stream", "story", "reels", "explore", "explore_home", "profile_feed"],
   device_platforms: ["mobile"],
 };
 const GENDER_MAP: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
 
-function buildTargetingFromPreset(preset: any): Record<string, any> {
+// Resolves interest NAMES (as stored on targeting_presets, e.g. "Health and
+// wellness") to Meta's actual numeric interest IDs via the Targeting Search
+// API -- confirmed via live testing that passing bare names with no id causes
+// Meta to reject the whole ad set ("Type Mismatch: integer expected, NULL
+// received"). Takes the first/best match per name; a name that resolves to
+// nothing is dropped (logged) rather than sent malformed.
+async function resolveInterestIds(names: string[]): Promise<{ id: string; name: string }[]> {
+  const resolved: { id: string; name: string }[] = [];
+  for (const name of names) {
+    try {
+      const res = await fetch(
+        `${META_GRAPH_BASE}/search?type=adinterest&q=${encodeURIComponent(name)}&limit=1&access_token=${META_ACCESS_TOKEN}`
+      );
+      const data = await res.json();
+      const match = data?.data?.[0];
+      if (match?.id) {
+        resolved.push({ id: match.id, name: match.name || name });
+      } else {
+        console.warn(`No Meta interest match found for "${name}" -- dropping from targeting.`);
+      }
+    } catch (err) {
+      console.error(`Failed to resolve interest "${name}":`, err);
+    }
+  }
+  return resolved;
+}
+
+async function buildTargetingFromPreset(preset: any): Promise<Record<string, any>> {
   const genders = (preset.genders ?? ["all"]).flatMap((g: string) => GENDER_MAP[g] ?? []);
   const targeting: Record<string, any> = {
     genders: genders.length ? genders : [1, 2],
@@ -481,10 +510,12 @@ function buildTargetingFromPreset(preset: any): Record<string, any> {
     targeting.custom_audiences = [{ id: preset.custom_audience_id }];
   }
   if (preset.interests?.length) {
-    // Best-effort: Meta's real interest targeting needs interest IDs (resolved via
-    // /search?type=adinterest), not just names. Passing names through may be
-    // rejected -- flagging rather than silently pretending this is solid.
-    targeting.flexible_spec = [{ interests: preset.interests.map((name: string) => ({ name })) }];
+    const resolvedInterests = await resolveInterestIds(preset.interests);
+    if (resolvedInterests.length) {
+      targeting.flexible_spec = [{ interests: resolvedInterests }];
+    } else {
+      console.warn(`Preset "${preset.preset_name}" has interests set but none resolved to a valid Meta interest ID -- launching without interest targeting.`);
+    }
   }
 
   // preset.states holds human-readable names ("Lagos State"), not valid Meta
@@ -514,6 +545,7 @@ function buildAdSetPayload(opts: {
   targeting: Record<string, any>;
   promotedObject: Record<string, any>;
   optimizationGoal: string;
+  destinationType: "website" | "whatsapp";
   startTime?: string | null;
   endTime?: string | null;
 }) {
@@ -527,6 +559,12 @@ function buildAdSetPayload(opts: {
     status: "PAUSED",
     access_token: META_ACCESS_TOKEN,
   };
+  // Required alongside CONVERSATIONS optimization for Click-to-WhatsApp ad
+  // sets under OUTCOME_SALES -- without it Meta rejects the optimization_goal
+  // itself with "Performance goal isn't available", confirmed via live testing.
+  if (opts.destinationType === "whatsapp") {
+    payload.destination_type = "WHATSAPP";
+  }
   // CBO: budget lives on the campaign, not here -- Meta rejects an ad set that
   // sets its own budget under a campaign-budget-optimized campaign.
   if (opts.budgetType === "abo") {
@@ -642,28 +680,60 @@ async function launchAdSetGroup(
     }
     const campaignId = campaignData.id;
 
+    // ad_sets.campaign_id is a local uuid FK, not Meta's numeric campaign id --
+    // inserting the Meta id directly there was silently failing on every launch
+    // (the insert error was never checked), so ad sets that were genuinely
+    // created on Meta were never recorded here at all. Create the local
+    // campaigns row first and use its id for that FK.
+    const { data: campaignRow, error: campaignRowErr } = await supabase
+      .from("campaigns")
+      .insert({
+        meta_campaign_id: campaignId,
+        campaign_name: campaignPayload.name,
+        campaign_type: "testing",
+        objective: "OUTCOME_SALES",
+        daily_budget_naira: budgetType === "abo" ? null : budgetNaira * presets.length,
+        status: "paused",
+        ad_account_id: creative.ad_account_id,
+      })
+      .select("id")
+      .single();
+    if (campaignRowErr || !campaignRow) {
+      console.error("Failed to record local campaign row:", campaignRowErr);
+      return { error: `Campaign "${campaignId}" was created on Meta but failed to save locally: ${campaignRowErr?.message}` };
+    }
+    const localCampaignId = campaignRow.id;
+
     // 2. Create one ad set per selected preset
     const createdAdSets: { row: any; metaId: string; label: string }[] = [];
     const adSetErrors: string[] = [];
     for (const preset of presets) {
-      const targeting = buildTargetingFromPreset(preset);
+      const targeting = await buildTargetingFromPreset(preset);
       const label = preset.preset_name;
 
-      const adsetRes = await fetch(`${META_GRAPH_BASE}/${campaignId}/adsets`, {
+      // Posting to /{campaignId}/adsets directly is rejected by this app/API
+      // combo with a misleading "object does not exist" error (code 100,
+      // subcode 33) even though the campaign is fully readable right after
+      // creation -- confirmed via isolated live testing. The account-scoped
+      // path with campaign_id in the body is the one that actually works
+      // (same fix already applied in auto-duplicate-adsets).
+      const adsetRes = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adsets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          buildAdSetPayload({
+        body: JSON.stringify({
+          campaign_id: campaignId,
+          ...buildAdSetPayload({
             name: `${label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
             budgetNaira,
             budgetType,
             targeting,
             promotedObject,
             optimizationGoal,
+            destinationType,
             startTime,
             endTime,
-          })
-        ),
+          }),
+        }),
       });
       const adsetData = await adsetRes.json();
       if (!adsetData.id) {
@@ -672,10 +742,10 @@ async function launchAdSetGroup(
         continue;
       }
 
-      const { data: row } = await supabase
+      const { data: row, error: rowErr } = await supabase
         .from("ad_sets")
         .insert({
-          campaign_id: campaignId,
+          campaign_id: localCampaignId,
           meta_adset_id: adsetData.id,
           adset_name: `${label}-${creative.file_name}`,
           creative_id: creative.id,
@@ -695,7 +765,14 @@ async function launchAdSetGroup(
         .select("id")
         .single();
 
-      if (row) createdAdSets.push({ row, metaId: adsetData.id, label });
+      if (row) {
+        createdAdSets.push({ row, metaId: adsetData.id, label });
+      } else {
+        // The ad set is real and live (PAUSED) on Meta at this point even though
+        // the local record failed -- surface this distinctly so it isn't lost.
+        console.error(`Ad set "${label}" (meta id ${adsetData.id}) created on Meta but failed to save locally:`, rowErr);
+        adSetErrors.push(`"${label}": created on Meta (${adsetData.id}) but DB save failed: ${rowErr?.message}`);
+      }
     }
 
     if (!createdAdSets.length) {

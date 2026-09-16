@@ -86,3 +86,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/upload-product-image/deno.json"
 entrypoint = "./functions/upload-product-image/index.ts"
+
+[functions.diagnose-meta-token]
+enabled = true
+verify_jwt = false
+import_map = "./functions/diagnose-meta-token/deno.json"
+entrypoint = "./functions/diagnose-meta-token/index.ts"
