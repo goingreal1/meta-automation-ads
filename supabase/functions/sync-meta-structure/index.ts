@@ -85,7 +85,7 @@ Deno.serve(async (_req: Request) => {
         // 2. Pull ad sets for this campaign
         let metaAdSets: any[] = [];
         try {
-          metaAdSets = await metaGet(`${c.id}/adsets`, "id,name,status,daily_budget,lifetime_budget,targeting,optimization_goal,bid_strategy");
+          metaAdSets = await metaGet(`${c.id}/adsets`, "id,name,status,daily_budget,lifetime_budget,targeting,optimization_goal,bid_strategy,start_time,end_time,promoted_object,destination_type");
         } catch (e: any) {
           summary.errors.push(`AdSets fetch (${c.name}): ${e.message}`);
           continue;
