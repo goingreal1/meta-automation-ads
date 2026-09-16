@@ -1880,7 +1880,22 @@ function bvEscape(s) {
 }
 
 function bvName(c) {
-  return c.beoliv_customers?.name || c.phone || "Unknown";
+  // whatsapp_name is the customer's real WhatsApp display name, sent by Meta
+  // on every inbound message -- available immediately, before any order.
+  // beoliv_customers.name only exists after checkout (what they typed into
+  // the order form), so it's a fallback, not the primary source.
+  return c.whatsapp_name || c.beoliv_customers?.name || c.phone || "Unknown";
+}
+
+// WhatsApp's Cloud API does not expose customer profile pictures at all (a
+// deliberate privacy limitation, confirmed against Meta's docs) -- so this is
+// a real, honest initials avatar, not a fake/placeholder photo standing in
+// for one that doesn't exist.
+function bvAvatar(c, size) {
+  const name = bvName(c);
+  const initial = name && name !== c.phone ? name.trim()[0].toUpperCase() : "#";
+  const hue = Array.from(String(c.phone || name)).reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 0);
+  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:hsl(${hue},55%,42%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.42)}px;font-weight:600;flex-shrink:0;">${initial}</div>`;
 }
 
 async function renderConversations(el) {
@@ -1976,13 +1991,16 @@ function bvRenderList(list) {
   if (!wrap) return;
   if (!list.length) { wrap.innerHTML = `<div class="empty" style="padding:24px;">No conversations yet.</div>`; return; }
   wrap.innerHTML = list.map(c => `
-    <div class="conv-row ${c.id === bvSelectedConvId ? "active" : ""}" onclick="bvSelectConversation('${c.id}')">
-      <div class="conv-row-top">
-        <span class="conv-name">${bvEscape(bvName(c))}</span>
-        <span class="conv-time">${ago(c.last_message_at)}</span>
+    <div class="conv-row ${c.id === bvSelectedConvId ? "active" : ""}" onclick="bvSelectConversation('${c.id}')" style="display:flex;gap:10px;align-items:flex-start;">
+      ${bvAvatar(c, 34)}
+      <div style="flex:1;min-width:0;">
+        <div class="conv-row-top">
+          <span class="conv-name">${bvEscape(bvName(c))}</span>
+          <span class="conv-time">${ago(c.last_message_at)}</span>
+        </div>
+        <div class="conv-phone">${bvEscape(c.phone)}</div>
+        <span class="pill ${c.current_state === "COMPLETED" ? "delivered" : c.current_state === "NEW" ? "pending" : "active"}">${c.current_state}</span>
       </div>
-      <div class="conv-phone">${bvEscape(c.phone)}</div>
-      <span class="pill ${c.current_state === "COMPLETED" ? "delivered" : c.current_state === "NEW" ? "pending" : "active"}">${c.current_state}</span>
     </div>`).join("");
 }
 
@@ -2072,9 +2090,12 @@ async function bvSelectConversation(id) {
 
   thread.innerHTML = `
     <div class="conv-thread-head">
-      <div>
-        <div style="font-weight:600;font-size:13px;">${bvEscape(bvName(conv))}</div>
-        <div style="font-size:11px;color:var(--muted);">${bvEscape(conv.phone)} · ${bvEscape(conv.source || "")} · ${conv.current_state}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        ${bvAvatar(conv, 38)}
+        <div>
+          <div style="font-weight:600;font-size:13px;">${bvEscape(bvName(conv))}</div>
+          <div style="font-size:11px;color:var(--muted);">${bvEscape(conv.phone)} · ${bvEscape(conv.source || "")} · ${conv.current_state}</div>
+        </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span id="convHandoffBadge">${conv.human_handling ? bvHandoffBadgeHtml() : ""}</span>
