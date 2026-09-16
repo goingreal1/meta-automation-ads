@@ -175,6 +175,7 @@ input,select,textarea{
   width:100%;transition:border-color .14s;
 }
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accentDk);}
+input[type="checkbox"],input[type="radio"]{width:auto;flex:none;padding:0;}
 textarea{resize:vertical;min-height:76px;}
 
 /* ── BUTTONS ───────────────────────────────────────────────────────────────── */
@@ -1313,8 +1314,8 @@ async function renderProducts(el) {
             <div id="prodImgPreview" style="width:64px;height:64px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:10px;color:var(--muted);text-align:center;">No image</div>
             <div>
               <input type="file" id="p_image_file" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="bvUploadProductImage(this)">
-              <button type="button" class="btn btn-g" id="prodImgBtn" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('p_image_file').click()" disabled>Upload photo</button>
-              <div id="prodImgHint" style="font-size:11px;color:var(--muted);margin-top:4px;">Save the product first, then upload its photo.</div>
+              <button type="button" class="btn btn-g" id="prodImgBtn" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('p_image_file').click()">Upload photo</button>
+              <div id="prodImgHint" style="font-size:11px;color:var(--muted);margin-top:4px;">Save the product first (below), then come back up here to upload its photo.</div>
             </div>
           </div>
         </div>
@@ -1469,7 +1470,6 @@ function bvEditProduct(id) {
   document.getElementById("prodFormTitle").textContent = `Editing: ${p.product_name}`;
   document.getElementById("prodSubmitBtn").textContent = "Save changes";
   document.getElementById("prodCancelEdit").style.display = "";
-  document.getElementById("prodImgBtn").disabled = false;
   document.getElementById("prodImgHint").textContent = p.product_image_url ? "Click to replace the photo." : "Click to upload the product photo.";
   document.getElementById("prodImgPreview").innerHTML = p.product_image_url
     ? `<img src="${p.product_image_url}" style="width:100%;height:100%;object-fit:cover;">`
@@ -1485,16 +1485,20 @@ function bvCancelProductEdit() {
   document.getElementById("prodFormTitle").textContent = "Add product";
   document.getElementById("prodSubmitBtn").textContent = "+ Add product";
   document.getElementById("prodCancelEdit").style.display = "none";
-  document.getElementById("prodImgBtn").disabled = true;
-  document.getElementById("prodImgHint").textContent = "Save the product first, then upload its photo.";
+  document.getElementById("prodImgHint").textContent = "Save the product first (below), then come back up here to upload its photo.";
   document.getElementById("prodImgPreview").innerHTML = "No image";
 }
 
 async function bvUploadProductImage(inputEl) {
   const file = inputEl.files?.[0];
-  const productId = document.getElementById("p_id").value;
-  if (!file || !productId) return;
   const hint = document.getElementById("prodImgHint");
+  if (!file) return;
+  const productId = document.getElementById("p_id").value;
+  if (!productId) {
+    hint.textContent = "Save the product first (below), then come back up here to upload its photo.";
+    inputEl.value = "";
+    return;
+  }
   const preview = document.getElementById("prodImgPreview");
   const btn = document.getElementById("prodImgBtn");
   btn.disabled = true;
