@@ -145,6 +145,17 @@ a{color:inherit;}
 .ph-title{font-size:13px;font-weight:600;letter-spacing:-.01em;}
 .ph-count{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
 
+/* ── DETAIL MODAL ──────────────────────────────────────────────────────────── */
+.bv-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;}
+.bv-modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;max-width:640px;width:100%;padding:20px;position:relative;box-shadow:var(--shadow-md,0 10px 40px rgba(0,0,0,.3));}
+.bv-modal-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:4px;}
+.bv-modal-close:hover{color:var(--text);}
+.bv-dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px;}
+.bv-dl dt{color:var(--muted);white-space:nowrap;}
+.bv-dl dd{color:var(--text);word-break:break-word;}
+tr.bv-clickable-row{cursor:pointer;}
+tr.bv-clickable-row:hover{background:var(--panel2);}
+
 /* ── SECTION HEADER ────────────────────────────────────────────────────────── */
 .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;}
 .sh-title{font-size:17px;font-weight:700;letter-spacing:-.02em;}
@@ -985,7 +996,7 @@ async function renderVault(el) {
       ${!all ? `<div class="empty"><div class="empty-ico">🎨</div>No creatives uploaded yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>File</th><th>Product</th><th>Mechanism</th><th>Format</th><th>Status</th><th>Uploaded</th></tr>
-        ${assets.map(a => `<tr>
+        ${assets.map(a => `<tr class="bv-clickable-row" onclick="bvShowCreativeDetail('${a.id}')">
           <td class="s n" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.file_name ?? a.asset_name ?? "—"}</td>
           <td class="n">${a.products?.product_name ?? "—"}</td>
           <td>${(a.mechanism ?? "—").replace(/_/g," ")}</td>
@@ -1170,6 +1181,111 @@ function bvRenderAdSetRows() {
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvDuplicateAdSetRow()">+ Duplicate this ad set</button>
       <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
     </div>`;
+}
+
+// ── CREATIVE DETAIL MODAL ────────────────────────────────────────────────────
+// Click any row in "All creatives" for a quick-open detail view (not a new
+// tab): full ad copy, campaign name/budget type/schedule, and every ad set
+// configured for it. If it's already been launched, also pulls the real
+// Meta ad set status/IDs via the pending_approvals record that links this
+// creative to its campaign/ad sets.
+function bvCloseModal() {
+  document.getElementById("bvModalOverlay")?.remove();
+}
+
+async function bvShowCreativeDetail(creativeId) {
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+
+  const [creatives, configs, approvals] = await Promise.all([
+    sbQuery("creative_assets", `id=eq.${creativeId}&select=*,products(product_name,destination_type,whatsapp_number,landing_page_url)`),
+    sbQuery("ad_set_configs", `creative_id=eq.${creativeId}&select=*&order=sort_order.asc`),
+    sbQuery("pending_approvals", `creative_asset_id=eq.${creativeId}&select=*&order=created_at.desc&limit=1`),
+  ]);
+  const a = creatives?.[0];
+  if (!a) {
+    document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `<div class="msg err">Creative not found.</div>`;
+    return;
+  }
+
+  let launchedAdSets = null;
+  let campaignRow = null;
+  const approval = approvals?.[0];
+  if (approval?.proposed_action?.ad_set_ids?.length) {
+    const ids = approval.proposed_action.ad_set_ids.join(",");
+    const [adSets, campaigns] = await Promise.all([
+      sbQuery("ad_sets", `meta_adset_id=in.(${ids})&select=*`),
+      approval.proposed_action.meta_campaign_id
+        ? sbQuery("campaigns", `meta_campaign_id=eq.${approval.proposed_action.meta_campaign_id}&select=*`)
+        : Promise.resolve([]),
+    ]);
+    launchedAdSets = adSets;
+    campaignRow = campaigns?.[0];
+  }
+
+  const destNote = a.products?.destination_type === "whatsapp"
+    ? `WhatsApp (${a.products?.whatsapp_number || "—"})`
+    : `Website (${a.products?.landing_page_url || "—"})`;
+
+  const configRows = (configs || []).map((c, i) => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:${i === 0 ? 0 : 6}px;">
+      <strong style="font-size:12px;">${c.label}</strong>
+      <dl class="bv-dl" style="margin-top:6px;">
+        <dt>Budget</dt><dd>₦${Number(c.budget_naira).toLocaleString()}/day</dd>
+        <dt>Age</dt><dd>${c.age_min}–${c.age_max}</dd>
+        <dt>Gender</dt><dd>${c.gender}</dd>
+        <dt>Geography</dt><dd>${c.geo_type === "states" ? (c.states || []).join(", ") : "Nationwide (NG)"}</dd>
+      </dl>
+    </div>`).join("") || `<div style="font-size:12px;color:var(--muted);">No ad sets configured yet.</div>`;
+
+  const launchedRows = launchedAdSets?.length ? `
+    <div class="ph-title" style="margin-top:16px;margin-bottom:8px;">Live on Meta</div>
+    ${campaignRow ? `<div style="font-size:12px;margin-bottom:8px;"><b>Campaign:</b> ${campaignRow.campaign_name} <span class="pill ${campaignRow.status}">${campaignRow.status}</span></div>` : ""}
+    ${launchedAdSets.map((s, i) => `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:${i === 0 ? 0 : 6}px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong style="font-size:12px;">${s.adset_name}</strong>
+          <span class="pill ${s.status}">${s.status}</span>
+        </div>
+        <dl class="bv-dl" style="margin-top:6px;">
+          <dt>Meta ad set ID</dt><dd style="font-family:'JetBrains Mono',monospace;">${s.meta_adset_id}</dd>
+          <dt>Budget</dt><dd>${s.budget_naira ? "₦" + Number(s.budget_naira).toLocaleString() + "/day" : "shared (CBO)"}</dd>
+        </dl>
+      </div>`).join("")}` : "";
+
+  document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:2px;">${a.file_name}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">${a.products?.product_name ?? "—"} · uploaded ${ago(a.uploaded_at)}</div>
+
+    <dl class="bv-dl">
+      <dt>Status</dt><dd><span class="pill ${(a.test_status ?? "untested").replace(/ /g,"_")}">${(a.test_status ?? "untested").replace(/_/g," ")}</span></dd>
+      <dt>Campaign name</dt><dd>${a.campaign_name || "(auto-generated at launch)"}</dd>
+      <dt>Budget type</dt><dd>${(a.budget_type || "abo").toUpperCase()}</dd>
+      <dt>Destination</dt><dd>${destNote}</dd>
+      <dt>Mechanism</dt><dd>${(a.mechanism ?? "—").replace(/_/g," ")}</dd>
+      <dt>Format</dt><dd>${(a.format ?? "—").replace(/_/g," ")}</dd>
+      <dt>CTA</dt><dd>${a.cta_type ?? "—"}</dd>
+      <dt>Scheduled for</dt><dd>${a.scheduled_for ? new Date(a.scheduled_for).toLocaleString() : "next batch run"}</dd>
+      <dt>Campaign end</dt><dd>${a.campaign_end_date ? new Date(a.campaign_end_date).toLocaleString() : "runs until paused/killed"}</dd>
+    </dl>
+
+    <div class="ph-title" style="margin-top:16px;margin-bottom:6px;">Ad copy</div>
+    <dl class="bv-dl">
+      <dt>Headline</dt><dd>${a.headline || "—"}</dd>
+      <dt>Description</dt><dd>${a.description || "—"}</dd>
+      <dt>Primary text</dt><dd>${a.primary_text || "—"}</dd>
+    </dl>
+
+    <div class="ph-title" style="margin-top:16px;margin-bottom:6px;">Ad sets configured</div>
+    ${configRows}
+
+    ${launchedRows}
+  `;
 }
 
 function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); }
