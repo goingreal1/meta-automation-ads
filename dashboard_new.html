@@ -825,11 +825,32 @@ async function triggerSync() {
   }
 }
 
+// Shows which destination this creative's ads will actually launch to -- inherited
+// entirely from the selected product's own destination_type (set on the Products
+// tab), not chosen here. Meta requires this: click-to-WhatsApp ads carry no landing
+// page at all (opens a chat with the number below instead), while website ads need
+// a landing page + pixel and carry no WhatsApp number.
+function bvShowProductDestination(productId) {
+  const el = document.getElementById("f_productDestination");
+  if (!el) return;
+  const p = (window.bvVaultProductsCache || []).find(x => x.id === productId);
+  if (!p) { el.textContent = ""; return; }
+  if (p.destination_type === "whatsapp") {
+    el.innerHTML = p.whatsapp_number
+      ? `Ads for this product open a WhatsApp chat (${p.whatsapp_number}) — no landing page used.`
+      : `⚠️ This product is set to WhatsApp destination but has no WhatsApp number set on the Products tab.`;
+  } else {
+    el.innerHTML = p.landing_page_url
+      ? `Ads for this product click through to the landing page: ${p.landing_page_url}`
+      : `⚠️ This product is set to Website destination but has no landing page URL set on the Products tab.`;
+  }
+}
+
 // ── TAB: CREATIVE VAULT ───────────────────────────────────────────────────────
 async function renderVault(el) {
   const [assets, products, presets] = await Promise.all([
     sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100"),
-    sbQuery("products", "is_active=eq.true&select=id,product_name"),
+    sbQuery("products", "is_active=eq.true&select=id,product_name,destination_type,landing_page_url,whatsapp_number"),
     sbQuery("targeting_presets", "is_active=eq.true&select=id,preset_name,slot_number&order=slot_number.asc"),
   ]);
 
@@ -868,10 +889,11 @@ async function renderVault(el) {
       <form id="uploadForm">
         <div class="fg">
           <div class="field"><label>Link to product *</label>
-            <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none';">
+            <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none'; bvShowProductDestination(this.value);">
               ${pOpts}
               <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
             </select>
+            <div id="f_productDestination" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
           </div>
         </div>
         <div class="fg" id="newProductFields" style="margin-top:11px;display:${!products?.length ? "grid" : "none"};border:1px dashed var(--border);border-radius:8px;padding:12px;">
@@ -964,6 +986,9 @@ async function renderVault(el) {
         </tr>`).join("")}
       </table></div>`}
     </div>`;
+
+  window.bvVaultProductsCache = products || [];
+  bvShowProductDestination(document.getElementById("f_product")?.value);
 
   // Drag-and-drop
   const dz = document.getElementById("dropZone");
@@ -1334,7 +1359,7 @@ async function renderProducts(el) {
         </div>
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Default order value *</label><input id="p_val" type="number" value="19000" min="0"></div>
-          <div class="field"><label>Landing page URL</label><input id="p_url" placeholder="https://…"></div>
+          <div class="field"><label>Landing page URL <span style="font-weight:400;color:var(--muted);">(website-ad click destination + the link the WhatsApp bot sends on "Learn More")</span></label><input id="p_url" placeholder="https://…"></div>
         </div>
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Destination</label>
