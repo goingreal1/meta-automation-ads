@@ -210,8 +210,8 @@ textarea{resize:vertical;min-height:76px;}
 .pill{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
 .pill.untested,.pill.pending_test{background:var(--panel2);color:var(--muted);}
 .pill.testing,.pill.active,.pill.ACTIVE,.pill.winner,.pill.winning,.pill.approved,.pill.delivered,.pill.valid{background:var(--accentBg);color:var(--accent);}
-.pill.pending,.pill.pending_approval,.pill.staged,.pill.watch,.pill.awaiting_approval{background:var(--warnBg);color:var(--warn);}
-.pill.loser,.pill.killed,.pill.paused,.pill.PAUSED,.pill.returned,.pill.cancelled,.pill.rejected{background:var(--dangerBg);color:var(--danger);}
+.pill.pending,.pill.pending_approval,.pill.staged,.pill.watch,.pill.awaiting_approval,.pill.scheduled{background:var(--warnBg);color:var(--warn);}
+.pill.loser,.pill.killed,.pill.paused,.pill.PAUSED,.pill.returned,.pill.cancelled,.pill.rejected,.pill.off{background:var(--dangerBg);color:var(--danger);}
 .pill.scaling,.pill.scale{background:var(--blueBg);color:var(--blue);}
 .pill.warmup,.pill.warming_up{background:var(--panel2);color:var(--muted);}
 
@@ -1325,6 +1325,21 @@ function setFile(file) {
 }
 
 // ── TAB: CAMPAIGNS ────────────────────────────────────────────────────────────
+// Meta's real scheduling model: an ad set can be status ACTIVE on Meta's side
+// while not delivering anything yet, if meta_raw.start_time is still in the
+// future -- that IS "scheduled", distinct from genuinely live or off. The
+// sync (sync-meta-structure) only started capturing start_time recently, so
+// older synced rows may not have it -- those just fall back to raw status.
+function bvAdSetLifecycle(a) {
+  const startTime = a.meta_raw?.start_time ? new Date(a.meta_raw.start_time) : null;
+  const status = (a.status || "").toLowerCase();
+  if (startTime && startTime.getTime() > Date.now()) {
+    return { key: "scheduled", label: `Scheduled — ${startTime.toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}` };
+  }
+  if (status === "active") return { key: "active", label: "Active" };
+  return { key: "off", label: status ? status.replace(/_/g, " ") : "off" };
+}
+
 async function renderCampaigns(el) {
   const sets = await sbQuery("ad_sets", "select=*,campaigns(campaign_name,campaign_type),daily_metrics(spend_naira,ctr,cost_per_order_naira,metric_date)&order=created_at.desc&limit=150");
 
@@ -1334,12 +1349,12 @@ async function renderCampaigns(el) {
     a.ctr_latest = latest?.ctr ?? null;
     a.cpa_latest = latest?.cost_per_order_naira ?? null;
     a.spend_latest = latest?.spend_naira ?? null;
+    a.lifecycle = bvAdSetLifecycle(a);
   });
 
-  const active  = (sets||[]).filter(a => ["ACTIVE","active"].includes(a.status)).length;
-  const paused  = (sets||[]).filter(a => ["PAUSED","paused"].includes(a.status)).length;
-  const scaling = (sets||[]).filter(a => a.status === "scaling").length;
-  const killed  = (sets||[]).filter(a => ["killed","loser"].includes(a.status)).length;
+  const active    = (sets||[]).filter(a => a.lifecycle.key === "active").length;
+  const scheduled = (sets||[]).filter(a => a.lifecycle.key === "scheduled").length;
+  const off       = (sets||[]).filter(a => a.lifecycle.key === "off").length;
 
   el.innerHTML = `
     <div class="sh">
@@ -1353,8 +1368,8 @@ async function renderCampaigns(el) {
     <div class="g4">
       <div class="kc"><div class="kc-lbl">Total ad sets</div><div class="kc-val">${sets?.length ?? 0}</div></div>
       <div class="kc"><div class="kc-lbl">Active</div><div class="kc-val a">${active}</div></div>
-      <div class="kc"><div class="kc-lbl">Paused</div><div class="kc-val">${paused}</div></div>
-      <div class="kc"><div class="kc-lbl">Killed</div><div class="kc-val d">${killed}</div><div class="kc-sub">${scaling} scaling</div></div>
+      <div class="kc"><div class="kc-lbl">Scheduled</div><div class="kc-val w">${scheduled}</div></div>
+      <div class="kc"><div class="kc-lbl">Off</div><div class="kc-val">${off}</div></div>
     </div>
 
     <div class="panel">
@@ -1367,7 +1382,7 @@ async function renderCampaigns(el) {
       ${!sets?.length
         ? `<div class="empty"><div class="empty-ico">🚀</div>No ad sets yet. Run a batch from Overview to stage your first test.</div>`
         : `<div class="tbl-wrap"><table>
-          <tr><th>Ad Set</th><th>Type</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
+          <tr><th>Ad Set</th><th>Campaign</th><th>Type</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
           ${sets.map(a => {
             const h    = hrs(a.created_at);
             const ctrV = a.ctr_latest != null ? parseFloat(a.ctr_latest).toFixed(2) : null;
@@ -1376,6 +1391,7 @@ async function renderCampaigns(el) {
             const cpaC = cpaV ? (cpaV <= CPA_WATCH ? "ctr-hot" : cpaV <= CPA_KILL ? "ctr-warm" : "ctr-cold") : "";
             return `<tr>
               <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${a.adset_name}">${a.adset_name}</td>
+              <td class="n" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.campaigns?.campaign_name ?? "—"}</td>
               <td style="text-transform:lowercase;">${a.targeting_type ?? "—"}</td>
               <td>${fN(a.budget_naira)}</td>
               <td class="${ctrCls(ctrV)}">${ctrV ? ctrV+"%" : "—"}</td>
@@ -1383,7 +1399,7 @@ async function renderCampaigns(el) {
               <td>${fN(spV)}</td>
               <td>${h}h</td>
               <td>${decision(ctrV, spV, h)}</td>
-              <td><span class="pill ${(a.status||"").toLowerCase().replace(/ /g,"_")}">${a.status ?? "—"}</span></td>
+              <td><span class="pill ${a.lifecycle.key}">${a.lifecycle.label}</span></td>
             </tr>`;
           }).join("")}
         </table></div>`}
