@@ -121,6 +121,8 @@ Deno.serve(async (req: Request) => {
       message_type: "agent_media",
       content: caption || "",
       metadata: { url: publicUrl, media_type: mediaType, caption },
+      wa_message_id: waData?.messages?.[0]?.id ?? null,
+      status: "sent",
     });
     await supabase
       .from("beoliv_conversations")

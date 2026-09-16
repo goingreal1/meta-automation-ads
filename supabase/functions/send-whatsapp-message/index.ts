@@ -94,11 +94,16 @@ Deno.serve(async (req: Request) => {
 
     // message_type "agent_text" (not "text") so the dashboard can show it was a
     // human reply, not a bot message -- the bot itself never writes this type.
+    // wa_message_id + status power the same read-receipt ticks bot messages
+    // get -- was never captured here, so a human agent's replies never showed
+    // delivery status at all, only bot ones.
     await supabase.from("beoliv_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
       message_type: "agent_text",
       content: text,
+      wa_message_id: waData?.messages?.[0]?.id ?? null,
+      status: "sent",
     });
     await supabase
       .from("beoliv_conversations")

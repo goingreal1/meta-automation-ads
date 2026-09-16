@@ -94,6 +94,8 @@ Deno.serve(async (req: Request) => {
       message_type: "flow",
       content: "order_flow",
       metadata: { flow_cta: flowCta, sent_by: "agent" },
+      wa_message_id: waData?.messages?.[0]?.id ?? null,
+      status: "sent",
     });
     await supabase
       .from("beoliv_conversations")
