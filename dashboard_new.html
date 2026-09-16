@@ -1460,7 +1460,7 @@ async function renderPerformance(el, fromDate, toDate) {
 async function renderProducts(el) {
   const [prods, creatives] = await Promise.all([
     sbQuery("products", "order=created_at.desc"),
-    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name"),
+    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name,test_status"),
   ]);
   const creativesByProduct = {};
   (creatives || []).forEach(c => {
@@ -1529,6 +1529,7 @@ async function renderProducts(el) {
 
     <div class="panel">
       <div class="ph"><div class="ph-title">Products</div><div class="ph-count">${prods?.length ?? 0}</div></div>
+      <div id="publishMsg"></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Photo</th><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th><th></th></tr>
@@ -1556,7 +1557,12 @@ async function renderProducts(el) {
               ${p.auto_post_enabled ? "On" : "Off"}
             </label>
           </td>
-          <td><button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="bvEditProduct('${p.id}')">Edit</button></td>
+          <td style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="bvEditProduct('${p.id}')">Edit</button>
+            <button type="button" class="btn btn-a" id="publishBtn-${p.id}" style="padding:4px 8px;font-size:10px;" ${pc.filter(c => c.test_status === "untested").length ? "" : "disabled"} onclick="bvPublishProduct('${p.id}', '${p.product_name.replace(/'/g, "\\'")}')">
+              ↑ Publish${pc.filter(c => c.test_status === "untested").length ? ` (${pc.filter(c => c.test_status === "untested").length})` : ""}
+            </button>
+          </td>
         </tr>`;
         }).join("")}
       </table></div>`}
@@ -1654,6 +1660,41 @@ function bvCancelProductEdit() {
   document.getElementById("prodCancelEdit").style.display = "none";
   document.getElementById("prodImgHint").textContent = "Save the product first (below), then come back up here to upload its photo.";
   document.getElementById("prodImgPreview").innerHTML = "No image";
+}
+
+// Creates the real campaign/ad sets/ads on Meta for this product's pending
+// creatives right now (PAUSED, honoring each creative's scheduled_for) --
+// independent of the Auto-Post toggle, which only controls unattended batch
+// runs. This is what actually makes something appear in Ads Manager; nothing
+// does until this (or the nightly batch) runs.
+async function bvPublishProduct(productId, productName) {
+  const btn = document.getElementById(`publishBtn-${productId}`);
+  const msg = document.getElementById("publishMsg");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Publishing…';
+  msg.innerHTML = "";
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/ai-auto-launch-tests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sessionData?.access_token || ANON}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ product_id: productId }),
+    });
+    const r = await res.json();
+    if (r.error) throw new Error(r.error);
+    if (r.message === "No pending creatives to launch") {
+      msg.innerHTML = `<div class="msg err">No untested creatives for ${productName} to publish.</div>`;
+    } else {
+      msg.innerHTML = `<div class="msg ok">✅ ${productName}: ${r.creatives ?? "creative(s)"} published to Meta as PAUSED (${r.ad_sets ?? "?"} ad set(s) total). Check Meta Ads Manager, or reply APPROVE on WhatsApp to go live at the scheduled time.</div>`;
+    }
+    setTimeout(render, 1500);
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+    btn.disabled = false;
+    btn.innerHTML = "↑ Publish";
+  }
 }
 
 async function bvUploadProductImage(inputEl) {

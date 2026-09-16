@@ -848,20 +848,38 @@ Deno.serve(async (req: Request) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // 1. Get up to 5 pending creatives. Real column is test_status (not the
-    // nonexistent "status" this used to filter on -- that silently matched
-    // zero rows every single run, regardless of anything uploaded).
-    // !inner on products so the auto_post_enabled filter actually applies --
-    // a creative only auto-launches if the product it's linked to has opted in.
-    const { data: pendingCreatives, error: pendingErr } = await supabase
+    // An explicit product_id (the dashboard's "Publish" button, scoped to one
+    // product) bypasses the auto_post_enabled gate -- that toggle controls
+    // whether a product's creatives launch automatically in an unattended
+    // batch run, not whether a human can manually publish them right now.
+    let requestedProductId: string | null = null;
+    try {
+      const body = await req.json();
+      requestedProductId = body?.product_id || null;
+    } catch {
+      // No/invalid JSON body -- treat as a plain batch run.
+    }
+
+    // 1. Get up to 5 pending creatives (or every pending creative for one
+    // product, if requested). Real column is test_status (not the nonexistent
+    // "status" this used to filter on -- that silently matched zero rows every
+    // single run, regardless of anything uploaded). !inner on products so the
+    // auto_post_enabled filter actually applies in the batch (no product_id) case.
+    let pendingQuery = supabase
       .from("creative_assets")
       .select(
         "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
       )
       .eq("test_status", "untested")
-      .eq("products.auto_post_enabled", true)
-      .order("uploaded_at", { ascending: true })
-      .limit(5);
+      .order("uploaded_at", { ascending: true });
+
+    if (requestedProductId) {
+      pendingQuery = pendingQuery.eq("product_id", requestedProductId).limit(20);
+    } else {
+      pendingQuery = pendingQuery.eq("products.auto_post_enabled", true).limit(5);
+    }
+
+    const { data: pendingCreatives, error: pendingErr } = await pendingQuery;
 
     if (pendingErr) {
       console.error("Failed to fetch pending creatives:", pendingErr);
