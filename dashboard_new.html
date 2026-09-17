@@ -2302,6 +2302,9 @@ const BV_COMPOSE_DEFAULTS = {
   website: "Here's everything about Beoliv -- what's inside, how to use it, and more 👇",
 };
 const BV_COMPOSE_TITLES = { form: "Send Order Form", packages: "Send Package Info", website: "Send Website Link" };
+// Reuses the same starter-pack product photo the bot itself sends
+// (config/product.ts PACKAGES[0].imageUrl in beoliv-whatsapp-funnel).
+const BV_STARTER_IMAGE_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/storage/v1/object/public/creative-vault/beoliv/beoliv-cream-product.jpg";
 
 function bvComposeModal(kind) {
   if (!bvSelectedConvId) return;
@@ -2313,7 +2316,7 @@ function bvComposeModal(kind) {
     <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
     <div style="font-weight:600;font-size:14px;margin-bottom:12px;">${BV_COMPOSE_TITLES[kind]}</div>
     <textarea id="bvComposeBody" rows="7" style="width:100%;font-size:13px;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);resize:vertical;font-family:inherit;">${bvEscape(BV_COMPOSE_DEFAULTS[kind])}</textarea>
-    ${kind !== "website" ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">${kind === "form" ? "Opens the native order form (package choice + delivery details) when tapped." : "Sends with Order Now / View Website / View All Packages buttons attached."}</div>` : ""}
+    ${kind !== "website" ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">Sends with the product photo and one button that opens the order form directly.</div>` : ""}
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
       <button class="btn btn-a" style="width:auto;padding:8px 16px;" onclick="bvCloseModal()">Cancel</button>
       <button class="btn btn-g" style="width:auto;padding:8px 16px;" id="bvComposeSendBtn" onclick="bvSendCompose('${kind}')">Send</button>
@@ -2338,19 +2341,11 @@ async function bvSendCompose(kind) {
     } else if (kind === "website") {
       res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "website" });
     } else {
-      res = await sbFn("send-whatsapp-buttons", {
-        conversation_id: bvSelectedConvId,
-        text,
-        // Reuses the same starter-pack product photo the bot itself sends
-        // (config/product.ts PACKAGES[0].imageUrl in beoliv-whatsapp-funnel)
-        // so a manually-sent package message doesn't go out as text-only.
-        image_url: "https://rrkhkhgdxhmogxxtbvyt.supabase.co/storage/v1/object/public/creative-vault/beoliv/beoliv-cream-product.jpg",
-        buttons: [
-          { id: "order_now", title: "Order Now" },
-          { id: "learn_more", title: "View Website" },
-          { id: "view_all_packages", title: "View All Packages" },
-        ],
-      });
+      // "Packages" is the same order-form Flow as "form", just with the price
+      // list as the body and the product photo attached -- one button that
+      // opens the form directly, not separate reply buttons, since the price
+      // is already right there in the message.
+      res = await sbFn("send-whatsapp-flow", { conversation_id: bvSelectedConvId, body_text: text, image_url: BV_STARTER_IMAGE_URL });
     }
     if (res?.error) {
       alert("Failed to send: " + res.error);

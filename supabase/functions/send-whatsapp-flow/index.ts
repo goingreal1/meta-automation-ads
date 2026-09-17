@@ -55,33 +55,36 @@ Deno.serve(async (req: Request) => {
     if (convErr || !conv) return json({ error: "Conversation not found." }, 404);
 
     // Agent can override the body text from the dashboard's compose modal --
-    // defaults to the same line the bot itself uses when left blank.
+    // defaults to the same line the bot itself uses when left blank. Also
+    // used for the "Package Info" compose option: same order-form Flow, just
+    // with the price list as the body and the product photo as the header,
+    // so the customer sees prices + one button that opens the form directly
+    // -- no separate reply buttons needed since the price is already there.
     const bodyText = (body?.body_text as string | undefined)?.trim() || "Tap below to complete your order 👇";
+    const imageUrl = (body?.image_url as string | undefined)?.trim() || null;
     const flowCta = "Start Order";
+
+    const interactive: any = {
+      type: "flow",
+      body: { text: bodyText },
+      action: {
+        name: "flow",
+        parameters: {
+          flow_message_version: "3",
+          flow_token: conv.id,
+          flow_id: ORDER_FLOW_ID,
+          flow_cta: flowCta,
+          flow_action: "navigate",
+          flow_action_payload: { screen: ORDER_FLOW_SCREEN_ID },
+        },
+      },
+    };
+    if (imageUrl) interactive.header = { type: "image", image: { link: imageUrl } };
 
     const waRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: conv.phone,
-        type: "interactive",
-        interactive: {
-          type: "flow",
-          body: { text: bodyText },
-          action: {
-            name: "flow",
-            parameters: {
-              flow_message_version: "3",
-              flow_token: conv.id,
-              flow_id: ORDER_FLOW_ID,
-              flow_cta: flowCta,
-              flow_action: "navigate",
-              flow_action_payload: { screen: ORDER_FLOW_SCREEN_ID },
-            },
-          },
-        },
-      }),
+      body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, type: "interactive", interactive }),
     });
     const waData = await waRes.json();
 
@@ -95,7 +98,7 @@ Deno.serve(async (req: Request) => {
       direction: "outbound",
       message_type: "flow",
       content: "order_flow",
-      metadata: { flow_cta: flowCta, sent_by: "agent" },
+      metadata: { flow_cta: flowCta, image_url: imageUrl, sent_by: "agent" },
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",
     });
