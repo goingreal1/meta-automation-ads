@@ -2341,6 +2341,10 @@ async function bvSendCompose(kind) {
       res = await sbFn("send-whatsapp-buttons", {
         conversation_id: bvSelectedConvId,
         text,
+        // Reuses the same starter-pack product photo the bot itself sends
+        // (config/product.ts PACKAGES[0].imageUrl in beoliv-whatsapp-funnel)
+        // so a manually-sent package message doesn't go out as text-only.
+        image_url: "https://rrkhkhgdxhmogxxtbvyt.supabase.co/storage/v1/object/public/creative-vault/beoliv/beoliv-cream-product.jpg",
         buttons: [
           { id: "order_now", title: "Order Now" },
           { id: "learn_more", title: "View Website" },

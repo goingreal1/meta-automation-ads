@@ -47,6 +47,7 @@ Deno.serve(async (req: Request) => {
     // (interactive "button" vs "cta_url") and can't be combined in one message.
     const buttons = (body?.buttons as Array<{ id: string; title: string }> | undefined) || null;
     const useWebsiteLink = body?.mode === "website";
+    const imageUrl = (body?.image_url as string | undefined)?.trim() || null;
 
     if (!conversationId || !text) {
       return json({ error: "conversation_id and text are required." }, 400);
@@ -68,7 +69,7 @@ Deno.serve(async (req: Request) => {
 
     if (convErr || !conv) return json({ error: "Conversation not found." }, 404);
 
-    const interactive = useWebsiteLink
+    const interactive: any = useWebsiteLink
       ? {
           type: "cta_url",
           body: { text },
@@ -79,6 +80,7 @@ Deno.serve(async (req: Request) => {
           body: { text },
           action: { buttons: buttons!.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })) },
         };
+    if (imageUrl) interactive.header = { type: "image", image: { link: imageUrl } };
 
     const waRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
@@ -97,7 +99,9 @@ Deno.serve(async (req: Request) => {
       direction: "outbound",
       message_type: "agent_text",
       content: text,
-      metadata: useWebsiteLink ? { cta_url: WEBSITE_URL, sent_by: "agent" } : { buttons, sent_by: "agent" },
+      metadata: useWebsiteLink
+        ? { cta_url: WEBSITE_URL, sent_by: "agent" }
+        : { buttons, image_url: imageUrl, sent_by: "agent" },
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",
     });
