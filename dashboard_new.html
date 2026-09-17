@@ -426,6 +426,8 @@ const ICON_PATHS = {
   send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
   clip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>',
   form: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+  link: '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
 };
 function icon(name, size = 16) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
@@ -2126,7 +2128,9 @@ async function bvSelectConversation(id) {
     <div class="conv-compose">
       <input type="file" id="convFileInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/*" style="display:none;" onchange="bvSendMedia()">
       <button class="compose-icon-btn" onclick="document.getElementById('convFileInput').click()" title="Attach image, video or voice note">${icon("clip",16)}</button>
-      <button class="compose-icon-btn" onclick="bvSendOrderForm()" title="Send order form">${icon("form",16)}</button>
+      <button class="compose-icon-btn" onclick="bvComposeModal('form')" title="Send order form">${icon("form",16)}</button>
+      <button class="compose-icon-btn" onclick="bvComposeModal('packages')" title="Send package info + buttons">${icon("list",16)}</button>
+      <button class="compose-icon-btn" onclick="bvComposeModal('website')" title="Send website link">${icon("link",16)}</button>
       <input id="convReplyInput" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" onkeydown="if(event.key==='Enter'){event.preventDefault();bvSendReply();}">
       <button id="convSendBtn" onclick="bvSendReply()" title="Send">${icon("send",16)}</button>
     </div>`;
@@ -2238,18 +2242,74 @@ async function bvSendMedia() {
   }
 }
 
-async function bvSendOrderForm() {
+// Manual-send modal: lets an agent pick what to attach (order form / package
+// info + buttons / website link) and edit the message body before it goes
+// out, instead of only the fixed one-tap "send order form" icon that existed
+// before. Reuses the same bv-overlay/bv-modal pattern as the creative detail
+// view.
+const BV_COMPOSE_DEFAULTS = {
+  form: "Tap below to complete your order 👇",
+  packages:
+    "Our packages:\n\nStarter Pack — ₦21,000 (Free delivery)\nRecommended Pack — ₦32,000 (2 FREE immune-boosters + free delivery)\nStandard Pack — ₦57,000 (4 FREE immune-boosters + free delivery)\n\nWhich one would you like?",
+  website: "Here's everything about Beoliv -- what's inside, how to use it, and more 👇",
+};
+const BV_COMPOSE_TITLES = { form: "Send Order Form", packages: "Send Package Info", website: "Send Website Link" };
+
+function bvComposeModal(kind) {
   if (!bvSelectedConvId) return;
-  if (!confirm("Send the order form to this customer?")) return;
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal" style="max-width:480px;">
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div style="font-weight:600;font-size:14px;margin-bottom:12px;">${BV_COMPOSE_TITLES[kind]}</div>
+    <textarea id="bvComposeBody" rows="7" style="width:100%;font-size:13px;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);resize:vertical;font-family:inherit;">${bvEscape(BV_COMPOSE_DEFAULTS[kind])}</textarea>
+    ${kind !== "website" ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">${kind === "form" ? "Opens the native order form (package choice + delivery details) when tapped." : "Sends with Order Now / View Website / View All Packages buttons attached."}</div>` : ""}
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="btn btn-a" style="width:auto;padding:8px 16px;" onclick="bvCloseModal()">Cancel</button>
+      <button class="btn btn-g" style="width:auto;padding:8px 16px;" id="bvComposeSendBtn" onclick="bvSendCompose('${kind}')">Send</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById("bvComposeBody")?.focus();
+}
+
+async function bvSendCompose(kind) {
+  const textarea = document.getElementById("bvComposeBody");
+  const btn = document.getElementById("bvComposeSendBtn");
+  const text = (textarea?.value || "").trim();
+  if (!text || !bvSelectedConvId) return;
+
+  btn.disabled = true;
+  btn.textContent = "Sending…";
   try {
-    const res = await sbFn("send-whatsapp-flow", { conversation_id: bvSelectedConvId });
+    let res;
+    if (kind === "form") {
+      res = await sbFn("send-whatsapp-flow", { conversation_id: bvSelectedConvId, body_text: text });
+    } else if (kind === "website") {
+      res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "website" });
+    } else {
+      res = await sbFn("send-whatsapp-buttons", {
+        conversation_id: bvSelectedConvId,
+        text,
+        buttons: [
+          { id: "order_now", title: "Order Now" },
+          { id: "learn_more", title: "View Website" },
+          { id: "view_all_packages", title: "View All Packages" },
+        ],
+      });
+    }
     if (res?.error) {
-      alert("Failed to send order form: " + res.error);
+      alert("Failed to send: " + res.error);
       return;
     }
+    bvCloseModal();
     bvAfterAgentSend();
   } catch (e) {
-    alert("Failed to send order form: " + e.message);
+    alert("Failed to send: " + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Send"; }
   }
 }
 

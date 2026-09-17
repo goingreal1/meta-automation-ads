@@ -1,21 +1,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// One-click "send the order form" from the dashboard's Conversations tab --
-// sends the exact same native WhatsApp Flow message the bot's own
-// sendOrderFlow() sends (beoliv-whatsapp-funnel/src/controllers/botController.ts),
-// so an agent can hand a customer the real checkout form without typing.
-// ORDER_FLOW_ID/SCREEN_ID must stay in sync with
-// beoliv-whatsapp-funnel/src/config/product.ts if that ever changes.
+// Lets a human agent send an interactive message (quick-reply buttons, or a
+// clickable website link) from the dashboard's Conversations tab -- the
+// manual-reply equivalent of the bot's own sendButtons()/sendUrlButton().
+// A tapped reply button still arrives back through the bot's normal webhook
+// and gets logged, but human_handling=true means the bot itself stays silent
+// on it (same as any other agent-sent message) -- the agent sees the tap in
+// the thread and acts on it themselves.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const WHATSAPP_TOKEN = Deno.env.get("BEOLIV_WHATSAPP_ACCESS_TOKEN") ?? "";
 const WHATSAPP_PHONE_ID = Deno.env.get("BEOLIV_WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const WEBSITE_URL = Deno.env.get("BEOLIV_WEBSITE_URL") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v18.0";
-
-const ORDER_FLOW_ID = "1801858017673906";
-const ORDER_FLOW_SCREEN_ID = "ORDER_FORM";
 
 function json(obj: any, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -42,7 +41,22 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json().catch(() => ({}));
     const conversationId = body?.conversation_id as string | undefined;
-    if (!conversationId) return json({ error: "conversation_id is required." }, 400);
+    const text = (body?.text as string | undefined)?.trim();
+    // Either a small set of reply buttons (max 3, WhatsApp's own limit), or a
+    // single clickable link -- these are two different WhatsApp message types
+    // (interactive "button" vs "cta_url") and can't be combined in one message.
+    const buttons = (body?.buttons as Array<{ id: string; title: string }> | undefined) || null;
+    const useWebsiteLink = body?.mode === "website";
+
+    if (!conversationId || !text) {
+      return json({ error: "conversation_id and text are required." }, 400);
+    }
+    if (!useWebsiteLink && (!buttons || !buttons.length)) {
+      return json({ error: "buttons are required unless mode is 'website'." }, 400);
+    }
+    if (useWebsiteLink && !WEBSITE_URL) {
+      return json({ error: "BEOLIV_WEBSITE_URL is not configured." }, 500);
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -54,48 +68,36 @@ Deno.serve(async (req: Request) => {
 
     if (convErr || !conv) return json({ error: "Conversation not found." }, 404);
 
-    // Agent can override the body text from the dashboard's compose modal --
-    // defaults to the same line the bot itself uses when left blank.
-    const bodyText = (body?.body_text as string | undefined)?.trim() || "Tap below to complete your order 👇";
-    const flowCta = "Start Order";
+    const interactive = useWebsiteLink
+      ? {
+          type: "cta_url",
+          body: { text },
+          action: { name: "cta_url", parameters: { display_text: "View Website", url: WEBSITE_URL } },
+        }
+      : {
+          type: "button",
+          body: { text },
+          action: { buttons: buttons!.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })) },
+        };
 
     const waRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: conv.phone,
-        type: "interactive",
-        interactive: {
-          type: "flow",
-          body: { text: bodyText },
-          action: {
-            name: "flow",
-            parameters: {
-              flow_message_version: "3",
-              flow_token: conv.id,
-              flow_id: ORDER_FLOW_ID,
-              flow_cta: flowCta,
-              flow_action: "navigate",
-              flow_action_payload: { screen: ORDER_FLOW_SCREEN_ID },
-            },
-          },
-        },
-      }),
+      body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, type: "interactive", interactive }),
     });
     const waData = await waRes.json();
 
     if (!waRes.ok) {
-      console.error("WhatsApp flow send failed:", waData);
+      console.error("WhatsApp buttons send failed:", waData);
       return json({ error: waData?.error?.message || "WhatsApp send failed." }, 502);
     }
 
     await supabase.from("beoliv_messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      message_type: "flow",
-      content: "order_flow",
-      metadata: { flow_cta: flowCta, sent_by: "agent" },
+      message_type: "agent_text",
+      content: text,
+      metadata: useWebsiteLink ? { cta_url: WEBSITE_URL, sent_by: "agent" } : { buttons, sent_by: "agent" },
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",
     });
@@ -106,7 +108,7 @@ Deno.serve(async (req: Request) => {
 
     return json({ success: true });
   } catch (err: any) {
-    console.error("send-whatsapp-flow error:", err);
+    console.error("send-whatsapp-buttons error:", err);
     return json({ error: err.message }, 500);
   }
 });
