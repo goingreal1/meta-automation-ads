@@ -276,7 +276,7 @@ textarea{resize:vertical;min-height:76px;}
 .conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;}
 .conv-msgs{padding:14px;display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;overflow-y:auto;}
 .conv-compose{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;}
-.conv-compose input{flex:1;font-size:13px;padding:9px 14px;border-radius:20px;}
+.conv-compose input{flex:1;min-width:0;font-size:13px;padding:9px 14px;border-radius:20px;}
 .conv-compose button{
   width:36px;height:36px;border-radius:50%;flex-shrink:0;padding:0;
   display:flex;align-items:center;justify-content:center;
@@ -289,6 +289,36 @@ textarea{resize:vertical;min-height:76px;}
   background:var(--panel2);color:var(--text2);border:1px solid var(--border);cursor:pointer;transition:all .14s;
 }
 .compose-icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+.conv-back-btn{
+  display:none;width:32px;height:32px;border-radius:50%;flex-shrink:0;padding:0;
+  align-items:center;justify-content:center;background:none;border:none;color:var(--text2);cursor:pointer;
+}
+
+/* Mobile: the list and a full thread can't fit side by side, and fixed pixel
+   heights (660px list + 680px thread stacked) made the thread unreachable
+   without a lot of scrolling. Below 820px, show one full-screen panel at a
+   time -- the list by default, or the thread (with a back button) once a
+   conversation is open -- each sized to the actual viewport instead of a
+   fixed height. */
+@media(max-width:820px){
+  .conv-back-btn{display:flex;}
+  #convTabRoot.thread-open > .sh,
+  #convTabRoot.thread-open > .g4,
+  #convTabRoot.thread-open #convListPanel{display:none;}
+  #convTabRoot:not(.thread-open) #convThread{display:none;}
+  .conv-list-items{max-height:none;height:calc(100vh - 300px);height:calc(100dvh - 300px);}
+  #convTabRoot.thread-open .conv-thread{
+    height:calc(100vh - 90px);height:calc(100dvh - 90px);
+  }
+  /* .content reserves 90px of bottom padding for the floating chat button --
+     that space is below the viewport fold anyway once the thread goes
+     full-screen, and left as-is it adds an outer page-scroll on top of the
+     thread's own internal scroll (a "double scroll" that was part of the
+     original complaint). */
+  .content:has(#convTabRoot.thread-open){padding-bottom:12px;}
+  .conv-compose{padding:8px;gap:6px;}
+  .bubble{max-width:82%;}
+}
 .agent-tag{font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--blue);margin-bottom:2px;text-transform:uppercase;}
 .bubble{max-width:65%;width:fit-content;padding:6px 9px;border-radius:8px;font-size:13px;line-height:1.4;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.2);}
 .bubble.in{background:var(--panel2);color:var(--text);align-self:flex-start;border-bottom-left-radius:2px;}
@@ -428,6 +458,7 @@ const ICON_PATHS = {
   form: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   link: '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
+  back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
 };
 function icon(name, size = 16) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
@@ -1911,20 +1942,22 @@ async function renderConversations(el) {
   const done = bvConversations.filter(c => c.current_state === "COMPLETED").length;
 
   el.innerHTML = `
-    <div class="sh"><div class="sh-title">Conversations</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
-    <div class="g4">
-      <div class="kc"><div class="kc-lbl">Total</div><div class="kc-val">${tot}</div></div>
-      <div class="kc"><div class="kc-lbl">New</div><div class="kc-val b">${nw}</div></div>
-      <div class="kc"><div class="kc-lbl">Engaged</div><div class="kc-val w">${eng}</div></div>
-      <div class="kc"><div class="kc-lbl">Completed</div><div class="kc-val a">${done}</div></div>
-    </div>
-    <div class="conv-wrap">
-      <div class="panel" style="padding:0;">
-        <div class="conv-search"><input id="convSearch" placeholder="Search name or phone…" oninput="bvFilterList()"></div>
-        <div class="conv-list-items" id="convListItems"></div>
+    <div id="convTabRoot">
+      <div class="sh"><div class="sh-title">Conversations</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+      <div class="g4">
+        <div class="kc"><div class="kc-lbl">Total</div><div class="kc-val">${tot}</div></div>
+        <div class="kc"><div class="kc-lbl">New</div><div class="kc-val b">${nw}</div></div>
+        <div class="kc"><div class="kc-lbl">Engaged</div><div class="kc-val w">${eng}</div></div>
+        <div class="kc"><div class="kc-lbl">Completed</div><div class="kc-val a">${done}</div></div>
       </div>
-      <div class="panel conv-thread" id="convThread">
-        <div class="empty"><div class="empty-ico" style="display:flex;justify-content:center;">${icon("chat",28)}</div>Select a conversation to view messages</div>
+      <div class="conv-wrap">
+        <div class="panel" style="padding:0;" id="convListPanel">
+          <div class="conv-search"><input id="convSearch" placeholder="Search name or phone…" oninput="bvFilterList()"></div>
+          <div class="conv-list-items" id="convListItems"></div>
+        </div>
+        <div class="panel conv-thread" id="convThread">
+          <div class="empty"><div class="empty-ico" style="display:flex;justify-content:center;">${icon("chat",28)}</div>Select a conversation to view messages</div>
+        </div>
       </div>
     </div>`;
 
@@ -2086,9 +2119,23 @@ function bvRenderChips(metadata) {
   return `<div class="msg-chips">${chips.map((c) => `<span class="msg-chip">${c}</span>`).join("")}</div>`;
 }
 
+// Mobile-only: returns from the full-screen thread view to the conversation
+// list (see .thread-open in the mobile CSS). The back button itself is
+// CSS-hidden on desktop, where both panels already show side by side.
+function bvBackToList() {
+  bvSelectedConvId = null;
+  document.getElementById("convTabRoot")?.classList.remove("thread-open");
+  bvFilterList();
+}
+
 async function bvSelectConversation(id) {
   bvSelectedConvId = id;
   bvFilterList();
+  // On mobile the list and thread can't fit side by side -- this swaps to a
+  // full-screen thread view (see the .thread-open mobile CSS) instead of a
+  // second fixed-height panel stacked below an already-tall list, which is
+  // what made the full conversation unreachable without a lot of scrolling.
+  document.getElementById("convTabRoot")?.classList.add("thread-open");
 
   const conv = bvConversations.find(c => c.id === id);
   const thread = document.getElementById("convThread");
@@ -2104,7 +2151,8 @@ async function bvSelectConversation(id) {
 
   thread.innerHTML = `
     <div class="conv-thread-head">
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+        <button class="conv-back-btn" onclick="bvBackToList()" title="Back to conversations">${icon("back",18)}</button>
         ${bvAvatar(conv, 38)}
         <div>
           <div style="font-weight:600;font-size:13px;">${bvEscape(bvName(conv))}</div>
