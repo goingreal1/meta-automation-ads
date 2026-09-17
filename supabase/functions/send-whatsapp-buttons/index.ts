@@ -14,6 +14,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 const WHATSAPP_TOKEN = Deno.env.get("BEOLIV_WHATSAPP_ACCESS_TOKEN") ?? "";
 const WHATSAPP_PHONE_ID = Deno.env.get("BEOLIV_WHATSAPP_PHONE_NUMBER_ID") ?? "";
 const WEBSITE_URL = Deno.env.get("BEOLIV_WEBSITE_URL") ?? "";
+// The company's own CRM order form -- must stay in sync with ORDER_FORM_URL
+// in beoliv-whatsapp-funnel/src/config/product.ts if that ever changes.
+const ORDER_FORM_URL = "https://crmbeyce.clouderp.one/forms?token=6f63e4c34e";
 const META_GRAPH_BASE = "https://graph.facebook.com/v18.0";
 
 function json(obj: any, status = 200) {
@@ -46,16 +49,16 @@ Deno.serve(async (req: Request) => {
     // single clickable link -- these are two different WhatsApp message types
     // (interactive "button" vs "cta_url") and can't be combined in one message.
     const buttons = (body?.buttons as Array<{ id: string; title: string }> | undefined) || null;
-    const useWebsiteLink = body?.mode === "website";
+    const mode = body?.mode as "website" | "order" | undefined;
     const imageUrl = (body?.image_url as string | undefined)?.trim() || null;
 
     if (!conversationId || !text) {
       return json({ error: "conversation_id and text are required." }, 400);
     }
-    if (!useWebsiteLink && (!buttons || !buttons.length)) {
-      return json({ error: "buttons are required unless mode is 'website'." }, 400);
+    if (!mode && (!buttons || !buttons.length)) {
+      return json({ error: "buttons are required unless mode is 'website' or 'order'." }, 400);
     }
-    if (useWebsiteLink && !WEBSITE_URL) {
+    if (mode === "website" && !WEBSITE_URL) {
       return json({ error: "BEOLIV_WEBSITE_URL is not configured." }, 500);
     }
 
@@ -69,11 +72,17 @@ Deno.serve(async (req: Request) => {
 
     if (convErr || !conv) return json({ error: "Conversation not found." }, 404);
 
-    const interactive: any = useWebsiteLink
+    const interactive: any = mode
       ? {
           type: "cta_url",
           body: { text },
-          action: { name: "cta_url", parameters: { display_text: "View Website", url: WEBSITE_URL } },
+          action: {
+            name: "cta_url",
+            parameters:
+              mode === "order"
+                ? { display_text: "Complete Order", url: ORDER_FORM_URL }
+                : { display_text: "View Website", url: WEBSITE_URL },
+          },
         }
       : {
           type: "button",
@@ -99,8 +108,8 @@ Deno.serve(async (req: Request) => {
       direction: "outbound",
       message_type: "agent_text",
       content: text,
-      metadata: useWebsiteLink
-        ? { cta_url: WEBSITE_URL, sent_by: "agent" }
+      metadata: mode
+        ? { cta_url: mode === "order" ? ORDER_FORM_URL : WEBSITE_URL, image_url: imageUrl, sent_by: "agent" }
         : { buttons, image_url: imageUrl, sent_by: "agent" },
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",

@@ -2381,15 +2381,17 @@ async function bvSendCompose(kind) {
   try {
     let res;
     if (kind === "form") {
-      res = await sbFn("send-whatsapp-flow", { conversation_id: bvSelectedConvId, body_text: text });
+      // Opens the CRM's own order form (package choice + delivery details) in
+      // the customer's phone browser -- replaces the native WhatsApp Flow.
+      res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "order" });
     } else if (kind === "website") {
       res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "website" });
     } else {
-      // "Packages" is the same order-form Flow as "form", just with the price
+      // "Packages" is the same CRM form link as "form", just with the price
       // list as the body and the product photo attached -- one button that
       // opens the form directly, not separate reply buttons, since the price
       // is already right there in the message.
-      res = await sbFn("send-whatsapp-flow", { conversation_id: bvSelectedConvId, body_text: text, image_url: BV_STARTER_IMAGE_URL });
+      res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "order", image_url: BV_STARTER_IMAGE_URL });
     }
     if (res?.error) {
       alert("Failed to send: " + res.error);
