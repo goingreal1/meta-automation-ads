@@ -289,6 +289,18 @@ textarea{resize:vertical;min-height:76px;}
   background:var(--panel2);color:var(--text2);border:1px solid var(--border);cursor:pointer;transition:all .14s;
 }
 .compose-icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+.compose-attach-wrap{position:relative;flex-shrink:0;}
+.compose-attach-menu{
+  display:none;flex-direction:column;position:absolute;bottom:44px;left:0;min-width:220px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:var(--shadow-md,0 8px 24px rgba(0,0,0,.35));overflow:hidden;z-index:50;
+}
+.compose-attach-menu.open{display:flex;}
+.compose-attach-menu button{
+  display:flex;align-items:center;gap:9px;padding:10px 12px;background:none;border:none;
+  color:var(--text);font-size:12.5px;text-align:left;cursor:pointer;transition:background .12s;
+}
+.compose-attach-menu button:hover{background:var(--panel2);}
 .conv-back-btn{
   display:none;width:32px;height:32px;border-radius:50%;flex-shrink:0;padding:0;
   align-items:center;justify-content:center;background:none;border:none;color:var(--text2);cursor:pointer;
@@ -307,17 +319,24 @@ textarea{resize:vertical;min-height:76px;}
   #convTabRoot.thread-open #convListPanel{display:none;}
   #convTabRoot:not(.thread-open) #convThread{display:none;}
   .conv-list-items{max-height:none;height:calc(100vh - 300px);height:calc(100dvh - 300px);}
+
+  /* An open thread should feel like a full-screen chat, not a panel wedged
+     below the app's own header (brand/account picker/sync time/logout) --
+     confirmed via a real screenshot that the two stacked headers pushed
+     messages almost entirely off screen. Hide the app chrome around it
+     instead, and let the thread claim the space that frees up. :has() lets
+     this react to the thread-open state without any extra JS to toggle it. */
+  body:has(#convTabRoot.thread-open) .hdr,
+  body:has(#convTabRoot.thread-open) .chat-toggle,
+  body:has(#convTabRoot.thread-open) .chat-panel{display:none;}
+  .content:has(#convTabRoot.thread-open){padding:0;}
   #convTabRoot.thread-open .conv-thread{
-    height:calc(100vh - 90px);height:calc(100dvh - 90px);
+    height:100vh;height:100dvh;border-radius:0;border:none;
   }
-  /* .content reserves 90px of bottom padding for the floating chat button --
-     that space is below the viewport fold anyway once the thread goes
-     full-screen, and left as-is it adds an outer page-scroll on top of the
-     thread's own internal scroll (a "double scroll" that was part of the
-     original complaint). */
-  .content:has(#convTabRoot.thread-open){padding-bottom:12px;}
   .conv-compose{padding:8px;gap:6px;}
+  .conv-compose > .compose-icon-btn,.conv-compose > button,.compose-attach-wrap > .compose-icon-btn{width:34px;height:34px;}
   .bubble{max-width:82%;}
+  .conv-msgs{background:var(--bg);}
 }
 .agent-tag{font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--blue);margin-bottom:2px;text-transform:uppercase;}
 .bubble{max-width:65%;width:fit-content;padding:6px 9px;border-radius:8px;font-size:13px;line-height:1.4;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.2);}
@@ -459,6 +478,7 @@ const ICON_PATHS = {
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   link: '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
   back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
 };
 function icon(name, size = 16) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ""}</svg>`;
@@ -2119,6 +2139,25 @@ function bvRenderChips(metadata) {
   return `<div class="msg-chips">${chips.map((c) => `<span class="msg-chip">${c}</span>`).join("")}</div>`;
 }
 
+// Single "+" button replaces 4 always-visible icons (attach/form/packages/
+// website) that were crowding the compose bar on narrow screens -- opens a
+// small menu instead, closed by picking an option or tapping outside it.
+function bvToggleAttachMenu(e) {
+  e.stopPropagation();
+  document.getElementById("composeAttachMenu")?.classList.toggle("open");
+}
+document.addEventListener("click", (e) => {
+  const menu = document.getElementById("composeAttachMenu");
+  if (menu && menu.classList.contains("open") && !menu.contains(e.target) && !e.target.closest(".compose-attach-wrap")) {
+    menu.classList.remove("open");
+  }
+});
+function bvAttachMenuAction(kind) {
+  document.getElementById("composeAttachMenu")?.classList.remove("open");
+  if (kind === "file") document.getElementById("convFileInput")?.click();
+  else bvComposeModal(kind);
+}
+
 // Mobile-only: returns from the full-screen thread view to the conversation
 // list (see .thread-open in the mobile CSS). The back button itself is
 // CSS-hidden on desktop, where both panels already show side by side.
@@ -2175,10 +2214,15 @@ async function bvSelectConversation(id) {
     </div>
     <div class="conv-compose">
       <input type="file" id="convFileInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/*" style="display:none;" onchange="bvSendMedia()">
-      <button class="compose-icon-btn" onclick="document.getElementById('convFileInput').click()" title="Attach image, video or voice note">${icon("clip",16)}</button>
-      <button class="compose-icon-btn" onclick="bvComposeModal('form')" title="Send order form">${icon("form",16)}</button>
-      <button class="compose-icon-btn" onclick="bvComposeModal('packages')" title="Send package info + buttons">${icon("list",16)}</button>
-      <button class="compose-icon-btn" onclick="bvComposeModal('website')" title="Send website link">${icon("link",16)}</button>
+      <div class="compose-attach-wrap">
+        <button class="compose-icon-btn" onclick="bvToggleAttachMenu(event)" title="Attach">${icon("plus",18)}</button>
+        <div id="composeAttachMenu" class="compose-attach-menu">
+          <button onclick="bvAttachMenuAction('file')">${icon("clip",14)} Photo, video or voice note</button>
+          <button onclick="bvAttachMenuAction('form')">${icon("form",14)} Order form</button>
+          <button onclick="bvAttachMenuAction('packages')">${icon("list",14)} Package info</button>
+          <button onclick="bvAttachMenuAction('website')">${icon("link",14)} Website link</button>
+        </div>
+      </div>
       <input id="convReplyInput" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" onkeydown="if(event.key==='Enter'){event.preventDefault();bvSendReply();}">
       <button id="convSendBtn" onclick="bvSendReply()" title="Send">${icon("send",16)}</button>
     </div>`;
