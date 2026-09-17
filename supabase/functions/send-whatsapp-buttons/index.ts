@@ -72,6 +72,31 @@ Deno.serve(async (req: Request) => {
 
     if (convErr || !conv) return json({ error: "Conversation not found." }, 404);
 
+    // Photo and button sent as two separate messages, not a cta_url/button
+    // header image -- confirmed via real testing that combining them risked
+    // the button not showing up at all.
+    if (imageUrl) {
+      const imgRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, type: "image", image: { link: imageUrl } }),
+      });
+      const imgData = await imgRes.json();
+      if (imgRes.ok) {
+        await supabase.from("beoliv_messages").insert({
+          conversation_id: conv.id,
+          direction: "outbound",
+          message_type: "image",
+          content: "product_photo",
+          metadata: { image_url: imageUrl, sent_by: "agent" },
+          wa_message_id: imgData?.messages?.[0]?.id ?? null,
+          status: "sent",
+        });
+      } else {
+        console.error("WhatsApp image send failed:", imgData);
+      }
+    }
+
     const interactive: any = mode
       ? {
           type: "cta_url",
@@ -89,7 +114,6 @@ Deno.serve(async (req: Request) => {
           body: { text },
           action: { buttons: buttons!.slice(0, 3).map((b) => ({ type: "reply", reply: { id: b.id, title: b.title } })) },
         };
-    if (imageUrl) interactive.header = { type: "image", image: { link: imageUrl } };
 
     const waRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
@@ -109,8 +133,8 @@ Deno.serve(async (req: Request) => {
       message_type: "agent_text",
       content: text,
       metadata: mode
-        ? { cta_url: mode === "order" ? ORDER_FORM_URL : WEBSITE_URL, image_url: imageUrl, sent_by: "agent" }
-        : { buttons, image_url: imageUrl, sent_by: "agent" },
+        ? { cta_url: mode === "order" ? ORDER_FORM_URL : WEBSITE_URL, sent_by: "agent" }
+        : { buttons, sent_by: "agent" },
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",
     });

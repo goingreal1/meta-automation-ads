@@ -1645,6 +1645,12 @@ async function renderProducts(el) {
           <div class="field"><label>Safety notes</label><input id="p_safety" placeholder="e.g. For adult use only, consult a doctor if..."></div>
           <div class="field"><label>NAFDAC Reg. No.</label><input id="p_nafdac" placeholder="e.g. A7-104257L"></div>
         </div>
+        <div class="field" style="margin-top:11px;"><label>Warm-up message override <span style="font-weight:400;color:var(--muted);">(the WhatsApp bot's one opener message for a new lead -- leave blank to use its built-in default)</span></label>
+          <textarea id="p_warmup" rows="4" placeholder="Leave blank to use the built-in default..."></textarea>
+        </div>
+        <div class="field" style="margin-top:11px;"><label>Order form URL <span style="font-weight:400;color:var(--muted);">(opens in the customer's phone browser when they tap "Complete Order" -- e.g. this product's own CRM form link)</span></label>
+          <input id="p_order_form_url" placeholder="https://…">
+        </div>
         <button type="submit" class="btn btn-a btn-full" id="prodSubmitBtn">+ Add product</button>
         <div id="prodMsg"></div>
       </form>
@@ -1708,6 +1714,8 @@ async function renderProducts(el) {
       benefits: document.getElementById("p_benefits").value || null,
       safety_notes: document.getElementById("p_safety").value || null,
       nafdac_reg_no: document.getElementById("p_nafdac").value || null,
+      warmup_message: document.getElementById("p_warmup").value || null,
+      order_form_url: document.getElementById("p_order_form_url").value || null,
     };
     try {
       if (editingId) {
@@ -1763,6 +1771,8 @@ function bvEditProduct(id) {
   document.getElementById("p_benefits").value = p.benefits || "";
   document.getElementById("p_safety").value = p.safety_notes || "";
   document.getElementById("p_nafdac").value = p.nafdac_reg_no || "";
+  document.getElementById("p_warmup").value = p.warmup_message || "";
+  document.getElementById("p_order_form_url").value = p.order_form_url || "";
   document.getElementById("prodFormTitle").textContent = `Editing: ${p.product_name}`;
   document.getElementById("prodSubmitBtn").textContent = "Save changes";
   document.getElementById("prodCancelEdit").style.display = "";
@@ -2089,6 +2099,7 @@ function bvFmtMsg(m) {
   if (t === "agent_text") return `<div class="agent-tag">Agent</div>${bvEscape(c)}`;
   if (t === "agent_media") return c ? `<div class="agent-tag">Agent</div>${bvEscape(c)}` : `<div class="agent-tag">Agent</div>`;
   if (t === "audio") return `<span style="color:var(--muted);font-style:italic;display:inline-flex;align-items:center;gap:5px;">${icon("mic",13)} Voice note</span>`;
+  if (t === "image") return "📷 Sent: product photo";
   if (t === "button" || t === "list") {
     return m.direction === "outbound" ? bvEscape(c) : `👆 Tapped: <b>${bvEscape(c)}</b>`;
   }
@@ -2381,16 +2392,15 @@ async function bvSendCompose(kind) {
   try {
     let res;
     if (kind === "form") {
-      // Opens the CRM's own order form (package choice + delivery details) in
-      // the customer's phone browser -- replaces the native WhatsApp Flow.
+      // Opens the CRM's own order form (package choice + delivery details).
       res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "order" });
     } else if (kind === "website") {
       res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "website" });
     } else {
       // "Packages" is the same CRM form link as "form", just with the price
-      // list as the body and the product photo attached -- one button that
-      // opens the form directly, not separate reply buttons, since the price
-      // is already right there in the message.
+      // list as the body and the product photo sent alongside it -- the photo
+      // goes as its own message (not a cta_url header image), confirmed via
+      // real testing that combining them risked the button not showing.
       res = await sbFn("send-whatsapp-buttons", { conversation_id: bvSelectedConvId, text, mode: "order", image_url: BV_STARTER_IMAGE_URL });
     }
     if (res?.error) {
