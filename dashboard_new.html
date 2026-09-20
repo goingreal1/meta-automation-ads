@@ -1613,7 +1613,11 @@ async function renderProducts(el) {
           <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
             <div id="prodImgPreview" style="width:64px;height:64px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:10px;color:var(--muted);text-align:center;">No image</div>
             <div>
-              <input type="file" id="p_image_file" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="bvUploadProductImage(this)">
+              <!-- webp intentionally excluded -- confirmed via a real send failure
+                   (Meta error 131053 "Media upload error") that WhatsApp's Cloud
+                   API rejects webp as a message image, so a webp product photo
+                   would silently break every warmup message that uses it. -->
+              <input type="file" id="p_image_file" accept="image/jpeg,image/png" style="display:none;" onchange="bvUploadProductImage(this)">
               <button type="button" class="btn btn-g" id="prodImgBtn" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('p_image_file').click()">Upload photo</button>
               <div id="prodImgHint" style="font-size:11px;color:var(--muted);margin-top:4px;">Save the product first (below), then come back up here to upload its photo.</div>
             </div>
