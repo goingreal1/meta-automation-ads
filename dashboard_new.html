@@ -2134,6 +2134,7 @@ function bvFmtMsg(m) {
   if (t === "agent_media") return c ? `<div class="agent-tag">Agent</div>${bvEscape(c)}` : `<div class="agent-tag">Agent</div>`;
   if (t === "audio") return `<span style="color:var(--muted);font-style:italic;display:inline-flex;align-items:center;gap:5px;">${icon("mic",13)} Voice note</span>`;
   if (t === "image") return "📷 Sent: product photo";
+  if (t === "template") return `📨 Sent template: ${bvEscape(c)}`;
   if (t === "button" || t === "list") {
     return m.direction === "outbound" ? bvEscape(c) : `👆 Tapped: <b>${bvEscape(c)}</b>`;
   }
@@ -2200,7 +2201,66 @@ document.addEventListener("click", (e) => {
 function bvAttachMenuAction(kind) {
   document.getElementById("composeAttachMenu")?.classList.remove("open");
   if (kind === "file") document.getElementById("convFileInput")?.click();
+  else if (kind === "template") bvTemplateModal();
   else bvComposeModal(kind);
+}
+
+// Sends an APPROVED WhatsApp template -- the only way to reach a customer
+// once 24h have passed since their last message (WhatsApp's own rule, not
+// ours). template_name must match an approved template exactly, or Meta
+// rejects the send.
+function bvTemplateModal() {
+  if (!bvSelectedConvId) return;
+  const conv = bvConversations.find((c) => c.id === bvSelectedConvId);
+  const firstName = (bvName(conv) || "").split(" ")[0] || "there";
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal" style="max-width:440px;">
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Send Template</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Only works if it's been more than 24h since their last message AND the template below is already approved in Meta's WhatsApp Manager.</div>
+    <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Template name (exact)</label>
+    <input id="bvTplName" value="beoliv_followup_v1" style="width:100%;font-size:13px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:10px;">
+    <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Customer's first name (fills the {{1}} in the template)</label>
+    <input id="bvTplName1" value="${bvEscape(firstName)}" style="width:100%;font-size:13px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);">
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="btn btn-a" style="width:auto;padding:8px 16px;" onclick="bvCloseModal()">Cancel</button>
+      <button class="btn btn-g" style="width:auto;padding:8px 16px;" id="bvTplSendBtn" onclick="bvSendTemplate()">Send</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById("bvTplName")?.focus();
+}
+
+async function bvSendTemplate() {
+  const nameInput = document.getElementById("bvTplName");
+  const param1Input = document.getElementById("bvTplName1");
+  const btn = document.getElementById("bvTplSendBtn");
+  const templateName = (nameInput?.value || "").trim();
+  const param1 = (param1Input?.value || "").trim();
+  if (!templateName || !bvSelectedConvId) return;
+
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  try {
+    const res = await sbFn("send-whatsapp-template", {
+      conversation_id: bvSelectedConvId,
+      template_name: templateName,
+      body_params: param1 ? [param1] : [],
+    });
+    if (res?.error) {
+      alert("Failed to send: " + res.error);
+      return;
+    }
+    bvCloseModal();
+    bvAfterAgentSend();
+  } catch (e) {
+    alert("Failed to send: " + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Send"; }
+  }
 }
 
 // Mobile-only: returns from the full-screen thread view to the conversation
@@ -2279,6 +2339,7 @@ async function bvSelectConversation(id) {
           <button onclick="bvAttachMenuAction('form')">${icon("form",14)} Order form</button>
           <button onclick="bvAttachMenuAction('packages')">${icon("list",14)} Package info</button>
           <button onclick="bvAttachMenuAction('website')">${icon("link",14)} Website link</button>
+          <button onclick="bvAttachMenuAction('template')">${icon("chat",14)} Send template (re-open after 24h)</button>
         </div>
       </div>
       <input id="convReplyInput" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" onkeydown="if(event.key==='Enter'){event.preventDefault();bvSendReply();}">
