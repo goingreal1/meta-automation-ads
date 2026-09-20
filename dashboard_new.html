@@ -271,6 +271,12 @@ textarea{resize:vertical;min-height:76px;}
 .conv-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .conv-time{font-size:9.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;}
 .conv-phone{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;}
+.conv-row:has(.conv-unread-badge) .conv-name{font-weight:800;color:var(--text);}
+.conv-unread-badge{
+  background:var(--accent);color:#09090b;font-size:10.5px;font-weight:800;
+  min-width:18px;height:18px;border-radius:9px;padding:0 5px;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+}
 .conv-thread{height:680px;display:flex;flex-direction:column;}
 .conv-thread:has(.empty){justify-content:center;align-items:center;}
 .conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;}
@@ -2036,6 +2042,11 @@ function bvOnRealtimeMessage(m) {
   }
 
   if (m.conversation_id !== bvSelectedConvId) return;
+  // Already looking at this conversation -- a new message here (from either
+  // side) is seen immediately, so it should never sit "unread" (the DB
+  // trigger that bumps unread_count on every inbound insert doesn't know
+  // whether anyone's actually looking at it).
+  bvMarkConversationRead(m.conversation_id);
   const msgsEl = document.getElementById("convMsgs");
   if (!msgsEl) return;
   msgsEl.querySelector(".empty")?.remove();
@@ -2084,7 +2095,10 @@ function bvRenderList(list) {
           <span class="conv-time">${ago(c.last_message_at)}</span>
         </div>
         <div class="conv-phone">${bvEscape(c.phone)}</div>
-        <span class="pill ${c.current_state === "COMPLETED" ? "delivered" : c.current_state === "NEW" ? "pending" : "active"}">${c.current_state}</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:2px;">
+          <span class="pill ${c.current_state === "COMPLETED" ? "delivered" : c.current_state === "NEW" ? "pending" : "active"}">${c.current_state}</span>
+          ${c.unread_count > 0 ? `<span class="conv-unread-badge">${c.unread_count > 9 ? "9+" : c.unread_count}</span>` : ""}
+        </div>
       </div>
     </div>`).join("");
 }
@@ -2198,8 +2212,21 @@ function bvBackToList() {
   bvFilterList();
 }
 
+// Clears the unread badge both locally (instant) and in the DB (so it stays
+// cleared on refresh/for other viewers) -- called when a conversation is
+// opened, and again whenever a live message arrives for one already open.
+function bvMarkConversationRead(id) {
+  const conv = bvConversations.find((c) => c.id === id);
+  if (conv && conv.unread_count > 0) {
+    conv.unread_count = 0;
+    bvFilterList();
+  }
+  supabaseClient.from("beoliv_conversations").update({ unread_count: 0 }).eq("id", id).then(() => {});
+}
+
 async function bvSelectConversation(id) {
   bvSelectedConvId = id;
+  bvMarkConversationRead(id);
   bvFilterList();
   // On mobile the list and thread can't fit side by side -- this swaps to a
   // full-screen thread view (see the .thread-open mobile CSS) instead of a
