@@ -1056,6 +1056,10 @@ async function renderVault(el) {
           <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
           <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
         </div>
+        <div style="margin-top:11px;">
+          <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvStageAdCopy()">+ Add another ad copy (test multiple creatives in the same ad sets)</button>
+          <div id="stagedCopies" style="margin-top:8px;"></div>
+        </div>
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager — make it recognizable)</span></label>
             <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch">
@@ -1108,6 +1112,8 @@ async function renderVault(el) {
   window.bvVaultProductsCache = products || [];
   bvShowProductDestination(document.getElementById("f_product")?.value);
   bvResetAdSetBuilder();
+  bvStagedCopies = [];
+  bvRenderStagedCopies();
 
   // Drag-and-drop
   const dz = document.getElementById("dropZone");
@@ -1123,23 +1129,27 @@ async function renderVault(el) {
     e.preventDefault();
     const btn = document.getElementById("uploadBtn");
     const msg = document.getElementById("uploadMsg");
-    const file = document.getElementById("f_file").files[0];
-    if (!file) { msg.innerHTML = `<div class="msg err">Please select or drop a file first.</div>`; return; }
+
+    // The copy currently filled into the form (if any) is the last copy in
+    // the batch, alongside anything staged via "+ Add another ad copy".
+    const currentFile = document.getElementById("f_file").files[0];
+    const currentPrimary = document.getElementById("f_primary").value.trim();
+    const copies = [...bvStagedCopies];
+    if (currentFile && currentPrimary) {
+      copies.push({
+        file: currentFile,
+        primary_text: currentPrimary,
+        headline: document.getElementById("f_headline").value.trim(),
+        description: document.getElementById("f_desc").value.trim(),
+        mechanism: document.getElementById("f_mechanism").value,
+        format: document.getElementById("f_format").value,
+        cta_type: document.getElementById("f_cta").value,
+      });
+    }
+    if (!copies.length) { msg.innerHTML = `<div class="msg err">Please select or drop a file first.</div>`; return; }
+
     btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Uploading…';
     msg.innerHTML = "";
-    
-    // We can't easily upload to an edge function via fetch if RLS needs ad_account_id,
-    // so we pass the ad_account_id in the FormData.
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("primary_text", document.getElementById("f_primary").value);
-    fd.append("headline", document.getElementById("f_headline").value);
-    fd.append("description", document.getElementById("f_desc").value);
-    fd.append("mechanism", document.getElementById("f_mechanism").value);
-    fd.append("format", document.getElementById("f_format").value);
-    fd.append("cta_type", document.getElementById("f_cta").value);
-    fd.append("uploaded_by", "dashboard");
-    fd.append("ad_account_id", activeAccountId);
 
     try {
       // If "+ Add new product…" was chosen, create it now so we have a real product_id before uploading.
@@ -1159,49 +1169,74 @@ async function renderVault(el) {
         productId = newProduct.id;
       }
 
-      const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
-        body: fd,
-      });
-      const r = await res.json();
-      if (r.error) throw new Error(r.error);
+      // Multiple ad copies in one launch get grouped by a shared batch id so
+      // ai-auto-launch-tests treats them as one campaign with N ads per ad set
+      // instead of N separate campaigns.
+      const launchBatchId = copies.length > 1 ? crypto.randomUUID() : null;
+      const assetIds = [];
+      for (const copy of copies) {
+        const fd = new FormData();
+        fd.append("file", copy.file);
+        fd.append("primary_text", copy.primary_text);
+        fd.append("headline", copy.headline);
+        fd.append("description", copy.description);
+        fd.append("mechanism", copy.mechanism);
+        fd.append("format", copy.format);
+        fd.append("cta_type", copy.cta_type);
+        fd.append("uploaded_by", "dashboard");
+        fd.append("ad_account_id", activeAccountId);
+
+        const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
+          body: fd,
+        });
+        const r = await res.json();
+        if (r.error) throw new Error(`"${copy.file.name}": ${r.error}`);
+        if (r.asset?.id) assetIds.push(r.asset.id);
+      }
+      if (!assetIds.length) throw new Error("No ad copies uploaded successfully.");
 
       const scheduledFor = document.getElementById("f_scheduled").value;
       const endDate = document.getElementById("f_end_date").value;
-      if (r.asset?.id) {
-        await supabaseClient.from('creative_assets').update({
-          ...(productId && productId !== "__new__" ? { product_id: productId } : {}),
-          campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
-          budget_type: document.getElementById("f_budget_type").value,
-          scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
-          campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
-        }).eq('id', r.asset.id);
+      const sharedFields = {
+        ...(productId && productId !== "__new__" ? { product_id: productId } : {}),
+        campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
+        budget_type: document.getElementById("f_budget_type").value,
+        scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
+        campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
+        ...(launchBatchId ? { launch_batch_id: launchBatchId } : {}),
+      };
+      await supabaseClient.from('creative_assets').update(sharedFields).in('id', assetIds);
 
-        // The ad-set builder rows -- real fields (budget/age/gender/geography)
-        // the user set directly, no abstract presets.
-        const { error: adSetErr } = await supabaseClient.from('ad_set_configs').insert(
-          bvAdSetRows.map((row, i) => ({
-            creative_id: r.asset.id,
-            label: row.label,
-            budget_naira: Number(row.budget_naira) || 5000,
-            age_min: Number(row.age_min) || 25,
-            age_max: Number(row.age_max) || 65,
-            gender: row.gender,
-            geo_type: row.geo_type,
-            states: row.geo_type === 'states' && row.states
-              ? row.states.split(',').map(s => s.trim()).filter(Boolean)
-              : null,
-            sort_order: i,
-          }))
-        );
-        if (adSetErr) throw adSetErr;
-      }
+      // The ad-set builder rows -- real fields (budget/age/gender/geography)
+      // the user set directly, no abstract presets. Attached to the first
+      // copy in the batch (ai-auto-launch-tests reads this via launch_batch_id
+      // when there's more than one).
+      const { error: adSetErr } = await supabaseClient.from('ad_set_configs').insert(
+        bvAdSetRows.map((row, i) => ({
+          creative_id: assetIds[0],
+          label: row.label,
+          budget_naira: Number(row.budget_naira) || 5000,
+          age_min: Number(row.age_min) || 25,
+          age_max: Number(row.age_max) || 65,
+          gender: row.gender,
+          geo_type: row.geo_type,
+          states: row.geo_type === 'states' && row.states
+            ? row.states.split(',').map(s => s.trim()).filter(Boolean)
+            : null,
+          sort_order: i,
+        }))
+      );
+      if (adSetErr) throw adSetErr;
+
       const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
-      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledFor ? "Scheduled for " + new Date(scheduledFor).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
+      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${assetIds.length} ad cop${assetIds.length === 1 ? "y" : "ies"} x ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledFor ? "Scheduled for " + new Date(scheduledFor).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
       document.getElementById("uploadForm").reset();
       document.getElementById("dzPrev").innerHTML = "";
       bvResetAdSetBuilder();
+      bvStagedCopies = [];
+      bvRenderStagedCopies();
       dz.style.borderColor = "";
       dz.style.background = "";
       setTimeout(render, 1200);
@@ -1211,6 +1246,56 @@ async function renderVault(el) {
       btn.disabled = false; btn.innerHTML = "↑ Upload to Vault";
     }
   });
+}
+
+// ── MULTIPLE AD COPIES PER LAUNCH ────────────────────────────────────────────
+// Your real Lunessa Whatsapp ad set runs 3 different ad copies side by side,
+// not one -- Meta rotates delivery across them and the winner naturally gets
+// more spend. This stages each copy's file+text so one "Upload to Vault"
+// launches all of them together, sharing one product/campaign/ad-set setup
+// (ad_set_configs), each becoming its own real ad inside every ad set.
+let bvStagedCopies = [];
+
+function bvStageAdCopy() {
+  const file = document.getElementById("f_file").files[0];
+  const primary_text = document.getElementById("f_primary").value.trim();
+  if (!file || !primary_text) {
+    alert("Add a file and primary text for this copy before staging another.");
+    return;
+  }
+  bvStagedCopies.push({
+    file,
+    primary_text,
+    headline: document.getElementById("f_headline").value.trim(),
+    description: document.getElementById("f_desc").value.trim(),
+    mechanism: document.getElementById("f_mechanism").value,
+    format: document.getElementById("f_format").value,
+    cta_type: document.getElementById("f_cta").value,
+  });
+  // Clear only the copy-specific fields -- product/campaign/ad-set config stay shared.
+  document.getElementById("f_file").value = "";
+  document.getElementById("f_primary").value = "";
+  document.getElementById("f_headline").value = "";
+  document.getElementById("f_desc").value = "";
+  document.getElementById("dzPrev").innerHTML = "";
+  bvRenderStagedCopies();
+}
+
+function bvRemoveStagedCopy(i) {
+  bvStagedCopies.splice(i, 1);
+  bvRenderStagedCopies();
+}
+
+function bvRenderStagedCopies() {
+  const wrap = document.getElementById("stagedCopies");
+  if (!wrap) return;
+  if (!bvStagedCopies.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} ad cop${bvStagedCopies.length === 1 ? "y" : "ies"} staged — the file/text above will be added as one more copy when you submit.</div>` +
+    bvStagedCopies.map((c, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;border:1px dashed var(--border);border-radius:6px;padding:6px 10px;margin-top:4px;font-size:12px;">
+        <span>Copy ${i + 1}: ${c.file.name}</span>
+        <button type="button" onclick="bvRemoveStagedCopy(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>
+      </div>`).join("");
 }
 
 // ── AD SET BUILDER ───────────────────────────────────────────────────────────
@@ -1480,7 +1565,7 @@ async function renderCampaigns(el) {
       ${!sets?.length
         ? `<div class="empty"><div class="empty-ico">🚀</div>No ad sets yet. Run a batch from Overview to stage your first test.</div>`
         : `<div class="tbl-wrap"><table>
-          <tr><th>Ad Set</th><th>Campaign</th><th>Type</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
+          <tr><th>Ad Set</th><th>Campaign</th><th>Type</th><th>Ads</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
           ${sets.map(a => {
             const h    = hrs(a.created_at);
             const ctrV = a.ctr_latest != null ? parseFloat(a.ctr_latest).toFixed(2) : null;
@@ -1491,6 +1576,7 @@ async function renderCampaigns(el) {
               <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${a.adset_name}">${a.adset_name}</td>
               <td class="n" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.campaigns?.campaign_name ?? "—"}</td>
               <td style="text-transform:lowercase;">${a.targeting_type ?? "—"}</td>
+              <td><button type="button" class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11px;" onclick="bvShowAdSetAds('${a.id}')">View ad copies</button></td>
               <td>${fN(a.budget_naira)}</td>
               <td class="${ctrCls(ctrV)}">${ctrV ? ctrV+"%" : "—"}</td>
               <td class="${cpaC}">${fN(cpaV)}</td>
@@ -1502,6 +1588,54 @@ async function renderCampaigns(el) {
           }).join("")}
         </table></div>`}
     </div>`;
+}
+
+// Shows every real ad (and its creative -- image, headline, primary text)
+// actually running inside one ad set. Ad sets launched after the multi-copy
+// feature have rows in ad_set_ads (one per ad copy); older ad sets created
+// before it only ever had one ad, recorded on ad_sets.creative_id -- fall
+// back to that so every ad set, old or new, shows something here.
+async function bvShowAdSetAds(adSetId) {
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+
+  try {
+    const [adSetAds, adSetRows] = await Promise.all([
+      sbQuery("ad_set_ads", `ad_set_id=eq.${adSetId}&select=*,creatives(creative_name,image_url,video_id,headline,primary_text,meta_ad_id)`),
+      sbQuery("ad_sets", `id=eq.${adSetId}&select=adset_name,creative_id,creatives(creative_name,image_url,video_id,headline,primary_text,meta_ad_id)`),
+    ]);
+
+    let ads = (adSetAds || []).map(r => ({ ...r.creatives, meta_ad_id: r.meta_ad_id }));
+    if (!ads.length && adSetRows?.[0]?.creatives) {
+      ads = [{ ...adSetRows[0].creatives }];
+    }
+    const adsetName = adSetRows?.[0]?.adset_name || "Ad set";
+
+    document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <h3 style="margin:0 0 4px;">${adsetName}</h3>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">${ads.length} ad cop${ads.length === 1 ? "y" : "ies"} running in this ad set</div>
+      ${!ads.length
+        ? `<div class="empty"><div class="empty-ico">🎨</div>No ad recorded for this ad set yet.</div>`
+        : ads.map(c => `
+          <div style="display:flex;gap:12px;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
+            ${c.image_url ? `<img src="${c.image_url}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<div style="width:70px;height:70px;border-radius:6px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🎬</div>`}
+            <div style="min-width:0;">
+              <div style="font-weight:600;font-size:12.5px;">${c.headline || c.creative_name || "—"}</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:3px;max-height:54px;overflow:hidden;">${(c.primary_text || "").slice(0, 180)}${(c.primary_text || "").length > 180 ? "…" : ""}</div>
+              ${c.meta_ad_id ? `<div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Meta ad ID: ${c.meta_ad_id}</div>` : ""}
+            </div>
+          </div>`).join("")}
+    `;
+  } catch (err) {
+    document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="msg err">❌ Failed to load: ${err.message}</div>`;
+  }
 }
 
 async function pullAndRefresh() {

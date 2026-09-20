@@ -329,14 +329,16 @@ async function ensureMetaMedia(
 
 // destinationType "whatsapp": click-to-WhatsApp sales creative -- opens a chat
 // with the product's connected WhatsApp number (the Beoliv AI salesperson bot)
-// instead of a website link. Shape per Meta's Click-to-WhatsApp docs: link_data
-// (even for a video asset -- video_data doesn't carry page_welcome_message) with
-// link "https://api.whatsapp.com/send", a WHATSAPP_MESSAGE CTA, and an autofill
-// opening message. Needs live verification against a real PAUSED object before
-// this is fully trusted -- flagged in the launch summary, not assumed correct.
+// instead of a website link. Shape verified live against your real "Lunessa
+// Whatsapp AD COPY" ad (id 120248136997400710, creative 1427562949307282) via
+// the diagnose-meta-token proxy: link_data with link "https://api.whatsapp.com/send",
+// a WHATSAPP_MESSAGE CTA, page_welcome_message.text_format matching this shape
+// exactly, and -- the one field this was missing -- instagram_user_id alongside
+// page_id, or the ad has no explicit IG account attached the way your real ad does.
 async function createAdCreative(
   accountId: string,
   pageId: string,
+  igUserId: string | null,
   creative: any,
   media: { videoId?: string; imageUrl?: string },
   destinationLink: string,
@@ -350,6 +352,7 @@ async function createAdCreative(
     if (destinationType === "whatsapp") {
       objectStorySpec = {
         page_id: pageId,
+        ...(igUserId ? { instagram_user_id: igUserId } : {}),
         link_data: {
           picture: media.imageUrl || undefined,
           link: "https://api.whatsapp.com/send",
@@ -377,6 +380,7 @@ async function createAdCreative(
       objectStorySpec = media.videoId
         ? {
             page_id: pageId,
+            ...(igUserId ? { instagram_user_id: igUserId } : {}),
             video_data: {
               video_id: media.videoId,
               title: creative.headline || undefined,
@@ -386,6 +390,7 @@ async function createAdCreative(
           }
         : {
             page_id: pageId,
+            ...(igUserId ? { instagram_user_id: igUserId } : {}),
             link_data: {
               picture: media.imageUrl,
               link: destinationLink,
@@ -475,6 +480,17 @@ const REAL_PLACEMENTS = {
   instagram_positions: ["stream", "story", "reels", "explore", "explore_home", "profile_feed"],
   device_platforms: ["mobile"],
 };
+// WhatsApp-destination placements are narrower -- pulled live from your real,
+// currently-ACTIVE "Lunessa Whatsapp ADSET" (120248136860460710) via
+// diagnose-meta-token, not assumed. Kept separate from REAL_PLACEMENTS (which
+// is from a website-destination campaign) since the two destination types use
+// genuinely different real placement sets on your account.
+const REAL_WHATSAPP_PLACEMENTS = {
+  publisher_platforms: ["facebook", "instagram"],
+  facebook_positions: ["feed", "search", "facebook_reels"],
+  instagram_positions: ["stream", "reels"],
+  device_platforms: ["mobile"],
+};
 const GENDER_MAP: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
 
 // Resolves Nigerian state names (as picked in the dashboard's ad-set builder,
@@ -507,17 +523,18 @@ async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: stri
 // Ad-set config comes directly from the dashboard's ad-set builder (one row =
 // one ad set, "Duplicate x N" clones it) -- real, direct fields the user set
 // themselves (budget, age, gender, geography), not an abstract named preset.
-async function buildTargetingFromConfig(config: any): Promise<Record<string, any>> {
+async function buildTargetingFromConfig(config: any, destinationType: "website" | "whatsapp"): Promise<Record<string, any>> {
+  const placements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS : REAL_PLACEMENTS;
   const genders = GENDER_MAP[config.gender ?? "all"] ?? [1, 2];
   const targeting: Record<string, any> = {
     genders,
     age_min: config.age_min ?? 25,
     age_max: config.age_max ?? 65,
     targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: 1 } },
-    publisher_platforms: REAL_PLACEMENTS.publisher_platforms,
-    facebook_positions: REAL_PLACEMENTS.facebook_positions,
-    instagram_positions: REAL_PLACEMENTS.instagram_positions,
-    device_platforms: REAL_PLACEMENTS.device_platforms,
+    publisher_platforms: placements.publisher_platforms,
+    facebook_positions: placements.facebook_positions,
+    instagram_positions: placements.instagram_positions,
+    device_platforms: placements.device_platforms,
   };
 
   if (config.geo_type === "states" && config.states?.length) {
@@ -575,14 +592,22 @@ function buildAdSetPayload(opts: {
   return payload;
 }
 
+// creativeGroup: every creative_assets row uploaded together as one batch
+// (dashboard's "+ Add another ad copy" -- shares one launch_batch_id). All
+// rows in a group share the same product/ad_account/campaign settings;
+// creativeGroup[0] (the "anchor") is where ad_set_configs was written and is
+// used for every shared field. A legacy single-copy upload (launch_batch_id
+// null) is just a group of one, unchanged from the old behavior.
 async function launchAdSetGroup(
   supabase: any,
-  creative: any
+  creativeGroup: any[]
 ): Promise<{ campaign_id: string; ad_sets: { meta_id: string; db_id: string; label: string; budgetNaira: number }[] } | { error: string }> {
+  const creative = creativeGroup[0];
   try {
     const accountId = (creative.ad_accounts?.meta_ad_account_id || "").replace("act_", "");
     const pixelId = creative.ad_accounts?.meta_pixel_id || Deno.env.get("META_PIXEL_ID") || "";
     const pageId = creative.ad_accounts?.fb_page_id || "";
+    const igUserId = creative.ad_accounts?.ig_user_id || null;
     const destinationType: "website" | "whatsapp" = creative.products?.destination_type === "whatsapp" ? "whatsapp" : "website";
     const whatsappNumber = creative.products?.whatsapp_number || "";
     const destinationLink = creative.products?.landing_page_url || "";
@@ -716,43 +741,50 @@ async function launchAdSetGroup(
       return { error: errorMsg };
     };
 
-    // 2. Upload the creative to Meta and create ONE ad creative from it, before
-    // any ad sets -- ad_sets.creative_id is a local uuid FK into the `creatives`
-    // table (not creative_assets, a separate legacy table), so ad sets can't be
-    // recorded until this exists. Every ad set below reuses this same ad
-    // creative.
-    const media = await ensureMetaMedia(supabase, accountId, creative);
-    if (!media || media.error) {
-      return await abortAndCleanup(`Failed to upload media to Meta for creative ${creative.id}: ${media?.error || "unknown error"}`);
+    // 2. Upload every ad copy in the group to Meta and create its own ad
+    // creative -- one real Meta ad-creative object per copy (matching how your
+    // real "Lunessa Whatsapp ADSET" runs 3 distinct ad copies side by side).
+    // Every ad set created below gets one ad per copy here, not just one
+    // shared ad, so testing 3 copies across 4 ad sets produces 12 real ads.
+    const localCreatives: { id: string; metaCreativeId: string; fileName: string }[] = [];
+    for (const copy of creativeGroup) {
+      const media = await ensureMetaMedia(supabase, accountId, copy);
+      if (!media || media.error) {
+        return await abortAndCleanup(`Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`);
+      }
+      const adCreativeId = await createAdCreative(accountId, pageId, igUserId, copy, media, destinationLink, ctaType, destinationType, productName);
+      if (!adCreativeId) {
+        return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}).`);
+      }
+      const { data: localCreativeRow, error: localCreativeErr } = await supabase
+        .from("creatives")
+        .insert({
+          creative_name: `${productName}-${copy.file_name}`,
+          format: copy.format || "customer_review",
+          mechanism: copy.mechanism || "why_product_works",
+          awareness_stage: "product_aware",
+          primary_text: copy.primary_text,
+          headline: copy.headline,
+          description: copy.description,
+          image_url: media.imageUrl || null,
+          video_id: media.videoId || null,
+          destination_link: destinationLink || null,
+          cta_type: ctaType,
+          meta_ad_id: adCreativeId,
+          status: "testing",
+        })
+        .select("id")
+        .single();
+      if (localCreativeErr || !localCreativeRow) {
+        console.error("Failed to record local creative row:", localCreativeErr);
+        return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
+      }
+      localCreatives.push({ id: localCreativeRow.id, metaCreativeId: adCreativeId, fileName: copy.file_name });
     }
-    const adCreativeId = await createAdCreative(accountId, pageId, creative, media, destinationLink, ctaType, destinationType, productName);
-    if (!adCreativeId) {
-      return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${creative.id}.`);
-    }
-    const { data: localCreativeRow, error: localCreativeErr } = await supabase
-      .from("creatives")
-      .insert({
-        creative_name: `${productName}-${creative.file_name}`,
-        format: creative.format || "customer_review",
-        mechanism: creative.mechanism || "why_product_works",
-        awareness_stage: "product_aware",
-        primary_text: creative.primary_text,
-        headline: creative.headline,
-        description: creative.description,
-        image_url: media.imageUrl || null,
-        video_id: media.videoId || null,
-        destination_link: destinationLink || null,
-        cta_type: ctaType,
-        meta_ad_id: adCreativeId,
-        status: "testing",
-      })
-      .select("id")
-      .single();
-    if (localCreativeErr || !localCreativeRow) {
-      console.error("Failed to record local creative row:", localCreativeErr);
-      return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
-    }
-    const localCreativeId = localCreativeRow.id;
+    // Kept for backward compat with dashboard code that still reads
+    // ad_sets.creative_id as a single value (e.g. the creative-detail modal) --
+    // points at the first copy; the full set lives in ad_set_ads.
+    const localCreativeId = localCreatives[0].id;
 
     // 3. Create one ad set per ad-set config (each row from the dashboard's
     // builder, including any "Duplicate x N" clones), then attach an ad under
@@ -760,7 +792,7 @@ async function launchAdSetGroup(
     const createdAdSets: { row: any; metaId: string; label: string; budgetNaira: number }[] = [];
     const adSetErrors: string[] = [];
     for (const config of adSetConfigs) {
-      const targeting = await buildTargetingFromConfig(config);
+      const targeting = await buildTargetingFromConfig(config, destinationType);
       const label = config.label;
 
       // Posting to /{campaignId}/adsets directly is rejected by this app/API
@@ -827,21 +859,32 @@ async function launchAdSetGroup(
     }
 
     if (!createdAdSets.length) {
-      const msg = `No ad sets were successfully created for creative ${creative.id}. ${adSetErrors.join(" | ")}`;
+      const msg = `No ad sets were successfully created for creative batch ${creative.id}. ${adSetErrors.join(" | ")}`;
       console.error(msg);
       return await abortAndCleanup(msg);
     }
 
-    // 4. Attach an ad under every ad set that was actually created, all reusing
-    // the one ad creative from step 2.
+    // 4. Attach one ad per ad copy under every ad set that was actually
+    // created -- N copies x M ad sets = N*M real ads, each recorded in
+    // ad_set_ads so the dashboard can show exactly which creative is running
+    // in which ad set (not just the targeting-level ad set list).
     for (const a of createdAdSets) {
-      const adId = await createAdWithCTA(
-        a.metaId,
-        adCreativeId,
-        `AD-${a.label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
-        accountId
-      );
-      if (!adId) console.error(`Failed to create ad for "${a.label}" ad set (creative ${creative.id})`);
+      for (const lc of localCreatives) {
+        const adId = await createAdWithCTA(
+          a.metaId,
+          lc.metaCreativeId,
+          `AD-${a.label}-${lc.fileName.substring(0, 20)}-${Date.now()}`,
+          accountId
+        );
+        if (!adId) {
+          console.error(`Failed to create ad for "${a.label}" ad set with creative ${lc.id} (${lc.fileName})`);
+          continue;
+        }
+        const { error: adSetAdErr } = await supabase
+          .from("ad_set_ads")
+          .insert({ ad_set_id: a.row.id, creative_id: lc.id, meta_ad_id: adId });
+        if (adSetAdErr) console.error(`Failed to record ad_set_ads for "${a.label}"/${lc.fileName}:`, adSetAdErr);
+      }
     }
 
     return {
@@ -882,7 +925,7 @@ Deno.serve(async (req: Request) => {
     let pendingQuery = supabase
       .from("creative_assets")
       .select(
-        "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
+        "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
       )
       .eq("test_status", "untested")
       .order("uploaded_at", { ascending: true });
@@ -915,21 +958,35 @@ Deno.serve(async (req: Request) => {
 
     console.log(`📊 Processing ${pendingCreatives.length} creatives`);
 
-    // 2. Launch each creative's configured ad sets
+    // Group by launch_batch_id -- rows uploaded together via the dashboard's
+    // "+ Add another ad copy" flow share one batch and must launch as ONE
+    // campaign with all copies as separate ads, not one campaign each. A row
+    // with no launch_batch_id (legacy uploads, or a solo copy) is its own
+    // group of one -- unchanged behavior.
+    const groups = new Map<string, any[]>();
+    for (const c of pendingCreatives) {
+      const key = c.launch_batch_id || `solo:${c.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(c);
+    }
+
+    // 2. Launch each batch's configured ad sets
     const launchPlans: any[] = [];
     let totalAdSetsCreated = 0;
     let totalBudgetNaira = 0;
 
     // Every campaign/ad set is created PAUSED (see launchAdSetGroup) -- nothing
     // spends until a real APPROVE reply flips it ACTIVE via handle-whatsapp-reply.
-    // One `pending_approvals` row per creative/campaign (that table -- not the
+    // One `pending_approvals` row per batch/campaign (that table -- not the
     // nonexistent `launch_approvals` -- is what both the dashboard's Approvals tab
     // and handle-whatsapp-reply actually read).
     const launchErrors: string[] = [];
-    for (const creative of pendingCreatives) {
-      const result = await launchAdSetGroup(supabase, creative);
+    const launchedGroups: any[][] = [];
+    for (const group of groups.values()) {
+      const anchor = group[0];
+      const result = await launchAdSetGroup(supabase, group);
       if ("error" in result) {
-        launchErrors.push(`"${creative.file_name}": ${result.error}`);
+        launchErrors.push(`"${anchor.file_name}"${group.length > 1 ? ` +${group.length - 1} more copies` : ""}: ${result.error}`);
         continue;
       }
 
@@ -938,29 +995,32 @@ Deno.serve(async (req: Request) => {
       const adSetBudget = result.ad_sets.reduce((sum, a) => sum + a.budgetNaira, 0);
       totalBudgetNaira += adSetBudget;
 
+      const copyNames = group.map((c) => c.file_name).join(", ");
       const { data: approvalRow, error: approvalErr } = await supabase
         .from("pending_approvals")
         .insert({
           approval_type: "launch_test",
-          creative_asset_id: creative.id,
-          ad_account_id: creative.ad_account_id,
+          creative_asset_id: anchor.id,
+          ad_account_id: anchor.ad_account_id,
           proposed_action: {
             meta_campaign_id: result.campaign_id,
             ad_set_ids: adSetMetaIds,
+            creative_asset_ids: group.map((c) => c.id),
           },
-          reason: `AI auto-launch: "${creative.file_name}" (${creative.products?.product_name}) -- ${result.ad_sets.length} ad set(s) [${result.ad_sets.map((a) => a.label).join(", ")}], ₦${adSetBudget.toLocaleString()} total test budget.`,
+          reason: `AI auto-launch: "${copyNames}" (${anchor.products?.product_name}) -- ${group.length} ad cop${group.length === 1 ? "y" : "ies"} x ${result.ad_sets.length} ad set(s) [${result.ad_sets.map((a) => a.label).join(", ")}], ₦${adSetBudget.toLocaleString()} total test budget.`,
           status: "pending",
         })
         .select("id")
         .single();
 
       if (approvalErr || !approvalRow) {
-        console.error(`Failed to record approval for ${creative.file_name}:`, approvalErr);
+        console.error(`Failed to record approval for batch "${copyNames}":`, approvalErr);
         continue;
       }
 
+      launchedGroups.push(group);
       launchPlans.push({
-        creative_name: `${creative.file_name} (${creative.products?.product_name})`,
+        creative_name: `${copyNames} (${anchor.products?.product_name})`,
         campaign_id: result.campaign_id,
         approval_id: approvalRow.id,
       });
@@ -989,12 +1049,16 @@ ${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n
 
     await sendWhatsAppApproval(approvalMessage);
 
-    // 4. Mark creatives as awaiting approval (real column is test_status)
-    for (const creative of pendingCreatives) {
-      await supabase
-        .from("creative_assets")
-        .update({ test_status: "awaiting_approval" })
-        .eq("id", creative.id);
+    // 4. Mark every successfully-launched copy as awaiting approval (real
+    // column is test_status) -- only rows in a group that actually launched,
+    // not ones that failed and stayed untested for a retry.
+    for (const group of launchedGroups) {
+      for (const c of group) {
+        await supabase
+          .from("creative_assets")
+          .update({ test_status: "awaiting_approval" })
+          .eq("id", c.id);
+      }
     }
 
     return new Response(
