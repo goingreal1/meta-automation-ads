@@ -63,15 +63,12 @@ Deno.serve(async (req: Request) => {
     if (bodyParams.length) {
       components.push({ type: "body", parameters: bodyParams.map((p) => ({ type: "text", text: p })) });
     }
-    // beoliv_followup_v1's button is a static FLOW type (opens the order Flow
-    // directly, flow_id/screen baked into the template) -- confirmed via the
-    // template's own definition (GET /{template_id}). Meta still requires an
-    // explicit components entry for it at send time even though there's
-    // nothing dynamic to fill in, or the send fails with a misleading
-    // "(#131009) Parameter value is not valid" instead of a clearer
-    // missing-component error. Same quirk already handled in the bot's own
-    // sendTemplate() for the per-package product templates.
-    components.push({ type: "button", sub_type: "flow", index: 0, parameters: [{ type: "action", action: {} }] });
+    // beoliv_followup_v1's button was switched from a FLOW type to a STATIC
+    // URL button (opens the CRM order form directly, confirmed via the
+    // template's own definition at GET /{template_id}) -- a static URL needs
+    // no button component at send time at all, unlike the FLOW type this
+    // briefly was, which required an explicit empty-action component or the
+    // send failed outright.
 
     const waRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
       method: "POST",
