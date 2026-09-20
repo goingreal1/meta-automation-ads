@@ -429,6 +429,7 @@ textarea{resize:vertical;min-height:76px;}
   <div class="tab-btn" data-tab="orders">Orders</div>
   <div class="tab-btn" data-tab="conversations">Conversations</div>
   <div class="tab-btn" data-tab="conversations-lunessa">Lunessa</div>
+  <div class="tab-btn" data-tab="website-leads">Website Leads</div>
   <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
   <div class="tab-btn" data-tab="earnings">Earnings</div>
   <div class="tab-btn" data-tab="settings">Settings</div>
@@ -722,6 +723,7 @@ async function render() {
     else if (activeTab === "orders")    await renderOrders(c);
     else if (activeTab === "conversations") await renderConversations(c);
     else if (activeTab === "conversations-lunessa") await renderConversations(c, "Lunessa");
+    else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
     else if (activeTab === "settings")  await renderSettings(c);
@@ -1935,6 +1937,68 @@ async function renderOrders(el) {
         const body = { order_status: ns };
         if (ns === "delivered") body.delivered_at = new Date().toISOString();
         const { error } = await supabaseClient.from('orders').update(body).eq('id', id);
+        if (error) throw error;
+      } catch(err) { alert("Update failed: " + err.message); }
+    });
+  });
+}
+
+// ── TAB: WEBSITE LEADS (10s modal captures on product sales pages) ─────────────
+// Populated by the public submit-website-lead edge function -- built for the
+// Lunessa page's "want us to reach out" drawer, which sends name/phone/
+// address/city/state/package here instead of the full CRM form. Reusable for
+// any other product's page that wires up the same modal.
+async function renderWebsiteLeads(el) {
+  const leads = await sbQuery("website_leads", "select=*&order=created_at.desc&limit=200");
+  const all = leads || [];
+
+  const tot = all.length;
+  const nw = all.filter(l => l.status === "new").length;
+  const contacted = all.filter(l => l.status === "contacted").length;
+  const converted = all.filter(l => l.status === "converted").length;
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Website Leads</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total</div><div class="kc-val">${tot}</div></div>
+      <div class="kc"><div class="kc-lbl">New</div><div class="kc-val b">${nw}</div></div>
+      <div class="kc"><div class="kc-lbl">Contacted</div><div class="kc-val w">${contacted}</div></div>
+      <div class="kc"><div class="kc-lbl">Converted</div><div class="kc-val a">${converted}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">All leads</div><div class="ph-count">${tot}</div></div>
+      ${!tot ? `<div class="empty"><div class="empty-ico">📝</div>No website leads yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Name</th><th>Phone</th><th>Product</th><th>Package</th><th>Address</th><th>Submitted</th><th>Status</th></tr>
+        ${all.map(l => `<tr>
+          <td class="s n">${bvEscape(l.name ?? "—")}</td>
+          <td class="n">${l.phone
+            ? `<a href="https://wa.me/${l.phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${bvEscape(l.phone)}</a>`
+            : "—"}</td>
+          <td class="n">${bvEscape(l.product_name ?? "—")}</td>
+          <td class="n">${bvEscape(l.package ?? "—")}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${bvEscape([l.address, l.city, l.state].filter(Boolean).join(", "))}">${bvEscape([l.address, l.city, l.state].filter(Boolean).join(", ")) || "—"}</td>
+          <td>${ago(l.created_at)}</td>
+          <td>
+            <select data-lid="${l.id}" class="leadSel" style="padding:3px 7px;font-size:11px;width:auto;">
+              <option value="new"       ${l.status==="new"       ?"selected":""}>New</option>
+              <option value="contacted" ${l.status==="contacted" ?"selected":""}>Contacted</option>
+              <option value="converted" ${l.status==="converted" ?"selected":""}>Converted</option>
+              <option value="lost"      ${l.status==="lost"      ?"selected":""}>Lost</option>
+            </select>
+          </td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+
+  document.querySelectorAll(".leadSel").forEach(sel => {
+    sel.addEventListener("change", async e => {
+      const id = e.target.dataset.lid;
+      const ns = e.target.value;
+      try {
+        const { error } = await supabaseClient.from('website_leads').update({ status: ns }).eq('id', id);
         if (error) throw error;
       } catch(err) { alert("Update failed: " + err.message); }
     });
