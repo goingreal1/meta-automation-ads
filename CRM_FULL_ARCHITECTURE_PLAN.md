@@ -2,6 +2,8 @@
 
 Written before any further building, per your request. This answers every question you asked against what actually exists in the code today, then lays out what still needs deciding and building, in order. Nothing more gets built until you've weighed in on the decisions in Section 6.
 
+**Update after your answers:** "buyer accounts" turned out to be bigger than one CRM getting real logins — you described any e-commerce business signing up, deploying to their own domain, and their media buyers joining under them. That's a multi-tenant SaaS platform, not a per-buyer login on one company's dashboard. Section 8 lays out how that actually works and the real fork inside it (one shared platform with per-company domains, vs. a truly separate deployment per company) before anything gets built on it.
+
 ---
 
 ## 1. How does the CRM actually collect an order today?
@@ -108,3 +110,33 @@ Covered in Section 5 — I'd default to flagged-for-approval, confirm that's rig
 7. Everything else from `CRM_GAPS_AND_RECOMMENDATIONS.md`, roughly in this order: customer dedup/unification (unlocks a real customer profile view) → NDPR consent capture → COD duplicate-order flagging → audit trail on status changes → inventory → reporting/export.
 
 I'm not starting step 1 until you answer 6a–6d.
+
+---
+
+## 8. Multi-tenant SaaS: how would a media buyer actually get access to their company?
+
+You asked directly: "any e-commerce admin can sign up, but how would their media buyers have access to their company?" Here's exactly how, and the real fork underneath it.
+
+### The access model (same regardless of which deployment shape you pick below)
+
+1. **A company signs up** → creates a `companies` row (name, plan, etc.) and its first user becomes that company's **Owner/Admin**. Every other table that currently has no notion of "whose data is this" (`products`, `orders`, `ad_accounts`, `media_buyers`, `creative_assets`, `daily_metrics`...) gets a `company_id` column, and row-level security is rewritten so a query only ever returns rows for the company the logged-in user belongs to. This is the actual foundational work — not a UI screen, a rewrite of the security model underneath almost every table.
+2. **The admin invites a media buyer** — two realistic ways to do this, and they're not mutually exclusive:
+   - **Invite link/code**: admin clicks "Invite buyer" in Settings, gets a link like `yourapp.com/join?company=<token>`. Buyer opens it, creates their own login (email+password or magic link), and is automatically attached to that company with a `media_buyer` role. This is the standard SaaS pattern (Slack, Notion, etc. all work this way) — I'd default to this.
+   - **Admin creates the account directly** (buyer never self-registers, admin sets an initial password/sends a magic link). Simpler for less tech-savvy teams, more manual work for the admin.
+3. **Once inside**, a media buyer's session is scoped to their company (via the `company_id` on their user record) and, within it, further scoped to *their own* data where that matters (their own orders/forms/ROAS) while an Admin/Owner role sees everything across the whole company. This is a standard two-level permission model: `company_id` for tenant isolation, a `role` (`owner`/`admin`/`buyer`) for what they can see *within* their own company.
+
+That part is the same either way. The actual fork is underneath it, in how "their own domain" gets served:
+
+### Fork: one shared platform, or a separate deployment per company?
+
+**Option A — One shared multi-tenant platform (what "SaaS" almost always means in practice).**
+One Supabase project, one set of edge functions, one dashboard codebase. Every company is just a row in `companies`, isolated entirely by `company_id` + RLS, not by having their own separate infrastructure. "Their own domain" is handled by **domain mapping**: each company gets a subdomain for free (`acmeherbal.yourplatform.com`), and if they want their *own* domain (`shop.acmeherbal.com`) they point a CNAME at your platform and you register/verify it (Vercel and Cloudflare both have APIs for exactly this — provisioning a custom domain + SSL cert per tenant is a solved, well-trodden problem, not something to build from scratch). One deploy fixes a bug for everyone. This is how essentially every real multi-tenant SaaS product works (Shopify, Notion, etc.) — I'd strongly recommend this over B unless there's a hard requirement I'm not seeing.
+
+**Option B — A truly separate deployment per company (white-label reseller model).**
+Every new company means: a new Supabase project, its own secrets (Meta app credentials, WhatsApp number, ElevenLabs agent), its own static site deploy, its own domain configured by hand. Full data isolation by construction (literally different databases), and a company can point any domain at it trivially since it's wholly theirs. The real cost: this doesn't scale past a handful of companies without you building *another* whole layer of automation just to provision new instances (which is itself a non-trivial engineering project), and every bug fix/feature has to be re-deployed everywhere instead of once.
+
+**My recommendation: Option A.** It's what "sign up and get your own CRM" almost always means to an end customer in practice, it's dramatically less operational work per new company, and custom-domain-per-tenant is a solved problem on top of it — you get "their own domain" either way, just without needing to stand up new infrastructure for every signup.
+
+### What this changes about everything already built
+
+To be direct about the size of this: multi-tenancy touches nearly every table in this schema. Right now `ad_accounts` is the only table with any owner concept at all (`user_id`, checked via `auth.uid()`), and every other table (`orders`, `products`, `media_buyers`, `creative_assets`, `daily_metrics`, `voice_calls`...) has no tenant boundary whatsoever — they're all implicitly "the one business running this dashboard." Turning this into a real multi-tenant platform means adding `company_id` and rewriting RLS on all of them, not just the ones from this last round. That's why it's Phase 1 in Section 7's build order, before the self-service form builder or anything else that assumes "a buyer has their own restricted view" — none of that can be built correctly until the tenant boundary exists underneath it.
