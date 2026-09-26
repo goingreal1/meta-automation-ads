@@ -106,3 +106,24 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/elevenlabs-webhook/deno.json"
 entrypoint = "./functions/elevenlabs-webhook/index.ts"
+
+[functions.get-product-public]
+enabled = true
+verify_jwt = false
+import_map = "./functions/get-product-public/deno.json"
+entrypoint = "./functions/get-product-public/index.ts"
+
+[functions.meta-oauth-start]
+enabled = true
+# Facebook's redirect target for the dialog; must be a plain browser
+# navigation with no auth header, so it's verified via ?access_token= instead.
+verify_jwt = false
+import_map = "./functions/meta-oauth-start/deno.json"
+entrypoint = "./functions/meta-oauth-start/index.ts"
+
+[functions.meta-oauth-callback]
+enabled = true
+# Called by Facebook itself; authenticated by the signed state param, not a JWT.
+verify_jwt = false
+import_map = "./functions/meta-oauth-callback/deno.json"
+entrypoint = "./functions/meta-oauth-callback/index.ts"

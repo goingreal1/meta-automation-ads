@@ -3,7 +3,12 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { toE164NG } from "../_shared/safety.ts";
 
 // Places the AI order-confirmation call for an order through an ElevenLabs
-// agent (outbound over the Twilio number imported into ElevenLabs).
+// agent, dialed out over a LiveKit SIP trunk number imported into ElevenLabs
+// as a "SIP trunk" phone number (Agents -> Phone Numbers -> Import -> SIP
+// trunk -- NOT the Twilio import option). ElevenLabs' outbound-call endpoint
+// for that provider type is /v1/convai/sip-trunk/outbound-call, which is
+// what this hits; the request/response shape is otherwise the same as the
+// Twilio integration this replaced.
 //
 //   POST { order_id }        -> queue + (if within calling hours) dial now
 //   POST { process_due: true } -> dial every queued call whose time has come
@@ -71,7 +76,7 @@ async function dial(callId: string) {
   if (!claimed?.length) return { id: callId, skipped: "already claimed" };
 
   const naira = new Intl.NumberFormat("en-NG").format(Number(o?.order_value_naira ?? 0));
-  const res = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+  const res = await fetch("https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call", {
     method: "POST",
     headers: { "xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -105,7 +110,9 @@ async function dial(callId: string) {
   await supabase.from("voice_calls").update({
     status: "initiated",
     elevenlabs_conversation_id: body.conversation_id ?? null,
-    provider_call_sid: body.callSid ?? null,
+    // SIP trunk responses don't carry a Twilio-style callSid; keep whichever
+    // call-leg identifier the response actually has, if any.
+    provider_call_sid: body.callSid ?? body.sip_call_id ?? null,
   }).eq("id", callId);
   return { id: callId, conversation_id: body.conversation_id };
 }

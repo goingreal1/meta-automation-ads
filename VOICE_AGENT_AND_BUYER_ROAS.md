@@ -10,7 +10,7 @@ Meta Marketing API ──hourly──► daily_metrics ──┐
                                                ├─► media_buyer_daily_roas ─► Media Buyers tab
 checkout ─► receive-order ─► orders ───────────┘
                                │
-                               └─► place-order-call ─► ElevenLabs agent ─► Twilio ─► customer's phone
+                               └─► place-order-call ─► ElevenLabs agent ─► LiveKit SIP trunk ─► customer's phone
                                                                   │
                         voice_calls ◄── elevenlabs-webhook ◄──────┘ (transcript, outcome, red flags)
 ```
@@ -36,8 +36,14 @@ The checkout payload may now also carry `fbclid` and `ad_id`. Both are stored on
 ### Voice
 Record 10–20 min of clean audio from a Nigerian voice artist (include product names, naira amounts and Lagos/Abuja place names). Create a **Professional Voice Clone** from it and select that voice on the agent.
 
-### Phone number
-**Agents → Phone Numbers → Import** a Twilio number, then copy its **phone number ID**. Use a number that Nigerian networks deliver reliably; test before launch.
+### Phone number (LiveKit SIP trunk)
+You're on LiveKit, not Twilio, so the number goes in as a **SIP trunk** import, not a Twilio import:
+
+1. In LiveKit, create (or reuse) an **outbound SIP trunk** pointed at your PSTN/number provider, and confirm it can already place a plain outbound call to a Nigerian mobile number outside of ElevenLabs (rules out trunk/provider issues before debugging the agent).
+2. In ElevenLabs: **Agents → Phone Numbers → Import a phone number → SIP trunk** (not Twilio), and enter LiveKit's SIP trunk connection details (SIP URI / address, and its inbound/outbound credentials if the trunk requires auth).
+3. Copy the resulting **phone number ID** -- that's `ELEVENLABS_PHONE_NUMBER_ID` below. `place-order-call` calls ElevenLabs' `/v1/convai/sip-trunk/outbound-call` endpoint (the SIP-trunk counterpart of the Twilio one), which then dials out through your LiveKit trunk.
+
+If instead your LiveKit setup is a **self-hosted LiveKit Agents worker** (a Python/Node process that itself calls ElevenLabs TTS/STT, not ElevenLabs' own hosted phone-number product) — this is a different integration: `place-order-call` would call LiveKit's `CreateSIPParticipant` API directly to dial the customer into a room, and your worker (not `elevenlabs-webhook`) would need to write the call outcome back to `voice_calls`. Say the word and I'll rebuild this function for that path instead -- it's a meaningfully different piece of code, so let me know which one you actually have running.
 
 ### Agent
 Create an agent and set:

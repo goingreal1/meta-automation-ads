@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete Your Order</title>
+<meta name="robots" content="noindex">
+<style>
+[data-theme="dark"]{
+  --bg:#09090b; --panel:#111113; --panel2:#18181c;
+  --border:#27272d; --borderStrong:#38383f;
+  --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
+  --accent:#4ec99e; --accentDk:#1a9e75;
+  --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
+  --danger:#e8617a; --dangerBg:rgba(232,97,122,.10);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;font-size:15px;line-height:1.5;}
+.wrap{max-width:520px;margin:0 auto;padding:22px 16px 60px;}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:14px;}
+.prod-photo{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-bottom:14px;background:var(--panel2);}
+h1{font-size:19px;font-weight:700;margin-bottom:6px;}
+.price{font-size:26px;font-weight:700;color:var(--accent);margin:6px 0 2px;}
+.muted{color:var(--muted);font-size:12.5px;}
+.desc{color:var(--text2);font-size:13.5px;margin-top:10px;white-space:pre-wrap;}
+.safety{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--muted);margin-top:12px;}
+.field{margin-bottom:12px;}
+label{display:block;font-size:12px;color:var(--text2);margin-bottom:5px;font-weight:500;}
+input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px 12px;font-size:15px;font-family:inherit;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.qty-row{display:flex;align-items:center;gap:10px;}
+.qty-btn{width:38px;height:38px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;}
+.qty-val{width:44px;text-align:center;font-weight:600;font-size:16px;}
+.total-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px dashed var(--border);margin-top:6px;font-weight:600;}
+button[type=submit]{width:100%;background:var(--accent);color:#06120d;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;margin-top:6px;}
+button[type=submit]:disabled{opacity:.6;}
+.msg{border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px;display:none;}
+.msg.err{background:var(--dangerBg);color:var(--danger);display:block;}
+.secure{text-align:center;color:var(--muted);font-size:11.5px;margin-top:10px;}
+#thankyou{display:none;text-align:center;padding:60px 16px;}
+#thankyou .check{width:56px;height:56px;border-radius:50%;background:var(--accentBg);border:2px solid var(--accent);color:var(--accent);font-size:28px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;}
+#thankyou h1{font-size:22px;}
+#thankyou p{color:var(--text2);margin-top:10px;font-size:14px;}
+.ref{margin-top:16px;font-family:monospace;color:var(--muted);font-size:12px;}
+#loadErr, #loading{text-align:center;padding:60px 16px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="page">
+  <div id="loading">Loading order form…</div>
+</div>
+
+<div class="wrap" id="thankyou">
+  <div class="check">✓</div>
+  <h1>Order received!</h1>
+  <p>Thank you. Our team will call you shortly to confirm your order and delivery details.</p>
+  <div class="ref" id="orderRef"></div>
+</div>
+
+<script>
+// ── Config: same pattern as every other CRM-connected page in this repo ──────
+const SUPABASE_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+
+const NIGERIA_STATES = ["Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno","Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","FCT (Abuja)","Gombe","Imo","Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa","Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba","Yobe","Zamfara"];
+
+function qp(name) { return new URLSearchParams(location.search).get(name); }
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+function fmt(n, currency) {
+  return new Intl.NumberFormat("en-NG", { style: "currency", currency: currency || "NGN", maximumFractionDigits: 0 }).format(n || 0);
+}
+function esc(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+const productId = qp("product");
+// Attribution the sales page carries through in its own link (added by the
+// dashboard's "Copy order form link" -- see Products tab): which media buyer
+// gets credit, plus Meta's own ad set / creative / click ids for CAPI match
+// quality, same fields receive-order already accepts from sales-ginaris-herbal.html.
+const buyerCode = qp("buyer");
+const asid = qp("asid");
+const crid = qp("crid");
+const fbclid = qp("fbclid");
+
+let product = null;
+let qty = 1;
+
+async function loadProduct() {
+  if (!productId) {
+    document.getElementById("page").innerHTML = `<div id="loadErr">This order link is missing a product. Check the link you copied from the dashboard's Products tab.</div>`;
+    return;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/get-product-public?id=${encodeURIComponent(productId)}`, {
+      headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY },
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    product = data;
+    renderForm();
+    if (product.meta_pixel_id) initPixel(product.meta_pixel_id);
+  } catch (err) {
+    document.getElementById("page").innerHTML = `<div id="loadErr">Sorry, this order form isn't available right now. (${esc(err.message)})</div>`;
+  }
+}
+
+function initPixel(pixelId) {
+  /* eslint-disable */
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', pixelId);
+  fbq('track', 'PageView');
+  /* eslint-enable */
+}
+
+function renderForm() {
+  const stateOptions = NIGERIA_STATES.map(s => `<option>${s}</option>`).join("");
+  document.getElementById("page").innerHTML = `
+    <div class="card">
+      ${product.product_image_url ? `<img class="prod-photo" src="${esc(product.product_image_url)}" alt="">` : ""}
+      <h1>${esc(product.product_name)}</h1>
+      <div class="price" id="priceDisplay">${fmt(product.default_order_value_naira, product.currency)}</div>
+      <div class="muted">per unit</div>
+      ${product.description ? `<div class="desc">${esc(product.description)}</div>` : ""}
+      ${product.benefits ? `<div class="desc">${esc(product.benefits)}</div>` : ""}
+      ${(product.safety_notes || product.nafdac_reg_no) ? `<div class="safety">${product.safety_notes ? esc(product.safety_notes) : ""}${product.nafdac_reg_no ? ` NAFDAC Reg. No. ${esc(product.nafdac_reg_no)}.` : ""} This is a food supplement, not a substitute for medicine prescribed by a doctor.</div>` : ""}
+    </div>
+
+    <form id="orderForm" class="card">
+      <div id="formMsg" class="msg"></div>
+      <div class="field">
+        <label>Quantity</label>
+        <div class="qty-row">
+          <button type="button" class="qty-btn" id="qtyMinus">−</button>
+          <div class="qty-val" id="qtyVal">1</div>
+          <button type="button" class="qty-btn" id="qtyPlus">+</button>
+        </div>
+      </div>
+      <div class="field"><label>Full name *</label><input id="f_name" required placeholder="Your full name"></div>
+      <div class="field"><label>Phone number *</label><input id="f_phone" type="tel" required placeholder="080..."></div>
+      <div class="field"><label>Delivery address *</label><input id="f_address" required placeholder="House number, street"></div>
+      <div class="fg2">
+        <div class="field"><label>City *</label><input id="f_city" required placeholder="City"></div>
+        <div class="field"><label>State *</label><select id="f_state" required><option value="">Select state</option>${stateOptions}</select></div>
+      </div>
+      <div class="field"><label>Payment method *</label>
+        <select id="f_payment" required>
+          <option value="Pay on delivery">Pay on delivery</option>
+          <option value="Bank transfer">Bank transfer</option>
+        </select>
+      </div>
+      <div class="total-row"><span>Order total</span><span id="totalDisplay">${fmt(product.default_order_value_naira, product.currency)}</span></div>
+      <button type="submit" id="submitBtn">Complete Order</button>
+      <div class="secure">🔒 Your details are kept private. A team member will call to confirm.</div>
+    </form>
+  `;
+
+  const qtyVal = document.getElementById("qtyVal");
+  const updateTotals = () => {
+    const total = (product.default_order_value_naira || 0) * qty;
+    document.getElementById("totalDisplay").textContent = fmt(total, product.currency);
+    qtyVal.textContent = qty;
+  };
+  document.getElementById("qtyMinus").addEventListener("click", () => { if (qty > 1) { qty--; updateTotals(); } });
+  document.getElementById("qtyPlus").addEventListener("click", () => { if (qty < 20) { qty++; updateTotals(); } });
+
+  document.getElementById("orderForm").addEventListener("submit", onSubmit);
+}
+
+async function onSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById("submitBtn");
+  const msg = document.getElementById("formMsg");
+  msg.style.display = "none";
+
+  const name = document.getElementById("f_name").value.trim();
+  const phone = document.getElementById("f_phone").value.trim();
+  const address = document.getElementById("f_address").value.trim();
+  const city = document.getElementById("f_city").value.trim();
+  const state = document.getElementById("f_state").value;
+  const payment = document.getElementById("f_payment").value;
+  if (!name || !phone || !address || !city || !state) return;
+
+  const eventId = uuid();
+  const value = (product.default_order_value_naira || 0) * qty;
+
+  const payload = {
+    event_id: eventId,
+    customer_name: name,
+    phone,
+    customer_address: address,
+    customer_city: city,
+    customer_state: state,
+    customer_country: "NG",
+    payment_method: payment,
+    product_name: product.product_name,
+    quantity: qty,
+    order_value_naira: value,
+    currency: product.currency || "NGN",
+    ad_set_id: asid || null,
+    creative_id: crid || null,
+    buyer: buyerCode || undefined,
+    fbclid: fbclid || undefined,
+    fbp: getCookie("_fbp") || undefined,
+    fbc: getCookie("_fbc") || undefined,
+  };
+
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/receive-order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (typeof fbq === "function") {
+      fbq("track", "Purchase", { value, currency: product.currency || "NGN" }, { eventID: eventId });
+    }
+
+    document.getElementById("page").style.display = "none";
+    document.getElementById("orderRef").textContent = "Reference: " + eventId.slice(0, 8).toUpperCase();
+    document.getElementById("thankyou").style.display = "block";
+    window.scrollTo(0, 0);
+  } catch (err) {
+    msg.textContent = "Something went wrong, please try again. (" + err.message + ")";
+    msg.className = "msg err";
+    msg.style.display = "block";
+    btn.disabled = false;
+    btn.textContent = "Complete Order";
+  }
+}
+
+loadProduct();
+</script>
+</body>
+</html>
