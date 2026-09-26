@@ -139,4 +139,38 @@ Every new company means: a new Supabase project, its own secrets (Meta app crede
 
 ### What this changes about everything already built
 
-To be direct about the size of this: multi-tenancy touches nearly every table in this schema. Right now `ad_accounts` is the only table with any owner concept at all (`user_id`, checked via `auth.uid()`), and every other table (`orders`, `products`, `media_buyers`, `creative_assets`, `daily_metrics`, `voice_calls`...) has no tenant boundary whatsoever — they're all implicitly "the one business running this dashboard." Turning this into a real multi-tenant platform means adding `company_id` and rewriting RLS on all of them, not just the ones from this last round. That's why it's Phase 1 in Section 7's build order, before the self-service form builder or anything else that assumes "a buyer has their own restricted view" — none of that can be built correctly until the tenant boundary exists underneath it.
+To be direct about the size of this: multi-tenancy touches nearly every table in this schema. Right now `ad_accounts` is the only table with any owner concept at all (`user_id`, checked via `auth.uid()`), and every other table (`orders`, `products`, `media_buyers`, `creative_assets`, `daily_metrics`, `voice_calls`...) has no tenant boundary whatsoever — they're all implicitly "the one business running this dashboard." Turning this into a real multi-tenant platform means adding `company_id` and rewriting RLS on all of them, not just the ones from this last round. That's why it's Phase 1 below, before the self-service form builder or anything else that assumes "a buyer has their own restricted view" — none of that can be built correctly until the tenant boundary exists underneath it.
+
+---
+
+## 9. Decisions locked in — final plan
+
+| Decision | Answer |
+|---|---|
+| Order form embedding | **Both** — link/button and a true iframe (with postMessage so pixel tracking stays reliable), buyer's choice per form. |
+| Buyer access model | **Full multi-tenant SaaS**, shared platform (Option A above): one deployment, companies isolated by `company_id`, custom domains mapped per company. |
+| Delivery agents | **Full agent login** (its own dashboard view), **auto-assigned by location** (match the order's delivery state/city against an agent's coverage area), **WhatsApp alert** fired to the agent the moment they're assigned — reusing the WhatsApp send function already built. Marking delivered happens in the agent's own dashboard, not by replying to WhatsApp. |
+| New ad accounts | **Flag for approval** — nightly detection, never silently auto-imported. |
+
+## 10. Phase 1, in full technical detail (multi-tenancy — the foundation everything else sits on)
+
+This is the next thing to actually build, once you say go. Laid out fully so there's no ambiguity about what "Phase 1" means before I start.
+
+**New tables:**
+- `companies` — id, name, slug (for the default subdomain), plan, created_at.
+- `company_domains` — company_id, domain, verification status, verified_at (one company can have a subdomain *and* a verified custom domain at once).
+- `profiles` — one row per Supabase Auth user: `id` (= `auth.uid()`), `company_id`, `role` (`owner` / `admin` / `buyer` / `delivery_agent`), `media_buyer_id` (nullable FK, links a login to their `media_buyers` row so "their own orders/ROAS" resolves), `display_name`.
+- `company_invites` — company_id, role, a signed token, expires_at, used_at. This is what the "Invite buyer" link in Settings actually generates and checks.
+
+**Every existing business table gets `company_id uuid references companies(id)`:**
+`products`, `orders`, `ad_accounts`, `ad_sets`, `campaigns`, `creatives`, `creative_assets`, `daily_metrics`, `media_buyers`, `meta_connections`, `voice_calls`, `website_leads`, `beoliv_conversations`, `beoliv_customers`, `beoliv_messages`, `ad_set_configs`, `targeting_rules`, `rule_performance`. (Anywhere a row is only reachable *through* one of these — e.g. `daily_metrics` via `ad_sets` — it still gets its own `company_id` directly, denormalized, rather than requiring a join on every single RLS check; that's a deliberate performance/simplicity tradeoff, not an oversight.)
+
+**RLS rewrite:** every policy on every table above changes from the current per-table, ad-hoc checks (`user_id = auth.uid()`, or nothing at all) to one consistent pattern: a `current_company_id()` helper function that looks up `profiles.company_id` for the logged-in user, and every policy becomes `company_id = current_company_id()`. On top of that, a second layer for the `buyer` role: their own rows are further filtered to `media_buyer_id = (select media_buyer_id from profiles where id = auth.uid())` on the tables where that distinction matters (orders, forms/links they created) — while `owner`/`admin` see the whole company.
+
+**Migration path for your existing live data (this matters — nothing breaks):** a one-time migration creates exactly one `companies` row for your current business, backfills every existing row in every table above with that single `company_id`, and creates a `profiles` row for your existing login as that company's `owner`. Nothing about how *your* dashboard behaves changes — you still see everything you see today. The only difference is the security boundary now exists underneath it, ready for a second company to sign up without ever seeing your data.
+
+**Edge functions that need updating for this:** every function that currently trusts a single global `META_ACCESS_TOKEN`/WhatsApp number/ElevenLabs agent as *the* business now needs to resolve those per-company instead (a `company_settings` table holding each company's own WhatsApp number, Meta pixel, ElevenLabs agent ID, etc.) — `receive-order`, `pull-meta-metrics`, `place-order-call`, `elevenlabs-webhook`, the WhatsApp send functions, all need this. This is real, necessary scope, not incidental — a shared platform literally cannot work if two companies' orders both try to fire CAPI events through one hardcoded pixel ID.
+
+**What ships at the end of Phase 1:** company signup + login, invite-a-buyer flow, and every existing feature (Orders, Campaigns, ROAS, Leaderboard, voice calls, WhatsApp bot) working exactly as it does today but correctly scoped per company. Phases 2+ (self-service form builder, delivery agents, order form iframe, ad-account auto-detect) all build on top of this and are meaningfully smaller once it's in place.
+
+**Say the word and I'll start on the `companies`/`profiles`/`company_invites` migration + `current_company_id()` RLS rewrite.** I'm flagging before I do, rather than just starting, because this touches the security rules on data your business is actively using right now — worth one explicit go-ahead before it happens, not a silent assumption.
