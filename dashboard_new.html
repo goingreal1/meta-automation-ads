@@ -431,6 +431,7 @@ textarea{resize:vertical;min-height:76px;}
   <div class="tab-btn" data-tab="conversations-lunessa">Lunessa</div>
   <div class="tab-btn" data-tab="website-leads">Website Leads</div>
   <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
+  <div class="tab-btn" data-tab="buyers">Media Buyers <span class="tab-badge" id="callFlagBadge" style="display:none">0</span></div>
   <div class="tab-btn" data-tab="earnings">Earnings</div>
   <div class="tab-btn" data-tab="settings">Settings</div>
 </div>
@@ -725,6 +726,7 @@ async function render() {
     else if (activeTab === "conversations-lunessa") await renderConversations(c, "Lunessa");
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
+    else if (activeTab === "buyers")    await renderBuyers(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
     else if (activeTab === "settings")  await renderSettings(c);
   } catch(e) {
@@ -2809,6 +2811,122 @@ async function renderEarnings(el) {
         </tr>`).join("")}
       </table></div>`}
     </div>`;
+}
+
+// ── TAB: MEDIA BUYERS (ROAS) + AI CALL FOLLOW-UPS ─────────────────────────────
+const escH = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+let buyersRangeDays = 7;
+
+async function renderBuyers(el) {
+  const since = new Date(Date.now() - (buyersRangeDays - 1) * 86400000).toISOString().slice(0, 10);
+  const [buyers, rows, flagged] = await Promise.all([
+    sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
+    sbQuery("media_buyer_daily_roas", `select=*&day=gte.${since}`).catch(() => []),
+    sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
+  ]);
+
+  // Roll daily rows up per buyer for the selected range.
+  const agg = new Map();
+  for (const r of rows || []) {
+    const k = r.media_buyer_id ?? "none";
+    const a = agg.get(k) ?? { spend: 0, orders: 0, revenue: 0, delivered: 0 };
+    a.spend += Number(r.spend_naira || 0); a.orders += Number(r.orders || 0);
+    a.revenue += Number(r.revenue_naira || 0); a.delivered += Number(r.delivered_revenue_naira || 0);
+    agg.set(k, a);
+  }
+  const byId = new Map((buyers || []).map(b => [b.id, b]));
+  const list = [...agg.entries()].map(([id, a]) => ({ id, buyer: byId.get(id), ...a }))
+    .sort((x, y) => y.spend - x.spend);
+  for (const b of buyers || []) if (!agg.has(b.id)) list.push({ id: b.id, buyer: b, spend: 0, orders: 0, revenue: 0, delivered: 0 });
+
+  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, orders: t.orders + r.orders }), { spend: 0, revenue: 0, delivered: 0, orders: 0 });
+  const roas = (rev, sp) => sp > 0 ? (rev / sp).toFixed(2) + "x" : "—";
+  const roasCls = (rev, sp) => sp <= 0 ? "" : rev / sp >= 2 ? "ctr-hot" : rev / sp >= 1 ? "ctr-warm" : "ctr-cold";
+
+  const badge = document.getElementById("callFlagBadge");
+  if (badge) { badge.textContent = flagged?.length ?? 0; badge.style.display = flagged?.length ? "" : "none"; }
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Media Buyers</div><div class="sh-actions">
+      <select id="buyerRange" style="width:auto;padding:5px 9px;font-size:12px;">
+        ${[1, 7, 30].map(d => `<option value="${d}" ${d === buyersRangeDays ? "selected" : ""}>${d === 1 ? "Today" : `Last ${d} days`}</option>`).join("")}
+      </select>
+      <button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Ad spend</div><div class="kc-val">${fN(tot.spend)}</div></div>
+      <div class="kc"><div class="kc-lbl">Order revenue</div><div class="kc-val">${fN(tot.revenue)}</div><div class="kc-sub">${tot.orders} orders, excl. cancelled/returned</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (orders)</div><div class="kc-val a">${roas(tot.revenue, tot.spend)}</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roas(tot.delivered, tot.spend)}</div><div class="kc-sub">cash actually collected</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">ROAS by media buyer</div><div class="ph-count">Attributed by [CODE] in ad set / campaign name</div></div>
+      ${!list.length ? `<div class="empty"><div class="empty-ico">📊</div>No spend or orders in this range yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Spend</th><th>Orders</th><th>CPA</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
+        ${list.map(r => `<tr>
+          <td class="s">${r.buyer ? `${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span>` : `<span style="color:var(--muted)">Unattributed</span>`}</td>
+          <td>${fN(r.spend)}</td>
+          <td>${r.orders}</td>
+          <td>${r.orders ? fN(r.spend / r.orders) : "—"}</td>
+          <td>${fN(r.revenue)}</td>
+          <td class="${roasCls(r.revenue, r.spend)}">${roas(r.revenue, r.spend)}</td>
+          <td class="${roasCls(r.delivered, r.spend)}">${roas(r.delivered, r.spend)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Add media buyer</div></div>
+      <form id="buyerForm">
+        <div class="fg">
+          <div class="field"><label>Name *</label><input id="mb_name" required placeholder="e.g. Tunde Bakare"></div>
+          <div class="field"><label>Code * (goes in ad set names as [CODE])</label><input id="mb_code" required pattern="[A-Za-z0-9_-]+" placeholder="TUNDE"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:14px;">+ Add buyer</button>
+        <div id="buyerMsg"></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">AI calls needing a human</div><div class="ph-count">${flagged?.length ?? 0} open</div></div>
+      ${!flagged?.length ? `<div class="empty"><div class="empty-ico">📞</div>No calls flagged. Medical questions, cancellation requests and "let me talk to a person" land here.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Why</th><th>AI summary</th><th>When</th><th></th></tr>
+        ${flagged.map(c => `<tr>
+          <td class="s n">${escH(c.orders?.customer_name ?? "—")}</td>
+          <td class="n"><a href="tel:${escH(c.to_number)}" style="color:var(--accent);text-decoration:none;">${escH(c.to_number)}</a></td>
+          <td class="n">${escH(c.orders?.product_name ?? "—")}</td>
+          <td>${(c.red_flags || []).map(f => `<span class="pill returned">${escH(f.replace(/_/g, " "))}</span>`).join(" ")}</td>
+          <td class="n" style="max-width:280px;color:var(--muted);">${escH(c.summary ?? "")}</td>
+          <td>${ago(c.created_at)}</td>
+          <td><button class="btn btn-g callResolve" data-cid="${escH(c.id)}">Mark handled</button></td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+
+  document.getElementById("buyerRange").addEventListener("change", e => { buyersRangeDays = Number(e.target.value); render(); });
+
+  document.getElementById("buyerForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("buyerMsg");
+    const name = document.getElementById("mb_name").value.trim();
+    const code = document.getElementById("mb_code").value.trim().toUpperCase();
+    const { error } = await supabaseClient.from("media_buyers").insert({ name, code });
+    if (error) { msg.textContent = "Could not add buyer: " + error.message; return; }
+    // Attribute the buyer's already-running ad sets and their orders.
+    const { error: bfErr } = await supabaseClient.rpc("backfill_media_buyers");
+    if (bfErr) console.error("backfill_media_buyers:", bfErr);
+    render();
+  });
+
+  document.querySelectorAll(".callResolve").forEach(btn => btn.addEventListener("click", async e => {
+    const { error } = await supabaseClient.from("voice_calls")
+      .update({ human_resolved_at: new Date().toISOString() }).eq("id", e.target.dataset.cid);
+    if (error) { alert("Update failed: " + error.message); return; }
+    render();
+  }));
 }
 
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────

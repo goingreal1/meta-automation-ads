@@ -92,3 +92,17 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/diagnose-meta-token/deno.json"
 entrypoint = "./functions/diagnose-meta-token/index.ts"
+
+[functions.place-order-call]
+enabled = true
+# Checked in-function instead: service role or a signed-in user, never the bare anon key.
+verify_jwt = false
+import_map = "./functions/place-order-call/deno.json"
+entrypoint = "./functions/place-order-call/index.ts"
+
+[functions.elevenlabs-webhook]
+enabled = true
+# Called by ElevenLabs; authenticated by HMAC signature instead of a JWT.
+verify_jwt = false
+import_map = "./functions/elevenlabs-webhook/deno.json"
+entrypoint = "./functions/elevenlabs-webhook/index.ts"
