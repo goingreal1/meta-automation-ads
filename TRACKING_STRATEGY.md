@@ -55,6 +55,35 @@ behavior in `receive-order` are the *same lever* — redefining what counts as
 a purchase to something earlier and easier to get. Cheaper CPA, but the
 algorithm is chasing a proxy for a sale, not the sale itself.
 
+## Per-buyer pixel/dataset config — UI gap (flagged 2026-09-27)
+
+`ad_accounts.meta_pixel_id` exists in the schema and is already read
+correctly by `get-product-public`/`order.html`, but **nothing in the
+dashboard ever writes to it** — the "import ad accounts" flow (OAuth →
+pick accounts → insert into `ad_accounts`) never asks for or sets a pixel
+ID. Today it can only be set by hand in the DB. Since the field already
+lives per-`ad_account` (not in a separate shared table), both real-world
+patterns are already supported for free without new modeling:
+- one pixel shared across several ad accounts → buyer types the same ID
+  into each account's field.
+- one pixel per ad account → each gets its own value.
+
+**Plan:** add a "Pixel & Tracking" section to the dashboard's Settings tab
+— a flat, site-wide table of every ad account the buyer has added (not
+scoped to whichever `activeAccountId` is currently selected, so no account
+switching needed), with an editable pixel/dataset ID field per row.
+
+**Resolved 2026-09-27 — OAuth scope for per-buyer CAPI is clear to widen.**
+Checked the founder's own live token via `diagnose-meta-token` → Meta
+`/me/permissions` (routed through Postgres's `http` extension since this
+session's own outbound network doesn't reach Supabase directly): `ads_management`
+is granted, alongside `ads_read`, `business_management`, `leads_retrieval`,
+etc. Since the app is Live (not Development Mode) and this permission is
+already granted on a real token, it's at Advanced Access — safe to widen
+`meta-oauth-start`/`meta-oauth-callback`'s requested scope from
+`ads_read,business_management` to include `ads_management` for buyer
+connections, with no new App Review submission needed.
+
 ## Open research / testing questions (not yet answered — log results here when they land)
 
 1. **Does the popup-nudge flow produce real sales at the same rate as
@@ -62,8 +91,8 @@ algorithm is chasing a proxy for a sale, not the sale itself.
    status for popup-driven vs. organic-driven orders, compare real
    completion rate, not just Ads Manager's reported CPA.
 2. **Per-buyer EMQ**, once each buyer is actually receiving events on their
-   own pixel (blocked on the bug above) — check Events Manager per account
-   for match quality score.
+   own pixel (blocked on the pixel-ID bug above) — check Events Manager per
+   account for match quality score.
 3. **Order-submit vs. call-confirmed as the Purchase trigger** — an
    A/B-testable strategy question. More volume now vs. cleaner signal later.
    Needs real revenue/ROAS data on both sides, not just Ads Manager CPA, to
