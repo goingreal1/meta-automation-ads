@@ -495,6 +495,8 @@ function icon(name, size = 16) {
 
 let sessionData = null;
 let activeAccountId = null; // Currently selected UUID from ad_accounts
+let ordersPage = 0; // 0-indexed page for the Orders tab's "All orders" table
+const ORDERS_PAGE_SIZE = 30;
 let accountsList = [];
 
 // Thresholds
@@ -2140,8 +2142,12 @@ async function bvOrderLinkModal(productId, productName) {
 
 // ── TAB: ORDERS ───────────────────────────────────────────────────────────────
 async function renderOrders(el) {
-  const [orders, flagged] = await Promise.all([
-    sbQuery("orders", "select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at)&order=ordered_at.desc&limit=150"),
+  // Stats and pagination need the full-table status counts separate from the
+  // one page of rows actually rendered -- statusRows is cheap (one column,
+  // no joins) so paging the table doesn't skew "Total orders"/"Delivery rate".
+  const [statusRows, orders, flagged] = await Promise.all([
+    sbQuery("orders", "select=order_status"),
+    sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
     sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
   ]);
   (orders || []).forEach(o => {
@@ -2150,12 +2156,15 @@ async function renderOrders(el) {
     o.voice_call = (o.voice_calls || []).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0] || null;
   });
 
-  const tot   = orders?.length ?? 0;
-  const deliv = orders?.filter(o => o.order_status === "delivered").length ?? 0;
-  const ret   = orders?.filter(o => o.order_status === "returned").length ?? 0;
-  const pend  = orders?.filter(o => o.order_status === "pending").length ?? 0;
+  const tot   = statusRows?.length ?? 0;
+  const deliv = statusRows?.filter(o => o.order_status === "delivered").length ?? 0;
+  const ret   = statusRows?.filter(o => o.order_status === "returned").length ?? 0;
+  const pend  = statusRows?.filter(o => o.order_status === "pending").length ?? 0;
   const rate  = tot ? (deliv / tot * 100).toFixed(1) : "0";
   const rC    = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
+  const pageCount = Math.max(1, Math.ceil(tot / ORDERS_PAGE_SIZE));
+  const pageStart = tot ? ordersPage * ORDERS_PAGE_SIZE + 1 : 0;
+  const pageEnd = Math.min(tot, (ordersPage + 1) * ORDERS_PAGE_SIZE);
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Orders</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
@@ -2210,8 +2219,23 @@ async function renderOrders(el) {
             </select>
           </td>
         </tr>`).join("")}
-      </table></div>`}
+      </table></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--muted);">
+        <div>${tot ? `Showing ${pageStart}–${pageEnd} of ${tot}` : ""}</div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-g" id="ordersPrevBtn" ${ordersPage === 0 ? "disabled" : ""}>← Prev</button>
+          <div style="padding:6px 4px;">Page ${ordersPage + 1} of ${pageCount}</div>
+          <button type="button" class="btn btn-g" id="ordersNextBtn" ${ordersPage >= pageCount - 1 ? "disabled" : ""}>Next →</button>
+        </div>
+      </div>`}
     </div>`;
+
+  document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
+    if (ordersPage > 0) { ordersPage--; renderOrders(el); }
+  });
+  document.getElementById("ordersNextBtn")?.addEventListener("click", () => {
+    if (ordersPage < pageCount - 1) { ordersPage++; renderOrders(el); }
+  });
 
   document.querySelectorAll(".oSel").forEach(sel => {
     sel.addEventListener("change", async e => {
