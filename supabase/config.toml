@@ -127,3 +127,12 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/meta-oauth-callback/deno.json"
 entrypoint = "./functions/meta-oauth-callback/index.ts"
+
+[functions.complete-signup]
+enabled = true
+# Authenticated by the caller's own just-issued session token in the body
+# (verified via auth.getUser), not a platform JWT check, since this runs
+# right after signUp before the client has done anything else.
+verify_jwt = false
+import_map = "./functions/complete-signup/deno.json"
+entrypoint = "./functions/complete-signup/index.ts"

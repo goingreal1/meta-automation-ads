@@ -226,6 +226,7 @@ Deno.serve(async (req: Request) => {
             
             await supabase.from("campaigns").upsert({
               ad_account_id: account.id,
+              company_id: account.company_id,
               meta_campaign_id: c.id,
               campaign_name: c.name,
               objective_raw: c.objective,
@@ -259,6 +260,7 @@ Deno.serve(async (req: Request) => {
             }
 
             await supabase.from("creatives").upsert({
+              company_id: account.company_id,
               meta_ad_id: ad.id,
               creative_name: ad.name,
               primary_text: primaryText,
@@ -340,6 +342,7 @@ Deno.serve(async (req: Request) => {
           const { data: newAdSet, error: insertErr } = await supabase.from("ad_sets").insert({
             meta_adset_id: metaAdsetId,
             ad_account_id: account.id,
+            company_id: account.company_id,
             adset_name: adsetData.name || row.adset_name,
             budget_naira: budgetNaira,
             status: adsetData.status?.toLowerCase() === 'active' ? 'active' : 'paused',
@@ -363,6 +366,7 @@ Deno.serve(async (req: Request) => {
           {
             ad_set_id:            adSetRow.id,
             ad_account_id:        account.id,
+            company_id:           account.company_id,
             metric_date:          metricDate,
             spend_naira:          spend,
             impressions,

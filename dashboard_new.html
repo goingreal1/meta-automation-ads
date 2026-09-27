@@ -514,6 +514,17 @@ async function init() {
   }
   sessionData = session;
 
+  // Multi-tenancy (Phase 1): every signed-in user must belong to a company.
+  // A brand-new signup lands here before ever visiting setup-company.html
+  // (e.g. they bookmarked this page) -- send them there instead of showing
+  // a dashboard with nothing in it because every RLS policy denies them.
+  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name").eq("id", session.user.id).maybeSingle();
+  if (!profile?.company_id) {
+    window.location.href = "setup-company.html";
+    return;
+  }
+  window.myProfile = profile;
+
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
   // with ?meta_oauth=connected|error&detail=... once a buyer finishes
   // connecting their Facebook Business Manager -- land on Settings with the
@@ -3069,10 +3080,14 @@ async function renderLeaderboard(el) {
 
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 async function renderSettings(el) {
-  const [buyers, connections, existingAccounts] = await Promise.all([
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const [buyers, connections, existingAccounts, company, invites, teamMembers] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     sbQuery("meta_connections_public", "select=*&order=connected_at.desc").catch(() => []),
     sbQuery("ad_accounts", "select=id,meta_ad_account_id,meta_connection_id").catch(() => []),
+    sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
+    isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
+    isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
   ]);
   // Most recent active connection per buyer, if any.
   const connByBuyer = new Map();
@@ -3088,6 +3103,47 @@ async function renderSettings(el) {
 
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
 
+    <div class="panel">
+      <div class="ph"><div class="ph-title">${escH(company?.name || "Your company")}</div><div class="ph-count">Your role: ${escH(window.myProfile?.role || "—")}</div></div>
+      ${!isAdmin ? `<div style="font-size:11.5px;color:var(--muted);">Only an owner/admin can invite team members or manage ad account connections.</div>` : `
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Invite a teammate -- they sign up with this link and land inside your company only, never anyone else's.</div>
+      <form id="inviteForm">
+        <div class="fg">
+          <div class="field"><label>Role *</label>
+            <select id="inv_role">
+              <option value="buyer">Media buyer</option>
+              <option value="admin">Admin</option>
+              <option value="delivery_agent">Delivery agent</option>
+            </select>
+          </div>
+          <div class="field"><label>Email (optional, just a label)</label><input id="inv_email" type="email" placeholder="teammate@example.com"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">+ Generate invite link</button>
+        <div id="inviteMsg"></div>
+      </form>
+      ${invites?.length ? `
+      <div class="tbl-wrap" style="margin-top:16px;"><table>
+        <tr><th>Role</th><th>For</th><th>Status</th><th>Link</th></tr>
+        ${invites.map(i => {
+          const used = !!i.used_at;
+          const expired = !used && new Date(i.expires_at) < new Date();
+          const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${i.token}`;
+          return `<tr>
+            <td class="s">${escH(i.role)}</td>
+            <td class="n">${escH(i.email || "—")}</td>
+            <td><span class="pill ${used ? "delivered" : expired ? "cancelled" : "pending"}">${used ? "joined" : expired ? "expired" : "pending"}</span></td>
+            <td>${used || expired ? "—" : `<button type="button" class="btn btn-g inviteCopyBtn" data-link="${escH(link)}" style="padding:3px 8px;font-size:10px;">Copy link</button>`}</td>
+          </tr>`;
+        }).join("")}
+      </table></div>` : ""}
+      ${teamMembers?.length ? `
+      <div class="tbl-wrap" style="margin-top:16px;"><table>
+        <tr><th>Team member</th><th>Role</th><th>Joined</th></tr>
+        ${teamMembers.map(m => `<tr><td class="s">${escH(m.display_name || m.id.slice(0, 8))}</td><td>${escH(m.role)}</td><td>${ago(m.created_at)}</td></tr>`).join("")}
+      </table></div>` : ""}`}
+    </div>
+
+    ${!isAdmin ? "" : `
     <div class="panel">
       <div class="ph"><div class="ph-title">Media buyers &amp; Meta connections</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer connects their own Facebook Business Manager with "Connect Meta" -- no more hand-typing act_IDs or sharing ad account access. Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
@@ -3152,7 +3208,7 @@ async function renderSettings(el) {
           </td>
         </tr>`).join("")}
       </table></div>`}
-    </div>`;
+    </div>`}`;
 
 window.refreshBalances = async function() {
   const btn = document.getElementById("refreshBalBtn");
@@ -3168,7 +3224,31 @@ window.refreshBalances = async function() {
   }
 }
 
-  document.getElementById("buyerForm").addEventListener("submit", async e => {
+  // "Media buyers & Meta connections" and "Link New Meta Ad Account" are both
+  // admin-only panels -- these forms simply aren't in the DOM for a buyer/
+  // delivery_agent, so every handler below is guarded rather than assumed present.
+  document.getElementById("inviteForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("inviteMsg");
+    const role = document.getElementById("inv_role").value;
+    const email = document.getElementById("inv_email").value.trim() || null;
+    const token = crypto.randomUUID().replace(/-/g, "");
+    const { error } = await supabaseClient.from("company_invites").insert({ role, email, token });
+    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not create invite: ${error.message}</div>`; return; }
+    const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${token}`;
+    msg.innerHTML = `<div class="msg ok">✅ Invite created. <button type="button" class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="navigator.clipboard.writeText('${link}')">Copy link</button></div>`;
+    renderSettings(el);
+  });
+
+  document.querySelectorAll(".inviteCopyBtn").forEach(btn => btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.link);
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Copy link"; }, 1500);
+    } catch { btn.textContent = btn.dataset.link; }
+  }));
+
+  document.getElementById("buyerForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("buyerMsg");
     const name = document.getElementById("mb_name").value.trim();
@@ -3181,7 +3261,7 @@ window.refreshBalances = async function() {
     renderSettings(el);
   });
 
-  document.getElementById("acctForm").addEventListener("submit", async e => {
+  document.getElementById("acctForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("acctMsg");
     try {

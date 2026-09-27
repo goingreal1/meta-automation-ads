@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Set up your account</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+[data-theme="dark"] {
+  --bg:#09090b; --panel:#111113; --panel2:#18181c;
+  --border:#27272d; --borderStrong:#38383f;
+  --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
+  --accent:#4ec99e; --accentDk:#1a9e75;
+  --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+.wrap{width:100%;max-width:440px;padding:20px;}
+.box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px 28px;box-shadow:0 8px 40px rgba(0,0,0,.55);}
+h1{font-size:18px;font-weight:700;margin-bottom:6px;}
+.sub{font-size:12.5px;color:var(--muted);margin-bottom:22px;}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;}
+.field label{font-size:12px;color:var(--text2);font-weight:500;}
+input,select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:14px;font-family:inherit;width:100%;}
+input:focus,select:focus{outline:none;border-color:var(--accent);}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--accentBdr);background:var(--accentBg);color:var(--accent);}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.msg{font-size:12px;padding:10px;border-radius:8px;margin-bottom:16px;display:none;}
+.msg.err{display:block;background:rgba(224,85,85,.10);color:#e05555;border:1px solid rgba(224,85,85,.22);}
+.msg.ok{display:block;background:var(--accentBg);color:var(--accent);border:1px solid var(--accentBdr);}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:rot .65s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg);}}
+.center{text-align:center;padding:20px 0;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="box" id="box">
+  <div class="center">Checking your account…</div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+const sb = window.supabase.createClient(SUPA_URL, ANON);
+const box = document.getElementById("box");
+const inviteToken = new URLSearchParams(location.search).get("invite");
+
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { window.location.href = "index.html" + (inviteToken ? "?invite=" + encodeURIComponent(inviteToken) : ""); return; }
+
+  // Already set up (e.g. they refreshed this page, or clicked an invite link
+  // while already belonging to a company) -- nothing to do here.
+  const { data: profile } = await sb.from("profiles").select("company_id").eq("id", session.user.id).maybeSingle();
+  if (profile?.company_id) { window.location.href = "dashboard_new.html"; return; }
+
+  render(session);
+}
+
+function render(session) {
+  if (inviteToken) {
+    box.innerHTML = `
+      <h1>Join your team</h1>
+      <div class="sub">You're joining via an invite link. This attaches your account to that team -- you'll only see their data, never anyone else's.</div>
+      <div id="msg" class="msg"></div>
+      <form id="f">
+        <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
+        <button type="submit" class="btn" id="btn">Join team</button>
+      </form>`;
+    document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submit(session, "join"); });
+  } else {
+    box.innerHTML = `
+      <h1>Set up your company</h1>
+      <div class="sub">This creates your own private workspace -- your data is never visible to any other company on this platform.</div>
+      <div id="msg" class="msg"></div>
+      <form id="f">
+        <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
+        <div class="field"><label>Company name</label><input id="company_name" placeholder="e.g. Quality Herb Nigeria" required></div>
+        <button type="submit" class="btn" id="btn">Create company</button>
+      </form>`;
+    document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submit(session, "create"); });
+  }
+}
+
+async function submit(session, mode) {
+  const btn = document.getElementById("btn");
+  const msg = document.getElementById("msg");
+  msg.className = "msg";
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spin"></div> Working…';
+
+  const body = { mode, display_name: document.getElementById("name").value.trim() || undefined };
+  if (mode === "join") body.invite_token = inviteToken;
+  else body.company_name = document.getElementById("company_name").value.trim();
+
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    msg.textContent = "All set! Redirecting…";
+    msg.className = "msg ok";
+    setTimeout(() => window.location.href = "dashboard_new.html", 700);
+  } catch (err) {
+    msg.textContent = err.message;
+    msg.className = "msg err";
+    btn.disabled = false;
+    btn.textContent = mode === "join" ? "Join team" : "Create company";
+  }
+}
+
+init();
+</script>
+</body>
+</html>

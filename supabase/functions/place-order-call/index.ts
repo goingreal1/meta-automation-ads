@@ -31,6 +31,25 @@ const LAGOS_OFFSET_HOURS = 1;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+// Resolves which ElevenLabs agent/number/key to call out with for this
+// order's company. company_settings (per Phase 1 multi-tenancy) lets each
+// company run its own agent; any field a company hasn't filled in falls back
+// to the original global env vars, so the one company already running this
+// before multi-tenancy existed keeps working with zero config changes.
+async function resolveCallConfig(companyId: string | null) {
+  let settings: Record<string, any> | null = null;
+  if (companyId) {
+    const { data } = await supabase.from("company_settings").select("*").eq("company_id", companyId).maybeSingle();
+    settings = data;
+  }
+  return {
+    apiKey: settings?.elevenlabs_api_key || ELEVENLABS_API_KEY,
+    agentId: settings?.elevenlabs_agent_id || ELEVENLABS_AGENT_ID,
+    phoneNumberId: settings?.elevenlabs_phone_number_id || ELEVENLABS_PHONE_NUMBER_ID,
+    businessName: settings?.business_name || BUSINESS_NAME,
+  };
+}
+
 function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -60,11 +79,17 @@ async function isAuthorized(req: Request): Promise<boolean> {
 async function dial(callId: string) {
   const { data: call } = await supabase
     .from("voice_calls")
-    .select("id, to_number, order_id, orders(*)")
+    .select("id, to_number, order_id, company_id, orders(*)")
     .eq("id", callId)
     .single();
   if (!call) return { id: callId, error: "call not found" };
   const o: any = call.orders;
+  const cfg = await resolveCallConfig(call.company_id);
+  if (!cfg.apiKey || !cfg.agentId || !cfg.phoneNumberId) {
+    const error = `No ElevenLabs config for company ${call.company_id ?? "(none)"} -- set it in company_settings, or ELEVENLABS_API_KEY/ELEVENLABS_AGENT_ID/ELEVENLABS_PHONE_NUMBER_ID as a fallback.`;
+    await supabase.from("voice_calls").update({ status: "failed", error }).eq("id", callId);
+    return { id: callId, error };
+  }
 
   // Claim it so an overlapping cron run can't dial the same customer twice.
   const { data: claimed } = await supabase
@@ -78,15 +103,15 @@ async function dial(callId: string) {
   const naira = new Intl.NumberFormat("en-NG").format(Number(o?.order_value_naira ?? 0));
   const res = await fetch("https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call", {
     method: "POST",
-    headers: { "xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json" },
+    headers: { "xi-api-key": cfg.apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      agent_id: ELEVENLABS_AGENT_ID,
-      agent_phone_number_id: ELEVENLABS_PHONE_NUMBER_ID,
+      agent_id: cfg.agentId,
+      agent_phone_number_id: cfg.phoneNumberId,
       to_number: call.to_number,
       conversation_initiation_client_data: {
         // Referenced as {{customer_name}} etc. in the agent's prompt/first message.
         dynamic_variables: {
-          business_name: BUSINESS_NAME,
+          business_name: cfg.businessName,
           customer_name: (o?.customer_name ?? "").trim().split(" ")[0] || "there",
           product_name: o?.product_name ?? "your order",
           quantity: String(o?.quantity ?? 1),
@@ -130,9 +155,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (!(await isAuthorized(req))) return json({ error: "Unauthorized" }, 401);
-    if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID || !ELEVENLABS_PHONE_NUMBER_ID) {
-      return json({ error: "ELEVENLABS_API_KEY, ELEVENLABS_AGENT_ID and ELEVENLABS_PHONE_NUMBER_ID must be set." }, 500);
-    }
+    // No blanket "must be set" check here anymore -- which credentials apply
+    // depends on the order's company (resolveCallConfig), checked per-call in
+    // dial() instead. The global env vars are only the fallback for whichever
+    // company hasn't configured its own in company_settings.
 
     const body = await req.json().catch(() => ({}));
 
@@ -155,7 +181,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: order } = await supabase
       .from("orders")
-      .select("id, customer_phone, order_status")
+      .select("id, customer_phone, order_status, company_id")
       .eq("id", orderId)
       .maybeSingle();
     if (!order) return json({ error: "Order not found" }, 404);
@@ -173,7 +199,7 @@ Deno.serve(async (req: Request) => {
     const scheduledFor = nextCallableTime();
     const { data: call, error } = await supabase
       .from("voice_calls")
-      .insert({ order_id: orderId, to_number: to, scheduled_for: scheduledFor.toISOString() })
+      .insert({ order_id: orderId, to_number: to, company_id: order.company_id, scheduled_for: scheduledFor.toISOString() })
       .select("id")
       .single();
     if (error || !call) throw new Error(`Could not queue call: ${error?.message}`);

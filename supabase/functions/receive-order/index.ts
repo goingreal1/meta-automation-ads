@@ -54,6 +54,7 @@ Deno.serve(async (req: Request) => {
     const currency = (payload.currency as string | undefined)?.toUpperCase() || "NGN";
     const ad_set_id = payload.ad_set_id;
     const creative_id = payload.creative_id;
+    const product_id = payload.product_id as string | undefined;
     // Meta click/browser IDs for CAPI match quality — fbc can also be reconstructed from a bare fbclid
     const fbp = payload.fbp as string | undefined;
     const fbc = (payload.fbc as string | undefined) ??
@@ -158,20 +159,45 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Which company this order belongs to, in a shared multi-tenant platform
+    // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
+    // product_id -- the reliable path, since every product belongs to exactly
+    // one company. Older/hand-built sales pages (e.g. sales-ginaris-herbal.html)
+    // predate that field and only ever send ad_set_id, so that's the fallback.
+    // If neither resolves, the order is left company_id = null: invisible to
+    // every dashboard until someone fixes it by hand, rather than guessing --
+    // see the migration's note on why that's the deliberately safe failure mode.
+    let companyId: string | null = null;
+    if (product_id) {
+      const { data: productRow } = await supabase.from('products').select('company_id').eq('id', product_id).maybeSingle();
+      companyId = productRow?.company_id ?? null;
+    }
+    if (!companyId && ad_set_id) {
+      const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
+      companyId = adSetCompanyRow?.company_id ?? null;
+    }
+    if (!companyId) {
+      console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
+    }
+
     // Explicit buyer from the ad link (?buyer=TUNDE, passed through checkout)
-    // wins; otherwise the orders trigger inherits it from the ad set.
+    // wins; otherwise the orders trigger inherits it from the ad set. Scoped
+    // to this order's own company -- buyer codes are only unique per company,
+    // not globally, once more than one company exists.
     let mediaBuyerId: string | null = null;
     const buyerCode = (payload.buyer || payload.buyer_code || payload.utm_buyer) as string | undefined;
-    if (buyerCode) {
+    if (buyerCode && companyId) {
       const { data: buyerRow } = await supabase
         .from('media_buyers')
         .select('id')
         .eq('code', buyerCode.trim().toUpperCase())
+        .eq('company_id', companyId)
         .maybeSingle();
       mediaBuyerId = buyerRow?.id ?? null;
     }
 
     const { data: orderRow, error: dbError } = await supabase.from('orders').upsert({
+      company_id: companyId,
       event_id,
       customer_email: email,
       customer_phone: phone,
