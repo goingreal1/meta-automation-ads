@@ -576,15 +576,11 @@ async function sbQuery(table, queryStr = "") {
     finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;
   }
 
-  // Orders can legitimately have ad_account_id = null — a real customer submitted the form before
-  // any ad set existed to attribute the click to (e.g. testing a sales page pre-launch). Show those
-  // too, not just strictly-matched ones, so real orders don't silently vanish from the dashboard.
-  // NOTE: this means unattributed orders are visible to every buyer, not just the "right" one — fine
-  // for now (pre-launch, few real orders), but revisit before the 40-buyer rollout (Phase 3) so one
-  // buyer's real customers can't be seen by another.
-  if (table === "orders" && activeAccountId) {
-    finalQuery += finalQuery ? `&or=(ad_account_id.eq.${activeAccountId},ad_account_id.is.null)` : `or=(ad_account_id.eq.${activeAccountId},ad_account_id.is.null)`;
-  }
+  // Orders intentionally is NOT scoped to activeAccountId. It's your own CRM data (not Meta's),
+  // fed by one shared order.html across every ad account/buyer -- switching the ad-account
+  // selector should never make real orders appear to vanish. The Orders tab always shows the
+  // total across the whole company; only the Meta-specific tabs (Campaigns, Ad Spend & ROAS)
+  // stay scoped to whichever ad account is active.
 
   const res = await fetch(`${SUPA_URL}/rest/v1/${table}${finalQuery ? "?" + finalQuery : ""}`, {
     headers: {
@@ -3208,7 +3204,43 @@ async function renderSettings(el) {
           </td>
         </tr>`).join("")}
       </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Pixel &amp; Tracking</div><div class="ph-count">${accountsList.length} accounts</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">The Meta Pixel / Dataset ID each ad account's Purchase events are sent to. Running one pixel across several accounts? Use the same ID in each row below -- nothing else to configure. This list shows every account regardless of which one you're currently viewing.</div>
+      ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">📡</div>No ad accounts linked yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Pixel / Dataset ID</th><th></th></tr>
+        ${accountsList.map(a => `<tr>
+          <td class="s n">${escH(a.nickname || a.name || "")}</td>
+          <td>${escH(a.meta_ad_account_id || "")}</td>
+          <td><input type="text" class="pixelInput" id="pixel-${a.id}" value="${escH(a.meta_pixel_id || "")}" placeholder="e.g. 1364082442600221" style="width:100%;"></td>
+          <td><button type="button" class="btn btn-g pixelSaveBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">Save</button></td>
+        </tr>`).join("")}
+      </table></div>`}
     </div>`}`;
+
+  document.querySelectorAll(".pixelSaveBtn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const aid = btn.dataset.aid;
+      const input = document.getElementById(`pixel-${aid}`);
+      const value = input.value.trim();
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const { error } = await supabaseClient.from("ad_accounts").update({ meta_pixel_id: value || null }).eq("id", aid);
+        if (error) throw error;
+        btn.textContent = "Saved";
+        await loadAccounts();
+        setTimeout(() => { btn.disabled = false; btn.textContent = "Save"; }, 1200);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Save";
+        alert("Couldn't save pixel ID: " + e.message);
+      }
+    });
+  });
 
 window.refreshBalances = async function() {
   const btn = document.getElementById("refreshBalBtn");
