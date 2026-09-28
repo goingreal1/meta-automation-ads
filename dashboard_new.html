@@ -602,12 +602,12 @@ async function init() {
 }
 
 // ── API HELPERS ───────────────────────────────────────────────────────────────
-async function sbQuery(table, queryStr = "") {
+async function sbQuery(table, queryStr = "", opts = {}) {
   // Append ad account filter if applicable (ignore for system_settings, earnings etc. which are shared/global)
   let finalQuery = queryStr;
   const filteredTables = ["ad_sets", "creative_assets", "daily_metrics", "products"];
 
-  if (filteredTables.includes(table) && activeAccountId) {
+  if (!opts.allAccounts && filteredTables.includes(table) && activeAccountId) {
     finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;
   }
 
@@ -627,6 +627,24 @@ async function sbQuery(table, queryStr = "") {
   if (!res.ok) throw new Error(await res.text());
   const t = await res.text();
   return t ? JSON.parse(t) : null;
+}
+
+// Exact row count via PostgREST's Prefer: count=exact + a 0-row Range, instead
+// of fetching every row just to read .length -- avoids both the wasted
+// payload and PostgREST's default row cap silently under-reporting big tables.
+async function sbCount(table, queryStr = "") {
+  const res = await fetch(`${SUPA_URL}/rest/v1/${table}${queryStr ? "?" + queryStr : ""}`, {
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${sessionData?.access_token || ANON}`,
+      Prefer: "count=exact",
+      Range: "0-0",
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const range = res.headers.get("content-range"); // e.g. "0-0/1278"
+  const total = range ? parseInt(range.split("/")[1], 10) : 0;
+  return Number.isFinite(total) ? total : 0;
 }
 
 async function sbFn(name, body = null, method = "POST") {
@@ -812,17 +830,36 @@ async function render() {
 
 // ── TAB: OVERVIEW ─────────────────────────────────────────────────────────────
 async function renderOverview(el) {
-  const [settings, orders, creatives, approvals, metrics] = await Promise.all([
+  const sevenDaysAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+  const [settings, tot, deliv, returned, creatives, approvals, rawMetrics] = await Promise.all([
     sbQuery("system_settings", "id=eq.1&select=*").then(r => r?.[0] ?? {}),
-    sbQuery("orders", "select=order_status,order_value_naira,ordered_at"),
+    sbCount("orders"),
+    sbCount("orders", "order_status=eq.delivered"),
+    sbCount("orders", "order_status=eq.returned"),
     sbQuery("creative_assets", "select=test_status,uploaded_at"),
     sbQuery("pending_approvals", "status=eq.pending&select=id"),
-    sbQuery("daily_metrics", "select=*&order=metric_date.desc&limit=7").catch(() => []),
+    // Company-wide (not scoped to whichever ad account happens to be selected) --
+    // Overview is the executive summary, so switching accounts shouldn't make
+    // spend/CPA swing between an unrelated account's numbers. Date-ranged, not
+    // row-limited: with multiple ad sets reporting per day, a flat "last 7 rows"
+    // limit was grabbing a handful of rows from a single day, not 7 real days.
+    sbQuery("daily_metrics", `select=metric_date,spend_naira,orders,clicks,impressions,reach&metric_date=gte.${sevenDaysAgo}`, { allAccounts: true }).catch(() => []),
   ]);
 
-  const tot       = orders?.length ?? 0;
-  const deliv     = orders?.filter(o => o.order_status === "delivered").length ?? 0;
-  const returned  = orders?.filter(o => o.order_status === "returned").length ?? 0;
+  // Aggregate the (possibly many-rows-per-day, one per ad set) rows into one
+  // total per calendar day.
+  const byDay = new Map();
+  for (const m of rawMetrics || []) {
+    const d = byDay.get(m.metric_date) ?? { metric_date: m.metric_date, spend_naira: 0, orders: 0, clicks: 0, impressions: 0, reach: 0 };
+    d.spend_naira += Number(m.spend_naira || 0);
+    d.orders += Number(m.orders || 0);
+    d.clicks += Number(m.clicks || 0);
+    d.impressions += Number(m.impressions || 0);
+    d.reach += Number(m.reach || 0);
+    byDay.set(m.metric_date, d);
+  }
+  const metrics = [...byDay.values()].sort((a, b) => (a.metric_date < b.metric_date ? 1 : -1));
+
   const rate      = tot ? (deliv / tot * 100).toFixed(1) : "0";
   const rateClr   = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
   const target    = settings.monthly_order_target ?? 20000;
@@ -917,7 +954,7 @@ async function renderOverview(el) {
             ${metrics.map(m => {
               const cpa = m.orders > 0 ? Math.round(m.spend_naira / m.orders) : null;
               const cpaC = cpa ? (cpa <= cpaTarget ? "ctr-hot" : cpa <= cpaTarget*1.3 ? "ctr-warm" : "ctr-cold") : "";
-              const ctrV = m.ctr ? (m.ctr * 100).toFixed(2) : null;
+              const ctrV = m.impressions > 0 ? ((m.clicks / m.impressions) * 100).toFixed(2) : null;
               return `<tr>
                 <td class="s">${m.metric_date ?? "—"}</td>
                 <td>${fN(m.spend_naira)}</td>
@@ -2177,11 +2214,15 @@ async function bvOrderLinkModal(productId, productName) {
 
 // ── TAB: ORDERS ───────────────────────────────────────────────────────────────
 async function renderOrders(el) {
-  // Stats and pagination need the full-table status counts separate from the
-  // one page of rows actually rendered -- statusRows is cheap (one column,
-  // no joins) so paging the table doesn't skew "Total orders"/"Delivery rate".
-  const [statusRows, orders, flagged] = await Promise.all([
-    sbQuery("orders", "select=order_status"),
+  // Stats and pagination need exact full-table counts separate from the one
+  // page of rows actually rendered -- sbCount reads Content-Range instead of
+  // fetching every row, so paging doesn't skew "Total orders"/"Delivery rate"
+  // and large tables don't get silently under-counted by PostgREST's row cap.
+  const [tot, deliv, ret, pend, orders, flagged] = await Promise.all([
+    sbCount("orders"),
+    sbCount("orders", "order_status=eq.delivered"),
+    sbCount("orders", "order_status=eq.returned"),
+    sbCount("orders", "order_status=eq.pending"),
     sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
     sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
   ]);
@@ -2191,10 +2232,6 @@ async function renderOrders(el) {
     o.voice_call = (o.voice_calls || []).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0] || null;
   });
 
-  const tot   = statusRows?.length ?? 0;
-  const deliv = statusRows?.filter(o => o.order_status === "delivered").length ?? 0;
-  const ret   = statusRows?.filter(o => o.order_status === "returned").length ?? 0;
-  const pend  = statusRows?.filter(o => o.order_status === "pending").length ?? 0;
   const rate  = tot ? (deliv / tot * 100).toFixed(1) : "0";
   const rC    = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
   const pageCount = Math.max(1, Math.ceil(tot / ORDERS_PAGE_SIZE));
@@ -2329,34 +2366,44 @@ function bvOrderCallCell(o) {
 let callLogsPage = 0;
 const CALL_LOGS_PAGE_SIZE = 30;
 let callLogsExpanded = new Set();
+let callLogsFilter = "all"; // all | completed | failed | needs_human
+
+const CALL_LOG_FILTERS = [
+  { key: "all",         label: "All" },
+  { key: "completed",   label: "Completed",        q: "status=in.(completed,done)" },
+  { key: "failed",      label: "No answer / failed", q: "status=in.(no_answer,failed)" },
+  { key: "needs_human", label: "Needs human",       q: "needs_human=is.true&human_resolved_at=is.null" },
+];
 
 async function renderCallLogs(el) {
-  const [statusRows, calls] = await Promise.all([
-    sbQuery("voice_calls", "select=status,needs_human,human_resolved_at"),
-    sbQuery("voice_calls", `select=*,orders(customer_name,customer_phone,product_name,order_status)&order=created_at.desc&limit=${CALL_LOGS_PAGE_SIZE}&offset=${callLogsPage * CALL_LOGS_PAGE_SIZE}`),
+  const [tot, completed, noAnswer, openFlags] = await Promise.all([
+    sbCount("voice_calls"),
+    sbCount("voice_calls", "status=in.(completed,done)"),
+    sbCount("voice_calls", "status=in.(no_answer,failed)"),
+    sbCount("voice_calls", "needs_human=is.true&human_resolved_at=is.null"),
   ]);
+  const activeFilterQ = CALL_LOG_FILTERS.find(f => f.key === callLogsFilter)?.q;
+  const filterClause = activeFilterQ ? `&${activeFilterQ}` : "";
+  const shownTot = { all: tot, completed, failed: noAnswer, needs_human: openFlags }[callLogsFilter] ?? tot;
+  const calls = await sbQuery("voice_calls", `select=*,orders(customer_name,customer_phone,product_name,order_status)&order=created_at.desc&limit=${CALL_LOGS_PAGE_SIZE}&offset=${callLogsPage * CALL_LOGS_PAGE_SIZE}${filterClause}`);
 
-  const tot = statusRows?.length ?? 0;
-  const completed = statusRows?.filter(c => c.status === "completed" || c.status === "done").length ?? 0;
-  const noAnswer = statusRows?.filter(c => c.status === "no_answer" || c.status === "failed").length ?? 0;
-  const openFlags = statusRows?.filter(c => c.needs_human && !c.human_resolved_at).length ?? 0;
-  const pageCount = Math.max(1, Math.ceil(tot / CALL_LOGS_PAGE_SIZE));
-  const pageStart = tot ? callLogsPage * CALL_LOGS_PAGE_SIZE + 1 : 0;
-  const pageEnd = Math.min(tot, (callLogsPage + 1) * CALL_LOGS_PAGE_SIZE);
+  const pageCount = Math.max(1, Math.ceil(shownTot / CALL_LOGS_PAGE_SIZE));
+  const pageStart = shownTot ? callLogsPage * CALL_LOGS_PAGE_SIZE + 1 : 0;
+  const pageEnd = Math.min(shownTot, (callLogsPage + 1) * CALL_LOGS_PAGE_SIZE);
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">AI Call Logs</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
 
     <div class="g4">
-      <div class="kc"><div class="kc-lbl">Total calls</div><div class="kc-val">${tot}</div></div>
-      <div class="kc"><div class="kc-lbl">Completed</div><div class="kc-val a">${completed}</div></div>
-      <div class="kc"><div class="kc-lbl">No answer / failed</div><div class="kc-val d">${noAnswer}</div></div>
-      <div class="kc"><div class="kc-lbl">Needs human</div><div class="kc-val ${openFlags ? "w" : ""}">${openFlags}</div></div>
+      <div class="kc clFilterCard" data-filter="all" style="cursor:pointer;${callLogsFilter==="all"?"border-color:var(--accent);":""}"><div class="kc-lbl">Total calls</div><div class="kc-val">${tot}</div></div>
+      <div class="kc clFilterCard" data-filter="completed" style="cursor:pointer;${callLogsFilter==="completed"?"border-color:var(--accent);":""}"><div class="kc-lbl">Completed</div><div class="kc-val a">${completed}</div></div>
+      <div class="kc clFilterCard" data-filter="failed" style="cursor:pointer;${callLogsFilter==="failed"?"border-color:var(--accent);":""}"><div class="kc-lbl">No answer / failed</div><div class="kc-val d">${noAnswer}</div></div>
+      <div class="kc clFilterCard" data-filter="needs_human" style="cursor:pointer;${callLogsFilter==="needs_human"?"border-color:var(--accent);":""}"><div class="kc-lbl">Needs human</div><div class="kc-val ${openFlags ? "w" : ""}">${openFlags}</div></div>
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Call history</div><div class="ph-count">Click a row to read the conversation</div></div>
-      ${!calls?.length ? `<div class="empty"><div class="empty-ico">📞</div>No calls yet.</div>` : `
+      <div class="ph"><div class="ph-title">Call history</div><div class="ph-count">${callLogsFilter !== "all" ? `Filtered: ${CALL_LOG_FILTERS.find(f=>f.key===callLogsFilter).label} — ` : ""}Click a row to read the conversation</div></div>
+      ${!calls?.length ? `<div class="empty"><div class="empty-ico">📞</div>No calls${callLogsFilter !== "all" ? " in this filter" : ""}.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th></th><th>Customer</th><th>Phone</th><th>Product</th><th>Status</th><th>Duration</th><th>When</th></tr>
         ${calls.map(c => {
@@ -2374,7 +2421,7 @@ async function renderCallLogs(el) {
         }).join("")}
       </table></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--muted);">
-        <div>${tot ? `Showing ${pageStart}–${pageEnd} of ${tot}` : ""}</div>
+        <div>${shownTot ? `Showing ${pageStart}–${pageEnd} of ${shownTot}` : ""}</div>
         <div style="display:flex;gap:8px;">
           <button type="button" class="btn btn-g" id="clPrevBtn" ${callLogsPage === 0 ? "disabled" : ""}>← Prev</button>
           <div style="padding:6px 4px;">Page ${callLogsPage + 1} of ${pageCount}</div>
@@ -2385,6 +2432,14 @@ async function renderCallLogs(el) {
 
   document.getElementById("clPrevBtn")?.addEventListener("click", () => { if (callLogsPage > 0) { callLogsPage--; renderCallLogs(el); } });
   document.getElementById("clNextBtn")?.addEventListener("click", () => { if (callLogsPage < pageCount - 1) { callLogsPage++; renderCallLogs(el); } });
+  document.querySelectorAll(".clFilterCard").forEach(card => {
+    card.addEventListener("click", () => {
+      callLogsFilter = card.dataset.filter;
+      callLogsPage = 0;
+      callLogsExpanded.clear();
+      renderCallLogs(el);
+    });
+  });
   document.querySelectorAll(".clRow").forEach(row => {
     row.addEventListener("click", () => {
       const id = row.dataset.cid;
