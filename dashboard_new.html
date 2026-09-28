@@ -93,28 +93,50 @@ a{color:inherit;}
 .badge.warn{background:var(--warnBg);color:var(--warn);}
 .badge.err{background:var(--dangerBg);color:var(--danger);}
 
-/* ── TABS ──────────────────────────────────────────────────────────────────── */
-.tabs-bar{
-  display:flex;background:var(--panel);border-bottom:1px solid var(--border);
-  overflow-x:auto;padding:0 18px;position:sticky;top:54px;z-index:199;
-  transition:background .22s;gap:0;
+/* ── APP SHELL (sidebar + content) ────────────────────────────────────────── */
+.app-shell{display:flex;min-height:calc(100vh - 54px);}
+
+/* ── SIDEBAR ───────────────────────────────────────────────────────────────── */
+.sidebar{
+  width:212px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
+  position:sticky;top:54px;align-self:flex-start;height:calc(100vh - 54px);overflow-y:auto;
+  padding:14px 10px;transition:background .22s,border-color .22s;
 }
-.tabs-bar::-webkit-scrollbar{height:0;}
+.sidebar-group-lbl{
+  font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em;padding:14px 10px 6px;
+}
+.sidebar-group-lbl:first-child{padding-top:2px;}
 .tab-btn{
-  padding:10px 14px;font-size:12px;font-weight:500;color:var(--muted);
-  cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;
-  user-select:none;transition:color .14s,border-color .14s;letter-spacing:.01em;
+  display:flex;align-items:center;gap:9px;padding:8px 10px;font-size:12.5px;
+  font-weight:500;color:var(--text2);cursor:pointer;border-radius:7px;
+  white-space:nowrap;user-select:none;transition:color .14s,background .14s;
+  letter-spacing:.005em;margin-bottom:1px;
 }
-.tab-btn:hover{color:var(--text2);}
-.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-btn:hover{color:var(--text);background:var(--panel2);}
+.tab-btn.active{color:var(--accent);background:var(--accentBg);}
+.tab-btn .tab-ico{width:15px;text-align:center;flex-shrink:0;opacity:.85;}
 .tab-badge{
   display:none;background:var(--danger);color:#fff;
-  font-size:9px;border-radius:8px;padding:1px 5px;margin-left:4px;
+  font-size:9px;border-radius:8px;padding:1px 5px;margin-left:auto;
   font-family:'JetBrains Mono',monospace;vertical-align:middle;
 }
 
+/* Mobile: sidebar collapses to a horizontal scroll strip under the header,
+   same as the old tabs-bar, since a fixed side column doesn't fit narrow screens. */
+@media (max-width: 760px) {
+  .app-shell{flex-direction:column;}
+  .sidebar{
+    width:100%;height:auto;position:sticky;top:54px;flex-direction:row;
+    display:flex;overflow-x:auto;overflow-y:hidden;padding:8px 10px;gap:4px;
+    border-right:none;border-bottom:1px solid var(--border);
+  }
+  .sidebar-group-lbl{display:none;}
+  .tab-btn{flex-shrink:0;}
+}
+
 /* ── CONTENT ───────────────────────────────────────────────────────────────── */
-.content{max-width:1160px;margin:0 auto;padding:22px 20px 90px;}
+.content{flex:1;min-width:0;max-width:1400px;margin:0 auto;padding:22px 26px 90px;}
 
 /* ── METRIC CARDS ──────────────────────────────────────────────────────────── */
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px;}
@@ -419,26 +441,37 @@ textarea{resize:vertical;min-height:76px;}
   </div>
 </div>
 
-<!-- TABS -->
-<div class="tabs-bar" id="tabsBar">
-  <div class="tab-btn active" data-tab="overview">Overview</div>
-  <div class="tab-btn" data-tab="vault">Creative Vault</div>
-  <div class="tab-btn" data-tab="campaigns">Campaigns</div>
-  <div class="tab-btn" data-tab="performance">Ad Spend &amp; ROAS</div>
-  <div class="tab-btn" data-tab="leaderboard">Leaderboard</div>
-  <div class="tab-btn" data-tab="products">Products</div>
-  <div class="tab-btn" data-tab="orders">Orders <span class="tab-badge" id="callFlagBadge" style="display:none">0</span></div>
-  <div class="tab-btn" data-tab="conversations">Conversations</div>
-  <div class="tab-btn" data-tab="conversations-lunessa">Lunessa</div>
-  <div class="tab-btn" data-tab="website-leads">Website Leads</div>
-  <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
-  <div class="tab-btn" data-tab="earnings">Earnings</div>
-  <div class="tab-btn" data-tab="settings">Settings</div>
-</div>
+<div class="app-shell">
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="tabsBar">
+    <div class="sidebar-group-lbl">Overview</div>
+    <div class="tab-btn active" data-tab="overview">Overview</div>
+    <div class="tab-btn" data-tab="orders">Orders <span class="tab-badge" id="callFlagBadge" style="display:none">0</span></div>
+    <div class="tab-btn" data-tab="calllogs">AI Call Logs</div>
+    <div class="tab-btn" data-tab="riders">Delivery</div>
 
-<!-- MAIN CONTENT -->
-<div class="content" id="mainContent">
-  <div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>
+    <div class="sidebar-group-lbl">Ads &amp; Growth</div>
+    <div class="tab-btn" data-tab="campaigns">Campaigns</div>
+    <div class="tab-btn" data-tab="performance">Ad Spend &amp; ROAS</div>
+    <div class="tab-btn" data-tab="leaderboard">Leaderboard</div>
+    <div class="tab-btn" data-tab="vault">Creative Vault</div>
+
+    <div class="sidebar-group-lbl">Business</div>
+    <div class="tab-btn" data-tab="products">Products</div>
+    <div class="tab-btn" data-tab="conversations">Conversations</div>
+    <div class="tab-btn" data-tab="conversations-lunessa">Lunessa</div>
+    <div class="tab-btn" data-tab="website-leads">Website Leads</div>
+    <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
+    <div class="tab-btn" data-tab="earnings">Earnings</div>
+
+    <div class="sidebar-group-lbl">Account</div>
+    <div class="tab-btn" data-tab="settings">Settings</div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="content" id="mainContent">
+    <div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>
+  </div>
 </div>
 
 <!-- AI CHAT -->
@@ -764,6 +797,8 @@ async function render() {
     else if (activeTab === "leaderboard") await renderLeaderboard(c);
     else if (activeTab === "products")  await renderProducts(c);
     else if (activeTab === "orders")    await renderOrders(c);
+    else if (activeTab === "calllogs")  await renderCallLogs(c);
+    else if (activeTab === "riders")    await renderRiders(c);
     else if (activeTab === "conversations") await renderConversations(c);
     else if (activeTab === "conversations-lunessa") await renderConversations(c, "Lunessa");
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
@@ -2288,6 +2323,142 @@ function bvOrderCallCell(o) {
   const labels = { queued: "Queued", dialing: "Dialing…", initiated: "In call…", done: "✅ Confirmed", failed: "❌ Failed" };
   const cls = { done: "delivered", failed: "returned", queued: "pending", dialing: "pending", initiated: "active" }[c.status] || "pending";
   return `<span class="pill ${cls}" title="${escH(c.summary || "")}">${labels[c.status] || c.status}</span>${c.status === "failed" ? ` <button type="button" class="callNowBtn btn btn-g" data-oid="${o.id}" style="padding:2px 6px;font-size:9px;">retry</button>` : ""}`;
+}
+
+// ── TAB: AI CALL LOGS ─────────────────────────────────────────────────────────
+let callLogsPage = 0;
+const CALL_LOGS_PAGE_SIZE = 30;
+let callLogsExpanded = new Set();
+
+async function renderCallLogs(el) {
+  const [statusRows, calls] = await Promise.all([
+    sbQuery("voice_calls", "select=status,needs_human,human_resolved_at"),
+    sbQuery("voice_calls", `select=*,orders(customer_name,customer_phone,product_name,order_status)&order=created_at.desc&limit=${CALL_LOGS_PAGE_SIZE}&offset=${callLogsPage * CALL_LOGS_PAGE_SIZE}`),
+  ]);
+
+  const tot = statusRows?.length ?? 0;
+  const completed = statusRows?.filter(c => c.status === "completed" || c.status === "done").length ?? 0;
+  const noAnswer = statusRows?.filter(c => c.status === "no_answer" || c.status === "failed").length ?? 0;
+  const openFlags = statusRows?.filter(c => c.needs_human && !c.human_resolved_at).length ?? 0;
+  const pageCount = Math.max(1, Math.ceil(tot / CALL_LOGS_PAGE_SIZE));
+  const pageStart = tot ? callLogsPage * CALL_LOGS_PAGE_SIZE + 1 : 0;
+  const pageEnd = Math.min(tot, (callLogsPage + 1) * CALL_LOGS_PAGE_SIZE);
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">AI Call Logs</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total calls</div><div class="kc-val">${tot}</div></div>
+      <div class="kc"><div class="kc-lbl">Completed</div><div class="kc-val a">${completed}</div></div>
+      <div class="kc"><div class="kc-lbl">No answer / failed</div><div class="kc-val d">${noAnswer}</div></div>
+      <div class="kc"><div class="kc-lbl">Needs human</div><div class="kc-val ${openFlags ? "w" : ""}">${openFlags}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Call history</div><div class="ph-count">Click a row to read the conversation</div></div>
+      ${!calls?.length ? `<div class="empty"><div class="empty-ico">📞</div>No calls yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th></th><th>Customer</th><th>Phone</th><th>Product</th><th>Status</th><th>Duration</th><th>When</th></tr>
+        ${calls.map(c => {
+          const isOpen = callLogsExpanded.has(c.id);
+          const cls = { completed: "delivered", done: "delivered", no_answer: "cancelled", failed: "returned" }[c.status] || "pending";
+          return `<tr class="clRow" data-cid="${c.id}" style="cursor:pointer;">
+            <td>${isOpen ? "▾" : "▸"}</td>
+            <td class="s n">${escH(c.orders?.customer_name ?? "—")}</td>
+            <td class="n">${escH(c.to_number ?? "—")}</td>
+            <td class="n">${escH(c.orders?.product_name ?? "—")}</td>
+            <td><span class="pill ${cls}">${escH((c.status ?? "—").replace(/_/g, " "))}</span>${c.needs_human && !c.human_resolved_at ? ` <span class="pill returned">⚠️ needs human</span>` : ""}</td>
+            <td class="n">${c.duration_secs ? `${c.duration_secs}s` : "—"}</td>
+            <td>${ago(c.created_at)}</td>
+          </tr>${isOpen ? `<tr class="clTranscript"><td></td><td colspan="6" style="padding:10px 12px;color:var(--text2);white-space:pre-wrap;line-height:1.6;background:var(--panel2);border-radius:8px;">${escH(c.summary || "No conversation summary recorded.")}${(c.red_flags || []).length ? `<div style="margin-top:8px;">${c.red_flags.map(f => `<span class="pill returned" style="margin-right:4px;">${escH(f.replace(/_/g," "))}</span>`).join("")}</div>` : ""}</td></tr>` : ""}`;
+        }).join("")}
+      </table></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--muted);">
+        <div>${tot ? `Showing ${pageStart}–${pageEnd} of ${tot}` : ""}</div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-g" id="clPrevBtn" ${callLogsPage === 0 ? "disabled" : ""}>← Prev</button>
+          <div style="padding:6px 4px;">Page ${callLogsPage + 1} of ${pageCount}</div>
+          <button type="button" class="btn btn-g" id="clNextBtn" ${callLogsPage >= pageCount - 1 ? "disabled" : ""}>Next →</button>
+        </div>
+      </div>`}
+    </div>`;
+
+  document.getElementById("clPrevBtn")?.addEventListener("click", () => { if (callLogsPage > 0) { callLogsPage--; renderCallLogs(el); } });
+  document.getElementById("clNextBtn")?.addEventListener("click", () => { if (callLogsPage < pageCount - 1) { callLogsPage++; renderCallLogs(el); } });
+  document.querySelectorAll(".clRow").forEach(row => {
+    row.addEventListener("click", () => {
+      const id = row.dataset.cid;
+      if (callLogsExpanded.has(id)) callLogsExpanded.delete(id); else callLogsExpanded.add(id);
+      renderCallLogs(el);
+    });
+  });
+}
+
+// ── TAB: DELIVERY (riders) ───────────────────────────────────────────────────
+async function renderRiders(el) {
+  const [agents, orders] = await Promise.all([
+    sbQuery("delivery_agents", "select=*&order=name.asc"),
+    sbQuery("orders", "select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_city,customer_state,ordered_at,delivered_at&delivery_agent_id=not.is.null&order=ordered_at.desc"),
+  ]);
+
+  const byAgent = new Map();
+  for (const a of agents || []) byAgent.set(a.id, { agent: a, assigned: 0, delivered: 0, revenue: 0 });
+  for (const o of orders || []) {
+    const row = byAgent.get(o.delivery_agent_id);
+    if (!row) continue;
+    row.assigned++;
+    if (o.order_status === "delivered") { row.delivered++; row.revenue += Number(o.order_value_naira || 0); }
+  }
+  const rows = [...byAgent.values()].sort((a, b) => b.assigned - a.assigned);
+  const totAssigned = orders?.length ?? 0;
+  const totDelivered = orders?.filter(o => o.order_status === "delivered").length ?? 0;
+  const deliveryRate = totAssigned ? (totDelivered / totAssigned * 100).toFixed(1) : "0";
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Delivery</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Active agents</div><div class="kc-val">${(agents || []).filter(a => a.active).length}</div></div>
+      <div class="kc"><div class="kc-lbl">Orders assigned</div><div class="kc-val">${totAssigned}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${totDelivered}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${deliveryRate >= 70 ? "a" : "w"}">${deliveryRate}%</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Agents</div><div class="ph-count">How AI-confirmed orders get routed to a rider by zone</div></div>
+      ${!rows.length ? `<div class="empty"><div class="empty-ico">🛵</div>No delivery agents yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Agent</th><th>Zone</th><th>Phone</th><th>Assigned</th><th>Delivered</th><th>Rate</th><th>Revenue collected</th><th>Status</th></tr>
+        ${rows.map(r => {
+          const rate = r.assigned ? (r.delivered / r.assigned * 100).toFixed(0) : "0";
+          return `<tr>
+            <td class="s n">${escH(r.agent.name)}</td>
+            <td class="n">${escH(r.agent.zone || "—")}</td>
+            <td class="n">${escH(r.agent.phone || "—")}</td>
+            <td>${r.assigned}</td>
+            <td class="a">${r.delivered}</td>
+            <td>${rate}%</td>
+            <td>${fN(r.revenue)}</td>
+            <td><span class="pill ${r.agent.active ? "active" : "paused"}">${r.agent.active ? "active" : "inactive"}</span></td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Recent assignments</div></div>
+      ${!orders?.length ? `<div class="empty"><div class="empty-ico">📦</div>No orders assigned yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>City</th><th>Agent</th><th>Status</th><th>Assigned</th></tr>
+        ${orders.slice(0, 40).map(o => `<tr>
+          <td class="s n">${escH(o.customer_name ?? "—")}</td>
+          <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
+          <td class="n">${escH(byAgent.get(o.delivery_agent_id)?.agent.name ?? "—")}</td>
+          <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+          <td>${ago(o.ordered_at)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
 }
 
 // ── TAB: WEBSITE LEADS (10s modal captures on product sales pages) ─────────────
