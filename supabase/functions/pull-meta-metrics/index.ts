@@ -23,6 +23,61 @@ const META_GRAPH_BASE      = "https://graph.facebook.com/v18.0";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
+/**
+ * The access token to use for one ad account: its own OAuth connection's
+ * token (a buyer-linked Business Manager, connected via Settings -> Connect
+ * Meta) if it has one, refreshed first if it's within a week of expiring --
+ * otherwise the single shared META_ACCESS_TOKEN every manually-added account
+ * has always used. Falling back keeps every account that predates OAuth
+ * working exactly as before.
+ */
+async function resolveAccountToken(supabase: any, account: any): Promise<string> {
+  if (!account.meta_connection_id) return META_ACCESS_TOKEN;
+
+  const { data: conn } = await supabase
+    .from("meta_connections")
+    .select("id, access_token, token_expires_at, status")
+    .eq("id", account.meta_connection_id)
+    .maybeSingle();
+  if (!conn || conn.status !== "active") {
+    console.error(`Account ${account.name}: its Meta connection is missing or revoked -- falling back to the shared token.`);
+    return META_ACCESS_TOKEN;
+  }
+
+  const expiresInDays = conn.token_expires_at ? (new Date(conn.token_expires_at).getTime() - Date.now()) / 86400000 : Infinity;
+  if (expiresInDays > 7) return conn.access_token;
+
+  // Re-exchange the still-valid long-lived token for a fresh ~60-day one.
+  // This only works while the current token hasn't actually expired yet --
+  // once it has, the buyer has to reconnect via Settings.
+  try {
+    const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
+    const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+    if (!META_APP_ID || !META_APP_SECRET) return conn.access_token;
+
+    const res = await fetch(
+      `${META_GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${conn.access_token}`,
+    );
+    const data = await res.json();
+    if (!res.ok || !data.access_token) {
+      console.error(`Token refresh failed for connection ${conn.id}:`, data.error?.message);
+      await supabase.from("meta_connections").update({ last_error: data.error?.message ?? "refresh failed" }).eq("id", conn.id);
+      return conn.access_token; // still try with what we have -- might have a few days left
+    }
+    const newExpiresAt = data.expires_in ? new Date(Date.now() + data.expires_in * 1000).toISOString() : null;
+    await supabase.from("meta_connections").update({
+      access_token: data.access_token,
+      token_expires_at: newExpiresAt,
+      last_synced_at: new Date().toISOString(),
+      last_error: null,
+    }).eq("id", conn.id);
+    return data.access_token;
+  } catch (e) {
+    console.error("Token refresh error:", e);
+    return conn.access_token;
+  }
+}
+
 /** Send a WhatsApp text message via Cloud API */
 async function sendWhatsApp(message: string): Promise<void> {
   if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID || !ALERT_TO_NUMBER) return;
@@ -50,12 +105,12 @@ async function sendWhatsApp(message: string): Promise<void> {
 }
 
 /** Pause an ad set on Meta via the Graph API */
-async function pauseAdSetOnMeta(metaAdsetId: string, adsetName: string): Promise<boolean> {
+async function pauseAdSetOnMeta(metaAdsetId: string, adsetName: string, token: string): Promise<boolean> {
   try {
     const resp = await fetch(`${META_GRAPH_BASE}/${metaAdsetId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "PAUSED", access_token: META_ACCESS_TOKEN }),
+      body: JSON.stringify({ status: "PAUSED", access_token: token }),
     });
     const result = await resp.json();
     if (result.success) {
@@ -75,13 +130,14 @@ async function scaleBudgetOnMeta(
   metaAdsetId: string,
   adsetName: string,
   currentBudgetNaira: number,
+  token: string,
 ): Promise<boolean> {
   try {
     const newBudgetKobo = Math.round(currentBudgetNaira * (1 + SCALE_BUDGET_PCT) * 100);
     const resp = await fetch(`${META_GRAPH_BASE}/${metaAdsetId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ daily_budget: newBudgetKobo, access_token: META_ACCESS_TOKEN }),
+      body: JSON.stringify({ daily_budget: newBudgetKobo, access_token: token }),
     });
     const result = await resp.json();
     if (result.success) {
@@ -155,10 +211,11 @@ Deno.serve(async (req: Request) => {
     for (const account of accounts) {
       console.log(`\n--- Processing Account: ${account.name} (${account.meta_ad_account_id}) ---`);
       const META_AD_ACCOUNT_ID = account.meta_ad_account_id.replace('act_', '');
+      const token = await resolveAccountToken(supabase, account);
 
       // ── 2.1 Sync Campaigns ────────────────────────────────────────────────
       try {
-        const campUrl = `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/campaigns?fields=id,name,objective,status,daily_budget,lifetime_budget,created_time&limit=50&access_token=${META_ACCESS_TOKEN}`;
+        const campUrl = `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/campaigns?fields=id,name,objective,status,daily_budget,lifetime_budget,created_time&limit=50&access_token=${token}`;
         const campRes = await fetch(campUrl);
         const campData = await campRes.json();
         
@@ -169,6 +226,7 @@ Deno.serve(async (req: Request) => {
             
             await supabase.from("campaigns").upsert({
               ad_account_id: account.id,
+              company_id: account.company_id,
               meta_campaign_id: c.id,
               campaign_name: c.name,
               objective_raw: c.objective,
@@ -184,7 +242,7 @@ Deno.serve(async (req: Request) => {
 
       // ── 2.2 Sync Ads / Creatives ──────────────────────────────────────────
       try {
-        const adsUrl = `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/ads?fields=id,name,status,creative{body,image_url,video_url,object_story_spec,name,title,thumbnail_url},created_time,campaign_id,adset_id&limit=100&access_token=${META_ACCESS_TOKEN}`;
+        const adsUrl = `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/ads?fields=id,name,status,creative{body,image_url,video_url,object_story_spec,name,title,thumbnail_url},created_time,campaign_id,adset_id&limit=100&access_token=${token}`;
         const adsRes = await fetch(adsUrl);
         const adsData = await adsRes.json();
         
@@ -202,6 +260,7 @@ Deno.serve(async (req: Request) => {
             }
 
             await supabase.from("creatives").upsert({
+              company_id: account.company_id,
               meta_ad_id: ad.id,
               creative_name: ad.name,
               primary_text: primaryText,
@@ -222,7 +281,7 @@ Deno.serve(async (req: Request) => {
       const incrementStr = isBackfill ? "&time_increment=1" : "";
       const insightsUrl =
         `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/insights` +
-        `?level=adset&fields=${fields}&date_preset=${datePreset}${incrementStr}&access_token=${META_ACCESS_TOKEN}`;
+        `?level=adset&fields=${fields}&date_preset=${datePreset}${incrementStr}&access_token=${token}`;
 
       const res = await fetch(insightsUrl);
       const data = await res.json();
@@ -269,7 +328,7 @@ Deno.serve(async (req: Request) => {
           // AUTO-IMPORT MISSING AD SET
           console.log(`Auto-importing missing ad set: ${metaAdsetId}`);
           
-          const adsetDetailsUrl = `${META_GRAPH_BASE}/${metaAdsetId}?fields=name,daily_budget,status,created_time&access_token=${META_ACCESS_TOKEN}`;
+          const adsetDetailsUrl = `${META_GRAPH_BASE}/${metaAdsetId}?fields=name,daily_budget,status,created_time&access_token=${token}`;
           const adsetRes = await fetch(adsetDetailsUrl);
           const adsetData = await adsetRes.json();
 
@@ -283,6 +342,7 @@ Deno.serve(async (req: Request) => {
           const { data: newAdSet, error: insertErr } = await supabase.from("ad_sets").insert({
             meta_adset_id: metaAdsetId,
             ad_account_id: account.id,
+            company_id: account.company_id,
             adset_name: adsetData.name || row.adset_name,
             budget_naira: budgetNaira,
             status: adsetData.status?.toLowerCase() === 'active' ? 'active' : 'paused',
@@ -306,6 +366,7 @@ Deno.serve(async (req: Request) => {
           {
             ad_set_id:            adSetRow.id,
             ad_account_id:        account.id,
+            company_id:           account.company_id,
             metric_date:          metricDate,
             spend_naira:          spend,
             impressions,
@@ -364,7 +425,7 @@ Deno.serve(async (req: Request) => {
           if (costPerOrder && costPerOrder > CPA_HARD_KILL) {
             decision = "kill";
             reason   = `CPA ₦${costPerOrder.toFixed(0)} exceeds hard limit ₦${CPA_HARD_KILL}. Auto-pausing.`;
-            await pauseAdSetOnMeta(metaAdsetId, adSetRow.adset_name);
+            await pauseAdSetOnMeta(metaAdsetId, adSetRow.adset_name, token);
             await sendWhatsApp(
               `🚨 AUTO-PAUSED: "${adSetRow.adset_name}" [${account.name}]\n` +
               `CPA: ₦${costPerOrder.toFixed(0)} (LIMIT: ₦${CPA_HARD_KILL})\n` +
@@ -374,7 +435,7 @@ Deno.serve(async (req: Request) => {
           } else if (ctr < CTR_KILL && spend >= 500) {
             decision = "kill";
             reason   = `CTR ${ctr.toFixed(2)}% below ${CTR_KILL}% after ${hoursSinceLaunch.toFixed(1)}h`;
-            await pauseAdSetOnMeta(metaAdsetId, adSetRow.adset_name);
+            await pauseAdSetOnMeta(metaAdsetId, adSetRow.adset_name, token);
             await sendWhatsApp(
               `⚠️ Kill Alert: "${adSetRow.adset_name}" [${account.name}]\n` +
               `Reason: ${reason}\nSpend: ₦${spend} | Orders: ${orders}\n` +
@@ -383,7 +444,7 @@ Deno.serve(async (req: Request) => {
           } else if (spend >= 3000 && orders === 0 && hoursSinceLaunch >= 48) {
             decision = "kill";
             reason   = `₦${spend.toFixed(0)} spent, zero orders after 48hrs`;
-            await pauseAdSetOnMeta(metaAdsetId, adSetRow.adset_name);
+            await pauseAdSetOnMeta(metaAdsetId, adSetRow.adset_name, token);
             await sendWhatsApp(
               `⚠️ Kill Alert: "${adSetRow.adset_name}" [${account.name}]\n` +
               `Reason: ${reason}\n` +
@@ -401,7 +462,7 @@ Deno.serve(async (req: Request) => {
             decision = "scale";
             reason   = `CTR ${ctr.toFixed(2)}% + CPA ₦${costPerOrder.toFixed(0)} — scaling budget 20%`;
             const currentBudget = adSetRow.budget_naira ?? 5000;
-            const scaled = await scaleBudgetOnMeta(metaAdsetId, adSetRow.adset_name, currentBudget);
+            const scaled = await scaleBudgetOnMeta(metaAdsetId, adSetRow.adset_name, currentBudget, token);
             if (scaled) {
               await supabase
                 .from("ad_sets")

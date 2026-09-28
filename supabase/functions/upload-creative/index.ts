@@ -92,11 +92,23 @@ Deno.serve(async (req: Request) => {
 
     const fileUrl = urlData?.publicUrl ?? '';
 
+    // Multi-tenancy (Phase 1): stamp which company this creative belongs to,
+    // via the ad account it's being uploaded for -- adAccountId is always
+    // present (checked above), so this is a reliable resolution path.
+    const { data: adAccountRow } = await supabase.from('ad_accounts').select('company_id').eq('id', adAccountId).maybeSingle();
+    if (!adAccountRow) {
+      return new Response(
+        JSON.stringify({ error: 'Unknown ad_account_id' }),
+        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
+      );
+    }
+
     // Insert into creative_assets table (columns must match the live schema exactly —
     // this previously wrote asset_name/file_url/status/test_count, none of which exist)
     const { data: creativeData, error: dbError } = await supabase
       .from('creative_assets')
       .insert({
+        company_id: adAccountRow.company_id,
         file_name: file.name,
         storage_path: bucketPath,
         public_url: fileUrl,

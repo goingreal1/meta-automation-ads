@@ -93,28 +93,50 @@ a{color:inherit;}
 .badge.warn{background:var(--warnBg);color:var(--warn);}
 .badge.err{background:var(--dangerBg);color:var(--danger);}
 
-/* ── TABS ──────────────────────────────────────────────────────────────────── */
-.tabs-bar{
-  display:flex;background:var(--panel);border-bottom:1px solid var(--border);
-  overflow-x:auto;padding:0 18px;position:sticky;top:54px;z-index:199;
-  transition:background .22s;gap:0;
+/* ── APP SHELL (sidebar + content) ────────────────────────────────────────── */
+.app-shell{display:flex;min-height:calc(100vh - 54px);}
+
+/* ── SIDEBAR ───────────────────────────────────────────────────────────────── */
+.sidebar{
+  width:212px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
+  position:sticky;top:54px;align-self:flex-start;height:calc(100vh - 54px);overflow-y:auto;
+  padding:14px 10px;transition:background .22s,border-color .22s;
 }
-.tabs-bar::-webkit-scrollbar{height:0;}
+.sidebar-group-lbl{
+  font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em;padding:14px 10px 6px;
+}
+.sidebar-group-lbl:first-child{padding-top:2px;}
 .tab-btn{
-  padding:10px 14px;font-size:12px;font-weight:500;color:var(--muted);
-  cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;
-  user-select:none;transition:color .14s,border-color .14s;letter-spacing:.01em;
+  display:flex;align-items:center;gap:9px;padding:8px 10px;font-size:12.5px;
+  font-weight:500;color:var(--text2);cursor:pointer;border-radius:7px;
+  white-space:nowrap;user-select:none;transition:color .14s,background .14s;
+  letter-spacing:.005em;margin-bottom:1px;
 }
-.tab-btn:hover{color:var(--text2);}
-.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-btn:hover{color:var(--text);background:var(--panel2);}
+.tab-btn.active{color:var(--accent);background:var(--accentBg);}
+.tab-btn .tab-ico{width:15px;text-align:center;flex-shrink:0;opacity:.85;}
 .tab-badge{
   display:none;background:var(--danger);color:#fff;
-  font-size:9px;border-radius:8px;padding:1px 5px;margin-left:4px;
+  font-size:9px;border-radius:8px;padding:1px 5px;margin-left:auto;
   font-family:'JetBrains Mono',monospace;vertical-align:middle;
 }
 
+/* Mobile: sidebar collapses to a horizontal scroll strip under the header,
+   same as the old tabs-bar, since a fixed side column doesn't fit narrow screens. */
+@media (max-width: 760px) {
+  .app-shell{flex-direction:column;}
+  .sidebar{
+    width:100%;height:auto;position:sticky;top:54px;flex-direction:row;
+    display:flex;overflow-x:auto;overflow-y:hidden;padding:8px 10px;gap:4px;
+    border-right:none;border-bottom:1px solid var(--border);
+  }
+  .sidebar-group-lbl{display:none;}
+  .tab-btn{flex-shrink:0;}
+}
+
 /* ── CONTENT ───────────────────────────────────────────────────────────────── */
-.content{max-width:1160px;margin:0 auto;padding:22px 20px 90px;}
+.content{flex:1;min-width:0;max-width:1400px;margin:0 auto;padding:22px 26px 90px;}
 
 /* ── METRIC CARDS ──────────────────────────────────────────────────────────── */
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-bottom:18px;}
@@ -419,25 +441,37 @@ textarea{resize:vertical;min-height:76px;}
   </div>
 </div>
 
-<!-- TABS -->
-<div class="tabs-bar" id="tabsBar">
-  <div class="tab-btn active" data-tab="overview">Overview</div>
-  <div class="tab-btn" data-tab="vault">Creative Vault</div>
-  <div class="tab-btn" data-tab="campaigns">Campaigns</div>
-  <div class="tab-btn" data-tab="performance">Performance</div>
-  <div class="tab-btn" data-tab="products">Products</div>
-  <div class="tab-btn" data-tab="orders">Orders</div>
-  <div class="tab-btn" data-tab="conversations">Conversations</div>
-  <div class="tab-btn" data-tab="conversations-lunessa">Lunessa</div>
-  <div class="tab-btn" data-tab="website-leads">Website Leads</div>
-  <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
-  <div class="tab-btn" data-tab="earnings">Earnings</div>
-  <div class="tab-btn" data-tab="settings">Settings</div>
-</div>
+<div class="app-shell">
+  <!-- SIDEBAR -->
+  <div class="sidebar" id="tabsBar">
+    <div class="sidebar-group-lbl">Overview</div>
+    <div class="tab-btn active" data-tab="overview">Overview</div>
+    <div class="tab-btn" data-tab="orders">Orders <span class="tab-badge" id="callFlagBadge" style="display:none">0</span></div>
+    <div class="tab-btn" data-tab="calllogs">AI Call Logs</div>
+    <div class="tab-btn" data-tab="riders">Delivery</div>
 
-<!-- MAIN CONTENT -->
-<div class="content" id="mainContent">
-  <div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>
+    <div class="sidebar-group-lbl">Ads &amp; Growth</div>
+    <div class="tab-btn" data-tab="campaigns">Campaigns</div>
+    <div class="tab-btn" data-tab="performance">Ad Spend &amp; ROAS</div>
+    <div class="tab-btn" data-tab="leaderboard">Leaderboard</div>
+    <div class="tab-btn" data-tab="vault">Creative Vault</div>
+
+    <div class="sidebar-group-lbl">Business</div>
+    <div class="tab-btn" data-tab="products">Products</div>
+    <div class="tab-btn" data-tab="conversations">Conversations</div>
+    <div class="tab-btn" data-tab="conversations-lunessa">Lunessa</div>
+    <div class="tab-btn" data-tab="website-leads">Website Leads</div>
+    <div class="tab-btn" data-tab="approvals">Approvals <span class="tab-badge" id="approvalBadge">0</span></div>
+    <div class="tab-btn" data-tab="earnings">Earnings</div>
+
+    <div class="sidebar-group-lbl">Account</div>
+    <div class="tab-btn" data-tab="settings">Settings</div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="content" id="mainContent">
+    <div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>
+  </div>
 </div>
 
 <!-- AI CHAT -->
@@ -494,6 +528,8 @@ function icon(name, size = 16) {
 
 let sessionData = null;
 let activeAccountId = null; // Currently selected UUID from ad_accounts
+let ordersPage = 0; // 0-indexed page for the Orders tab's "All orders" table
+const ORDERS_PAGE_SIZE = 30;
 let accountsList = [];
 
 // Thresholds
@@ -512,7 +548,32 @@ async function init() {
     return;
   }
   sessionData = session;
-  
+
+  // Multi-tenancy (Phase 1): every signed-in user must belong to a company.
+  // A brand-new signup lands here before ever visiting setup-company.html
+  // (e.g. they bookmarked this page) -- send them there instead of showing
+  // a dashboard with nothing in it because every RLS policy denies them.
+  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name").eq("id", session.user.id).maybeSingle();
+  if (!profile?.company_id) {
+    window.location.href = "setup-company.html";
+    return;
+  }
+  window.myProfile = profile;
+
+  // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
+  // with ?meta_oauth=connected|error&detail=... once a buyer finishes
+  // connecting their Facebook Business Manager -- land on Settings with the
+  // outcome instead of silently dropping it, then scrub the URL so a refresh
+  // doesn't re-show the same message.
+  const oauthResult = new URLSearchParams(window.location.search).get("meta_oauth");
+  if (oauthResult) {
+    const detail = new URLSearchParams(window.location.search).get("detail") || "";
+    activeTab = "settings";
+    window.oauthToast = { ok: oauthResult === "connected", detail };
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "settings"));
+    history.replaceState(null, "", window.location.pathname);
+  }
+
   // Set up Logout listener
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await supabaseClient.auth.signOut();
@@ -522,10 +583,12 @@ async function init() {
   // Load user's ad accounts
   await loadAccounts();
   loadApprovalCount();
+  loadCallFlagCount();
   render();
 
   setInterval(loadAccounts, 60000);
   setInterval(loadApprovalCount, 30000);
+  setInterval(loadCallFlagCount, 30000);
 
   // sessionData was only ever captured once here at page load -- after the
   // token's normal ~1hr expiry, every request across the whole dashboard was
@@ -548,15 +611,11 @@ async function sbQuery(table, queryStr = "") {
     finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;
   }
 
-  // Orders can legitimately have ad_account_id = null — a real customer submitted the form before
-  // any ad set existed to attribute the click to (e.g. testing a sales page pre-launch). Show those
-  // too, not just strictly-matched ones, so real orders don't silently vanish from the dashboard.
-  // NOTE: this means unattributed orders are visible to every buyer, not just the "right" one — fine
-  // for now (pre-launch, few real orders), but revisit before the 40-buyer rollout (Phase 3) so one
-  // buyer's real customers can't be seen by another.
-  if (table === "orders" && activeAccountId) {
-    finalQuery += finalQuery ? `&or=(ad_account_id.eq.${activeAccountId},ad_account_id.is.null)` : `or=(ad_account_id.eq.${activeAccountId},ad_account_id.is.null)`;
-  }
+  // Orders intentionally is NOT scoped to activeAccountId. It's your own CRM data (not Meta's),
+  // fed by one shared order.html across every ad account/buyer -- switching the ad-account
+  // selector should never make real orders appear to vanish. The Orders tab always shows the
+  // total across the whole company; only the Meta-specific tabs (Campaigns, Ad Spend & ROAS)
+  // stay scoped to whichever ad account is active.
 
   const res = await fetch(`${SUPA_URL}/rest/v1/${table}${finalQuery ? "?" + finalQuery : ""}`, {
     headers: {
@@ -631,6 +690,22 @@ async function loadApprovalCount() {
   try {
     const rows = await sbQuery("pending_approvals", "status=eq.pending&select=id");
     const badge = document.getElementById("approvalBadge");
+    if (rows?.length > 0) {
+      badge.textContent = rows.length;
+      badge.style.display = "inline";
+    } else {
+      badge.style.display = "none";
+    }
+  } catch {}
+}
+
+// AI voice calls that flagged themselves for a human (medical question, wants
+// to cancel, asked for a person) -- surfaced on the Orders tab badge so it's
+// visible from anywhere in the dashboard, not just when that tab is open.
+async function loadCallFlagCount() {
+  try {
+    const rows = await sbQuery("voice_calls", "needs_human=is.true&human_resolved_at=is.null&select=id");
+    const badge = document.getElementById("callFlagBadge");
     if (rows?.length > 0) {
       badge.textContent = rows.length;
       badge.style.display = "inline";
@@ -719,8 +794,11 @@ async function render() {
     else if (activeTab === "vault")     await renderVault(c);
     else if (activeTab === "campaigns") await renderCampaigns(c);
     else if (activeTab === "performance") await renderPerformance(c);
+    else if (activeTab === "leaderboard") await renderLeaderboard(c);
     else if (activeTab === "products")  await renderProducts(c);
     else if (activeTab === "orders")    await renderOrders(c);
+    else if (activeTab === "calllogs")  await renderCallLogs(c);
+    else if (activeTab === "riders")    await renderRiders(c);
     else if (activeTab === "conversations") await renderConversations(c);
     else if (activeTab === "conversations-lunessa") await renderConversations(c, "Lunessa");
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
@@ -1663,10 +1741,14 @@ async function renderPerformance(el, fromDate, toDate) {
   fromDate = fromDate || defaultFrom;
   toDate = toDate || defaultTo;
 
-  const rows = await sbQuery(
-    "daily_metrics",
-    `select=*,ad_sets(adset_name,targeting_type,campaigns(campaign_name))&metric_date=gte.${fromDate}&metric_date=lte.${toDate}&order=metric_date.desc&limit=500`,
-  );
+  const [rows, buyerRoas] = await Promise.all([
+    sbQuery(
+      "daily_metrics",
+      `select=*,ad_sets(adset_name,targeting_type,campaigns(campaign_name))&metric_date=gte.${fromDate}&metric_date=lte.${toDate}&order=metric_date.desc&limit=500`,
+    ),
+    fetchBuyerRoas(fromDate, toDate),
+  ]);
+  const { list: buyerList, tot: buyerTot } = buyerRoas;
 
   const totals = (rows || []).reduce((t, r) => ({
     spend: t.spend + (r.spend_naira || 0),
@@ -1680,7 +1762,7 @@ async function renderPerformance(el, fromDate, toDate) {
 
   el.innerHTML = `
     <div class="sh">
-      <div class="sh-title">Performance</div>
+      <div class="sh-title">Ad Spend &amp; ROAS</div>
       <div class="sh-actions">
         <input type="date" id="perfFrom" value="${fromDate}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
         <input type="date" id="perfTo" value="${toDate}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
@@ -1693,6 +1775,30 @@ async function renderPerformance(el, fromDate, toDate) {
       <div class="kc"><div class="kc-lbl">Impressions / Reach</div><div class="kc-val">${totals.impressions.toLocaleString()}</div><div class="kc-sub">${totals.reach.toLocaleString()} reach</div></div>
       <div class="kc"><div class="kc-lbl">Blended CTR</div><div class="kc-val">${blendedCtr}%</div><div class="kc-sub">${totals.clicks.toLocaleString()} clicks</div></div>
       <div class="kc"><div class="kc-lbl">Orders / Blended CPA</div><div class="kc-val">${totals.orders}</div><div class="kc-sub">${blendedCpa ? fN(blendedCpa) + " per order" : "no orders yet"}</div></div>
+    </div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Order revenue</div><div class="kc-val">${fN(buyerTot.revenue)}</div><div class="kc-sub">excl. cancelled/returned</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (orders)</div><div class="kc-val a">${roasFmt(buyerTot.revenue, totals.spend)}</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roasFmt(buyerTot.delivered, totals.spend)}</div><div class="kc-sub">cash actually collected</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered revenue</div><div class="kc-val">${fN(buyerTot.delivered)}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Spend &amp; ROAS by media buyer</div><div class="ph-count">Attributed by [CODE] in ad set / campaign name</div></div>
+      ${!buyerList.length ? `<div class="empty"><div class="empty-ico">📊</div>No spend or orders in this range yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Spend</th><th>Orders</th><th>CPA</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
+        ${buyerList.sort((a, b) => b.spend - a.spend).map(r => `<tr>
+          <td class="s">${r.buyer ? `${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span>` : `<span style="color:var(--muted)">Unattributed</span>`}</td>
+          <td>${fN(r.spend)}</td>
+          <td>${r.orders}</td>
+          <td>${r.orders ? fN(r.spend / r.orders) : "—"}</td>
+          <td>${fN(r.revenue)}</td>
+          <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
+          <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
+        </tr>`).join("")}
+      </table></div>`}
     </div>
 
     <div class="panel">
@@ -1809,7 +1915,7 @@ async function renderProducts(el) {
       <div id="publishMsg"></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Photo</th><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th><th></th></tr>
+        <tr><th>Photo</th><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Order form</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th><th></th></tr>
         ${prods.map(p => {
           const pc = creativesByProduct[p.id] || [];
           const thumbs = pc.slice(0, 4).map(c => c.asset_type === "video"
@@ -1825,6 +1931,7 @@ async function renderProducts(el) {
           <td class="n" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             ${p.landing_page_url ? `<a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>` : `<span style="color:var(--muted);">${p.destination_type === "whatsapp" ? "WhatsApp: " + (p.whatsapp_number || "—") : "—"}</span>`}
           </td>
+          <td><button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;white-space:nowrap;" onclick="bvOrderLinkModal('${p.id}', '${p.product_name.replace(/'/g, "\\'")}')">🔗 Get link</button></td>
           <td>${p.currency || "NGN"}</td>
           <td>${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : p.default_order_value_naira}</td>
           <td><span class="pill ${p.is_active ? "active" : "paused"}">${p.is_active ? "active" : "inactive"}</span></td>
@@ -2019,16 +2126,80 @@ async function bvUploadProductImage(inputEl) {
   }
 }
 
+// Generates the shareable order-form link for a product (order.html, hosted
+// as a sibling of this dashboard file) -- what each media buyer puts on their
+// own sales page instead of hand-building a checkout form. Picking a buyer
+// tags every order that comes through the link with them automatically
+// (server-side, via receive-order -> media_buyers), so ROAS attribution
+// doesn't depend on the buyer remembering to rename ad sets correctly.
+async function bvOrderLinkModal(productId, productName) {
+  const overlay = document.createElement("div");
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const baseUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "order.html";
+
+  let buyers = [];
+  try { buyers = await sbQuery("media_buyers", "select=id,code,name&order=code.asc") || []; } catch {}
+
+  overlay.innerHTML = `<div class="bv-modal">
+    <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+    <h3 style="margin:0 0 4px;">${escH(productName)} — order form link</h3>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Share this on the buyer's sales page (as the "Order Now" button link, or embedded in an iframe). It shows the product, collects the customer's delivery details, and creates a real order here -- no separate checkout page to build.</div>
+    <div class="field"><label>Attribute orders to</label>
+      <select id="olBuyer">
+        <option value="">No buyer (unattributed)</option>
+        ${buyers.map(b => `<option value="${escH(b.code)}">${escH(b.name)} [${escH(b.code)}]</option>`).join("")}
+      </select>
+    </div>
+    <div class="field" style="margin-top:10px;"><label>Link</label><input id="olLink" readonly value="${baseUrl}?product=${productId}"></div>
+    <button type="button" class="btn btn-a btn-full" style="margin-top:12px;" id="olCopyBtn">Copy link</button>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:10px;">Meta click IDs (fbclid, ad set) are attached automatically if the buyer forwards them in their own ad link -- add <code>&asid={{adset.id}}&crid={{ad.id}}</code> style params if their ad platform supports link macros.</div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const updateLink = () => {
+    const buyer = document.getElementById("olBuyer").value;
+    document.getElementById("olLink").value = `${baseUrl}?product=${productId}${buyer ? `&buyer=${encodeURIComponent(buyer)}` : ""}`;
+  };
+  document.getElementById("olBuyer").addEventListener("change", updateLink);
+  document.getElementById("olCopyBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("olCopyBtn");
+    try {
+      await navigator.clipboard.writeText(document.getElementById("olLink").value);
+      btn.textContent = "Copied!";
+      setTimeout(() => { if (btn) btn.textContent = "Copy link"; }, 1500);
+    } catch {
+      document.getElementById("olLink").select();
+      btn.textContent = "Select-all — Ctrl/Cmd+C to copy";
+    }
+  });
+}
+
 // ── TAB: ORDERS ───────────────────────────────────────────────────────────────
 async function renderOrders(el) {
-  const orders = await sbQuery("orders", "select=*&order=ordered_at.desc&limit=150");
+  // Stats and pagination need the full-table status counts separate from the
+  // one page of rows actually rendered -- statusRows is cheap (one column,
+  // no joins) so paging the table doesn't skew "Total orders"/"Delivery rate".
+  const [statusRows, orders, flagged] = await Promise.all([
+    sbQuery("orders", "select=order_status"),
+    sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
+    sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
+  ]);
+  (orders || []).forEach(o => {
+    // voice_calls comes back as an array (reverse FK) -- there's at most one
+    // call per order in practice, but take the most recent if that ever changes.
+    o.voice_call = (o.voice_calls || []).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0] || null;
+  });
 
-  const tot   = orders?.length ?? 0;
-  const deliv = orders?.filter(o => o.order_status === "delivered").length ?? 0;
-  const ret   = orders?.filter(o => o.order_status === "returned").length ?? 0;
-  const pend  = orders?.filter(o => o.order_status === "pending").length ?? 0;
+  const tot   = statusRows?.length ?? 0;
+  const deliv = statusRows?.filter(o => o.order_status === "delivered").length ?? 0;
+  const ret   = statusRows?.filter(o => o.order_status === "returned").length ?? 0;
+  const pend  = statusRows?.filter(o => o.order_status === "pending").length ?? 0;
   const rate  = tot ? (deliv / tot * 100).toFixed(1) : "0";
   const rC    = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
+  const pageCount = Math.max(1, Math.ceil(tot / ORDERS_PAGE_SIZE));
+  const pageStart = tot ? ordersPage * ORDERS_PAGE_SIZE + 1 : 0;
+  const pageEnd = Math.min(tot, (ordersPage + 1) * ORDERS_PAGE_SIZE);
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Orders</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
@@ -2040,11 +2211,28 @@ async function renderOrders(el) {
       <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rC}">${rate}%</div><div class="kc-sub">${pend} still pending</div></div>
     </div>
 
+    ${flagged?.length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">⚠️ AI calls needing a human</div><div class="ph-count">${flagged.length} open</div></div>
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Why</th><th>AI summary</th><th>When</th><th></th></tr>
+        ${flagged.map(c => `<tr>
+          <td class="s n">${escH(c.orders?.customer_name ?? "—")}</td>
+          <td class="n"><a href="tel:${escH(c.to_number)}" style="color:var(--accent);text-decoration:none;">${escH(c.to_number)}</a></td>
+          <td class="n">${escH(c.orders?.product_name ?? "—")}</td>
+          <td>${(c.red_flags || []).map(f => `<span class="pill returned">${escH(f.replace(/_/g, " "))}</span>`).join(" ")}</td>
+          <td class="n" style="max-width:260px;color:var(--muted);">${escH(c.summary ?? "")}</td>
+          <td>${ago(c.created_at)}</td>
+          <td><button class="btn btn-g callResolve" data-cid="${escH(c.id)}">Mark handled</button></td>
+        </tr>`).join("")}
+      </table></div>
+    </div>` : ""}
+
     <div class="panel">
       <div class="ph"><div class="ph-title">All orders</div><div class="ph-count">${pend} pending</div></div>
       ${!tot ? `<div class="empty"><div class="empty-ico">📦</div>No orders yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Buyer</th><th>AI call</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
         ${orders.map(o => `<tr>
           <td class="s n">${o.customer_name ?? "—"}</td>
           <td class="n">${o.customer_phone
@@ -2052,6 +2240,8 @@ async function renderOrders(el) {
             : "—"}</td>
           <td class="n">${o.product_name ?? "—"}</td>
           <td>${fN(o.order_value_naira)}</td>
+          <td class="n">${o.media_buyers ? `${escH(o.media_buyers.code)}` : `<span style="color:var(--muted);">—</span>`}</td>
+          <td>${bvOrderCallCell(o)}</td>
           <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span></td>
           <td>${ago(o.ordered_at)}</td>
           <td>
@@ -2064,8 +2254,23 @@ async function renderOrders(el) {
             </select>
           </td>
         </tr>`).join("")}
-      </table></div>`}
+      </table></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--muted);">
+        <div>${tot ? `Showing ${pageStart}–${pageEnd} of ${tot}` : ""}</div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-g" id="ordersPrevBtn" ${ordersPage === 0 ? "disabled" : ""}>← Prev</button>
+          <div style="padding:6px 4px;">Page ${ordersPage + 1} of ${pageCount}</div>
+          <button type="button" class="btn btn-g" id="ordersNextBtn" ${ordersPage >= pageCount - 1 ? "disabled" : ""}>Next →</button>
+        </div>
+      </div>`}
     </div>`;
+
+  document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
+    if (ordersPage > 0) { ordersPage--; renderOrders(el); }
+  });
+  document.getElementById("ordersNextBtn")?.addEventListener("click", () => {
+    if (ordersPage < pageCount - 1) { ordersPage++; renderOrders(el); }
+  });
 
   document.querySelectorAll(".oSel").forEach(sel => {
     sel.addEventListener("change", async e => {
@@ -2079,6 +2284,181 @@ async function renderOrders(el) {
       } catch(err) { alert("Update failed: " + err.message); }
     });
   });
+
+  document.querySelectorAll(".callNowBtn").forEach(btn => btn.addEventListener("click", async e => {
+    const oid = e.target.dataset.oid;
+    e.target.disabled = true;
+    e.target.textContent = "Calling…";
+    try {
+      const r = await sbFn("place-order-call", { order_id: oid, force: true });
+      if (r.error) throw new Error(r.error);
+    } catch (err) {
+      alert("Could not place call: " + err.message);
+    } finally {
+      renderOrders(el);
+    }
+  }));
+
+  document.querySelectorAll(".callResolve").forEach(btn => btn.addEventListener("click", async e => {
+    const { error } = await supabaseClient.from("voice_calls")
+      .update({ human_resolved_at: new Date().toISOString() }).eq("id", e.target.dataset.cid);
+    if (error) { alert("Update failed: " + error.message); return; }
+    loadCallFlagCount();
+    renderOrders(el);
+  }));
+}
+
+// Small status cell for the AI confirmation call tied to an order -- lets a
+// human see at a glance whether the call happened, went fine, or needs
+// attention (medical question, cancel request, "let me talk to someone"),
+// without leaving the Orders tab to check Media Buyers -> AI calls.
+function bvOrderCallCell(o) {
+  const c = o.voice_call;
+  if (!c) {
+    return `<button type="button" class="callNowBtn btn btn-g" data-oid="${o.id}" style="padding:3px 8px;font-size:10px;">📞 Call now</button>`;
+  }
+  if (c.needs_human && !c.human_resolved_at) {
+    return `<span class="pill returned" title="${escH(c.summary || "")}">⚠️ Needs human</span>`;
+  }
+  const labels = { queued: "Queued", dialing: "Dialing…", initiated: "In call…", done: "✅ Confirmed", failed: "❌ Failed" };
+  const cls = { done: "delivered", failed: "returned", queued: "pending", dialing: "pending", initiated: "active" }[c.status] || "pending";
+  return `<span class="pill ${cls}" title="${escH(c.summary || "")}">${labels[c.status] || c.status}</span>${c.status === "failed" ? ` <button type="button" class="callNowBtn btn btn-g" data-oid="${o.id}" style="padding:2px 6px;font-size:9px;">retry</button>` : ""}`;
+}
+
+// ── TAB: AI CALL LOGS ─────────────────────────────────────────────────────────
+let callLogsPage = 0;
+const CALL_LOGS_PAGE_SIZE = 30;
+let callLogsExpanded = new Set();
+
+async function renderCallLogs(el) {
+  const [statusRows, calls] = await Promise.all([
+    sbQuery("voice_calls", "select=status,needs_human,human_resolved_at"),
+    sbQuery("voice_calls", `select=*,orders(customer_name,customer_phone,product_name,order_status)&order=created_at.desc&limit=${CALL_LOGS_PAGE_SIZE}&offset=${callLogsPage * CALL_LOGS_PAGE_SIZE}`),
+  ]);
+
+  const tot = statusRows?.length ?? 0;
+  const completed = statusRows?.filter(c => c.status === "completed" || c.status === "done").length ?? 0;
+  const noAnswer = statusRows?.filter(c => c.status === "no_answer" || c.status === "failed").length ?? 0;
+  const openFlags = statusRows?.filter(c => c.needs_human && !c.human_resolved_at).length ?? 0;
+  const pageCount = Math.max(1, Math.ceil(tot / CALL_LOGS_PAGE_SIZE));
+  const pageStart = tot ? callLogsPage * CALL_LOGS_PAGE_SIZE + 1 : 0;
+  const pageEnd = Math.min(tot, (callLogsPage + 1) * CALL_LOGS_PAGE_SIZE);
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">AI Call Logs</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Total calls</div><div class="kc-val">${tot}</div></div>
+      <div class="kc"><div class="kc-lbl">Completed</div><div class="kc-val a">${completed}</div></div>
+      <div class="kc"><div class="kc-lbl">No answer / failed</div><div class="kc-val d">${noAnswer}</div></div>
+      <div class="kc"><div class="kc-lbl">Needs human</div><div class="kc-val ${openFlags ? "w" : ""}">${openFlags}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Call history</div><div class="ph-count">Click a row to read the conversation</div></div>
+      ${!calls?.length ? `<div class="empty"><div class="empty-ico">📞</div>No calls yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th></th><th>Customer</th><th>Phone</th><th>Product</th><th>Status</th><th>Duration</th><th>When</th></tr>
+        ${calls.map(c => {
+          const isOpen = callLogsExpanded.has(c.id);
+          const cls = { completed: "delivered", done: "delivered", no_answer: "cancelled", failed: "returned" }[c.status] || "pending";
+          return `<tr class="clRow" data-cid="${c.id}" style="cursor:pointer;">
+            <td>${isOpen ? "▾" : "▸"}</td>
+            <td class="s n">${escH(c.orders?.customer_name ?? "—")}</td>
+            <td class="n">${escH(c.to_number ?? "—")}</td>
+            <td class="n">${escH(c.orders?.product_name ?? "—")}</td>
+            <td><span class="pill ${cls}">${escH((c.status ?? "—").replace(/_/g, " "))}</span>${c.needs_human && !c.human_resolved_at ? ` <span class="pill returned">⚠️ needs human</span>` : ""}</td>
+            <td class="n">${c.duration_secs ? `${c.duration_secs}s` : "—"}</td>
+            <td>${ago(c.created_at)}</td>
+          </tr>${isOpen ? `<tr class="clTranscript"><td></td><td colspan="6" style="padding:10px 12px;color:var(--text2);white-space:pre-wrap;line-height:1.6;background:var(--panel2);border-radius:8px;">${escH(c.summary || "No conversation summary recorded.")}${(c.red_flags || []).length ? `<div style="margin-top:8px;">${c.red_flags.map(f => `<span class="pill returned" style="margin-right:4px;">${escH(f.replace(/_/g," "))}</span>`).join("")}</div>` : ""}</td></tr>` : ""}`;
+        }).join("")}
+      </table></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--muted);">
+        <div>${tot ? `Showing ${pageStart}–${pageEnd} of ${tot}` : ""}</div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-g" id="clPrevBtn" ${callLogsPage === 0 ? "disabled" : ""}>← Prev</button>
+          <div style="padding:6px 4px;">Page ${callLogsPage + 1} of ${pageCount}</div>
+          <button type="button" class="btn btn-g" id="clNextBtn" ${callLogsPage >= pageCount - 1 ? "disabled" : ""}>Next →</button>
+        </div>
+      </div>`}
+    </div>`;
+
+  document.getElementById("clPrevBtn")?.addEventListener("click", () => { if (callLogsPage > 0) { callLogsPage--; renderCallLogs(el); } });
+  document.getElementById("clNextBtn")?.addEventListener("click", () => { if (callLogsPage < pageCount - 1) { callLogsPage++; renderCallLogs(el); } });
+  document.querySelectorAll(".clRow").forEach(row => {
+    row.addEventListener("click", () => {
+      const id = row.dataset.cid;
+      if (callLogsExpanded.has(id)) callLogsExpanded.delete(id); else callLogsExpanded.add(id);
+      renderCallLogs(el);
+    });
+  });
+}
+
+// ── TAB: DELIVERY (riders) ───────────────────────────────────────────────────
+async function renderRiders(el) {
+  const [agents, orders] = await Promise.all([
+    sbQuery("delivery_agents", "select=*&order=name.asc"),
+    sbQuery("orders", "select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_city,customer_state,ordered_at,delivered_at&delivery_agent_id=not.is.null&order=ordered_at.desc"),
+  ]);
+
+  const byAgent = new Map();
+  for (const a of agents || []) byAgent.set(a.id, { agent: a, assigned: 0, delivered: 0, revenue: 0 });
+  for (const o of orders || []) {
+    const row = byAgent.get(o.delivery_agent_id);
+    if (!row) continue;
+    row.assigned++;
+    if (o.order_status === "delivered") { row.delivered++; row.revenue += Number(o.order_value_naira || 0); }
+  }
+  const rows = [...byAgent.values()].sort((a, b) => b.assigned - a.assigned);
+  const totAssigned = orders?.length ?? 0;
+  const totDelivered = orders?.filter(o => o.order_status === "delivered").length ?? 0;
+  const deliveryRate = totAssigned ? (totDelivered / totAssigned * 100).toFixed(1) : "0";
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Delivery</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Active agents</div><div class="kc-val">${(agents || []).filter(a => a.active).length}</div></div>
+      <div class="kc"><div class="kc-lbl">Orders assigned</div><div class="kc-val">${totAssigned}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${totDelivered}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${deliveryRate >= 70 ? "a" : "w"}">${deliveryRate}%</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Agents</div><div class="ph-count">How AI-confirmed orders get routed to a rider by zone</div></div>
+      ${!rows.length ? `<div class="empty"><div class="empty-ico">🛵</div>No delivery agents yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Agent</th><th>Zone</th><th>Phone</th><th>Assigned</th><th>Delivered</th><th>Rate</th><th>Revenue collected</th><th>Status</th></tr>
+        ${rows.map(r => {
+          const rate = r.assigned ? (r.delivered / r.assigned * 100).toFixed(0) : "0";
+          return `<tr>
+            <td class="s n">${escH(r.agent.name)}</td>
+            <td class="n">${escH(r.agent.zone || "—")}</td>
+            <td class="n">${escH(r.agent.phone || "—")}</td>
+            <td>${r.assigned}</td>
+            <td class="a">${r.delivered}</td>
+            <td>${rate}%</td>
+            <td>${fN(r.revenue)}</td>
+            <td><span class="pill ${r.agent.active ? "active" : "paused"}">${r.agent.active ? "active" : "inactive"}</span></td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Recent assignments</div></div>
+      ${!orders?.length ? `<div class="empty"><div class="empty-ico">📦</div>No orders assigned yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>City</th><th>Agent</th><th>Status</th><th>Assigned</th></tr>
+        ${orders.slice(0, 40).map(o => `<tr>
+          <td class="s n">${escH(o.customer_name ?? "—")}</td>
+          <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
+          <td class="n">${escH(byAgent.get(o.delivery_agent_id)?.agent.name ?? "—")}</td>
+          <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+          <td>${ago(o.ordered_at)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
 }
 
 // ── TAB: WEBSITE LEADS (10s modal captures on product sales pages) ─────────────
@@ -2811,13 +3191,184 @@ async function renderEarnings(el) {
     </div>`;
 }
 
+// ── SHARED: media-buyer ROAS aggregation (used by Ad Spend & ROAS + Leaderboard) ─
+const escH = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const roasFmt  = (rev, sp) => sp > 0 ? (rev / sp).toFixed(2) + "x" : "—";
+const roasCls  = (rev, sp) => sp <= 0 ? "" : rev / sp >= 2 ? "ctr-hot" : rev / sp >= 1 ? "ctr-warm" : "ctr-cold";
+
+// fromDateStr/toDateStr = null means no bound on that side (all-time when both omitted).
+async function fetchBuyerRoas(fromDateStr, toDateStr) {
+  let q = "select=*";
+  if (fromDateStr) q += `&day=gte.${fromDateStr}`;
+  if (toDateStr) q += `&day=lte.${toDateStr}`;
+  const [buyers, rows] = await Promise.all([
+    sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
+    sbQuery("media_buyer_daily_roas", q).catch(() => []),
+  ]);
+  const agg = new Map();
+  for (const r of rows || []) {
+    const k = r.media_buyer_id ?? "none";
+    const a = agg.get(k) ?? { spend: 0, orders: 0, revenue: 0, delivered: 0 };
+    a.spend += Number(r.spend_naira || 0); a.orders += Number(r.orders || 0);
+    a.revenue += Number(r.revenue_naira || 0); a.delivered += Number(r.delivered_revenue_naira || 0);
+    agg.set(k, a);
+  }
+  const byId = new Map((buyers || []).map(b => [b.id, b]));
+  const list = [...agg.entries()].map(([id, a]) => ({ id, buyer: byId.get(id), ...a }));
+  for (const b of buyers || []) if (!agg.has(b.id)) list.push({ id: b.id, buyer: b, spend: 0, orders: 0, revenue: 0, delivered: 0 });
+  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, orders: t.orders + r.orders }), { spend: 0, revenue: 0, delivered: 0, orders: 0 });
+  return { list, tot };
+}
+
+// ── TAB: LEADERBOARD ──────────────────────────────────────────────────────────
+let leaderboardRangeDays = 7;
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+async function renderLeaderboard(el) {
+  const since = leaderboardRangeDays ? new Date(Date.now() - (leaderboardRangeDays - 1) * 86400000).toISOString().slice(0, 10) : null;
+  const { list } = await fetchBuyerRoas(since);
+
+  // Rank named buyers only (an "Unattributed" bucket can't be ranked) --
+  // by revenue by default, since that's what the business actually cares about.
+  const ranked = list.filter(r => r.buyer).sort((a, b) => b.revenue - a.revenue);
+  const unattributed = list.find(r => !r.buyer);
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Leaderboard</div><div class="sh-actions">
+      <select id="lbRange" style="width:auto;padding:5px 9px;font-size:12px;">
+        <option value="1"  ${leaderboardRangeDays===1 ?"selected":""}>Today</option>
+        <option value="7"  ${leaderboardRangeDays===7 ?"selected":""}>Last 7 days</option>
+        <option value="30" ${leaderboardRangeDays===30?"selected":""}>Last 30 days</option>
+        <option value="0"  ${leaderboardRangeDays===0 ?"selected":""}>All time</option>
+      </select>
+      <button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Media buyer rankings</div><div class="ph-count">Ranked by order revenue</div></div>
+      ${!ranked.length ? `<div class="empty"><div class="empty-ico">🏆</div>No media buyers yet -- add one from Settings.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Rank</th><th>Buyer</th><th>Spend</th><th>Orders</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
+        ${ranked.map((r, i) => `<tr ${i < 3 ? 'style="background:var(--accentBg);"' : ""}>
+          <td style="font-size:16px;">${MEDALS[i] ?? `#${i + 1}`}</td>
+          <td class="s">${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span></td>
+          <td>${fN(r.spend)}</td>
+          <td>${r.orders}</td>
+          <td class="s">${fN(r.revenue)}</td>
+          <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
+          <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>
+
+    ${unattributed && unattributed.orders > 0 ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Unattributed</div></div>
+      <div style="padding:10px 14px;font-size:12.5px;color:var(--muted);">${unattributed.orders} order(s) worth ${fN(unattributed.revenue)} in this range aren't tagged to any buyer -- their ad set name is missing a <code>[CODE]</code>, or the order came in without a <code>buyer</code> parameter. See the Products tab's "Get link" button to generate correctly-tagged order links.</div>
+    </div>` : ""}`;
+
+  document.getElementById("lbRange").addEventListener("change", e => { leaderboardRangeDays = Number(e.target.value); render(); });
+}
+
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 async function renderSettings(el) {
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const [buyers, connections, existingAccounts, company, invites, teamMembers] = await Promise.all([
+    sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
+    sbQuery("meta_connections_public", "select=*&order=connected_at.desc").catch(() => []),
+    sbQuery("ad_accounts", "select=id,meta_ad_account_id,meta_connection_id").catch(() => []),
+    sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
+    isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
+    isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
+  ]);
+  // Most recent active connection per buyer, if any.
+  const connByBuyer = new Map();
+  for (const c of connections || []) {
+    if (c.status === "active" && !connByBuyer.has(c.media_buyer_id)) connByBuyer.set(c.media_buyer_id, c);
+  }
+  const importedIds = new Set((existingAccounts || []).map(a => (a.meta_ad_account_id || "").replace(/^act_/, "")));
+  const oauthToast = window.oauthToast;
+  delete window.oauthToast;
+
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Settings & Ad Accounts</div></div>
 
+    ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
+
     <div class="panel">
-      <div class="ph"><div class="ph-title">Link New Meta Ad Account</div></div>
+      <div class="ph"><div class="ph-title">${escH(company?.name || "Your company")}</div><div class="ph-count">Your role: ${escH(window.myProfile?.role || "—")}</div></div>
+      ${!isAdmin ? `<div style="font-size:11.5px;color:var(--muted);">Only an owner/admin can invite team members or manage ad account connections.</div>` : `
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Invite a teammate -- they sign up with this link and land inside your company only, never anyone else's.</div>
+      <form id="inviteForm">
+        <div class="fg">
+          <div class="field"><label>Role *</label>
+            <select id="inv_role">
+              <option value="buyer">Media buyer</option>
+              <option value="admin">Admin</option>
+              <option value="delivery_agent">Delivery agent</option>
+            </select>
+          </div>
+          <div class="field"><label>Email (optional, just a label)</label><input id="inv_email" type="email" placeholder="teammate@example.com"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">+ Generate invite link</button>
+        <div id="inviteMsg"></div>
+      </form>
+      ${invites?.length ? `
+      <div class="tbl-wrap" style="margin-top:16px;"><table>
+        <tr><th>Role</th><th>For</th><th>Status</th><th>Link</th></tr>
+        ${invites.map(i => {
+          const used = !!i.used_at;
+          const expired = !used && new Date(i.expires_at) < new Date();
+          const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${i.token}`;
+          return `<tr>
+            <td class="s">${escH(i.role)}</td>
+            <td class="n">${escH(i.email || "—")}</td>
+            <td><span class="pill ${used ? "delivered" : expired ? "cancelled" : "pending"}">${used ? "joined" : expired ? "expired" : "pending"}</span></td>
+            <td>${used || expired ? "—" : `<button type="button" class="btn btn-g inviteCopyBtn" data-link="${escH(link)}" style="padding:3px 8px;font-size:10px;">Copy link</button>`}</td>
+          </tr>`;
+        }).join("")}
+      </table></div>` : ""}
+      ${teamMembers?.length ? `
+      <div class="tbl-wrap" style="margin-top:16px;"><table>
+        <tr><th>Team member</th><th>Role</th><th>Joined</th></tr>
+        ${teamMembers.map(m => `<tr><td class="s">${escH(m.display_name || m.id.slice(0, 8))}</td><td>${escH(m.role)}</td><td>${ago(m.created_at)}</td></tr>`).join("")}
+      </table></div>` : ""}`}
+    </div>
+
+    ${!isAdmin ? "" : `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Media buyers &amp; Meta connections</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer connects their own Facebook Business Manager with "Connect Meta" -- no more hand-typing act_IDs or sharing ad account access. Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
+      <form id="buyerForm">
+        <div class="fg">
+          <div class="field"><label>Name *</label><input id="mb_name" required placeholder="e.g. Tunde Bakare"></div>
+          <div class="field"><label>Code * (goes in ad set names as [CODE])</label><input id="mb_code" required pattern="[A-Za-z0-9_-]+" placeholder="TUNDE"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">+ Add buyer</button>
+        <div id="buyerMsg"></div>
+      </form>
+      ${!buyers?.length ? "" : `
+      <div class="tbl-wrap" style="margin-top:16px;"><table>
+        <tr><th>Buyer</th><th>Meta connection</th><th></th></tr>
+        ${buyers.map(b => {
+          const c = connByBuyer.get(b.id);
+          const daysLeft = c?.token_expires_at ? Math.round((new Date(c.token_expires_at) - Date.now()) / 86400000) : null;
+          const notImported = (c?.discovered_ad_accounts || []).filter(a => !importedIds.has((a.account_id || "").replace(/^act_/, "")));
+          return `<tr>
+            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
+            <td class="n">${c
+              ? `Connected as ${escH(c.fb_user_name || c.fb_user_id)}${daysLeft != null ? ` <span style="color:${daysLeft < 7 ? "var(--danger)" : "var(--muted)"};">(${daysLeft > 0 ? `expires in ${daysLeft}d` : "expired"})</span>` : ""}`
+              : `<span style="color:var(--muted);">Not connected</span>`}</td>
+            <td style="display:flex;gap:6px;">
+              <button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="bvConnectMeta('${b.id}')">${c ? "Reconnect" : "Connect Meta"}</button>
+              ${notImported.length ? `<button type="button" class="btn btn-a" style="padding:4px 8px;font-size:10px;" onclick='bvImportAdAccountsModal(${JSON.stringify(b.id)}, ${JSON.stringify(notImported)})'>Import ${notImported.length} account(s)</button>` : ""}
+            </td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Link New Meta Ad Account</div><div class="sh-actions" style="font-size:10.5px;color:var(--muted);">Manual entry -- for an account you're not connecting via OAuth above</div></div>
       <form id="acctForm">
         <div class="fg">
           <div class="field"><label>Account Name *</label><input id="a_name" required placeholder="e.g. Quality Herb - Main"></div>
@@ -2848,7 +3399,43 @@ async function renderSettings(el) {
           </td>
         </tr>`).join("")}
       </table></div>`}
-    </div>`;
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Pixel &amp; Tracking</div><div class="ph-count">${accountsList.length} accounts</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">The Meta Pixel / Dataset ID each ad account's Purchase events are sent to. Running one pixel across several accounts? Use the same ID in each row below -- nothing else to configure. This list shows every account regardless of which one you're currently viewing.</div>
+      ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">📡</div>No ad accounts linked yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Pixel / Dataset ID</th><th></th></tr>
+        ${accountsList.map(a => `<tr>
+          <td class="s n">${escH(a.nickname || a.name || "")}</td>
+          <td>${escH(a.meta_ad_account_id || "")}</td>
+          <td><input type="text" class="pixelInput" id="pixel-${a.id}" value="${escH(a.meta_pixel_id || "")}" placeholder="e.g. 1364082442600221" style="width:100%;"></td>
+          <td><button type="button" class="btn btn-g pixelSaveBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">Save</button></td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`}`;
+
+  document.querySelectorAll(".pixelSaveBtn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const aid = btn.dataset.aid;
+      const input = document.getElementById(`pixel-${aid}`);
+      const value = input.value.trim();
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        const { error } = await supabaseClient.from("ad_accounts").update({ meta_pixel_id: value || null }).eq("id", aid);
+        if (error) throw error;
+        btn.textContent = "Saved";
+        await loadAccounts();
+        setTimeout(() => { btn.disabled = false; btn.textContent = "Save"; }, 1200);
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Save";
+        alert("Couldn't save pixel ID: " + e.message);
+      }
+    });
+  });
 
 window.refreshBalances = async function() {
   const btn = document.getElementById("refreshBalBtn");
@@ -2864,7 +3451,44 @@ window.refreshBalances = async function() {
   }
 }
 
-  document.getElementById("acctForm").addEventListener("submit", async e => {
+  // "Media buyers & Meta connections" and "Link New Meta Ad Account" are both
+  // admin-only panels -- these forms simply aren't in the DOM for a buyer/
+  // delivery_agent, so every handler below is guarded rather than assumed present.
+  document.getElementById("inviteForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("inviteMsg");
+    const role = document.getElementById("inv_role").value;
+    const email = document.getElementById("inv_email").value.trim() || null;
+    const token = crypto.randomUUID().replace(/-/g, "");
+    const { error } = await supabaseClient.from("company_invites").insert({ role, email, token });
+    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not create invite: ${error.message}</div>`; return; }
+    const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${token}`;
+    msg.innerHTML = `<div class="msg ok">✅ Invite created. <button type="button" class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="navigator.clipboard.writeText('${link}')">Copy link</button></div>`;
+    renderSettings(el);
+  });
+
+  document.querySelectorAll(".inviteCopyBtn").forEach(btn => btn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.link);
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Copy link"; }, 1500);
+    } catch { btn.textContent = btn.dataset.link; }
+  }));
+
+  document.getElementById("buyerForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("buyerMsg");
+    const name = document.getElementById("mb_name").value.trim();
+    const code = document.getElementById("mb_code").value.trim().toUpperCase();
+    const { error } = await supabaseClient.from("media_buyers").insert({ name, code });
+    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not add buyer: ${error.message}</div>`; return; }
+    // Attribute the buyer's already-running ad sets and their orders.
+    const { error: bfErr } = await supabaseClient.rpc("backfill_media_buyers");
+    if (bfErr) console.error("backfill_media_buyers:", bfErr);
+    renderSettings(el);
+  });
+
+  document.getElementById("acctForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("acctMsg");
     try {
@@ -2926,6 +3550,76 @@ window.deleteAccount = async function(id) {
     alert("Error deleting account: " + e.message);
   }
 }
+
+// Sends the browser to Facebook's OAuth dialog (via meta-oauth-start, which
+// redirects) for this buyer to approve. A real top-level navigation, not
+// fetch -- Facebook's login/consent screen has to render in the actual tab.
+window.bvConnectMeta = function(mediaBuyerId) {
+  const token = sessionData?.access_token;
+  if (!token) { alert("Your session isn't ready yet -- reload and try again."); return; }
+  window.location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(mediaBuyerId)}&access_token=${encodeURIComponent(token)}`;
+};
+
+// Lets the buyer pick which of the ad accounts their Facebook login can see
+// to actually add here as tracked ad_accounts rows (discovering them doesn't
+// import them automatically -- most Business Managers hold accounts for
+// other clients/products too).
+window.bvImportAdAccountsModal = function(mediaBuyerId, accounts) {
+  const overlay = document.createElement("div");
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="bv-modal">
+    <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+    <h3 style="margin:0 0 4px;">Import ad accounts</h3>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Pick which accounts to start tracking. Their spend syncs in automatically from here on -- no token to manage.</div>
+    ${accounts.map((a, i) => `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+        <input type="checkbox" class="importAcctChk" data-i="${i}" checked>
+        <div>
+          <div style="font-weight:600;font-size:12.5px;">${escH(a.name)}</div>
+          <div style="font-size:11px;color:var(--muted);">act_${escH(a.account_id)}${a.business_name ? ` · ${escH(a.business_name)}` : ""} · ${escH(a.currency || "")}</div>
+        </div>
+      </label>`).join("")}
+    <button type="button" class="btn btn-a btn-full" style="margin-top:14px;" id="importAcctBtn">Import selected</button>
+    <div id="importAcctMsg"></div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById("importAcctBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("importAcctBtn");
+    const msg = document.getElementById("importAcctMsg");
+    const picked = [...document.querySelectorAll(".importAcctChk:checked")].map(c => accounts[Number(c.dataset.i)]);
+    if (!picked.length) return;
+    btn.disabled = true; btn.textContent = "Importing…";
+
+    // Need this buyer's connection id (not passed in -- look it up from the
+    // public view rather than threading it through every call site above).
+    const conns = await sbQuery("meta_connections_public", `select=id&media_buyer_id=eq.${mediaBuyerId}&status=eq.active&order=connected_at.desc&limit=1`);
+    const connectionId = conns?.[0]?.id;
+    if (!connectionId) { msg.innerHTML = `<div class="msg err">❌ Couldn't find that buyer's connection -- try reconnecting.</div>`; btn.disabled = false; return; }
+
+    try {
+      const rows = picked.map(a => ({
+        user_id: sessionData.user.id,
+        name: a.business_name ? `${a.name} (${a.business_name})` : a.name,
+        nickname: a.name,
+        meta_ad_account_id: a.account_id,
+        meta_connection_id: connectionId,
+        connected_via: "oauth",
+        status: "active",
+      }));
+      const { error } = await supabaseClient.from("ad_accounts").upsert(rows, { onConflict: "meta_ad_account_id", ignoreDuplicates: true });
+      if (error) throw error;
+      overlay.remove();
+      await loadAccounts();
+      renderSettings(document.getElementById("mainContent"));
+    } catch (err) {
+      msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+      btn.disabled = false;
+      btn.textContent = "Import selected";
+    }
+  });
+};
 
 // ── AI CHAT ───────────────────────────────────────────────────────────────────
 let chatOpen = false;

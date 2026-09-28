@@ -196,11 +196,17 @@ input:focus {
   const switchMode = document.getElementById('switchMode');
   const statusMsg = document.getElementById('statusMsg');
 
+  // A ?invite=<token> in the URL (from an "Invite team member" link) rides
+  // along through every redirect below so setup-company.html still has it
+  // after login/signup, however the person got here.
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+  const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
+
   // Check if already logged in
   async function checkSession() {
     const { data: { session } } = await supaClient.auth.getSession();
     if (session) {
-      window.location.href = 'dashboard_new.html';
+      window.location.href = setupUrl; // it redirects straight on to the dashboard once a company is confirmed
     }
   }
   checkSession();
@@ -237,7 +243,7 @@ input:focus {
         if (error) throw error;
         statusMsg.textContent = "Login successful. Redirecting...";
         statusMsg.className = "msg ok";
-        setTimeout(() => window.location.href = 'dashboard_new.html', 800);
+        setTimeout(() => window.location.href = setupUrl, 800);
       } else {
         // SIGNUP FLOW
         const { data, error } = await supaClient.auth.signUp({ email, password });
@@ -245,7 +251,7 @@ input:focus {
         if (data.session) {
           statusMsg.textContent = "Account created. Redirecting...";
           statusMsg.className = "msg ok";
-          setTimeout(() => window.location.href = 'dashboard_new.html', 800);
+          setTimeout(() => window.location.href = setupUrl, 800);
         } else {
           statusMsg.textContent = "Check your email for the confirmation link.";
           statusMsg.className = "msg ok";

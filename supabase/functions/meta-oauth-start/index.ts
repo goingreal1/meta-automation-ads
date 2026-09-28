@@ -1,0 +1,60 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { signState } from "../_shared/oauth_state.ts";
+
+// Step 1 of "Connect Meta Business Manager" (per media buyer). The dashboard
+// links here directly (a normal <a href>, not fetch -- Facebook's dialog has
+// to be a real top-level navigation): the browser lands on this function,
+// which 302s straight to Facebook's OAuth dialog. Facebook then redirects
+// the browser to meta-oauth-callback when the buyer approves.
+//
+//   GET /meta-oauth-start?media_buyer_id=<uuid>&access_token=<supabase session token>
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
+const META_OAUTH_STATE_SECRET = Deno.env.get("META_OAUTH_STATE_SECRET") ?? "";
+
+// ads_read: pull spend/insights for the accounts they grant. business_management:
+// list accounts, incl. ones held under a Business Manager rather than personally.
+const SCOPES = "ads_read,business_management";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+function html(body: string, status = 200) {
+  return new Response(body, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+Deno.serve(async (req: Request) => {
+  if (!META_APP_ID || !META_OAUTH_STATE_SECRET) {
+    return html("Meta OAuth isn't configured yet (META_APP_ID / META_OAUTH_STATE_SECRET missing). Ask whoever manages this dashboard to finish setup.", 500);
+  }
+
+  const url = new URL(req.url);
+  const mediaBuyerId = url.searchParams.get("media_buyer_id");
+  const accessToken = url.searchParams.get("access_token");
+  if (!mediaBuyerId || !accessToken) {
+    return html("Missing media_buyer_id or access_token.", 400);
+  }
+
+  // Confirm this is a real, currently-signed-in dashboard session before
+  // sending anyone to Facebook -- otherwise a stranger with just a buyer's
+  // UUID (visible in the dashboard's own URLs) could kick off a connection.
+  const { data: userData, error: authErr } = await supabase.auth.getUser(accessToken);
+  if (authErr || !userData?.user) return html("Your dashboard session has expired -- go back and refresh the page, then try again.", 401);
+
+  const { data: buyer } = await supabase.from("media_buyers").select("id").eq("id", mediaBuyerId).maybeSingle();
+  if (!buyer) return html("Unknown media buyer.", 404);
+
+  const state = await signState(META_OAUTH_STATE_SECRET, mediaBuyerId);
+  const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth-callback`;
+
+  const dialogUrl = new URL("https://www.facebook.com/v19.0/dialog/oauth");
+  dialogUrl.searchParams.set("client_id", META_APP_ID);
+  dialogUrl.searchParams.set("redirect_uri", redirectUri);
+  dialogUrl.searchParams.set("state", state);
+  dialogUrl.searchParams.set("scope", SCOPES);
+  dialogUrl.searchParams.set("response_type", "code");
+
+  return new Response(null, { status: 302, headers: { Location: dialogUrl.toString() } });
+});

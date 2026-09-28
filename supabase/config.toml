@@ -92,3 +92,47 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/diagnose-meta-token/deno.json"
 entrypoint = "./functions/diagnose-meta-token/index.ts"
+
+[functions.place-order-call]
+enabled = true
+# Checked in-function instead: service role or a signed-in user, never the bare anon key.
+verify_jwt = false
+import_map = "./functions/place-order-call/deno.json"
+entrypoint = "./functions/place-order-call/index.ts"
+
+[functions.elevenlabs-webhook]
+enabled = true
+# Called by ElevenLabs; authenticated by HMAC signature instead of a JWT.
+verify_jwt = false
+import_map = "./functions/elevenlabs-webhook/deno.json"
+entrypoint = "./functions/elevenlabs-webhook/index.ts"
+
+[functions.get-product-public]
+enabled = true
+verify_jwt = false
+import_map = "./functions/get-product-public/deno.json"
+entrypoint = "./functions/get-product-public/index.ts"
+
+[functions.meta-oauth-start]
+enabled = true
+# Facebook's redirect target for the dialog; must be a plain browser
+# navigation with no auth header, so it's verified via ?access_token= instead.
+verify_jwt = false
+import_map = "./functions/meta-oauth-start/deno.json"
+entrypoint = "./functions/meta-oauth-start/index.ts"
+
+[functions.meta-oauth-callback]
+enabled = true
+# Called by Facebook itself; authenticated by the signed state param, not a JWT.
+verify_jwt = false
+import_map = "./functions/meta-oauth-callback/deno.json"
+entrypoint = "./functions/meta-oauth-callback/index.ts"
+
+[functions.complete-signup]
+enabled = true
+# Authenticated by the caller's own just-issued session token in the body
+# (verified via auth.getUser), not a platform JWT check, since this runs
+# right after signUp before the client has done anything else.
+verify_jwt = false
+import_map = "./functions/complete-signup/deno.json"
+entrypoint = "./functions/complete-signup/index.ts"

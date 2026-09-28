@@ -54,6 +54,7 @@ Deno.serve(async (req: Request) => {
     const currency = (payload.currency as string | undefined)?.toUpperCase() || "NGN";
     const ad_set_id = payload.ad_set_id;
     const creative_id = payload.creative_id;
+    const product_id = payload.product_id as string | undefined;
     // Meta click/browser IDs for CAPI match quality — fbc can also be reconstructed from a bare fbclid
     const fbp = payload.fbp as string | undefined;
     const fbc = (payload.fbc as string | undefined) ??
@@ -158,7 +159,45 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { error: dbError } = await supabase.from('orders').upsert({
+    // Which company this order belongs to, in a shared multi-tenant platform
+    // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
+    // product_id -- the reliable path, since every product belongs to exactly
+    // one company. Older/hand-built sales pages (e.g. sales-ginaris-herbal.html)
+    // predate that field and only ever send ad_set_id, so that's the fallback.
+    // If neither resolves, the order is left company_id = null: invisible to
+    // every dashboard until someone fixes it by hand, rather than guessing --
+    // see the migration's note on why that's the deliberately safe failure mode.
+    let companyId: string | null = null;
+    if (product_id) {
+      const { data: productRow } = await supabase.from('products').select('company_id').eq('id', product_id).maybeSingle();
+      companyId = productRow?.company_id ?? null;
+    }
+    if (!companyId && ad_set_id) {
+      const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
+      companyId = adSetCompanyRow?.company_id ?? null;
+    }
+    if (!companyId) {
+      console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
+    }
+
+    // Explicit buyer from the ad link (?buyer=TUNDE, passed through checkout)
+    // wins; otherwise the orders trigger inherits it from the ad set. Scoped
+    // to this order's own company -- buyer codes are only unique per company,
+    // not globally, once more than one company exists.
+    let mediaBuyerId: string | null = null;
+    const buyerCode = (payload.buyer || payload.buyer_code || payload.utm_buyer) as string | undefined;
+    if (buyerCode && companyId) {
+      const { data: buyerRow } = await supabase
+        .from('media_buyers')
+        .select('id')
+        .eq('code', buyerCode.trim().toUpperCase())
+        .eq('company_id', companyId)
+        .maybeSingle();
+      mediaBuyerId = buyerRow?.id ?? null;
+    }
+
+    const { data: orderRow, error: dbError } = await supabase.from('orders').upsert({
+      company_id: companyId,
       event_id,
       customer_email: email,
       customer_phone: phone,
@@ -176,11 +215,30 @@ Deno.serve(async (req: Request) => {
       ad_set_id: finalAdSetId,
       creative_id: finalCreativeId,
       ad_account_id: finalAdAccountId,
+      ...(mediaBuyerId ? { media_buyer_id: mediaBuyerId } : {}),
+      fbclid: payload.fbclid || null,
+      meta_ad_id: payload.ad_id || payload.meta_ad_id || null,
       order_status: 'pending'
-    }, { onConflict: 'event_id' });
+    }, { onConflict: 'event_id' }).select('id').single();
 
     if (dbError) {
       throw new Error(`Database error: ${dbError.message}`);
+    }
+
+    // Kick off the AI confirmation call. place-order-call dedupes per order
+    // (so checkout retries of the same event_id don't ring twice) and holds
+    // it until calling hours if it's night in Lagos. Not awaited past the
+    // request -- the customer's checkout shouldn't wait on telephony.
+    if (orderRow?.id) {
+      const callRequest = fetch(`${SUPABASE_URL}/functions/v1/place-order-call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ order_id: orderRow.id }),
+      }).then(r => r.text()).then(t => console.log("place-order-call:", t))
+        .catch(err => console.error("place-order-call failed:", err));
+      const edgeRuntime = (globalThis as any).EdgeRuntime;
+      if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(callRequest);
+      else await callRequest;
     }
 
     return new Response(JSON.stringify({ 
