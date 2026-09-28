@@ -3386,7 +3386,6 @@ async function fetchBuyerRoas(fromDateStr, toDateStr) {
 
 // ── TAB: LEADERBOARD ──────────────────────────────────────────────────────────
 let leaderboardRangeDays = 7;
-const MEDALS = ["🥇", "🥈", "🥉"];
 
 async function renderLeaderboard(el) {
   const since = leaderboardRangeDays ? new Date(Date.now() - (leaderboardRangeDays - 1) * 86400000).toISOString().slice(0, 10) : null;
@@ -3413,8 +3412,8 @@ async function renderLeaderboard(el) {
       <div class="tbl-wrap"><table>
         <tr><th>Rank</th><th>Buyer</th><th>Spend</th><th>Orders</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
         ${ranked.map((r, i) => `<tr ${i < 3 ? 'style="background:var(--accentBg);"' : ""}>
-          <td style="font-size:16px;">${MEDALS[i] ?? `#${i + 1}`}</td>
-          <td class="s">${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span></td>
+          <td style="font-size:14px;font-weight:700;">#${i + 1}</td>
+          <td class="s">${escH(r.buyer.name)}</td>
           <td>${fN(r.spend)}</td>
           <td>${r.orders}</td>
           <td class="s">${fN(r.revenue)}</td>
