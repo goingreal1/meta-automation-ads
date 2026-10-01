@@ -3591,7 +3591,7 @@ async function renderSettings(el) {
         ${invites.map(i => {
           const used = !!i.used_at;
           const expired = !used && new Date(i.expires_at) < new Date();
-          const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${i.token}`;
+          const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}setup-company.html?invite=${i.token}`;
           return `<tr>
             <td class="s">${escH(i.role)}</td>
             <td class="n">${escH(i.email || "—")}</td>
