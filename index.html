@@ -161,6 +161,10 @@ input:focus {
       <div class="logo-sub">Senior Media Buying Engine</div>
     </div>
 
+    <div id="inviteBanner" style="display:none;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:16px;">
+      You've been invited to join a team. Set a password below to create your account.
+    </div>
+
     <div id="statusMsg" class="msg"></div>
 
     <form id="authForm">
@@ -171,6 +175,10 @@ input:focus {
       <div class="field">
         <label>Password</label>
         <input type="password" id="f_pass" required placeholder="••••••••">
+      </div>
+      <div class="field" id="confirmField" style="display:none;">
+        <label>Confirm password</label>
+        <input type="password" id="f_pass2" placeholder="••••••••">
       </div>
       <button type="submit" class="btn btn-a" id="authBtn">Log In</button>
     </form>
@@ -190,17 +198,29 @@ input:focus {
   const supaClient = window.supabase.createClient(SUPA_URL, ANON);
 
   // Form State
-  let isLogin = true;
+  // A ?invite=<token> in the URL (from an "Invite team member" link) rides
+  // along through every redirect below so setup-company.html still has it
+  // after login/signup, however the person got here. Someone who clicked an
+  // invite link has exactly one sensible action -- create an account -- so
+  // the generic Login/Signup toggle (which defaulted to Log In and said
+  // nothing about an invite) was genuinely confusing here: skip straight to
+  // signup, with no toggle to second-guess, plus a confirm-password field
+  // since this is the one-and-only account-creation moment for them.
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+  let isLogin = !inviteToken;
   const form = document.getElementById('authForm');
   const authBtn = document.getElementById('authBtn');
   const switchMode = document.getElementById('switchMode');
   const statusMsg = document.getElementById('statusMsg');
-
-  // A ?invite=<token> in the URL (from an "Invite team member" link) rides
-  // along through every redirect below so setup-company.html still has it
-  // after login/signup, however the person got here.
-  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+  const confirmField = document.getElementById('confirmField');
   const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
+
+  if (inviteToken) {
+    document.getElementById('inviteBanner').style.display = 'block';
+    document.querySelector('.switch').style.display = 'none';
+    confirmField.style.display = 'block';
+    authBtn.textContent = 'Sign Up';
+  }
 
   // Check if already logged in
   async function checkSession() {
@@ -216,10 +236,11 @@ input:focus {
     if(e) e.preventDefault();
     isLogin = !isLogin;
     authBtn.textContent = isLogin ? "Log In" : "Sign Up";
-    document.getElementById('switchText').innerHTML = isLogin 
+    confirmField.style.display = isLogin ? "none" : "block";
+    document.getElementById('switchText').innerHTML = isLogin
       ? `Don't have an account? <a href="#" id="switchMode">Sign up</a>`
       : `Already have an account? <a href="#" id="switchMode">Log in</a>`;
-    
+
     // re-bind because we replaced the HTML
     document.getElementById('switchMode').addEventListener('click', toggleMode);
     statusMsg.className = "msg";
@@ -246,6 +267,8 @@ input:focus {
         setTimeout(() => window.location.href = setupUrl, 800);
       } else {
         // SIGNUP FLOW
+        const confirmPass = document.getElementById('f_pass2').value;
+        if (password !== confirmPass) throw new Error("Passwords don't match.");
         const { data, error } = await supaClient.auth.signUp({ email, password });
         if (error) throw error;
         if (data.session) {
