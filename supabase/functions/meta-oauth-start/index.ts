@@ -76,12 +76,17 @@ Deno.serve(async (req: Request) => {
   const state = await signState(META_OAUTH_STATE_SECRET, mediaBuyerId);
   const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth-callback`;
 
+  // Temporary: ?mode=scope forces the classic scope-string dialog even when
+  // META_LOGIN_CONFIG_ID is set, to A/B test against the config_id path
+  // without touching the secret. Remove once the OAuth issue is resolved.
+  const forceScope = url.searchParams.get("mode") === "scope";
+
   const dialogUrl = new URL("https://www.facebook.com/v19.0/dialog/oauth");
   dialogUrl.searchParams.set("client_id", META_APP_ID);
   dialogUrl.searchParams.set("redirect_uri", redirectUri);
   dialogUrl.searchParams.set("state", state);
   dialogUrl.searchParams.set("response_type", "code");
-  if (META_LOGIN_CONFIG_ID) {
+  if (META_LOGIN_CONFIG_ID && !forceScope) {
     dialogUrl.searchParams.set("config_id", META_LOGIN_CONFIG_ID);
   } else {
     dialogUrl.searchParams.set("scope", SCOPES);
