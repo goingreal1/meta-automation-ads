@@ -436,6 +436,7 @@ textarea{resize:vertical;min-height:76px;}
     <select class="acct-selector" id="acctSelector" title="Switch Ad Account">
       <option value="">Loading accounts...</option>
     </select>
+    <div class="hdr-user" id="hdrUser" style="display:none;font-size:12.5px;color:var(--text2);margin-right:8px;text-align:right;line-height:1.3;"></div>
     <button class="logout-btn" id="logoutBtn">Log out</button>
     <button class="theme-btn" id="themeBtn" title="Toggle theme"></button>
   </div>
@@ -560,6 +561,16 @@ async function init() {
     return;
   }
   window.myProfile = profile;
+
+  // The header otherwise only ever showed the company name -- an invited
+  // buyer/admin/customer_care had no visual confirmation anywhere that
+  // they're signed in as themselves, not some shared company login.
+  const hdrUser = document.getElementById("hdrUser");
+  if (hdrUser) {
+    const roleLabel = ({ owner: "Owner", admin: "Admin", buyer: "Media Buyer", customer_care: "Customer Care", delivery_agent: "Delivery Agent" })[profile.role] || profile.role;
+    hdrUser.innerHTML = `<div style="font-weight:600;color:var(--text);">${escH(profile.display_name || session.user.email || "")}</div><div>${escH(roleLabel)}</div>`;
+    hdrUser.style.display = "block";
+  }
 
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
   // with ?meta_oauth=connected|error&detail=... once a buyer finishes
@@ -3641,15 +3652,19 @@ async function renderSettings(el) {
       const myConn = connByBuyer.get(myId);
       const myNums = waByBuyer.get(myId) || [];
       const daysLeft = myConn?.token_expires_at ? Math.round((new Date(myConn.token_expires_at) - Date.now()) / 86400000) : null;
+      const myNotImported = (myConn?.discovered_ad_accounts || []).filter(a => !importedIds.has((a.account_id || "").replace(/^act_/, "")));
       return `
     <div class="panel">
       <div class="ph"><div class="ph-title">Your Meta connection</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Connect your own Facebook Business Manager to pull in your ad accounts and WhatsApp number -- nothing shared with other buyers.</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <div style="font-size:12.5px;">${myConn
           ? `Connected as ${escH(myConn.fb_user_name || myConn.fb_user_id)}${daysLeft != null ? ` <span style="color:${daysLeft < 7 ? "var(--danger)" : "var(--muted)"};">(${daysLeft > 0 ? `expires in ${daysLeft}d` : "expired"})</span>` : ""}`
           : `<span style="color:var(--muted);">Not connected</span>`}</div>
-        <button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="bvConnectMeta('${myId}')">${myConn ? "Reconnect" : "Connect Meta"}</button>
+        <div style="display:flex;gap:6px;">
+          ${myNotImported.length ? `<button type="button" class="btn btn-a" style="padding:4px 10px;font-size:10px;" onclick='bvImportAdAccountsModal(${JSON.stringify(myId)}, ${JSON.stringify(myNotImported)})'>Import ${myNotImported.length} account(s)</button>` : ""}
+          <button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="bvConnectMeta('${myId}')">${myConn ? "Reconnect" : "Connect Meta"}</button>
+        </div>
       </div>
     </div>
 
@@ -3715,8 +3730,9 @@ async function renderSettings(el) {
           </tr>`;
         }).join("")}
       </table></div>`}
-    </div>
+    </div>`}
 
+    ${(isAdmin || window.myProfile?.media_buyer_id) ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Link New Meta Ad Account</div><div class="sh-actions" style="font-size:10.5px;color:var(--muted);">Manual entry -- for an account you're not connecting via OAuth above</div></div>
       <form id="acctForm">
@@ -3764,7 +3780,7 @@ async function renderSettings(el) {
           <td><button type="button" class="btn btn-g pixelSaveBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">Save</button></td>
         </tr>`).join("")}
       </table></div>`}
-    </div>`}`;
+    </div>` : ""}`;
 
   document.querySelectorAll(".pixelSaveBtn").forEach(btn => {
     btn.addEventListener("click", async () => {
@@ -3850,6 +3866,16 @@ window.refreshBalances = async function() {
     e.preventDefault();
     const msg = document.getElementById("acctMsg");
     try {
+      // A non-admin buyer's new ad_accounts RLS policy requires every row
+      // they can see to trace back to their own meta_connections row -- a
+      // manual add with no meta_connection_id would otherwise insert fine
+      // for an admin (who bypasses on role) but get rejected outright for a
+      // buyer, since nothing would prove it's theirs.
+      let myConnId = null;
+      if (!isAdmin) {
+        myConnId = connByBuyer.get(window.myProfile?.media_buyer_id)?.id ?? null;
+        if (!myConnId) throw new Error("Connect Meta above first -- a manually-added account still needs to be tied to your own connection.");
+      }
       const acctName = document.getElementById("a_name").value;
       // meta_ad_account_id has shown up stored both with and without the "act_"
       // prefix -- confirmed this exact mismatch has silently created duplicate
@@ -3875,6 +3901,7 @@ window.refreshBalances = async function() {
       } else {
         const { data, error } = await supabaseClient.from('ad_accounts').insert({
           user_id: sessionData.user.id,
+          meta_connection_id: myConnId,
           name: acctName,
           nickname: acctName,
           meta_ad_account_id: normalizedId,
