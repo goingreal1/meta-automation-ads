@@ -1,13 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Temporary debug helper -- probes several Graph API shapes for reading back
-// a Facebook Login for Business configuration, since the straightforward
-// GET /{config_id} came back "does not exist". Delete once resolved.
+// Temporary debug helper. Delete once resolved.
 
-const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
-const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
-const META_LOGIN_CONFIG_ID = Deno.env.get("META_LOGIN_CONFIG_ID") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_BUSINESS_ID = Deno.env.get("META_BUSINESS_ID") ?? "1386477495726326";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj, null, 2), { status, headers: { "Content-Type": "application/json" } });
@@ -23,18 +23,22 @@ async function tryFetch(label: string, url: string, out: Record<string, unknown>
 }
 
 Deno.serve(async (_req: Request) => {
-  if (!META_APP_ID || !META_APP_SECRET) return json({ error: "META_APP_ID/META_APP_SECRET missing" }, 500);
-  const appToken = `${META_APP_ID}|${META_APP_SECRET}`;
-  const base = "https://graph.facebook.com/v19.0";
-  const out: Record<string, unknown> = {};
+  const { data: conn } = await supabase
+    .from("meta_connections")
+    .select("access_token, fb_user_name, status")
+    .order("connected_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!conn?.access_token) return json({ error: "No active meta_connections row with a token found" }, 500);
 
-  await tryFetch("config_minimal", `${base}/${META_LOGIN_CONFIG_ID}?access_token=${appToken}`, out);
-  await tryFetch("config_id_name_only", `${base}/${META_LOGIN_CONFIG_ID}?fields=id,name&access_token=${appToken}`, out);
-  await tryFetch("app_login_configs_edge", `${base}/${META_APP_ID}/business_login_configurations?access_token=${appToken}`, out);
-  await tryFetch("business_configs_edge", `${base}/${META_BUSINESS_ID}/business_configurations?access_token=${appToken}`, out);
-  await tryFetch("app_basic", `${base}/${META_APP_ID}?fields=id,name&access_token=${appToken}`, out);
-  await tryFetch("business_basic", `${base}/${META_BUSINESS_ID}?fields=id,name&access_token=${appToken}`, out);
-  await tryFetch("debug_token", `${base}/debug_token?input_token=${appToken}&access_token=${appToken}`, out);
+  const token = conn.access_token;
+  const base = "https://graph.facebook.com/v19.0";
+  const out: Record<string, unknown> = { using_token_for: conn.fb_user_name };
+
+  await tryFetch("agencies", `${base}/${META_BUSINESS_ID}/agencies?access_token=${token}`, out);
+  await tryFetch("clients", `${base}/${META_BUSINESS_ID}/clients?access_token=${token}`, out);
+  await tryFetch("pending_users", `${base}/${META_BUSINESS_ID}/pending_users?access_token=${token}`, out);
+  await tryFetch("business_users", `${base}/${META_BUSINESS_ID}/business_users?access_token=${token}`, out);
 
   return json(out);
 });
