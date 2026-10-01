@@ -25,8 +25,13 @@ const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function finish(status: "connected" | "error", detail: string, extra: Record<string, string> = {}) {
-  if (DASHBOARD_URL) {
-    const u = new URL(DASHBOARD_URL);
+  // DASHBOARD_URL missing its https:// scheme (e.g. set to just
+  // "yourdomain.com/dashboard_new.html") used to crash this with a raw
+  // "Invalid URL" 500 right after a successful connection was already saved
+  // -- the buyer saw an error page despite the connection having worked.
+  const dashboardUrl = DASHBOARD_URL && !/^https?:\/\//i.test(DASHBOARD_URL) ? `https://${DASHBOARD_URL}` : DASHBOARD_URL;
+  if (dashboardUrl) {
+    const u = new URL(dashboardUrl);
     u.searchParams.set("meta_oauth", status);
     u.searchParams.set("detail", detail);
     for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, v);
@@ -102,13 +107,23 @@ Deno.serve(async (req: Request) => {
     // never has two "active" tokens to choose between for one buyer.
     await supabase.from("meta_connections").update({ status: "revoked" }).eq("media_buyer_id", mediaBuyerId).eq("status", "active");
 
+    // company_id has no useful default here -- this insert runs under the
+    // service role (no auth.uid()), not the buyer's own session, so
+    // current_company_id() can't resolve it automatically the way it does
+    // for a client-side insert. Resolved explicitly instead: without it,
+    // every RLS policy that scopes meta_connections by company (Settings'
+    // "Connected as ..." display, the WhatsApp number wizard's "are you
+    // connected" check) silently treats this buyer as never having connected.
+    const { data: buyerRow } = await supabase.from("media_buyers").select("company_id").eq("id", mediaBuyerId).maybeSingle();
+
     const { data: connection, error } = await supabase.from("meta_connections").insert({
       media_buyer_id: mediaBuyerId,
+      company_id: buyerRow?.company_id ?? null,
       fb_user_id: me.id,
       fb_user_name: me.name ?? null,
       access_token: accessToken,
       token_expires_at: expiresAt,
-      scopes: "ads_read,business_management",
+      scopes: "ads_read,business_management,whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_read_engagement,pages_manage_engagement",
       status: "active",
       discovered_ad_accounts: discoveredAdAccounts,
       last_synced_at: new Date().toISOString(),

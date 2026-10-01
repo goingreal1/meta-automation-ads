@@ -71,10 +71,80 @@ Deno.serve(async (req: Request) => {
     const hashedFn = await hashData(firstName);
     const hashedLn = await hashData(lastName);
 
+    // Insert into Supabase
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Which company this order belongs to, in a shared multi-tenant platform
+    // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
+    // product_id -- the reliable path, since every product belongs to exactly
+    // one company. Older/hand-built sales pages (e.g. sales-ginaris-herbal.html)
+    // predate that field and only ever send ad_set_id, so that's the fallback.
+    // If neither resolves, the order is left company_id = null: invisible to
+    // every dashboard until someone fixes it by hand, rather than guessing --
+    // see the migration's note on why that's the deliberately safe failure mode.
+    // Resolved up front (not just before the insert) because the CAPI pixel
+    // config below also needs to know which company's pixel to fire to.
+    let companyId: string | null = null;
+    // The order's own ad_accounts row, resolved the exact same way
+    // get-product-public resolves it for the browser pixel (product_id ->
+    // products.ad_account_id, falling back to ad_set_id -> ad_sets.ad_account_id
+    // for older hand-built sales pages that predate product_id). Kept in sync
+    // with that lookup deliberately: the server CAPI event and the browser
+    // pixel event share one event_id for Meta's dedup, so they MUST fire to
+    // the same pixel or that dedup (and match quality) breaks.
+    let resolvedAdAccountId: string | null = null;
+    if (product_id) {
+      const { data: productRow } = await supabase.from('products').select('company_id, ad_account_id').eq('id', product_id).maybeSingle();
+      companyId = productRow?.company_id ?? null;
+      resolvedAdAccountId = productRow?.ad_account_id ?? null;
+    }
+    if (!companyId && ad_set_id) {
+      const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
+      companyId = adSetCompanyRow?.company_id ?? null;
+    }
+    if (!resolvedAdAccountId && ad_set_id) {
+      const { data: adSetRow } = await supabase.from('ad_sets').select('ad_account_id').eq('id', ad_set_id).maybeSingle();
+      resolvedAdAccountId = adSetRow?.ad_account_id ?? null;
+    }
+    if (!companyId) {
+      console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
+    }
+
+    // CAPI pixel/token: resolved per ad_account, same as the browser pixel,
+    // so a company running several buyers/pixels fires each order to the
+    // RIGHT one instead of one shared value. The access token comes from
+    // whichever buyer connected that specific ad account (meta_connections,
+    // via ad_accounts.meta_connection_id) -- not a separate credential to
+    // manage per pixel. Falls back to company_settings (a company-wide
+    // override, e.g. for a manually-added account with no OAuth connection),
+    // then the original global env vars for a company that's configured
+    // neither (keeps the one pre-multi-tenancy company working unchanged).
+    let capiPixelId: string | null = null;
+    let capiAccessToken: string | null = null;
+    if (resolvedAdAccountId) {
+      const { data: acctRow } = await supabase
+        .from('ad_accounts')
+        .select('meta_pixel_id, meta_connection_id')
+        .eq('id', resolvedAdAccountId)
+        .maybeSingle();
+      capiPixelId = acctRow?.meta_pixel_id ?? null;
+      if (acctRow?.meta_connection_id) {
+        const { data: connRow } = await supabase.from('meta_connections').select('access_token').eq('id', acctRow.meta_connection_id).maybeSingle();
+        capiAccessToken = connRow?.access_token ?? null;
+      }
+    }
+    if ((!capiPixelId || !capiAccessToken) && companyId) {
+      const { data: settings } = await supabase.from('company_settings').select('meta_pixel_id, meta_access_token').eq('company_id', companyId).maybeSingle();
+      if (!capiPixelId) capiPixelId = settings?.meta_pixel_id ?? null;
+      if (!capiAccessToken) capiAccessToken = settings?.meta_access_token ?? null;
+    }
+    if (!capiPixelId) capiPixelId = META_PIXEL_ID;
+    if (!capiAccessToken) capiAccessToken = META_ACCESS_TOKEN;
+
     let capiSuccess = false;
 
     // Send to Meta CAPI
-    if (META_ACCESS_TOKEN && META_PIXEL_ID) {
+    if (capiAccessToken && capiPixelId) {
       const capiPayload = {
         data: [
           {
@@ -101,7 +171,7 @@ Deno.serve(async (req: Request) => {
       };
 
       try {
-        const capiRes = await fetch(`${META_GRAPH_BASE}/${META_PIXEL_ID}/events?access_token=${META_ACCESS_TOKEN}`, {
+        const capiRes = await fetch(`${META_GRAPH_BASE}/${capiPixelId}/events?access_token=${capiAccessToken}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(capiPayload),
@@ -118,9 +188,6 @@ Deno.serve(async (req: Request) => {
         console.error("CAPI Network Error:", err);
       }
     }
-
-    // Insert into Supabase
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Convert empty string ad_set_id / creative_id to null for UUID columns
     let finalAdSetId = (ad_set_id && ad_set_id.trim() !== '') ? ad_set_id : null;
@@ -159,38 +226,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Which company this order belongs to, in a shared multi-tenant platform
-    // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
-    // product_id -- the reliable path, since every product belongs to exactly
-    // one company. Older/hand-built sales pages (e.g. sales-ginaris-herbal.html)
-    // predate that field and only ever send ad_set_id, so that's the fallback.
-    // If neither resolves, the order is left company_id = null: invisible to
-    // every dashboard until someone fixes it by hand, rather than guessing --
-    // see the migration's note on why that's the deliberately safe failure mode.
-    let companyId: string | null = null;
-    if (product_id) {
-      const { data: productRow } = await supabase.from('products').select('company_id').eq('id', product_id).maybeSingle();
-      companyId = productRow?.company_id ?? null;
-    }
-    if (!companyId && ad_set_id) {
-      const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
-      companyId = adSetCompanyRow?.company_id ?? null;
-    }
-    if (!companyId) {
-      console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
-    }
-
-    // Explicit buyer from the ad link (?buyer=TUNDE, passed through checkout)
-    // wins; otherwise the orders trigger inherits it from the ad set. Scoped
-    // to this order's own company -- buyer codes are only unique per company,
-    // not globally, once more than one company exists.
+    // Explicit buyer from the ad link (?buyer=<id>, passed through checkout)
+    // wins; otherwise the orders trigger inherits it from the ad set. The
+    // Order Forms tab generates links with the buyer's own id (already an
+    // opaque UUID -- no separate "code" for a customer-facing link to leak
+    // or for a buyer to mistype/guess someone else's). The short [CODE] used
+    // in ad set names is a different mechanism entirely (Meta ad set names
+    // need something human-typeable), so older/hand-built sales pages that
+    // still pass a code are supported as a fallback, not the primary path.
     let mediaBuyerId: string | null = null;
-    const buyerCode = (payload.buyer || payload.buyer_code || payload.utm_buyer) as string | undefined;
-    if (buyerCode && companyId) {
+    const buyerParam = (payload.buyer || payload.buyer_code || payload.utm_buyer) as string | undefined;
+    if (buyerParam && companyId) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(buyerParam.trim());
       const { data: buyerRow } = await supabase
         .from('media_buyers')
         .select('id')
-        .eq('code', buyerCode.trim().toUpperCase())
+        .eq(isUuid ? 'id' : 'code', isUuid ? buyerParam.trim() : buyerParam.trim().toUpperCase())
         .eq('company_id', companyId)
         .maybeSingle();
       mediaBuyerId = buyerRow?.id ?? null;
