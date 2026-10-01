@@ -3514,14 +3514,20 @@ async function renderLeaderboard(el) {
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 async function renderSettings(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
-  const [buyers, connections, existingAccounts, company, invites, teamMembers] = await Promise.all([
+  const [buyers, connections, existingAccounts, company, invites, teamMembers, waNumbers] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     sbQuery("meta_connections_public", "select=*&order=connected_at.desc").catch(() => []),
     sbQuery("ad_accounts", "select=id,meta_ad_account_id,meta_connection_id").catch(() => []),
     sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
     isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
     isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
+    sbQuery("buyer_whatsapp_numbers", "select=*&status=eq.active&order=created_at.asc").catch(() => []),
   ]);
+  const waByBuyer = new Map();
+  for (const n of waNumbers || []) {
+    if (!waByBuyer.has(n.media_buyer_id)) waByBuyer.set(n.media_buyer_id, []);
+    waByBuyer.get(n.media_buyer_id).push(n);
+  }
   // Most recent active connection per buyer, if any.
   const connByBuyer = new Map();
   for (const c of connections || []) {
@@ -3605,6 +3611,26 @@ async function renderSettings(el) {
               <button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="bvConnectMeta('${b.id}')">${c ? "Reconnect" : "Connect Meta"}</button>
               ${notImported.length ? `<button type="button" class="btn btn-a" style="padding:4px 8px;font-size:10px;" onclick='bvImportAdAccountsModal(${JSON.stringify(b.id)}, ${JSON.stringify(notImported)})'>Import ${notImported.length} account(s)</button>` : ""}
             </td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">WhatsApp numbers</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer runs their own WhatsApp number for lead-gen campaigns (any product) -- conversations land in the Conversations tab, switchable per number. Requires that buyer to Connect Meta above first (reuses the same login, no separate signup).</div>
+      ${!buyers?.length ? "" : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Numbers</th><th></th></tr>
+        ${buyers.map(b => {
+          const nums = waByBuyer.get(b.id) || [];
+          const hasMeta = connByBuyer.has(b.id);
+          return `<tr>
+            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
+            <td class="n">${nums.length
+              ? nums.map(n => `<div>${escH(n.nickname || n.display_phone_number || "Unnamed")} <span style="color:var(--muted);">${escH(n.display_phone_number || "")}</span> <button type="button" class="btn btn-g waRemoveBtn" data-id="${n.id}" data-buyer="${b.id}" style="padding:1px 6px;font-size:9px;">Remove</button></div>`).join("")
+              : `<span style="color:var(--muted);">None added</span>`}</td>
+            <td>${hasMeta ? `<button type="button" class="btn btn-a" style="padding:4px 8px;font-size:10px;" onclick='bvAddWhatsappModal(${JSON.stringify(b.id)})'>+ Add number</button>` : `<span style="color:var(--muted);font-size:10.5px;">Connect Meta first</span>`}</td>
           </tr>`;
         }).join("")}
       </table></div>`}
@@ -3779,6 +3805,13 @@ window.refreshBalances = async function() {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
     }
   });
+
+  document.querySelectorAll(".waRemoveBtn").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Remove this WhatsApp number? Past conversations stay, but new messages on it won't show up anywhere.")) return;
+    const r = await sbFn("manage-whatsapp-numbers", { action: "remove", media_buyer_id: btn.dataset.buyer, access_token: sessionData.access_token, id: btn.dataset.id });
+    if (r.error) { alert("Could not remove: " + r.error); return; }
+    renderSettings(el);
+  }));
 }
 
 window.deleteAccount = async function(id) {
@@ -3815,14 +3848,21 @@ window.bvImportAdAccountsModal = function(mediaBuyerId, accounts) {
     <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
     <h3 style="margin:0 0 4px;">Import ad accounts</h3>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Pick which accounts to start tracking. Their spend syncs in automatically from here on -- no token to manage.</div>
-    ${accounts.map((a, i) => `
-      <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
-        <input type="checkbox" class="importAcctChk" data-i="${i}" checked>
+    ${accounts.map((a, i) => {
+      // Meta account_status: 1 = ACTIVE, everything else (disabled, closed,
+      // pending review, ...) is not spending -- pre-check only the ones
+      // actually worth tracking instead of defaulting every discovered
+      // account (including old/unrelated test accounts) to checked.
+      const isActive = a.account_status === 1;
+      return `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;${isActive ? "" : "opacity:.6;"}">
+        <input type="checkbox" class="importAcctChk" data-i="${i}" ${isActive ? "checked" : ""}>
         <div>
-          <div style="font-weight:600;font-size:12.5px;">${escH(a.name)}</div>
+          <div style="font-weight:600;font-size:12.5px;">${escH(a.name)}${isActive ? "" : ` <span style="font-weight:400;color:var(--muted);">(inactive on Meta)</span>`}</div>
           <div style="font-size:11px;color:var(--muted);">act_${escH(a.account_id)}${a.business_name ? ` · ${escH(a.business_name)}` : ""} · ${escH(a.currency || "")}</div>
         </div>
-      </label>`).join("")}
+      </label>`;
+    }).join("")}
     <button type="button" class="btn btn-a btn-full" style="margin-top:14px;" id="importAcctBtn">Import selected</button>
     <div id="importAcctMsg"></div>
   </div>`;
@@ -3862,6 +3902,122 @@ window.bvImportAdAccountsModal = function(mediaBuyerId, accounts) {
       btn.textContent = "Import selected";
     }
   });
+};
+
+// WhatsApp number add/verify wizard -- list the buyer's WhatsApp Business
+// Accounts (via their already-connected Meta login), pick or add a number,
+// request a verification code, then verify it. All through
+// manage-whatsapp-numbers, which resolves the buyer's own Meta token
+// server-side rather than trusting anything the client sends.
+window.bvAddWhatsappModal = function(mediaBuyerId) {
+  const overlay = document.createElement("div");
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+
+  const st = { step: "wabas", wabas: [], wabaId: null, numbers: [], phoneNumberId: null };
+
+  async function call(action, extra = {}) {
+    return sbFn("manage-whatsapp-numbers", { action, media_buyer_id: mediaBuyerId, access_token: sessionData.access_token, ...extra });
+  }
+
+  function shell(title, body) {
+    overlay.innerHTML = `<div class="bv-modal">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <h3 style="margin:0 0 4px;">${title}</h3>
+      ${body}
+    </div>`;
+  }
+
+  async function renderWabas() {
+    shell("Add WhatsApp number", `<div style="font-size:12px;color:var(--muted);">Loading your WhatsApp Business Accounts…</div>`);
+    const r = await call("list_wabas");
+    if (r.error) { shell("Add WhatsApp number", `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`); return; }
+    st.wabas = r.wabas || [];
+    if (!st.wabas.length) {
+      shell("Add WhatsApp number", `<div style="font-size:12px;color:var(--text2);line-height:1.6;">No WhatsApp Business Account found under this buyer's connected Business Manager. Create one first in Meta Business Suite (Business Settings → Accounts → WhatsApp Accounts → Add), then try again.</div>`);
+      return;
+    }
+    shell("Add WhatsApp number", `
+      <div class="field"><label>WhatsApp Business Account</label>
+        <select id="waWabaSel">${st.wabas.map(w => `<option value="${escH(w.id)}">${escH(w.name)} — ${escH(w.business_name)}</option>`).join("")}</select>
+      </div>
+      <button type="button" class="btn btn-a btn-full" id="waNextBtn" style="margin-top:10px;">Next</button>
+    `);
+    document.getElementById("waNextBtn").addEventListener("click", () => {
+      st.wabaId = document.getElementById("waWabaSel").value;
+      renderNumbers();
+    });
+  }
+
+  async function renderNumbers() {
+    shell("Add WhatsApp number", `<div style="font-size:12px;color:var(--muted);">Loading numbers…</div>`);
+    const r = await call("list_numbers", { waba_id: st.wabaId });
+    if (r.error) { shell("Add WhatsApp number", `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`); return; }
+    st.numbers = r.numbers || [];
+    shell("Add WhatsApp number", `
+      ${st.numbers.length ? `
+      <div style="font-size:11.5px;color:var(--text2);margin-bottom:8px;">Existing numbers on this account:</div>
+      ${st.numbers.map(n => `
+        <label style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+          <input type="radio" name="waExisting" value="${escH(n.id)}">
+          <div style="font-size:12.5px;">${escH(n.display_phone_number || n.id)} <span style="color:var(--muted);">${escH(n.verified_name || "")} · ${escH(n.code_verification_status || "")}</span></div>
+        </label>`).join("")}
+      <button type="button" class="btn btn-a btn-full" id="waUseExistingBtn" style="margin-top:10px;">Use selected number</button>
+      <div style="text-align:center;color:var(--muted);font-size:11px;margin:12px 0;">— or add a new number —</div>` : ""}
+      <div class="fg">
+        <div class="field"><label>Country code</label><input id="waCc" placeholder="234" value="234"></div>
+        <div class="field"><label>Phone number (no country code)</label><input id="waPhone" placeholder="8012345678"></div>
+      </div>
+      <button type="button" class="btn btn-g btn-full" id="waAddNewBtn" style="margin-top:8px;">Add new number</button>
+      <div id="waMsg"></div>
+    `);
+    document.getElementById("waUseExistingBtn")?.addEventListener("click", () => {
+      const picked = document.querySelector('input[name="waExisting"]:checked');
+      if (!picked) return;
+      st.phoneNumberId = picked.value;
+      renderVerify();
+    });
+    document.getElementById("waAddNewBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("waAddNewBtn");
+      const msg = document.getElementById("waMsg");
+      const cc = document.getElementById("waCc").value.trim();
+      const phone = document.getElementById("waPhone").value.trim();
+      if (!cc || !phone) { msg.innerHTML = `<div class="msg err" style="display:block;">Enter both the country code and number.</div>`; return; }
+      btn.disabled = true; btn.textContent = "Adding…";
+      const r = await call("add_number", { waba_id: st.wabaId, cc, phone_number: phone });
+      if (r.error) { msg.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Add new number"; return; }
+      st.phoneNumberId = r.phone_number_id;
+      renderVerify();
+    });
+  }
+
+  async function renderVerify() {
+    shell("Verify number", `<div style="font-size:12px;color:var(--muted);">Sending a verification code…</div>`);
+    const sendRes = await call("request_code", { phone_number_id: st.phoneNumberId, code_method: "SMS" });
+    if (sendRes.error) { shell("Verify number", `<div class="msg err" style="display:block;">❌ ${escH(sendRes.error)}</div>`); return; }
+    shell("Verify number", `
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Code sent via SMS. Enter it below, plus a short name for this number so you can tell it apart from others.</div>
+      <div class="field"><label>Verification code</label><input id="waCode" placeholder="123456"></div>
+      <div class="field"><label>Nickname</label><input id="waNick" placeholder="e.g. Herbal Leads"></div>
+      <button type="button" class="btn btn-a btn-full" id="waVerifyBtn" style="margin-top:8px;">Verify &amp; save</button>
+      <div id="waMsg"></div>
+    `);
+    document.getElementById("waVerifyBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("waVerifyBtn");
+      const msg = document.getElementById("waMsg");
+      const code = document.getElementById("waCode").value.trim();
+      const nickname = document.getElementById("waNick").value.trim();
+      if (!code) { msg.innerHTML = `<div class="msg err" style="display:block;">Enter the code you received.</div>`; return; }
+      btn.disabled = true; btn.textContent = "Verifying…";
+      const r = await call("verify_code", { phone_number_id: st.phoneNumberId, waba_id: st.wabaId, code, nickname });
+      if (r.error) { msg.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Verify & save"; return; }
+      overlay.remove();
+      renderSettings(document.getElementById("mainContent"));
+    });
+  }
+
+  renderWabas();
 };
 
 // ── AI CHAT ───────────────────────────────────────────────────────────────────
