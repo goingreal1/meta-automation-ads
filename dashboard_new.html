@@ -448,6 +448,7 @@ textarea{resize:vertical;min-height:76px;}
     <div class="tab-btn active" data-tab="overview">Overview</div>
     <div class="tab-btn" data-tab="orders">Orders <span class="tab-badge" id="callFlagBadge" style="display:none">0</span></div>
     <div class="tab-btn" data-tab="calllogs">AI Call Logs</div>
+    <div class="tab-btn" data-tab="support">Support Queue <span class="tab-badge" id="supportFlagBadge" style="display:none">0</span></div>
     <div class="tab-btn" data-tab="riders">Delivery</div>
     <div class="tab-btn" data-tab="forms">Order Forms</div>
 
@@ -743,12 +744,15 @@ async function loadApprovalCount() {
 async function loadCallFlagCount() {
   try {
     const rows = await sbQuery("voice_calls", "needs_human=is.true&human_resolved_at=is.null&select=id");
-    const badge = document.getElementById("callFlagBadge");
-    if (rows?.length > 0) {
-      badge.textContent = rows.length;
-      badge.style.display = "inline";
-    } else {
-      badge.style.display = "none";
+    for (const id of ["callFlagBadge", "supportFlagBadge"]) {
+      const badge = document.getElementById(id);
+      if (!badge) continue;
+      if (rows?.length > 0) {
+        badge.textContent = rows.length;
+        badge.style.display = "inline";
+      } else {
+        badge.style.display = "none";
+      }
     }
   } catch {}
 }
@@ -836,6 +840,7 @@ async function render() {
     else if (activeTab === "products")  await renderProducts(c);
     else if (activeTab === "orders")    await renderOrders(c);
     else if (activeTab === "calllogs")  await renderCallLogs(c);
+    else if (activeTab === "support")   await renderSupportQueue(c);
     else if (activeTab === "riders")    await renderRiders(c);
     else if (activeTab === "forms")     await renderForms(c);
     else if (activeTab === "conversations") await renderConversations(c);
@@ -2476,6 +2481,59 @@ async function renderCallLogs(el) {
   });
 }
 
+// ── TAB: SUPPORT QUEUE ───────────────────────────────────────────────────────
+// Company-wide queue of AI calls flagged needs_human (medical question, wants
+// to cancel, asked for a person) -- unlike the Orders tab's per-order pill,
+// this is the one place meant to show every open escalation across every
+// buyer at once, for whoever's actually doing customer service that day.
+// RLS (orders_company_scoped / voice_calls_company_scoped) already does the
+// real access control: owner/admin/customer_care see the whole company,
+// a buyer only ever sees their own -- this view just surfaces it as a queue.
+async function renderSupportQueue(el) {
+  const role = window.myProfile?.role;
+  const isSupportRole = role === "owner" || role === "admin" || role === "customer_care";
+
+  const calls = await sbQuery(
+    "voice_calls",
+    "select=*,orders(customer_name,customer_phone,customer_address,customer_city,customer_state,product_name,order_value_naira,order_status)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=100"
+  ).catch(() => []);
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Support Queue</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    ${!isSupportRole ? `<div class="panel"><div style="font-size:12px;color:var(--text2);line-height:1.6;">
+      You're only seeing escalations tied to your own orders here -- the full company-wide queue is for owners, admins, and customer care. Ask your admin for a customer-care invite if that's what you need.
+    </div></div>` : ""}
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Open escalations</div><div class="ph-count">${calls?.length ?? 0} waiting on a human</div></div>
+      ${!calls?.length ? `<div class="empty"><div class="empty-ico">✅</div>Nothing waiting -- every AI-flagged call has been handled.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Order status</th><th>Why flagged</th><th>Flagged</th><th></th></tr>
+        ${calls.map(c => {
+          const o = c.orders;
+          return `<tr>
+            <td class="s n">${escH(o?.customer_name ?? "—")}</td>
+            <td class="n"><a href="tel:${escH(o?.customer_phone ?? "")}" style="color:inherit;">${escH(o?.customer_phone ?? "—")}</a></td>
+            <td class="n">${escH(o?.product_name ?? "—")}</td>
+            <td>${o?.order_status ? `<span class="pill ${o.order_status}">${escH(o.order_status)}</span>` : "—"}</td>
+            <td style="max-width:280px;font-size:12px;color:var(--text2);">${escH(c.summary || "No summary recorded.")}</td>
+            <td class="n">${ago(c.created_at)}</td>
+            <td><button type="button" class="btn btn-a supportResolve" data-cid="${c.id}" style="padding:3px 10px;font-size:10px;white-space:nowrap;">Resolve</button></td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>`;
+
+  document.querySelectorAll(".supportResolve").forEach(btn => btn.addEventListener("click", async e => {
+    const { error } = await supabaseClient.from("voice_calls")
+      .update({ human_resolved_at: new Date().toISOString() }).eq("id", e.target.dataset.cid);
+    if (error) { alert("Update failed: " + error.message); return; }
+    loadCallFlagCount();
+    renderSupportQueue(el);
+  }));
+}
+
 // ── TAB: DELIVERY (riders) ───────────────────────────────────────────────────
 async function renderRiders(el) {
   const [agents, orders] = await Promise.all([
@@ -3478,6 +3536,7 @@ async function renderSettings(el) {
           <div class="field"><label>Role *</label>
             <select id="inv_role">
               <option value="buyer">Media buyer</option>
+              <option value="customer_care">Customer care</option>
               <option value="admin">Admin</option>
               <option value="delivery_agent">Delivery agent</option>
             </select>
