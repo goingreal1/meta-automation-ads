@@ -25,8 +25,13 @@ const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function finish(status: "connected" | "error", detail: string, extra: Record<string, string> = {}) {
-  if (DASHBOARD_URL) {
-    const u = new URL(DASHBOARD_URL);
+  // DASHBOARD_URL missing its https:// scheme (e.g. set to just
+  // "yourdomain.com/dashboard_new.html") used to crash this with a raw
+  // "Invalid URL" 500 right after a successful connection was already saved
+  // -- the buyer saw an error page despite the connection having worked.
+  const dashboardUrl = DASHBOARD_URL && !/^https?:\/\//i.test(DASHBOARD_URL) ? `https://${DASHBOARD_URL}` : DASHBOARD_URL;
+  if (dashboardUrl) {
+    const u = new URL(dashboardUrl);
     u.searchParams.set("meta_oauth", status);
     u.searchParams.set("detail", detail);
     for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, v);
