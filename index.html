@@ -214,6 +214,15 @@ input:focus {
   const statusMsg = document.getElementById('statusMsg');
   const confirmField = document.getElementById('confirmField');
   const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
+  // Supabase's own confirmation email (sent automatically on signUp, separate
+  // from our invite email) redirects the browser back here on click -- by
+  // default to a generic Site URL with no idea an invite was in progress.
+  // Passing emailRedirectTo keeps the ?invite= token alive across that hop,
+  // so clicking "confirm your email" lands on the Join flow, not a blank
+  // "Set up your company" screen. Must be an absolute URL, and this exact
+  // origin+path must be allow-listed in Supabase Auth -> URL Configuration
+  // -> Redirect URLs, or Supabase silently ignores it.
+  const absoluteSetupUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + setupUrl;
 
   if (inviteToken) {
     document.getElementById('inviteBanner').style.display = 'block';
@@ -269,7 +278,7 @@ input:focus {
         // SIGNUP FLOW
         const confirmPass = document.getElementById('f_pass2').value;
         if (password !== confirmPass) throw new Error("Passwords don't match.");
-        const { data, error } = await supaClient.auth.signUp({ email, password });
+        const { data, error } = await supaClient.auth.signUp({ email, password, options: { emailRedirectTo: absoluteSetupUrl } });
         if (error) throw error;
         if (data.session) {
           statusMsg.textContent = "Account created. Redirecting...";
