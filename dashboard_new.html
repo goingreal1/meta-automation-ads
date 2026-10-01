@@ -3524,7 +3524,7 @@ async function bvShowBuyerProfile(row) {
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 async function renderSettings(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
-  const [buyers, connections, existingAccounts, company, invites, teamMembers, waNumbers] = await Promise.all([
+  const [buyers, connections, existingAccounts, company, invites, teamMembers, waNumbers, companySettings] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     sbQuery("meta_connections_public", "select=*&order=connected_at.desc").catch(() => []),
     sbQuery("ad_accounts", "select=id,meta_ad_account_id,meta_connection_id").catch(() => []),
@@ -3532,6 +3532,7 @@ async function renderSettings(el) {
     isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
     isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
     sbQuery("buyer_whatsapp_numbers", "select=*&status=eq.active&order=created_at.asc").catch(() => []),
+    isAdmin ? sbQuery("company_settings", "select=meta_business_id&limit=1").then(r => r?.[0]).catch(() => null) : null,
   ]);
   const waByBuyer = new Map();
   for (const n of waNumbers || []) {
@@ -3663,6 +3664,16 @@ async function renderSettings(el) {
           </tr>`;
         }).join("")}
       </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Partner-shared ad accounts</div><button class="btn btn-g" style="padding:3px 6px;font-size:10px;margin-left:6px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync</button></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">A buyer can share their own ad account with you directly from their own Meta Business Settings -- no login on this dashboard needed. Give them your Business ID below (Business Settings -> Partners -> "Give a partner access to your assets"), have them pick their ad account, then hit Sync here.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <div style="font-size:12.5px;">Your Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(companySettings?.meta_business_id || "connect Meta once first, then Sync")}</code></div>
+        ${companySettings?.meta_business_id ? `<button type="button" class="btn btn-g" style="padding:2px 6px;font-size:10px;" onclick="navigator.clipboard.writeText('${escH(companySettings.meta_business_id)}')">Copy</button>` : ""}
+      </div>
+      <div id="partnerSyncResult"></div>
     </div>
 
     <div class="panel">
@@ -3913,6 +3924,57 @@ window.bvConnectMeta = function(mediaBuyerId) {
 // happens automatically when they reconnect) without touching already-
 // imported ad accounts or past orders -- just frees up "Connect Meta" to be
 // clicked fresh, e.g. to test the OAuth flow under a different login/account.
+// Reads partner-shared ad accounts (a buyer shared their ad account with us
+// directly from their own Meta Business Settings) and either auto-imports
+// already-claimed ones or shows unclaimed shares for the admin to assign to
+// a buyer, once per business.
+window.bvSyncPartnerAccounts = async function() {
+  const btn = document.getElementById("syncPartnerBtn");
+  const result = document.getElementById("partnerSyncResult");
+  btn.disabled = true; btn.textContent = "Syncing…";
+  result.innerHTML = `<div class="msg"><span class="spin" style="width:10px;height:10px;border-width:1px;"></span> Checking partner shares…</div>`;
+  try {
+    const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
+    const buyers = await sbQuery("media_buyers", "select=id,name&order=name.asc").catch(() => []);
+    const buyerOpts = (buyers || []).map(b => `<option value="${b.id}">${escH(b.name)}</option>`).join("");
+
+    const claimedHtml = r.claimed?.length ? `
+      <div style="font-size:11.5px;color:var(--accent);margin-bottom:8px;">✅ Synced ${r.claimed.length} already-assigned business(es): ${r.claimed.map(c => `${escH(c.business_name)} → ${escH(c.media_buyer)}`).join(", ")}</div>` : "";
+
+    const unclaimedHtml = !r.unclaimed?.length ? "" : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Shared business</th><th>Ad accounts</th><th>Assign to</th><th></th></tr>
+        ${r.unclaimed.map((u, i) => `<tr>
+          <td class="s n">${escH(u.business_name)}</td>
+          <td>${u.ad_accounts.length}</td>
+          <td><select id="claimBuyer${i}" style="width:auto;"><option value="">Pick a buyer…</option>${buyerOpts}</select></td>
+          <td><button type="button" class="btn btn-a claimPartnerBtn" style="padding:3px 8px;font-size:10px;" data-i="${i}" data-bid="${escH(u.business_id)}" data-bname="${escH(u.business_name)}">Claim</button></td>
+        </tr>`).join("")}
+      </table></div>`;
+
+    result.innerHTML = claimedHtml + (unclaimedHtml || (!r.claimed?.length ? `<div style="color:var(--muted);font-size:11.5px;">No partner shares found yet.</div>` : ""));
+
+    document.querySelectorAll(".claimPartnerBtn").forEach(cb => cb.addEventListener("click", async () => {
+      const i = cb.dataset.i;
+      const mediaBuyerId = document.getElementById(`claimBuyer${i}`).value;
+      if (!mediaBuyerId) { alert("Pick a buyer first."); return; }
+      cb.disabled = true; cb.textContent = "Claiming…";
+      try {
+        await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "claim", business_id: cb.dataset.bid, business_name: cb.dataset.bname, media_buyer_id: mediaBuyerId });
+        await loadAccounts();
+        bvSyncPartnerAccounts();
+      } catch (err) {
+        alert("Could not claim: " + err.message);
+        cb.disabled = false; cb.textContent = "Claim";
+      }
+    }));
+  } catch (err) {
+    result.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "↻ Sync";
+  }
+};
+
 window.bvDisconnectMeta = async function(mediaBuyerId, buyerName) {
   if (!confirm(`Disconnect Meta for ${buyerName || "this buyer"}? Already-imported ad accounts stay as they are -- this only revokes the login, so "Connect Meta" can be used again.`)) return;
   try {
