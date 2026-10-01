@@ -3604,9 +3604,9 @@ async function renderSettings(el) {
               <option value="delivery_agent">Delivery agent</option>
             </select>
           </div>
-          <div class="field"><label>Email (optional, just a label)</label><input id="inv_email" type="email" placeholder="teammate@example.com"></div>
+          <div class="field"><label>Email *</label><input id="inv_email" type="email" required placeholder="teammate@example.com"></div>
         </div>
-        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">+ Generate invite link</button>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">+ Send invite</button>
         <div id="inviteMsg"></div>
       </form>
       ${invites?.length ? `
@@ -3808,12 +3808,20 @@ window.refreshBalances = async function() {
     e.preventDefault();
     const msg = document.getElementById("inviteMsg");
     const role = document.getElementById("inv_role").value;
-    const email = document.getElementById("inv_email").value.trim() || null;
+    const email = document.getElementById("inv_email").value.trim();
+    if (!email) { msg.innerHTML = `<div class="msg err">❌ Email is required.</div>`; return; }
     const token = crypto.randomUUID().replace(/-/g, "");
     const { error } = await supabaseClient.from("company_invites").insert({ role, email, token });
     if (error) { msg.innerHTML = `<div class="msg err">❌ Could not create invite: ${error.message}</div>`; return; }
     const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${token}`;
-    msg.innerHTML = `<div class="msg ok">✅ Invite created. <button type="button" class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="navigator.clipboard.writeText('${link}')">Copy link</button></div>`;
+    msg.innerHTML = `<div class="msg ok">Sending email...</div>`;
+    try {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      const sendRes = await sbFn("send-company-invite", { access_token: session.access_token, token, email });
+      msg.innerHTML = `<div class="msg ok">✅ Invite emailed to ${escH(email)}. <button type="button" class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="navigator.clipboard.writeText('${link}')">Copy link too</button></div>`;
+    } catch (sendErr) {
+      msg.innerHTML = `<div class="msg err">⚠️ Invite created but the email couldn't be sent (${escH(sendErr.message || "unknown error")}). <button type="button" class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="navigator.clipboard.writeText('${link}')">Copy link instead</button></div>`;
+    }
     renderSettings(el);
   });
 
