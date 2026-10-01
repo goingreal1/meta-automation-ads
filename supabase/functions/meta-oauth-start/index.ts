@@ -14,6 +14,15 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_OAUTH_STATE_SECRET = Deno.env.get("META_OAUTH_STATE_SECRET") ?? "";
+// Set once a "Facebook Login for Business" configuration exists on the app
+// (App Dashboard -> Facebook Login for Business -> Configurations). Once an
+// app has that product added, Facebook's classic scope-string dialog
+// ("Feature unavailable: Facebook Login is currently unavailable for this
+// app...") gets rejected for non-tester logins -- the config_id-based dialog
+// below is what Meta now expects instead. The configuration itself (set up
+// in the Meta dashboard, not here) defines which permissions/assets it asks
+// for, so SCOPES below is unused whenever this is set.
+const META_LOGIN_CONFIG_ID = Deno.env.get("META_LOGIN_CONFIG_ID") ?? "";
 
 // ads_read: pull spend/insights for the accounts they grant. business_management:
 // list accounts, incl. ones held under a Business Manager rather than personally.
@@ -71,8 +80,12 @@ Deno.serve(async (req: Request) => {
   dialogUrl.searchParams.set("client_id", META_APP_ID);
   dialogUrl.searchParams.set("redirect_uri", redirectUri);
   dialogUrl.searchParams.set("state", state);
-  dialogUrl.searchParams.set("scope", SCOPES);
   dialogUrl.searchParams.set("response_type", "code");
+  if (META_LOGIN_CONFIG_ID) {
+    dialogUrl.searchParams.set("config_id", META_LOGIN_CONFIG_ID);
+  } else {
+    dialogUrl.searchParams.set("scope", SCOPES);
+  }
 
   return new Response(null, { status: 302, headers: { Location: dialogUrl.toString() } });
 });
