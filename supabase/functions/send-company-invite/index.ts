@@ -1,9 +1,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Emails a teammate their invite link via Resend, instead of an admin
-// manually copy-pasting it out of the dashboard. Called right after the
-// dashboard inserts a company_invites row:
+// Emails a teammate a one-click invite link via Resend. Unlike the old
+// version of this function (which just linked to index.html's normal
+// signup form), this now creates the auth user server-side via
+// auth.admin.generateLink and emails Supabase's own magic-link action_link
+// directly -- so an invited teammate:
+//   - never sees Supabase's own "confirm your email" email (there isn't
+//     one; generateLink only creates the account + a one-time link, it
+//     never sends mail itself)
+//   - lands already signed in on setup-company.html, where they pick a
+//     name and password once and they're done
+// Confirmation email is still required for a brand-new company's first
+// admin (self-serve signup on index.html) -- that's a different, intentional
+// path. This function is only for inviting someone INTO an existing company.
 //
 //   POST { access_token, token, email }
 //     access_token -- the caller's own Supabase session token (proves they're
@@ -17,8 +27,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
-// Where the invite link points -- e.g. https://yourdomain.com/index.html
-const DASHBOARD_LOGIN_URL = Deno.env.get("DASHBOARD_LOGIN_URL") ?? "";
+// The site's own origin, no trailing slash and no filename -- e.g.
+// https://metaautomationads.vercel.app -- used to build the setup-company.html
+// redirect that Supabase's magic link lands on after it signs the invitee in.
+const DASHBOARD_BASE_URL = (Deno.env.get("DASHBOARD_BASE_URL") ?? "").replace(/\/+$/, "");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -37,8 +49,8 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
-  if (!RESEND_API_KEY || !RESEND_FROM_EMAIL || !DASHBOARD_LOGIN_URL) {
-    return json({ error: "Email sending isn't configured yet -- RESEND_API_KEY, RESEND_FROM_EMAIL and DASHBOARD_LOGIN_URL need to be set as Supabase edge function secrets." }, 500);
+  if (!RESEND_API_KEY || !RESEND_FROM_EMAIL || !DASHBOARD_BASE_URL) {
+    return json({ error: "Email sending isn't configured yet -- RESEND_API_KEY, RESEND_FROM_EMAIL and DASHBOARD_BASE_URL need to be set as Supabase edge function secrets." }, 500);
   }
 
   try {
@@ -66,8 +78,24 @@ Deno.serve(async (req: Request) => {
 
     const { data: company } = await supabase.from("companies").select("name").eq("id", invite.company_id).maybeSingle();
     const companyName = company?.name || "the team";
-    const link = `${DASHBOARD_LOGIN_URL}?invite=${token}`;
+    const joinUrl = `${DASHBOARD_BASE_URL}/setup-company.html?invite=${encodeURIComponent(token)}`;
     const roleLabel = ({ buyer: "Media Buyer", admin: "Admin", customer_care: "Customer Care", delivery_agent: "Delivery Agent" } as Record<string, string>)[invite.role] || invite.role;
+
+    // Creates the auth user (if they don't already have one) and returns a
+    // one-time link that signs them in the moment it's clicked -- no
+    // separate "confirm your email" step, because generateLink never sends
+    // mail itself; we're the only email they get.
+    let linkResult = await supabase.auth.admin.generateLink({ type: "invite", email, options: { redirectTo: joinUrl } });
+    if (linkResult.error && /already.*registered|already.*exist/i.test(linkResult.error.message || "")) {
+      // They already have an account (e.g. re-inviting someone, or they
+      // signed up some other way) -- a magic link signs an existing user
+      // in instead of trying to create a duplicate.
+      linkResult = await supabase.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo: joinUrl } });
+    }
+    if (linkResult.error || !linkResult.data?.properties?.action_link) {
+      throw new Error(linkResult.error?.message || "Could not generate a sign-in link for this invite.");
+    }
+    const link = linkResult.data.properties.action_link;
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -79,9 +107,10 @@ Deno.serve(async (req: Request) => {
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
             <h2 style="margin:0 0 12px;">You're invited to join ${companyName}</h2>
-            <p style="color:#444;">You've been invited as a <strong>${roleLabel}</strong>. Click below to set up your account and password.</p>
-            <p style="margin:24px 0;"><a href="${link}" style="background:#1a9e75;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Set up your account</a></p>
+            <p style="color:#444;">You've been invited as a <strong>${roleLabel}</strong>. Click below to sign in and set up your name and password.</p>
+            <p style="margin:24px 0;"><a href="${link}" style="background:#1a9e75;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">Accept invite</a></p>
             <p style="color:#888;font-size:12px;">Or paste this link into your browser: ${link}</p>
+            <p style="color:#aaa;font-size:11px;">This link is one-time use and expires after a while -- if it's expired, ask whoever invited you to send a new one.</p>
           </div>
         `,
       }),

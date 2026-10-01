@@ -66,6 +66,8 @@ function render(session) {
       <div id="msg" class="msg"></div>
       <form id="f">
         <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
+        <div class="field"><label>Set a password</label><input id="pass" type="password" placeholder="••••••••" required minlength="6"></div>
+        <div class="field"><label>Confirm password</label><input id="pass2" type="password" placeholder="••••••••" required minlength="6"></div>
         <button type="submit" class="btn" id="btn">Join team</button>
       </form>`;
     document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submit(session, "join"); });
@@ -95,6 +97,18 @@ async function submit(session, mode) {
   else body.company_name = document.getElementById("company_name").value.trim();
 
   try {
+    // An invited teammate arrives here already signed in (via Supabase's
+    // magic-link invite email), but with no password yet -- they only ever
+    // typed one here, once. A self-serve company creator already set theirs
+    // on index.html, so there's nothing to do in that branch.
+    if (mode === "join") {
+      const pass = document.getElementById("pass").value;
+      const pass2 = document.getElementById("pass2").value;
+      if (pass !== pass2) throw new Error("Passwords don't match.");
+      const { error: passErr } = await sb.auth.updateUser({ password: pass });
+      if (passErr) throw passErr;
+    }
+
     const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
