@@ -85,30 +85,61 @@ Deno.serve(async (req: Request) => {
     // Resolved up front (not just before the insert) because the CAPI pixel
     // config below also needs to know which company's pixel to fire to.
     let companyId: string | null = null;
+    // The order's own ad_accounts row, resolved the exact same way
+    // get-product-public resolves it for the browser pixel (product_id ->
+    // products.ad_account_id, falling back to ad_set_id -> ad_sets.ad_account_id
+    // for older hand-built sales pages that predate product_id). Kept in sync
+    // with that lookup deliberately: the server CAPI event and the browser
+    // pixel event share one event_id for Meta's dedup, so they MUST fire to
+    // the same pixel or that dedup (and match quality) breaks.
+    let resolvedAdAccountId: string | null = null;
     if (product_id) {
-      const { data: productRow } = await supabase.from('products').select('company_id').eq('id', product_id).maybeSingle();
+      const { data: productRow } = await supabase.from('products').select('company_id, ad_account_id').eq('id', product_id).maybeSingle();
       companyId = productRow?.company_id ?? null;
+      resolvedAdAccountId = productRow?.ad_account_id ?? null;
     }
     if (!companyId && ad_set_id) {
       const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
       companyId = adSetCompanyRow?.company_id ?? null;
     }
+    if (!resolvedAdAccountId && ad_set_id) {
+      const { data: adSetRow } = await supabase.from('ad_sets').select('ad_account_id').eq('id', ad_set_id).maybeSingle();
+      resolvedAdAccountId = adSetRow?.ad_account_id ?? null;
+    }
     if (!companyId) {
       console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
     }
 
-    // CAPI pixel/token: each company fires to its own pixel (company_settings),
-    // never a shared global one -- two companies sharing META_PIXEL_ID would mean
-    // company B's purchases get attributed to company A's ad account. Falls back
-    // to the original global env vars only for a company that hasn't configured
-    // its own yet (keeps the one pre-multi-tenancy company working unchanged).
-    let capiPixelId = META_PIXEL_ID;
-    let capiAccessToken = META_ACCESS_TOKEN;
-    if (companyId) {
-      const { data: settings } = await supabase.from('company_settings').select('meta_pixel_id, meta_access_token').eq('company_id', companyId).maybeSingle();
-      if (settings?.meta_pixel_id) capiPixelId = settings.meta_pixel_id;
-      if (settings?.meta_access_token) capiAccessToken = settings.meta_access_token;
+    // CAPI pixel/token: resolved per ad_account, same as the browser pixel,
+    // so a company running several buyers/pixels fires each order to the
+    // RIGHT one instead of one shared value. The access token comes from
+    // whichever buyer connected that specific ad account (meta_connections,
+    // via ad_accounts.meta_connection_id) -- not a separate credential to
+    // manage per pixel. Falls back to company_settings (a company-wide
+    // override, e.g. for a manually-added account with no OAuth connection),
+    // then the original global env vars for a company that's configured
+    // neither (keeps the one pre-multi-tenancy company working unchanged).
+    let capiPixelId: string | null = null;
+    let capiAccessToken: string | null = null;
+    if (resolvedAdAccountId) {
+      const { data: acctRow } = await supabase
+        .from('ad_accounts')
+        .select('meta_pixel_id, meta_connection_id')
+        .eq('id', resolvedAdAccountId)
+        .maybeSingle();
+      capiPixelId = acctRow?.meta_pixel_id ?? null;
+      if (acctRow?.meta_connection_id) {
+        const { data: connRow } = await supabase.from('meta_connections').select('access_token').eq('id', acctRow.meta_connection_id).maybeSingle();
+        capiAccessToken = connRow?.access_token ?? null;
+      }
     }
+    if ((!capiPixelId || !capiAccessToken) && companyId) {
+      const { data: settings } = await supabase.from('company_settings').select('meta_pixel_id, meta_access_token').eq('company_id', companyId).maybeSingle();
+      if (!capiPixelId) capiPixelId = settings?.meta_pixel_id ?? null;
+      if (!capiAccessToken) capiAccessToken = settings?.meta_access_token ?? null;
+    }
+    if (!capiPixelId) capiPixelId = META_PIXEL_ID;
+    if (!capiAccessToken) capiAccessToken = META_ACCESS_TOKEN;
 
     let capiSuccess = false;
 
