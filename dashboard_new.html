@@ -554,7 +554,7 @@ async function init() {
   // A brand-new signup lands here before ever visiting setup-company.html
   // (e.g. they bookmarked this page) -- send them there instead of showing
   // a dashboard with nothing in it because every RLS policy denies them.
-  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name").eq("id", session.user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id").eq("id", session.user.id).maybeSingle();
   if (!profile?.company_id) {
     window.location.href = "setup-company.html";
     return;
@@ -2554,6 +2554,16 @@ async function renderForms(el) {
   ]);
   if (!formsSelectedProduct && prods?.length) formsSelectedProduct = prods[0].id;
   const product = prods?.find(p => p.id === formsSelectedProduct);
+
+  // A buyer only ever builds links for themselves -- the picker that lets
+  // anyone tag any buyer's code is an owner/admin-only tool (e.g. building a
+  // link on a buyer's behalf, or leaving it unattributed). Without this, a
+  // buyer could generate a link carrying a teammate's code and claim their
+  // orders/ROAS instead of their own.
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const myBuyer = (buyers || []).find(b => b.id === window.myProfile?.media_buyer_id);
+  if (!isAdmin) formsSelectedBuyer = myBuyer?.code || "";
+
   const baseUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "order.html";
   const link = product ? `${baseUrl}?product=${product.id}${formsSelectedBuyer ? `&buyer=${encodeURIComponent(formsSelectedBuyer)}` : ""}` : "";
   const embedSnippet = product ? `<iframe src="${link}" style="width:100%;max-width:480px;height:720px;border:0;" title="${escH(product.product_name)} order form"></iframe>` : "";
@@ -2578,10 +2588,12 @@ async function renderForms(el) {
           </select>
         </div>
         <div class="field"><label>Attribute orders to</label>
+          ${isAdmin ? `
           <select id="formsBuyerSel">
             <option value="">No buyer (unattributed)</option>
             ${(buyers || []).map(b => `<option value="${escH(b.code)}" ${b.code === formsSelectedBuyer ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}
-          </select>
+          </select>` : `
+          <input value="${myBuyer ? escH(myBuyer.name) + " [" + escH(myBuyer.code) + "]" : "Not linked to a media buyer -- ask your admin"}" disabled style="opacity:.75;">`}
         </div>
       </div>
 

@@ -71,10 +71,49 @@ Deno.serve(async (req: Request) => {
     const hashedFn = await hashData(firstName);
     const hashedLn = await hashData(lastName);
 
+    // Insert into Supabase
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Which company this order belongs to, in a shared multi-tenant platform
+    // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
+    // product_id -- the reliable path, since every product belongs to exactly
+    // one company. Older/hand-built sales pages (e.g. sales-ginaris-herbal.html)
+    // predate that field and only ever send ad_set_id, so that's the fallback.
+    // If neither resolves, the order is left company_id = null: invisible to
+    // every dashboard until someone fixes it by hand, rather than guessing --
+    // see the migration's note on why that's the deliberately safe failure mode.
+    // Resolved up front (not just before the insert) because the CAPI pixel
+    // config below also needs to know which company's pixel to fire to.
+    let companyId: string | null = null;
+    if (product_id) {
+      const { data: productRow } = await supabase.from('products').select('company_id').eq('id', product_id).maybeSingle();
+      companyId = productRow?.company_id ?? null;
+    }
+    if (!companyId && ad_set_id) {
+      const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
+      companyId = adSetCompanyRow?.company_id ?? null;
+    }
+    if (!companyId) {
+      console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
+    }
+
+    // CAPI pixel/token: each company fires to its own pixel (company_settings),
+    // never a shared global one -- two companies sharing META_PIXEL_ID would mean
+    // company B's purchases get attributed to company A's ad account. Falls back
+    // to the original global env vars only for a company that hasn't configured
+    // its own yet (keeps the one pre-multi-tenancy company working unchanged).
+    let capiPixelId = META_PIXEL_ID;
+    let capiAccessToken = META_ACCESS_TOKEN;
+    if (companyId) {
+      const { data: settings } = await supabase.from('company_settings').select('meta_pixel_id, meta_access_token').eq('company_id', companyId).maybeSingle();
+      if (settings?.meta_pixel_id) capiPixelId = settings.meta_pixel_id;
+      if (settings?.meta_access_token) capiAccessToken = settings.meta_access_token;
+    }
+
     let capiSuccess = false;
 
     // Send to Meta CAPI
-    if (META_ACCESS_TOKEN && META_PIXEL_ID) {
+    if (capiAccessToken && capiPixelId) {
       const capiPayload = {
         data: [
           {
@@ -101,7 +140,7 @@ Deno.serve(async (req: Request) => {
       };
 
       try {
-        const capiRes = await fetch(`${META_GRAPH_BASE}/${META_PIXEL_ID}/events?access_token=${META_ACCESS_TOKEN}`, {
+        const capiRes = await fetch(`${META_GRAPH_BASE}/${capiPixelId}/events?access_token=${capiAccessToken}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(capiPayload),
@@ -118,9 +157,6 @@ Deno.serve(async (req: Request) => {
         console.error("CAPI Network Error:", err);
       }
     }
-
-    // Insert into Supabase
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Convert empty string ad_set_id / creative_id to null for UUID columns
     let finalAdSetId = (ad_set_id && ad_set_id.trim() !== '') ? ad_set_id : null;
@@ -157,27 +193,6 @@ Deno.serve(async (req: Request) => {
       } else {
         finalAdSetId = null;
       }
-    }
-
-    // Which company this order belongs to, in a shared multi-tenant platform
-    // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
-    // product_id -- the reliable path, since every product belongs to exactly
-    // one company. Older/hand-built sales pages (e.g. sales-ginaris-herbal.html)
-    // predate that field and only ever send ad_set_id, so that's the fallback.
-    // If neither resolves, the order is left company_id = null: invisible to
-    // every dashboard until someone fixes it by hand, rather than guessing --
-    // see the migration's note on why that's the deliberately safe failure mode.
-    let companyId: string | null = null;
-    if (product_id) {
-      const { data: productRow } = await supabase.from('products').select('company_id').eq('id', product_id).maybeSingle();
-      companyId = productRow?.company_id ?? null;
-    }
-    if (!companyId && ad_set_id) {
-      const { data: adSetCompanyRow } = await supabase.from('ad_sets').select('company_id').eq('id', ad_set_id).maybeSingle();
-      companyId = adSetCompanyRow?.company_id ?? null;
-    }
-    if (!companyId) {
-      console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
     }
 
     // Explicit buyer from the ad link (?buyer=TUNDE, passed through checkout)
