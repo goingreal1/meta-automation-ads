@@ -44,14 +44,43 @@ in one place instead of three.
 
 ---
 
-## 2. The model you described, confirmed
+## 2. The model, corrected
 
-One shared WhatsApp number **per company** (not per buyer) — any media buyer at that
-company can run a WhatsApp lead-gen campaign for any product, and every resulting
-conversation lands in one company-wide Conversations tab, attributed to whichever
-buyer's ad drove it (same pattern orders already use: the ad set tells you the buyer,
-not the phone number). An owner/admin adds the number once in Settings; every buyer's
-lead campaigns use it automatically.
+Not a shared company number — **each media buyer has their own WhatsApp number**,
+same as each buyer already has their own Meta ad account connection. A conversation's
+buyer attribution comes from whose number received it, not from parsing the ad.
+`media_buyers` gets its own `whatsapp_phone_number_id`/`whatsapp_access_token`
+columns (not `company_settings` — that was the wrong table for a per-buyer value).
+
+**Solo owner, no separate buyers — the real gap this exposes.** Today, `media_buyers`
+rows only get created when someone joins via a buyer invite (`complete-signup`'s
+`ensureMediaBuyer`, only called for `invite.role === "buyer"`). A solo owner who signs
+up and runs their own ads never gets a `media_buyers` row at all — meaning right now a
+solo owner has nowhere to attach their own WhatsApp number, and their own orders
+already silently fall into "Unattributed" on the Leaderboard for the same reason. Fix:
+`complete-signup`'s `create` mode (new company) calls the same `ensureMediaBuyer` the
+owner's own account gets, same as any buyer would. An owner is then just a buyer with
+elevated permissions, not a separate concept with no buyer identity.
+
+**Widen the existing Meta OAuth connection to cover WhatsApp (and page comments) too**
+— one buyer's single "Connect Meta" token covering ad accounts, their WhatsApp number,
+and replying to comments on their own ads, instead of three separate connections.
+Concretely: `meta-oauth-start`'s scope grows from `ads_read,business_management` to
+add `whatsapp_business_management`, `whatsapp_business_messaging`,
+`pages_show_list`, `pages_read_engagement`, `pages_manage_engagement` (comment
+replies need the last one). `meta-oauth-callback` additionally looks up the
+connected Business's WhatsApp Business Account + phone number and saves it straight
+to that buyer's `media_buyers` row — no separate manual-entry step needed for buyers
+who connect this way.
+
+**One real constraint to flag before building this:** `whatsapp_business_management`
+and `pages_manage_engagement` are Meta "Advanced Access" scopes — they work fine for
+you and anyone added as a tester/admin on your Meta app today, but once a real
+outside company tries to connect their own Business Manager, Meta requires an **App
+Review** submission (use-case description, screen recordings, business verification)
+before it'll grant those scopes to a non-tester. This doesn't block building it now —
+it blocks a *stranger* from completing the OAuth flow until that review is done. Worth
+knowing going in, not a surprise later.
 
 ---
 
@@ -63,30 +92,29 @@ whatever Lunessa ad accounts/campaigns/ad sets exist) to that `company_id` inste
 yours. This is a data migration, not a code change — I'll confirm the exact row counts
 with you before running it, same as I would for any destructive-feeling operation.
 
-**Step 1 — Generalize the schema.** Rename away from the Beoliv-specific names
-(`beoliv_conversations` → `conversations`, etc. — or keep the table names and just stop
-treating them as Beoliv-only, your call) and add two columns that don't exist today:
-`media_buyer_id` (who gets attribution, resolved from the ad the lead came from, same
-as `orders.media_buyer_id`) and `product_id` (which product/campaign this conversation
-is about, replacing the current hardcoded-ad-id filter hack with a real column).
+**Step 1 — Rename and de-Beoliv the schema, keep it purely a message thread.**
+`beoliv_conversations`/`beoliv_messages`/`beoliv_customers` → `conversations`/
+`messages`/`conversation_customers` (or similar). This stays a read+reply message
+thread with a simple state (`NEW`/`ENGAGED`/`IN_QA`/`COMPLETED`, already exists) — it
+does **not** grow an order-style status workflow (pending → valid → delivered). A
+WhatsApp lead is a conversation, not a transaction; if it turns into a sale, that's a
+separate `orders` row, same as it would be from any other channel. Add `media_buyer_id`
+(set directly from which buyer's number the message arrived on — no ad-parsing needed
+once numbers are per-buyer) and `product_id` (which product this lead is about,
+replacing the current hardcoded-ad-id filter hack).
 
-**Step 2 — Settings UI for the company's WhatsApp number.** A form next to where Pixel
-& Tracking already lives, writing to `company_settings.whatsapp_phone_number_id` /
-`whatsapp_access_token`. Two ways to get those values in:
-- **Manual entry** (simplest): owner pastes the phone number ID + token from their own
-  Meta Business dashboard. Works today, zero new OAuth scope.
-- **Via the existing "Connect Meta" OAuth flow**: add `whatsapp_business_management` to
-  `meta-oauth-start`'s scope, and have `meta-oauth-callback` list the connected
-  Business Manager's WhatsApp Business Accounts/numbers so the owner picks one instead
-  of copy-pasting IDs. Nicer, but it's new OAuth surface to get right — I'd ship manual
-  entry first and upgrade to this after, not block on it.
+**Step 2 — `media_buyers` gets its own WhatsApp fields**, filled in either by the
+widened OAuth connect flow or manually in Settings (under each buyer's own row, not a
+company-wide form) as a fallback for a buyer who connects a WhatsApp number Meta's
+OAuth can't yet see. Also: `complete-signup`'s `create` mode gives a new company's
+owner their own `media_buyers` row (the solo-owner fix from Section 2).
 
 **Step 3 — Rewrite the 6 WhatsApp functions** (`send-whatsapp-message`,
-`-media`, `-flow`, `-buttons`, `-template`, `handle-whatsapp-reply`) to resolve
-`company_id` from the conversation/order context and pull that company's own
-WhatsApp credentials from `company_settings` instead of the hardcoded Beoliv env vars
-— same `resolveCallConfig`-style fallback pattern `place-order-call` already uses for
-ElevenLabs, so the one company already running this keeps working with zero config
+`-media`, `-flow`, `-buttons`, `-template`, `handle-whatsapp-reply`) to resolve which
+*buyer's* number a conversation belongs to and pull that buyer's own WhatsApp
+credentials from `media_buyers` instead of the hardcoded Beoliv env vars — same
+`resolveCallConfig`-style fallback pattern `place-order-call` already uses for
+ElevenLabs, so the one buyer already running this keeps working with zero config
 changes.
 
 **Step 4 — `submit-website-lead`**: same company_id-resolution fix as `receive-order`
@@ -108,9 +136,13 @@ here. Flagging that as the next phase after this one.
 
 1. **Confirm Step 0** — OK to create a separate company for Lunessa and move its 140
    conversations (+ any Lunessa ad accounts/campaigns I find) out of your company?
-2. **Table naming** — rename `beoliv_*` to generic names, or keep the names and just
-   stop treating them as Beoliv-only?
-3. **Settings UI for WhatsApp number** — manual entry now (fast), or wait and build the
-   OAuth-driven picker from the start?
+2. **OAuth scope widening, now or after?** Adding `whatsapp_business_management` +
+   `pages_manage_engagement` to the Connect Meta flow is the "one token for
+   everything" version you want, but real non-tester companies can't complete it
+   until Meta's App Review approves those scopes for your app. I'd build the schema
+   (Steps 1–2) and manual per-buyer entry now so the feature works today, then widen
+   OAuth once App Review is in motion — rather than blocking this whole phase on a
+   review that can take days-to-weeks. OK with that split, or do you want to kick off
+   App Review first and sequence around it?
 
 Say go and I'll start at Step 0.
