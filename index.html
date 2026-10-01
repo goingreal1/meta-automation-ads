@@ -186,6 +186,9 @@ input:focus {
     <div class="switch">
       <span id="switchText">Don't have an account? <a href="#" id="switchMode">Sign up</a></span>
     </div>
+    <div class="switch" id="forgotWrap" style="margin-top:8px;">
+      <a href="#" id="forgotLink">Forgot password?</a>
+    </div>
   </div>
 </div>
 
@@ -227,9 +230,27 @@ input:focus {
   if (inviteToken) {
     document.getElementById('inviteBanner').style.display = 'block';
     document.querySelector('.switch').style.display = 'none';
+    document.getElementById('forgotWrap').style.display = 'none';
     confirmField.style.display = 'block';
     authBtn.textContent = 'Sign Up';
   }
+
+  const absoluteResetUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'reset-password.html';
+  document.getElementById('forgotLink').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('f_email').value.trim();
+    if (!email) { statusMsg.textContent = 'Enter your email above first, then click "Forgot password?".'; statusMsg.className = 'msg err'; return; }
+    statusMsg.className = 'msg';
+    try {
+      const { error } = await supaClient.auth.resetPasswordForEmail(email, { redirectTo: absoluteResetUrl });
+      if (error) throw error;
+      statusMsg.textContent = 'If an account exists for that email, a password reset link is on its way.';
+      statusMsg.className = 'msg ok';
+    } catch (err) {
+      statusMsg.textContent = err.message;
+      statusMsg.className = 'msg err';
+    }
+  });
 
   // Check if already logged in
   async function checkSession() {
