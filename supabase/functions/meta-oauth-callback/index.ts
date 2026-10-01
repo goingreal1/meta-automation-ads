@@ -102,8 +102,18 @@ Deno.serve(async (req: Request) => {
     // never has two "active" tokens to choose between for one buyer.
     await supabase.from("meta_connections").update({ status: "revoked" }).eq("media_buyer_id", mediaBuyerId).eq("status", "active");
 
+    // company_id has no useful default here -- this insert runs under the
+    // service role (no auth.uid()), not the buyer's own session, so
+    // current_company_id() can't resolve it automatically the way it does
+    // for a client-side insert. Resolved explicitly instead: without it,
+    // every RLS policy that scopes meta_connections by company (Settings'
+    // "Connected as ..." display, the WhatsApp number wizard's "are you
+    // connected" check) silently treats this buyer as never having connected.
+    const { data: buyerRow } = await supabase.from("media_buyers").select("company_id").eq("id", mediaBuyerId).maybeSingle();
+
     const { data: connection, error } = await supabase.from("meta_connections").insert({
       media_buyer_id: mediaBuyerId,
+      company_id: buyerRow?.company_id ?? null,
       fb_user_id: me.id,
       fb_user_name: me.name ?? null,
       access_token: accessToken,

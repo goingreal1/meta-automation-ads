@@ -2618,8 +2618,13 @@ async function renderForms(el) {
   // orders/ROAS instead of their own.
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myBuyer = (buyers || []).find(b => b.id === window.myProfile?.media_buyer_id);
-  if (!isAdmin) formsSelectedBuyer = myBuyer?.code || "";
+  if (!isAdmin) formsSelectedBuyer = myBuyer?.id || "";
 
+  // The link's buyer param is the buyer's own id (already an opaque UUID,
+  // not something to guess or type) -- not the short [CODE] used for ad set
+  // naming. receive-order looks the order up by this id directly, so a
+  // customer landing via Moses's link always lands as Moses's order with no
+  // separate attribution step for anyone to get wrong.
   const baseUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "order.html";
   const link = product ? `${baseUrl}?product=${product.id}${formsSelectedBuyer ? `&buyer=${encodeURIComponent(formsSelectedBuyer)}` : ""}` : "";
   const embedSnippet = product ? `<iframe src="${link}" style="width:100%;max-width:480px;height:720px;border:0;" title="${escH(product.product_name)} order form"></iframe>` : "";
@@ -2647,9 +2652,9 @@ async function renderForms(el) {
           ${isAdmin ? `
           <select id="formsBuyerSel">
             <option value="">No buyer (unattributed)</option>
-            ${(buyers || []).map(b => `<option value="${escH(b.code)}" ${b.code === formsSelectedBuyer ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}
+            ${(buyers || []).map(b => `<option value="${escH(b.id)}" ${b.id === formsSelectedBuyer ? "selected" : ""}>${escH(b.name)}</option>`).join("")}
           </select>` : `
-          <input value="${myBuyer ? escH(myBuyer.name) + " [" + escH(myBuyer.code) + "]" : "Not linked to a media buyer -- ask your admin"}" disabled style="opacity:.75;">`}
+          <input value="${myBuyer ? escH(myBuyer.name) : "Not linked to a media buyer -- ask your admin"}" disabled style="opacity:.75;">`}
         </div>
       </div>
 

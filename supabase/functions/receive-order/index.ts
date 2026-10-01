@@ -226,17 +226,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Explicit buyer from the ad link (?buyer=TUNDE, passed through checkout)
-    // wins; otherwise the orders trigger inherits it from the ad set. Scoped
-    // to this order's own company -- buyer codes are only unique per company,
-    // not globally, once more than one company exists.
+    // Explicit buyer from the ad link (?buyer=<id>, passed through checkout)
+    // wins; otherwise the orders trigger inherits it from the ad set. The
+    // Order Forms tab generates links with the buyer's own id (already an
+    // opaque UUID -- no separate "code" for a customer-facing link to leak
+    // or for a buyer to mistype/guess someone else's). The short [CODE] used
+    // in ad set names is a different mechanism entirely (Meta ad set names
+    // need something human-typeable), so older/hand-built sales pages that
+    // still pass a code are supported as a fallback, not the primary path.
     let mediaBuyerId: string | null = null;
-    const buyerCode = (payload.buyer || payload.buyer_code || payload.utm_buyer) as string | undefined;
-    if (buyerCode && companyId) {
+    const buyerParam = (payload.buyer || payload.buyer_code || payload.utm_buyer) as string | undefined;
+    if (buyerParam && companyId) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(buyerParam.trim());
       const { data: buyerRow } = await supabase
         .from('media_buyers')
         .select('id')
-        .eq('code', buyerCode.trim().toUpperCase())
+        .eq(isUuid ? 'id' : 'code', isUuid ? buyerParam.trim() : buyerParam.trim().toUpperCase())
         .eq('company_id', companyId)
         .maybeSingle();
       mediaBuyerId = buyerRow?.id ?? null;
