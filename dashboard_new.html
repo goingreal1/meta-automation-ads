@@ -3524,27 +3524,13 @@ async function bvShowBuyerProfile(row) {
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 async function renderSettings(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
-  const [buyers, connections, existingAccounts, company, invites, teamMembers, waNumbers, companySettings] = await Promise.all([
+  const [buyers, company, invites, teamMembers, partnerBizId] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
-    sbQuery("meta_connections_public", "select=*&order=connected_at.desc").catch(() => []),
-    sbQuery("ad_accounts", "select=id,meta_ad_account_id,meta_connection_id").catch(() => []),
     sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
     isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
     isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
-    sbQuery("buyer_whatsapp_numbers", "select=*&status=eq.active&order=created_at.asc").catch(() => []),
-    isAdmin ? sbQuery("company_settings", "select=meta_business_id&limit=1").then(r => r?.[0]).catch(() => null) : null,
+    sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => r.business_id).catch(() => null),
   ]);
-  const waByBuyer = new Map();
-  for (const n of waNumbers || []) {
-    if (!waByBuyer.has(n.media_buyer_id)) waByBuyer.set(n.media_buyer_id, []);
-    waByBuyer.get(n.media_buyer_id).push(n);
-  }
-  // Most recent active connection per buyer, if any.
-  const connByBuyer = new Map();
-  for (const c of connections || []) {
-    if (c.status === "active" && !connByBuyer.has(c.media_buyer_id)) connByBuyer.set(c.media_buyer_id, c);
-  }
-  const importedIds = new Set((existingAccounts || []).map(a => (a.meta_ad_account_id || "").replace(/^act_/, "")));
   const oauthToast = window.oauthToast;
   delete window.oauthToast;
 
@@ -3595,47 +3581,36 @@ async function renderSettings(el) {
     </div>
 
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
-      // Self-service for a buyer who isn't an admin -- they connect their
-      // own Meta login and manage their own WhatsApp numbers directly,
-      // without needing an owner/admin to do it for them. Everything here
-      // is scoped to window.myProfile.media_buyer_id only; RLS backs this
-      // up server-side regardless of what the UI shows.
+      // Self-service for a buyer who isn't an admin -- they share their own
+      // ad account with the platform's Business Manager directly from their
+      // own Meta Business Settings, no login on this dashboard at all. They
+      // just register which Business ID to watch for; RLS + the edge
+      // function both confirm they can only ever touch their own row.
       const myId = window.myProfile.media_buyer_id;
-      const myConn = connByBuyer.get(myId);
-      const myNums = waByBuyer.get(myId) || [];
-      const daysLeft = myConn?.token_expires_at ? Math.round((new Date(myConn.token_expires_at) - Date.now()) / 86400000) : null;
-      const myNotImported = (myConn?.discovered_ad_accounts || []).filter(a => !importedIds.has((a.account_id || "").replace(/^act_/, "")));
+      const myBuyer = (buyers || []).find(b => b.id === myId);
       return `
     <div class="panel">
-      <div class="ph"><div class="ph-title">Your Meta connection</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Connect your own Facebook Business Manager to pull in your ad accounts and WhatsApp number -- nothing shared with other buyers.</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <div style="font-size:12.5px;">${myConn
-          ? `Connected as ${escH(myConn.fb_user_name || myConn.fb_user_id)}${daysLeft != null ? ` <span style="color:${daysLeft < 7 ? "var(--danger)" : "var(--muted)"};">(${daysLeft > 0 ? `expires in ${daysLeft}d` : "expired"})</span>` : ""}`
-          : `<span style="color:var(--muted);">Not connected</span>`}</div>
+      <div class="ph"><div class="ph-title">Share your ad account with us</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">In your own Meta Business Settings -&gt; Partners -&gt; "Give a partner access to your assets", paste the Business ID below and share your ad account. We'll pick it up automatically once it's approved -- no login here needed.</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <div style="font-size:12.5px;">Our Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(partnerBizId || "unavailable right now")}</code></div>
+        ${partnerBizId ? `<button type="button" class="btn btn-g" style="padding:2px 6px;font-size:10px;" onclick="navigator.clipboard.writeText('${escH(partnerBizId)}')">Copy</button>` : ""}
+      </div>
+      <div class="field"><label>Your own Meta Business ID (so we know which share is yours)</label>
         <div style="display:flex;gap:6px;">
-          ${myNotImported.length ? `<button type="button" class="btn btn-a" style="padding:4px 10px;font-size:10px;" onclick='bvImportAdAccountsModal(${JSON.stringify(myId)}, ${JSON.stringify(myNotImported)})'>Import ${myNotImported.length} account(s)</button>` : ""}
-          <button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="bvConnectMeta('${myId}')">${myConn ? "Reconnect" : "Connect Meta"}</button>
-          ${myConn ? `<button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick='bvDisconnectMeta(${JSON.stringify(myId)}, ${JSON.stringify(window.myProfile.display_name || "you")})'>Disconnect</button>` : ""}
+          <input type="text" id="myPartnerBizId" value="${escH(myBuyer?.meta_partner_business_id || "")}" placeholder="e.g. 123456789012345" style="flex:1;">
+          <button type="button" class="btn btn-g" id="savePartnerBizBtn" style="padding:4px 10px;font-size:10px;">Save</button>
         </div>
       </div>
-    </div>
-
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Your WhatsApp numbers</div></div>
-      ${myNums.length ? myNums.map(n => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-          <div>${escH(n.nickname || n.display_phone_number || "Unnamed")} <span style="color:var(--muted);">${escH(n.display_phone_number || "")}</span></div>
-          <button type="button" class="btn btn-g waRemoveBtn" data-id="${n.id}" data-buyer="${myId}" style="padding:2px 8px;font-size:9px;">Remove</button>
-        </div>`).join("") : `<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">None added yet.</div>`}
-      ${myConn ? `<button type="button" class="btn btn-a" style="margin-top:10px;padding:4px 10px;font-size:10px;" onclick='bvAddWhatsappModal(${JSON.stringify(myId)})'>+ Add number</button>` : `<div style="color:var(--muted);font-size:10.5px;">Connect Meta above first.</div>`}
+      <button type="button" class="btn btn-a" style="margin-top:10px;padding:4px 10px;font-size:10px;" id="checkPartnerStatusBtn" ${myBuyer?.meta_partner_business_id ? "" : "disabled"}>Check status</button>
+      <div id="partnerStatusResult" style="margin-top:10px;"></div>
     </div>`;
     })()}
 
     ${!isAdmin ? "" : `
     <div class="panel">
-      <div class="ph"><div class="ph-title">Media buyers &amp; Meta connections</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer connects their own Facebook Business Manager with "Connect Meta" -- no more hand-typing act_IDs or sharing ad account access. Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
+      <div class="ph"><div class="ph-title">Media buyers</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
       <form id="buyerForm">
         <div class="fg">
           <div class="field"><label>Name *</label><input id="mb_name" required placeholder="e.g. Tunde Bakare"></div>
@@ -3644,56 +3619,21 @@ async function renderSettings(el) {
         <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">+ Add buyer</button>
         <div id="buyerMsg"></div>
       </form>
-      ${!buyers?.length ? "" : `
-      <div class="tbl-wrap" style="margin-top:16px;"><table>
-        <tr><th>Buyer</th><th>Meta connection</th><th></th></tr>
-        ${buyers.map(b => {
-          const c = connByBuyer.get(b.id);
-          const daysLeft = c?.token_expires_at ? Math.round((new Date(c.token_expires_at) - Date.now()) / 86400000) : null;
-          const notImported = (c?.discovered_ad_accounts || []).filter(a => !importedIds.has((a.account_id || "").replace(/^act_/, "")));
-          return `<tr>
-            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
-            <td class="n">${c
-              ? `Connected as ${escH(c.fb_user_name || c.fb_user_id)}${daysLeft != null ? ` <span style="color:${daysLeft < 7 ? "var(--danger)" : "var(--muted)"};">(${daysLeft > 0 ? `expires in ${daysLeft}d` : "expired"})</span>` : ""}`
-              : `<span style="color:var(--muted);">Not connected</span>`}</td>
-            <td style="display:flex;gap:6px;">
-              <button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="bvConnectMeta('${b.id}')">${c ? "Reconnect" : "Connect Meta"}</button>
-              ${c ? `<button type="button" class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick='bvDisconnectMeta(${JSON.stringify(b.id)}, ${JSON.stringify(b.name)})'>Disconnect</button>` : ""}
-              ${notImported.length ? `<button type="button" class="btn btn-a" style="padding:4px 8px;font-size:10px;" onclick='bvImportAdAccountsModal(${JSON.stringify(b.id)}, ${JSON.stringify(notImported)})'>Import ${notImported.length} account(s)</button>` : ""}
-            </td>
-          </tr>`;
-        }).join("")}
-      </table></div>`}
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Partner-shared ad accounts</div><button class="btn btn-g" style="padding:3px 6px;font-size:10px;margin-left:6px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync</button></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">A buyer can share their own ad account with you directly from their own Meta Business Settings -- no login on this dashboard needed. Give them your Business ID below (Business Settings -> Partners -> "Give a partner access to your assets"), have them pick their ad account, then hit Sync here.</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <div style="font-size:12.5px;">Your Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(companySettings?.meta_business_id || "connect Meta once first, then Sync")}</code></div>
-        ${companySettings?.meta_business_id ? `<button type="button" class="btn btn-g" style="padding:2px 6px;font-size:10px;" onclick="navigator.clipboard.writeText('${escH(companySettings.meta_business_id)}')">Copy</button>` : ""}
-      </div>
-      <div id="partnerSyncResult"></div>
-    </div>
-
-    <div class="panel">
-      <div class="ph"><div class="ph-title">WhatsApp numbers</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer runs their own WhatsApp number for lead-gen campaigns (any product) -- conversations land in the Conversations tab, switchable per number. Requires that buyer to Connect Meta above first (reuses the same login, no separate signup).</div>
-      ${!buyers?.length ? "" : `
+      <div class="ph"><div class="ph-title">Partner-shared ad accounts</div><button class="btn btn-g" style="padding:3px 6px;font-size:10px;margin-left:6px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync all</button></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer shares their own ad account with us directly from their own Meta Business Settings (self-service panel below, or you can enter their Business ID for them here). Give them our Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(partnerBizId || "unavailable right now")}</code>. You'll get a request to approve in your own Meta Business Settings -- approve it there, then hit Sync here.</div>
+      ${!buyers?.length ? `<div class="empty"><div class="empty-ico">🔌</div>Add a buyer above first.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Numbers</th><th></th></tr>
-        ${buyers.map(b => {
-          const nums = waByBuyer.get(b.id) || [];
-          const hasMeta = connByBuyer.has(b.id);
-          return `<tr>
-            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
-            <td class="n">${nums.length
-              ? nums.map(n => `<div>${escH(n.nickname || n.display_phone_number || "Unnamed")} <span style="color:var(--muted);">${escH(n.display_phone_number || "")}</span> <button type="button" class="btn btn-g waRemoveBtn" data-id="${n.id}" data-buyer="${b.id}" style="padding:1px 6px;font-size:9px;">Remove</button></div>`).join("")
-              : `<span style="color:var(--muted);">None added</span>`}</td>
-            <td>${hasMeta ? `<button type="button" class="btn btn-a" style="padding:4px 8px;font-size:10px;" onclick='bvAddWhatsappModal(${JSON.stringify(b.id)})'>+ Add number</button>` : `<span style="color:var(--muted);font-size:10.5px;">Connect Meta first</span>`}</td>
-          </tr>`;
-        }).join("")}
+        <tr><th>Buyer</th><th>Their Business ID</th><th></th></tr>
+        ${buyers.map(b => `<tr>
+          <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
+          <td class="n"><input type="text" class="buyerBizIdInput" data-id="${b.id}" value="${escH(b.meta_partner_business_id || "")}" placeholder="not set yet" style="width:100%;"></td>
+          <td><button type="button" class="btn btn-g savePartnerBizBtn" data-id="${b.id}" style="padding:3px 8px;font-size:10px;">Save</button></td>
+        </tr>`).join("")}
       </table></div>`}
+      <div id="partnerSyncResult" style="margin-top:12px;"></div>
     </div>`}
 
     ${(isAdmin || window.myProfile?.media_buyer_id) ? `
@@ -3830,16 +3770,10 @@ window.refreshBalances = async function() {
     e.preventDefault();
     const msg = document.getElementById("acctMsg");
     try {
-      // A non-admin buyer's new ad_accounts RLS policy requires every row
-      // they can see to trace back to their own meta_connections row -- a
-      // manual add with no meta_connection_id would otherwise insert fine
-      // for an admin (who bypasses on role) but get rejected outright for a
-      // buyer, since nothing would prove it's theirs.
-      let myConnId = null;
-      if (!isAdmin) {
-        myConnId = connByBuyer.get(window.myProfile?.media_buyer_id)?.id ?? null;
-        if (!myConnId) throw new Error("Connect Meta above first -- a manually-added account still needs to be tied to your own connection.");
-      }
+      // A non-admin buyer's ad_accounts RLS policy requires every row they
+      // can see to trace back to their own media_buyer_id -- a manual add
+      // with that set works the same way partner-synced accounts do.
+      const myBuyerId = !isAdmin ? (window.myProfile?.media_buyer_id ?? null) : null;
       const acctName = document.getElementById("a_name").value;
       // meta_ad_account_id has shown up stored both with and without the "act_"
       // prefix -- confirmed this exact mismatch has silently created duplicate
@@ -3865,7 +3799,7 @@ window.refreshBalances = async function() {
       } else {
         const { data, error } = await supabaseClient.from('ad_accounts').insert({
           user_id: sessionData.user.id,
-          meta_connection_id: myConnId,
+          media_buyer_id: myBuyerId,
           name: acctName,
           nickname: acctName,
           meta_ad_account_id: normalizedId,
@@ -3892,6 +3826,33 @@ window.refreshBalances = async function() {
     if (r.error) { alert("Could not remove: " + r.error); return; }
     renderSettings(el);
   }));
+
+  // Self-service buyer: save their own Business ID, or check its status.
+  document.getElementById("savePartnerBizBtn")?.addEventListener("click", (e) => {
+    bvSavePartnerBizId(window.myProfile.media_buyer_id, document.getElementById("myPartnerBizId").value.trim(), e.target);
+  });
+  document.getElementById("checkPartnerStatusBtn")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const result = document.getElementById("partnerStatusResult");
+    btn.disabled = true; btn.textContent = "Checking…";
+    try {
+      const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
+      const mine = r.results?.[0];
+      result.innerHTML = !mine ? `<div style="color:var(--muted);font-size:11.5px;">Save your Business ID above first.</div>`
+        : mine.status === "confirmed" ? `<div class="msg ok">✅ Confirmed -- ${mine.imported} account(s) imported.</div>`
+        : `<div class="msg">⏳ Not confirmed yet -- make sure you've shared your ad account and the admin has approved the request in their Meta Business Settings.</div>`;
+    } catch (err) {
+      result.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+    } finally {
+      btn.disabled = false; btn.textContent = "Check status";
+    }
+  });
+
+  // Admin: save a Business ID on behalf of a specific buyer in the table.
+  document.querySelectorAll(".savePartnerBizBtn").forEach(btn => btn.addEventListener("click", () => {
+    const input = document.querySelector(`.buyerBizIdInput[data-id="${btn.dataset.id}"]`);
+    bvSavePartnerBizId(btn.dataset.id, input.value.trim(), btn);
+  }));
 }
 
 window.deleteAccount = async function(id) {
@@ -3907,165 +3868,51 @@ window.deleteAccount = async function(id) {
   }
 }
 
-// Sends the browser to Facebook's OAuth dialog (via meta-oauth-start, which
-// redirects) for this buyer to approve. A real top-level navigation, not
-// fetch -- Facebook's login/consent screen has to render in the actual tab.
-window.bvConnectMeta = function(mediaBuyerId) {
-  const token = sessionData?.access_token;
-  if (!token) { alert("Your session isn't ready yet -- reload and try again."); return; }
-  // Confirmed via a live test: this app's Facebook Login dialog rejects the
-  // classic scope-string request outright ("Invalid parameter: config_id is
-  // required") -- config_id is mandatory, not optional, so meta-oauth-start
-  // must use it. The remaining issue is inside the Configuration itself.
-  window.location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(mediaBuyerId)}&access_token=${encodeURIComponent(token)}`;
-};
-
-// Revokes a buyer's active Meta connection (marks it "revoked", same as what
-// happens automatically when they reconnect) without touching already-
-// imported ad accounts or past orders -- just frees up "Connect Meta" to be
-// clicked fresh, e.g. to test the OAuth flow under a different login/account.
-// Reads partner-shared ad accounts (a buyer shared their ad account with us
-// directly from their own Meta Business Settings) and either auto-imports
-// already-claimed ones or shows unclaimed shares for the admin to assign to
-// a buyer, once per business.
+// Checks every registered buyer in the company against the platform's one
+// global Business ID, auto-imports anything confirmed, reports status per
+// buyer. Never fetches or shows a raw "everyone who's shared with us" list
+// -- that would leak one company's pending buyer requests to another
+// company's admin, since the Business ID and token are shared platform-wide.
 window.bvSyncPartnerAccounts = async function() {
   const btn = document.getElementById("syncPartnerBtn");
   const result = document.getElementById("partnerSyncResult");
   btn.disabled = true; btn.textContent = "Syncing…";
-  result.innerHTML = `<div class="msg"><span class="spin" style="width:10px;height:10px;border-width:1px;"></span> Checking partner shares…</div>`;
+  result.innerHTML = `<div class="msg"><span class="spin" style="width:10px;height:10px;border-width:1px;"></span> Checking…</div>`;
   try {
     const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
-    const buyers = await sbQuery("media_buyers", "select=id,name&order=name.asc").catch(() => []);
-    const buyerOpts = (buyers || []).map(b => `<option value="${b.id}">${escH(b.name)}</option>`).join("");
-
-    const claimedHtml = r.claimed?.length ? `
-      <div style="font-size:11.5px;color:var(--accent);margin-bottom:8px;">✅ Synced ${r.claimed.length} already-assigned business(es): ${r.claimed.map(c => `${escH(c.business_name)} → ${escH(c.media_buyer)}`).join(", ")}</div>` : "";
-
-    const unclaimedHtml = !r.unclaimed?.length ? "" : `
-      <div class="tbl-wrap"><table>
-        <tr><th>Shared business</th><th>Ad accounts</th><th>Assign to</th><th></th></tr>
-        ${r.unclaimed.map((u, i) => `<tr>
-          <td class="s n">${escH(u.business_name)}</td>
-          <td>${u.ad_accounts.length}</td>
-          <td><select id="claimBuyer${i}" style="width:auto;"><option value="">Pick a buyer…</option>${buyerOpts}</select></td>
-          <td><button type="button" class="btn btn-a claimPartnerBtn" style="padding:3px 8px;font-size:10px;" data-i="${i}" data-bid="${escH(u.business_id)}" data-bname="${escH(u.business_name)}">Claim</button></td>
+    if (!r.results?.length) {
+      result.innerHTML = `<div style="color:var(--muted);font-size:11.5px;">No buyers have a Business ID registered yet.</div>`;
+    } else {
+      result.innerHTML = `<div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Status</th></tr>
+        ${r.results.map(x => `<tr>
+          <td class="s n">${escH(x.media_buyer)}</td>
+          <td>${x.status === "confirmed" ? `<span class="pill active">✅ confirmed -- ${x.imported} account(s) imported</span>` : `<span class="pill paused">⏳ waiting on your approval in Meta Business Settings</span>`}</td>
         </tr>`).join("")}
       </table></div>`;
-
-    result.innerHTML = claimedHtml + (unclaimedHtml || (!r.claimed?.length ? `<div style="color:var(--muted);font-size:11.5px;">No partner shares found yet.</div>` : ""));
-
-    document.querySelectorAll(".claimPartnerBtn").forEach(cb => cb.addEventListener("click", async () => {
-      const i = cb.dataset.i;
-      const mediaBuyerId = document.getElementById(`claimBuyer${i}`).value;
-      if (!mediaBuyerId) { alert("Pick a buyer first."); return; }
-      cb.disabled = true; cb.textContent = "Claiming…";
-      try {
-        await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "claim", business_id: cb.dataset.bid, business_name: cb.dataset.bname, media_buyer_id: mediaBuyerId });
-        await loadAccounts();
-        bvSyncPartnerAccounts();
-      } catch (err) {
-        alert("Could not claim: " + err.message);
-        cb.disabled = false; cb.textContent = "Claim";
-      }
-    }));
+    }
+    await loadAccounts();
   } catch (err) {
     result.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
   } finally {
-    btn.disabled = false; btn.textContent = "↻ Sync";
+    btn.disabled = false; btn.textContent = "↻ Sync all";
   }
 };
 
-window.bvDisconnectMeta = async function(mediaBuyerId, buyerName) {
-  if (!confirm(`Disconnect Meta for ${buyerName || "this buyer"}? Already-imported ad accounts stay as they are -- this only revokes the login, so "Connect Meta" can be used again.`)) return;
+// Saves which Meta Business ID to watch for a given buyer -- admin can do
+// this for any buyer in their company; a non-admin buyer can only save
+// their own (also enforced server-side).
+async function bvSavePartnerBizId(mediaBuyerId, value, btn) {
+  if (!value) { alert("Enter a Business ID first."); return; }
+  btn.disabled = true; btn.textContent = "Saving…";
   try {
-    const { error } = await supabaseClient.from("meta_connections").update({ status: "revoked" }).eq("media_buyer_id", mediaBuyerId).eq("status", "active");
-    if (error) throw error;
+    await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "register", business_id: value, media_buyer_id: mediaBuyerId });
     renderSettings(document.getElementById("mainContent"));
   } catch (err) {
-    alert("Could not disconnect: " + err.message);
+    alert("Could not save: " + err.message);
+    btn.disabled = false; btn.textContent = "Save";
   }
-};
-
-// Lets the buyer pick which of the ad accounts their Facebook login can see
-// to actually add here as tracked ad_accounts rows (discovering them doesn't
-// import them automatically -- most Business Managers hold accounts for
-// other clients/products too).
-window.bvImportAdAccountsModal = function(mediaBuyerId, accounts) {
-  const overlay = document.createElement("div");
-  overlay.className = "bv-overlay";
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  overlay.innerHTML = `<div class="bv-modal">
-    <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
-    <h3 style="margin:0 0 4px;">Import ad accounts</h3>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Pick which accounts to start tracking. Their spend syncs in automatically from here on -- no token to manage.</div>
-    ${accounts.map((a, i) => {
-      // Meta account_status: 1 = ACTIVE, everything else (disabled, closed,
-      // pending review, ...) is not spending -- pre-check only the ones
-      // actually worth tracking instead of defaulting every discovered
-      // account (including old/unrelated test accounts) to checked.
-      const isActive = a.account_status === 1;
-      return `
-      <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;${isActive ? "" : "opacity:.6;"}">
-        <input type="checkbox" class="importAcctChk" data-i="${i}" ${isActive ? "checked" : ""}>
-        <div>
-          <div style="font-weight:600;font-size:12.5px;">${escH(a.name)}${isActive ? "" : ` <span style="font-weight:400;color:var(--muted);">(inactive on Meta)</span>`}</div>
-          <div style="font-size:11px;color:var(--muted);">act_${escH(a.account_id)}${a.business_name ? ` · ${escH(a.business_name)}` : ""} · ${escH(a.currency || "")}</div>
-        </div>
-      </label>`;
-    }).join("")}
-    <button type="button" class="btn btn-a btn-full" style="margin-top:14px;" id="importAcctBtn">Import selected</button>
-    <div id="importAcctMsg"></div>
-  </div>`;
-  document.body.appendChild(overlay);
-
-  document.getElementById("importAcctBtn").addEventListener("click", async () => {
-    const btn = document.getElementById("importAcctBtn");
-    const msg = document.getElementById("importAcctMsg");
-    const picked = [...document.querySelectorAll(".importAcctChk:checked")].map(c => accounts[Number(c.dataset.i)]);
-    if (!picked.length) return;
-    btn.disabled = true; btn.textContent = "Importing…";
-
-    // Need this buyer's connection id (not passed in -- look it up from the
-    // public view rather than threading it through every call site above).
-    const conns = await sbQuery("meta_connections_public", `select=id&media_buyer_id=eq.${mediaBuyerId}&status=eq.active&order=connected_at.desc&limit=1`);
-    const connectionId = conns?.[0]?.id;
-    if (!connectionId) { msg.innerHTML = `<div class="msg err">❌ Couldn't find that buyer's connection -- try reconnecting.</div>`; btn.disabled = false; return; }
-
-    try {
-      const rows = picked.map(a => ({
-        user_id: sessionData.user.id,
-        name: a.business_name ? `${a.name} (${a.business_name})` : a.name,
-        nickname: a.name,
-        meta_ad_account_id: a.account_id,
-        meta_connection_id: connectionId,
-        connected_via: "oauth",
-        status: "active",
-      }));
-      const { error } = await supabaseClient.from("ad_accounts").upsert(rows, { onConflict: "meta_ad_account_id", ignoreDuplicates: true });
-      if (error) throw error;
-
-      // ignoreDuplicates silently skips any account_id someone else already
-      // imported (meta_ad_account_id is globally unique) -- without this
-      // check, that looked exactly like "the button did nothing," with zero
-      // explanation why. Re-read what actually landed under this connection
-      // to tell the two cases apart.
-      const landed = await sbQuery("ad_accounts", `select=meta_ad_account_id&meta_connection_id=eq.${connectionId}&meta_ad_account_id=in.(${picked.map(a => a.account_id).join(",")})`).catch(() => []);
-      const landedIds = new Set((landed || []).map(r => r.meta_ad_account_id));
-      const skipped = picked.filter(a => !landedIds.has(a.account_id));
-
-      overlay.remove();
-      await loadAccounts();
-      renderSettings(document.getElementById("mainContent"));
-      if (skipped.length) {
-        alert(`Imported ${picked.length - skipped.length} of ${picked.length}.\n\n${skipped.length} already connected to another buyer's account, so they were skipped:\n${skipped.map(a => `- ${a.name}`).join("\n")}\n\nAsk an admin to check Settings if one of these should move to you instead.`);
-      }
-    } catch (err) {
-      msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
-      btn.disabled = false;
-      btn.textContent = "Import selected";
-    }
-  });
-};
+}
 
 // WhatsApp number add/verify wizard -- list the buyer's WhatsApp Business
 // Accounts (via their already-connected Meta login), pick or add a number,
