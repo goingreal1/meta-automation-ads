@@ -3902,7 +3902,11 @@ window.deleteAccount = async function(id) {
 window.bvConnectMeta = function(mediaBuyerId) {
   const token = sessionData?.access_token;
   if (!token) { alert("Your session isn't ready yet -- reload and try again."); return; }
-  window.location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(mediaBuyerId)}&access_token=${encodeURIComponent(token)}`;
+  // TEMPORARY: &mode=scope forces the classic scope-string OAuth dialog
+  // instead of the Facebook Login for Business config_id path, while that
+  // config_id's "Feature unavailable" error is being tracked down. Revert
+  // once resolved.
+  window.location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(mediaBuyerId)}&access_token=${encodeURIComponent(token)}&mode=scope`;
 };
 
 // Revokes a buyer's active Meta connection (marks it "revoked", same as what
