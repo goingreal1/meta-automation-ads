@@ -3497,7 +3497,7 @@ async function renderLeaderboard(el) {
         <tr><th>Rank</th><th>Buyer</th><th>Spend</th><th>Orders</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
         ${ranked.map((r, i) => `<tr ${i < 3 ? 'style="background:var(--accentBg);"' : ""}>
           <td style="font-size:14px;font-weight:700;">#${i + 1}</td>
-          <td class="s">${escH(r.buyer.name)}</td>
+          <td class="s"><a href="javascript:void(0)" class="lbBuyerLink" data-id="${r.buyer.id}" style="color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;">${escH(r.buyer.name)}</a></td>
           <td>${fN(r.spend)}</td>
           <td>${r.orders}</td>
           <td class="s">${fN(r.revenue)}</td>
@@ -3510,10 +3510,53 @@ async function renderLeaderboard(el) {
     ${unattributed && unattributed.orders > 0 ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Unattributed</div></div>
-      <div style="padding:10px 14px;font-size:12.5px;color:var(--muted);">${unattributed.orders} order(s) worth ${fN(unattributed.revenue)} in this range aren't tagged to any buyer -- their ad set name is missing a <code>[CODE]</code>, or the order came in without a <code>buyer</code> parameter. See the Products tab's "Get link" button to generate correctly-tagged order links.</div>
+      <div style="padding:10px 14px;font-size:12.5px;color:var(--muted);">${unattributed.orders} order(s) worth ${fN(unattributed.revenue)} in this range aren't tagged to any buyer -- their order-form link wasn't generated from the Order Forms tab (so it carries no buyer id), or their ad set name is missing the older <code>[CODE]</code> fallback.</div>
     </div>` : ""}`;
 
   document.getElementById("lbRange").addEventListener("change", e => { leaderboardRangeDays = Number(e.target.value); render(); });
+  document.querySelectorAll(".lbBuyerLink").forEach(a => a.addEventListener("click", () => {
+    const row = ranked.find(r => r.buyer.id === a.dataset.id);
+    if (row) bvShowBuyerProfile(row);
+  }));
+}
+
+// Click a buyer's name on the Leaderboard to see everything tied to them in
+// one place -- the "click a rep, see their full record" pattern every real
+// CRM has (Salesforce rep view, HubSpot owner view, etc.), instead of an
+// admin having to cross-reference Orders/Campaigns/ROAS tabs by hand.
+async function bvShowBuyerProfile(row) {
+  const overlay = document.createElement("div");
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="bv-modal" style="max-width:640px;">
+    <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+    <h3 style="margin:0 0 4px;">${escH(row.buyer.name)}</h3>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">${escH(row.buyer.code)} · media buyer</div>
+    <div class="g4" style="margin-bottom:14px;">
+      <div class="kc"><div class="kc-lbl">Spend</div><div class="kc-val">${fN(row.spend)}</div></div>
+      <div class="kc"><div class="kc-lbl">Orders</div><div class="kc-val">${row.orders}</div></div>
+      <div class="kc"><div class="kc-lbl">Revenue</div><div class="kc-val">${fN(row.revenue)}</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS</div><div class="kc-val ${roasCls(row.revenue, row.spend)}">${roasFmt(row.revenue, row.spend)}</div></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Recent orders</div>
+    <div id="bvProfileOrders" style="max-height:320px;overflow-y:auto;"><div class="empty" style="padding:20px;"><div class="empty-ico">⏳</div>Loading…</div></div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  const orders = await sbQuery("orders", `select=customer_name,product_name,order_value_naira,order_status,ordered_at&media_buyer_id=eq.${row.buyer.id}&order=ordered_at.desc&limit=20`).catch(() => []);
+  const ordersEl = document.getElementById("bvProfileOrders");
+  if (!ordersEl) return; // modal closed before this resolved
+  ordersEl.innerHTML = !orders?.length ? `<div class="empty" style="padding:20px;"><div class="empty-ico">📦</div>No orders yet.</div>` : `
+    <table style="width:100%;">
+      <tr><th>Customer</th><th>Product</th><th>Value</th><th>Status</th><th>Date</th></tr>
+      ${orders.map(o => `<tr>
+        <td class="s n">${escH(o.customer_name ?? "—")}</td>
+        <td class="n">${escH(o.product_name ?? "—")}</td>
+        <td>${fN(o.order_value_naira)}</td>
+        <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+        <td class="n">${ago(o.ordered_at)}</td>
+      </tr>`).join("")}
+    </table>`;
 }
 
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
