@@ -3858,35 +3858,47 @@ window.refreshBalances = async function() {
   document.getElementById("savePartnerBizBtn")?.addEventListener("click", (e) => {
     bvSavePartnerBizId(window.myProfile.media_buyer_id, document.getElementById("myPartnerBizId").value.trim(), e.target);
   });
-  document.getElementById("checkPartnerStatusBtn")?.addEventListener("click", async (e) => {
-    const btn = e.target;
-    const result = document.getElementById("partnerStatusResult");
-    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Checking…';
-    try {
-      const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
-      const mine = r.results?.[0];
-      if (!mine) {
-        result.innerHTML = `<div style="color:var(--muted);font-size:11.5px;">Save your Business ID above first.</div>`;
-      } else if (mine.status === "confirmed") {
-        result.innerHTML = `<div class="msg ok">✅ Confirmed -- ${mine.imported} account(s) imported.</div>`;
-        bvToast(`${mine.imported} account(s) imported`);
-      } else {
-        result.innerHTML = `<div class="msg">⏳ Not confirmed yet -- make sure you've shared your ad account and the admin has approved the request in their Meta Business Settings.</div>`;
-        bvToast("Still pending approval", "err");
-      }
-    } catch (err) {
-      result.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
-      bvToast(err.message, "err");
-    } finally {
-      btn.disabled = false; btn.textContent = "Check status";
-    }
-  });
+  document.getElementById("checkPartnerStatusBtn")?.addEventListener("click", (e) => bvCheckMyPartnerStatus(e.target, true));
 
   // Admin: save a Business ID on behalf of a specific buyer in the table.
   document.querySelectorAll(".savePartnerBizBtn").forEach(btn => btn.addEventListener("click", () => {
     const input = document.querySelector(`.buyerBizIdInput[data-id="${btn.dataset.id}"]`);
     bvSavePartnerBizId(btn.dataset.id, input.value.trim(), btn);
   }));
+
+  // Auto-check on page load instead of requiring a manual click every time
+  // -- a buyer shouldn't have to remember to come back and press a button
+  // after sharing on Meta's side. Silent (no toast) so loading Settings
+  // doesn't feel noisy; the background cron (sync_all) also covers this
+  // even when nobody opens the dashboard at all.
+  if (!isAdmin && document.getElementById("checkPartnerStatusBtn") && !document.getElementById("checkPartnerStatusBtn").disabled) {
+    bvCheckMyPartnerStatus(document.getElementById("checkPartnerStatusBtn"), false);
+  }
+  if (isAdmin && document.getElementById("syncPartnerBtn") && (buyers || []).some(b => b.meta_partner_business_id)) {
+    bvSyncPartnerAccounts(false);
+  }
+}
+
+async function bvCheckMyPartnerStatus(btn, announce) {
+  const result = document.getElementById("partnerStatusResult");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Checking…';
+  try {
+    const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
+    const mine = r.results?.[0];
+    if (!mine) {
+      result.innerHTML = `<div style="color:var(--muted);font-size:11.5px;">Save your Business ID above first.</div>`;
+    } else if (mine.status === "confirmed") {
+      result.innerHTML = `<div class="msg ok">✅ Confirmed -- ${mine.imported} account(s) imported.</div>`;
+      if (announce || mine.imported) bvToast(`${mine.imported} account(s) imported`);
+    } else {
+      result.innerHTML = `<div class="msg">⏳ Not confirmed yet -- make sure you've shared your ad account and the admin has approved the request in their Meta Business Settings.</div>`;
+      if (announce) bvToast("Still pending approval", "err");
+    }
+  } catch (err) {
+    if (announce) { result.innerHTML = `<div class="msg err">❌ ${err.message}</div>`; bvToast(err.message, "err"); }
+  } finally {
+    btn.disabled = false; btn.textContent = "Check status";
+  }
 }
 
 window.deleteAccount = async function(id) {

@@ -23,11 +23,16 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //     -> checks every (or, for a buyer caller, just their own) registered
 //        business ID in the caller's company against the real partner list,
 //        imports confirmed ones, reports status per buyer
+//   POST { cron_secret, mode: "sync_all" }
+//     -> same check, platform-wide across every company with a registered
+//        buyer -- for a scheduled job, not a logged-in user, so it's gated
+//        by CRON_SECRET instead of a session token
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const META_BUSINESS_ID = Deno.env.get("META_BUSINESS_ID") ?? "";
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -88,6 +93,25 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const { access_token, mode } = body;
+
+    if (mode === "sync_all") {
+      // For a scheduled job, not a logged-in user -- gated by a shared
+      // secret instead of a session token.
+      if (!CRON_SECRET || body.cron_secret !== CRON_SECRET) return json({ error: "Not authorized." }, 403);
+      if (!META_ACCESS_TOKEN || !META_BUSINESS_ID) return json({ error: "Partner sync isn't configured yet." }, 500);
+
+      const { data: buyers } = await supabase.from("media_buyers").select("id, name, company_id, meta_partner_business_id").not("meta_partner_business_id", "is", null);
+      if (!buyers?.length) return json({ checked: 0, imported: 0 });
+
+      const clients = await fetchClientsById(buyers.map(b => b.meta_partner_business_id as string));
+      let imported = 0;
+      for (const buyer of buyers) {
+        const client = clients.get(buyer.meta_partner_business_id as string);
+        if (client) imported += await importConfirmed(buyer.company_id, buyer.id, client);
+      }
+      return json({ checked: buyers.length, imported });
+    }
+
     if (!access_token) return json({ error: "access_token is required" }, 400);
 
     if (mode === "get_business_id") {
@@ -112,7 +136,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (mode === "sync") {
-      let buyerQuery = supabase.from("media_buyers").select("id, name, meta_partner_business_id").eq("company_id", profile.company_id).not("meta_partner_business_id", "is", null);
+      let buyerQuery = supabase.from("media_buyers").select("id, name, company_id, meta_partner_business_id").eq("company_id", profile.company_id).not("meta_partner_business_id", "is", null);
       if (!isAdmin) {
         if (!profile.media_buyer_id) return json({ results: [] });
         buyerQuery = buyerQuery.eq("id", profile.media_buyer_id);
@@ -128,7 +152,7 @@ Deno.serve(async (req: Request) => {
           results.push({ media_buyer: buyer.name, status: "pending", imported: 0 });
           continue;
         }
-        const imported = await importConfirmed(profile.company_id, buyer.id, client);
+        const imported = await importConfirmed(buyer.company_id, buyer.id, client);
         results.push({ media_buyer: buyer.name, status: imported ? "confirmed" : "pending", imported });
       }
       return json({ results });
