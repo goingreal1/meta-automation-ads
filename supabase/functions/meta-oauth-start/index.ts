@@ -17,7 +17,13 @@ const META_OAUTH_STATE_SECRET = Deno.env.get("META_OAUTH_STATE_SECRET") ?? "";
 
 // ads_read: pull spend/insights for the accounts they grant. business_management:
 // list accounts, incl. ones held under a Business Manager rather than personally.
-const SCOPES = "ads_read,business_management";
+// whatsapp_business_management/whatsapp_business_messaging: list/add/verify a
+// WhatsApp number on their Business Account and send/receive messages on it
+// (see buyer_whatsapp_numbers -- Settings' "Add WhatsApp number"). pages_show_list/
+// pages_read_engagement/pages_manage_engagement: list their Pages and reply to
+// comments on their own ads. Confirmed Advanced Access already granted on this
+// app for all of these (checked directly against /me/permissions).
+const SCOPES = "ads_read,business_management,whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_read_engagement,pages_manage_engagement";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 

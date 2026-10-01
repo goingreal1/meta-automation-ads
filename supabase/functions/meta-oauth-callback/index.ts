@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
       fb_user_name: me.name ?? null,
       access_token: accessToken,
       token_expires_at: expiresAt,
-      scopes: "ads_read,business_management",
+      scopes: "ads_read,business_management,whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_read_engagement,pages_manage_engagement",
       status: "active",
       discovered_ad_accounts: discoveredAdAccounts,
       last_synced_at: new Date().toISOString(),
