@@ -3902,11 +3902,11 @@ window.deleteAccount = async function(id) {
 window.bvConnectMeta = function(mediaBuyerId) {
   const token = sessionData?.access_token;
   if (!token) { alert("Your session isn't ready yet -- reload and try again."); return; }
-  // TEMPORARY: &mode=scope forces the classic scope-string OAuth dialog
-  // instead of the Facebook Login for Business config_id path, while that
-  // config_id's "Feature unavailable" error is being tracked down. Revert
-  // once resolved.
-  window.location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(mediaBuyerId)}&access_token=${encodeURIComponent(token)}&mode=scope`;
+  // Confirmed via a live test: this app's Facebook Login dialog rejects the
+  // classic scope-string request outright ("Invalid parameter: config_id is
+  // required") -- config_id is mandatory, not optional, so meta-oauth-start
+  // must use it. The remaining issue is inside the Configuration itself.
+  window.location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(mediaBuyerId)}&access_token=${encodeURIComponent(token)}`;
 };
 
 // Revokes a buyer's active Meta connection (marks it "revoked", same as what
