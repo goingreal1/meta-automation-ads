@@ -830,7 +830,14 @@ async function render() {
   document.getElementById("lastSync").textContent = "synced " + new Date().toLocaleTimeString();
   const c = document.getElementById("mainContent");
   
-  if (activeTab !== "settings" && !activeAccountId && accountsList.length === 0) {
+  // An ad account is only needed for ad-spend/campaign-performance tabs --
+  // everything else (orders, order forms, products, conversations, website
+  // leads, delivery, AI calls) is a buyer's own CRM data, nothing to do with
+  // whether they've connected a Meta ad account yet. Previously this blocked
+  // literally every tab, meaning a buyer who hadn't connected Meta couldn't
+  // even use the order form link that's supposed to work from day one.
+  const NEEDS_AD_ACCOUNT = new Set(["campaigns", "performance", "vault"]);
+  if (NEEDS_AD_ACCOUNT.has(activeTab) && !activeAccountId && accountsList.length === 0) {
     c.innerHTML = `
       <div class="empty">
         <div class="empty-ico">🔌</div>
@@ -839,7 +846,7 @@ async function render() {
       </div>`;
     return;
   }
-  
+
   c.innerHTML = `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>`;
   try {
     if      (activeTab === "overview")  await renderOverview(c);
