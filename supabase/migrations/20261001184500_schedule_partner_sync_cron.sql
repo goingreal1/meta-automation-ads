@@ -1,0 +1,17 @@
+-- Checks every registered buyer's partner share platform-wide every 20
+-- minutes and auto-imports anything newly confirmed, even if nobody opens
+-- the dashboard. Gated by CRON_SECRET (an edge function secret -- this file
+-- intentionally doesn't contain its value; the live job was scheduled
+-- directly against the project with the real secret substituted in).
+--
+-- select cron.schedule(
+--   'sync-partner-accounts-every-20min',
+--   '*/20 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/sync-partner-accounts',
+--     headers := jsonb_build_object('Content-Type', 'application/json'),
+--     body := jsonb_build_object('mode', 'sync_all', 'cron_secret', '<CRON_SECRET value, not committed>')
+--   );
+--   $$
+-- );
