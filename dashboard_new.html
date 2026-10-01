@@ -3981,9 +3981,22 @@ window.bvImportAdAccountsModal = function(mediaBuyerId, accounts) {
       }));
       const { error } = await supabaseClient.from("ad_accounts").upsert(rows, { onConflict: "meta_ad_account_id", ignoreDuplicates: true });
       if (error) throw error;
+
+      // ignoreDuplicates silently skips any account_id someone else already
+      // imported (meta_ad_account_id is globally unique) -- without this
+      // check, that looked exactly like "the button did nothing," with zero
+      // explanation why. Re-read what actually landed under this connection
+      // to tell the two cases apart.
+      const landed = await sbQuery("ad_accounts", `select=meta_ad_account_id&meta_connection_id=eq.${connectionId}&meta_ad_account_id=in.(${picked.map(a => a.account_id).join(",")})`).catch(() => []);
+      const landedIds = new Set((landed || []).map(r => r.meta_ad_account_id));
+      const skipped = picked.filter(a => !landedIds.has(a.account_id));
+
       overlay.remove();
       await loadAccounts();
       renderSettings(document.getElementById("mainContent"));
+      if (skipped.length) {
+        alert(`Imported ${picked.length - skipped.length} of ${picked.length}.\n\n${skipped.length} already connected to another buyer's account, so they were skipped:\n${skipped.map(a => `- ${a.name}`).join("\n")}\n\nAsk an admin to check Settings if one of these should move to you instead.`);
+      }
     } catch (err) {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
       btn.disabled = false;
