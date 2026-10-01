@@ -128,6 +128,32 @@ Deno.serve(async (req: Request) => {
       return json({ sent: true });
     }
 
+    // For a number that's already verified/connected on the WABA (the normal
+    // case when picking an existing number instead of adding a brand new
+    // one) -- no SMS code needed, just record it.
+    if (action === "save_number") {
+      const phoneNumberId = body.phone_number_id as string | undefined;
+      const wabaId = body.waba_id as string | undefined;
+      const nickname = (body.nickname as string | undefined) || null;
+      if (!phoneNumberId || !wabaId) return json({ error: "phone_number_id and waba_id are required" }, 400);
+
+      const { data: numInfo } = await graph(`${phoneNumberId}?fields=display_phone_number,verified_name`, metaToken);
+
+      const { data: row, error } = await supabase.from("buyer_whatsapp_numbers").upsert({
+        company_id: buyer.company_id,
+        media_buyer_id: mediaBuyerId,
+        waba_id: wabaId,
+        phone_number_id: phoneNumberId,
+        display_phone_number: numInfo?.display_phone_number ?? null,
+        nickname: nickname || numInfo?.verified_name || null,
+        access_token: metaToken,
+        verified_at: new Date().toISOString(),
+        status: "active",
+      }, { onConflict: "phone_number_id" }).select("id").single();
+      if (error) return json({ error: `Could not save it: ${error.message}` }, 500);
+      return json({ saved: true, id: row.id });
+    }
+
     if (action === "verify_code") {
       const phoneNumberId = body.phone_number_id as string | undefined;
       const code = body.code as string | undefined;

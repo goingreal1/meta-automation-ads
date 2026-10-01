@@ -3583,6 +3583,39 @@ async function renderSettings(el) {
       </table></div>` : ""}`}
     </div>
 
+    ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
+      // Self-service for a buyer who isn't an admin -- they connect their
+      // own Meta login and manage their own WhatsApp numbers directly,
+      // without needing an owner/admin to do it for them. Everything here
+      // is scoped to window.myProfile.media_buyer_id only; RLS backs this
+      // up server-side regardless of what the UI shows.
+      const myId = window.myProfile.media_buyer_id;
+      const myConn = connByBuyer.get(myId);
+      const myNums = waByBuyer.get(myId) || [];
+      const daysLeft = myConn?.token_expires_at ? Math.round((new Date(myConn.token_expires_at) - Date.now()) / 86400000) : null;
+      return `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your Meta connection</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Connect your own Facebook Business Manager to pull in your ad accounts and WhatsApp number -- nothing shared with other buyers.</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:12.5px;">${myConn
+          ? `Connected as ${escH(myConn.fb_user_name || myConn.fb_user_id)}${daysLeft != null ? ` <span style="color:${daysLeft < 7 ? "var(--danger)" : "var(--muted)"};">(${daysLeft > 0 ? `expires in ${daysLeft}d` : "expired"})</span>` : ""}`
+          : `<span style="color:var(--muted);">Not connected</span>`}</div>
+        <button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="bvConnectMeta('${myId}')">${myConn ? "Reconnect" : "Connect Meta"}</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your WhatsApp numbers</div></div>
+      ${myNums.length ? myNums.map(n => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+          <div>${escH(n.nickname || n.display_phone_number || "Unnamed")} <span style="color:var(--muted);">${escH(n.display_phone_number || "")}</span></div>
+          <button type="button" class="btn btn-g waRemoveBtn" data-id="${n.id}" data-buyer="${myId}" style="padding:2px 8px;font-size:9px;">Remove</button>
+        </div>`).join("") : `<div style="color:var(--muted);font-size:12px;margin-bottom:10px;">None added yet.</div>`}
+      ${myConn ? `<button type="button" class="btn btn-a" style="margin-top:10px;padding:4px 10px;font-size:10px;" onclick='bvAddWhatsappModal(${JSON.stringify(myId)})'>+ Add number</button>` : `<div style="color:var(--muted);font-size:10.5px;">Connect Meta above first.</div>`}
+    </div>`;
+    })()}
+
     ${!isAdmin ? "" : `
     <div class="panel">
       <div class="ph"><div class="ph-title">Media buyers &amp; Meta connections</div></div>
@@ -3976,7 +4009,12 @@ window.bvAddWhatsappModal = function(mediaBuyerId) {
       const picked = document.querySelector('input[name="waExisting"]:checked');
       if (!picked) return;
       st.phoneNumberId = picked.value;
-      renderVerify();
+      const chosen = st.numbers.find(n => n.id === picked.value);
+      // Already verified/connected (the normal case for a number you're
+      // already messaging customers from) -- no SMS code needed, just name
+      // it and save. Only an unverified/expired number needs the code flow.
+      if (chosen?.code_verification_status === "VERIFIED") renderSaveExisting(chosen);
+      else renderVerify();
     });
     document.getElementById("waAddNewBtn").addEventListener("click", async () => {
       const btn = document.getElementById("waAddNewBtn");
@@ -3989,6 +4027,25 @@ window.bvAddWhatsappModal = function(mediaBuyerId) {
       if (r.error) { msg.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Add new number"; return; }
       st.phoneNumberId = r.phone_number_id;
       renderVerify();
+    });
+  }
+
+  async function renderSaveExisting(num) {
+    shell("Add WhatsApp number", `
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">${escH(num.display_phone_number || num.id)} is already verified -- just give it a name so you can tell it apart from any other numbers.</div>
+      <div class="field"><label>Nickname</label><input id="waNick" placeholder="e.g. Herbal Leads" value="${escH(num.verified_name || "")}"></div>
+      <button type="button" class="btn btn-a btn-full" id="waSaveBtn" style="margin-top:8px;">Save</button>
+      <div id="waMsg"></div>
+    `);
+    document.getElementById("waSaveBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("waSaveBtn");
+      const msg = document.getElementById("waMsg");
+      const nickname = document.getElementById("waNick").value.trim();
+      btn.disabled = true; btn.textContent = "Saving…";
+      const r = await call("save_number", { phone_number_id: st.phoneNumberId, waba_id: st.wabaId, nickname });
+      if (r.error) { msg.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Save"; return; }
+      overlay.remove();
+      renderSettings(document.getElementById("mainContent"));
     });
   }
 

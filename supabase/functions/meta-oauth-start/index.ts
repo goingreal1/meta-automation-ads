@@ -49,8 +49,20 @@ Deno.serve(async (req: Request) => {
   const { data: userData, error: authErr } = await supabase.auth.getUser(accessToken);
   if (authErr || !userData?.user) return html("Your dashboard session has expired -- go back and refresh the page, then try again.", 401);
 
-  const { data: buyer } = await supabase.from("media_buyers").select("id").eq("id", mediaBuyerId).maybeSingle();
+  const { data: buyer } = await supabase.from("media_buyers").select("id, company_id").eq("id", mediaBuyerId).maybeSingle();
   if (!buyer) return html("Unknown media buyer.", 404);
+
+  // Confirming the session exists isn't enough -- it also has to be allowed
+  // to connect *this* buyer: an owner/admin of the buyer's own company, or
+  // the buyer themselves. Without this, any signed-in user (any company)
+  // could pass a different buyer's UUID and hijack their Meta connection.
+  const { data: profile } = await supabase.from("profiles").select("role, company_id, media_buyer_id").eq("id", userData.user.id).maybeSingle();
+  const isAdmin = profile?.role === "owner" || profile?.role === "admin";
+  const sameCompany = profile?.company_id === buyer.company_id;
+  const isSelf = profile?.media_buyer_id === mediaBuyerId;
+  if (!profile || !sameCompany || !(isAdmin || isSelf)) {
+    return html("You don't have permission to connect this buyer's Meta account.", 403);
+  }
 
   const state = await signState(META_OAUTH_STATE_SECRET, mediaBuyerId);
   const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth-callback`;
