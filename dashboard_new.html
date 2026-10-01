@@ -413,6 +413,15 @@ textarea{resize:vertical;min-height:76px;}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rot .65s linear infinite;vertical-align:middle;}
 @keyframes rot{to{transform:rotate(360deg);}}
 
+/* ── TOAST ─────────────────────────────────────────────────────────────────── */
+.bv-toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+.bv-toast{display:flex;align-items:center;gap:8px;padding:11px 18px;border-radius:9px;font-size:13px;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.35);pointer-events:auto;animation:bv-toast-in .18s ease-out;background:var(--panel);border:1px solid var(--border);color:var(--text);}
+.bv-toast.ok{background:var(--accentBg);border-color:var(--accentBdr);color:var(--accent);}
+.bv-toast.err{background:rgba(224,85,85,.12);border-color:rgba(224,85,85,.3);color:#e05555;}
+.bv-toast.closing{animation:bv-toast-out .18s ease-in forwards;}
+@keyframes bv-toast-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes bv-toast-out{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(10px);}}
+
 /* ── MOBILE ────────────────────────────────────────────────────────────────── */
 @media(max-width:620px){
   .chat-panel{width:calc(100vw - 32px);right:16px;}
@@ -422,6 +431,8 @@ textarea{resize:vertical;min-height:76px;}
 </style>
 </head>
 <body>
+
+<div class="bv-toast-wrap" id="bvToastWrap"></div>
 
 <!-- HEADER -->
 <div class="hdr">
@@ -3403,6 +3414,22 @@ async function renderEarnings(el) {
 
 // ── SHARED: media-buyer ROAS aggregation (used by Ad Spend & ROAS + Leaderboard) ─
 const escH = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+
+// Short-lived confirmation popup (bottom of screen) -- for actions like
+// "Save" that otherwise re-render a whole panel with no obvious signal
+// that anything actually happened.
+function bvToast(message, type = "ok") {
+  const wrap = document.getElementById("bvToastWrap");
+  if (!wrap) return;
+  const el = document.createElement("div");
+  el.className = `bv-toast ${type}`;
+  el.innerHTML = `${type === "ok" ? "✅" : type === "err" ? "❌" : ""} ${escH(message)}`;
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.classList.add("closing");
+    setTimeout(() => el.remove(), 200);
+  }, 2600);
+}
 const roasFmt  = (rev, sp) => sp > 0 ? (rev / sp).toFixed(2) + "x" : "—";
 const roasCls  = (rev, sp) => sp <= 0 ? "" : rev / sp >= 2 ? "ctr-hot" : rev / sp >= 1 ? "ctr-warm" : "ctr-cold";
 
@@ -3834,15 +3861,22 @@ window.refreshBalances = async function() {
   document.getElementById("checkPartnerStatusBtn")?.addEventListener("click", async (e) => {
     const btn = e.target;
     const result = document.getElementById("partnerStatusResult");
-    btn.disabled = true; btn.textContent = "Checking…";
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Checking…';
     try {
       const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
       const mine = r.results?.[0];
-      result.innerHTML = !mine ? `<div style="color:var(--muted);font-size:11.5px;">Save your Business ID above first.</div>`
-        : mine.status === "confirmed" ? `<div class="msg ok">✅ Confirmed -- ${mine.imported} account(s) imported.</div>`
-        : `<div class="msg">⏳ Not confirmed yet -- make sure you've shared your ad account and the admin has approved the request in their Meta Business Settings.</div>`;
+      if (!mine) {
+        result.innerHTML = `<div style="color:var(--muted);font-size:11.5px;">Save your Business ID above first.</div>`;
+      } else if (mine.status === "confirmed") {
+        result.innerHTML = `<div class="msg ok">✅ Confirmed -- ${mine.imported} account(s) imported.</div>`;
+        bvToast(`${mine.imported} account(s) imported`);
+      } else {
+        result.innerHTML = `<div class="msg">⏳ Not confirmed yet -- make sure you've shared your ad account and the admin has approved the request in their Meta Business Settings.</div>`;
+        bvToast("Still pending approval", "err");
+      }
     } catch (err) {
       result.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+      bvToast(err.message, "err");
     } finally {
       btn.disabled = false; btn.textContent = "Check status";
     }
@@ -3903,14 +3937,16 @@ window.bvSyncPartnerAccounts = async function() {
 // this for any buyer in their company; a non-admin buyer can only save
 // their own (also enforced server-side).
 async function bvSavePartnerBizId(mediaBuyerId, value, btn) {
-  if (!value) { alert("Enter a Business ID first."); return; }
-  btn.disabled = true; btn.textContent = "Saving…";
+  if (!value) { bvToast("Enter a Business ID first.", "err"); return; }
+  const original = btn.textContent;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Saving…';
   try {
     await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "register", business_id: value, media_buyer_id: mediaBuyerId });
+    bvToast("Business ID saved");
     renderSettings(document.getElementById("mainContent"));
   } catch (err) {
-    alert("Could not save: " + err.message);
-    btn.disabled = false; btn.textContent = "Save";
+    bvToast("Could not save: " + err.message, "err");
+    btn.disabled = false; btn.textContent = original;
   }
 }
 
