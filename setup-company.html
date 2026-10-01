@@ -48,86 +48,124 @@ const inviteToken = new URLSearchParams(location.search).get("invite");
 
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) { window.location.href = "index.html" + (inviteToken ? "?invite=" + encodeURIComponent(inviteToken) : ""); return; }
 
-  // Already set up (e.g. they refreshed this page, or clicked an invite link
-  // while already belonging to a company) -- nothing to do here.
-  const { data: profile } = await sb.from("profiles").select("company_id").eq("id", session.user.id).maybeSingle();
-  if (profile?.company_id) { window.location.href = "dashboard_new.html"; return; }
+  if (session) {
+    // Already set up (e.g. they refreshed this page after joining) --
+    // nothing to do here.
+    const { data: profile } = await sb.from("profiles").select("company_id").eq("id", session.user.id).maybeSingle();
+    if (profile?.company_id) { window.location.href = "dashboard_new.html"; return; }
+  }
 
-  render(session);
-}
-
-function render(session) {
   if (inviteToken) {
-    box.innerHTML = `
-      <h1>Join your team</h1>
-      <div class="sub">You're joining via an invite link. This attaches your account to that team -- you'll only see their data, never anyone else's.</div>
-      <div id="msg" class="msg"></div>
-      <form id="f">
-        <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
-        <div class="field"><label>Set a password</label><input id="pass" type="password" placeholder="••••••••" required minlength="6"></div>
-        <div class="field"><label>Confirm password</label><input id="pass2" type="password" placeholder="••••••••" required minlength="6"></div>
-        <button type="submit" class="btn" id="btn">Join team</button>
-      </form>`;
-    document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submit(session, "join"); });
+    // Joining a team needs no existing session at all -- the form itself
+    // creates the account (via accept-invite) the moment it's submitted.
+    // No email field either: the invite already knows who this is for.
+    renderJoin();
+  } else if (session) {
+    renderCreate(session);
   } else {
-    box.innerHTML = `
-      <h1>Set up your company</h1>
-      <div class="sub">This creates your own private workspace -- your data is never visible to any other company on this platform.</div>
-      <div id="msg" class="msg"></div>
-      <form id="f">
-        <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
-        <div class="field"><label>Company name</label><input id="company_name" placeholder="e.g. Quality Herb Nigeria" required></div>
-        <button type="submit" class="btn" id="btn">Create company</button>
-      </form>`;
-    document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submit(session, "create"); });
+    window.location.href = "index.html";
   }
 }
 
-async function submit(session, mode) {
+function renderJoin() {
+  box.innerHTML = `
+    <h1>Join your team</h1>
+    <div class="sub">You're joining via an invite link. This attaches your account to that team -- you'll only see their data, never anyone else's.</div>
+    <div id="msg" class="msg"></div>
+    <form id="f">
+      <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
+      <div class="field"><label>Set a password</label><input id="pass" type="password" placeholder="••••••••" required minlength="6"></div>
+      <div class="field"><label>Confirm password</label><input id="pass2" type="password" placeholder="••••••••" required minlength="6"></div>
+      <button type="submit" class="btn" id="btn">Join team</button>
+    </form>`;
+  document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submitJoin(); });
+}
+
+function renderCreate(session) {
+  box.innerHTML = `
+    <h1>Set up your company</h1>
+    <div class="sub">This creates your own private workspace -- your data is never visible to any other company on this platform.</div>
+    <div id="msg" class="msg"></div>
+    <form id="f">
+      <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
+      <div class="field"><label>Company name</label><input id="company_name" placeholder="e.g. Quality Herb Nigeria" required></div>
+      <button type="submit" class="btn" id="btn">Create company</button>
+    </form>`;
+  document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(session); });
+}
+
+function working(on) {
   const btn = document.getElementById("btn");
   const msg = document.getElementById("msg");
   msg.className = "msg";
   btn.disabled = true;
   btn.innerHTML = '<div class="spin"></div> Working…';
+  return { btn, msg };
+}
 
-  const body = { mode, display_name: document.getElementById("name").value.trim() || undefined };
-  if (mode === "join") body.invite_token = inviteToken;
-  else body.company_name = document.getElementById("company_name").value.trim();
+function finish(msg, text) {
+  msg.textContent = text;
+  msg.className = "msg ok";
+  setTimeout(() => window.location.href = "dashboard_new.html", 700);
+}
 
+function fail(btn, msg, err, label) {
+  msg.textContent = err.message;
+  msg.className = "msg err";
+  btn.disabled = false;
+  btn.textContent = label;
+}
+
+async function submitJoin() {
+  const { btn, msg } = working();
   try {
-    // An invited teammate arrives here already signed in (via Supabase's
-    // magic-link invite email), but with no password yet -- they only ever
-    // typed one here, once. A self-serve company creator already set theirs
-    // on index.html, so there's nothing to do in that branch.
-    if (mode === "join") {
-      const pass = document.getElementById("pass").value;
-      const pass2 = document.getElementById("pass2").value;
-      if (pass !== pass2) throw new Error("Passwords don't match.");
-      const { error: passErr } = await sb.auth.updateUser({ password: pass });
-      // A retry after an earlier failed attempt (e.g. the join hadn't
-      // finished yet) re-submits the same password the user already set --
-      // Supabase correctly rejects that as "unchanged," but it isn't a real
-      // problem, so don't block the retry on it.
-      if (passErr && !/different from the old password/i.test(passErr.message || "")) throw passErr;
-    }
+    const name = document.getElementById("name").value.trim();
+    const pass = document.getElementById("pass").value;
+    const pass2 = document.getElementById("pass2").value;
+    if (pass !== pass2) throw new Error("Passwords don't match.");
+
+    // Creates the account directly from this submit -- a real click, not
+    // an auto-fetchable link -- then we sign in with the same credentials.
+    const acceptRes = await fetch(`${SUPA_URL}/functions/v1/accept-invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite_token: inviteToken, password: pass }),
+    });
+    const acceptData = await acceptRes.json();
+    if (acceptData.error) throw new Error(acceptData.error);
+
+    const { data: signInData, error: signInErr } = await sb.auth.signInWithPassword({ email: acceptData.email, password: pass });
+    if (signInErr) throw signInErr;
 
     const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${signInData.session.access_token}` },
+      body: JSON.stringify({ mode: "join", invite_token: inviteToken, display_name: name || undefined }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    msg.textContent = "All set! Redirecting…";
-    msg.className = "msg ok";
-    setTimeout(() => window.location.href = "dashboard_new.html", 700);
+    finish(msg, "All set! Redirecting…");
   } catch (err) {
-    msg.textContent = err.message;
-    msg.className = "msg err";
-    btn.disabled = false;
-    btn.textContent = mode === "join" ? "Join team" : "Create company";
+    fail(btn, msg, err, "Join team");
+  }
+}
+
+async function submitCreate(session) {
+  const { btn, msg } = working();
+  try {
+    const name = document.getElementById("name").value.trim();
+    const companyName = document.getElementById("company_name").value.trim();
+    const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ mode: "create", display_name: name || undefined, company_name: companyName }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    finish(msg, "All set! Redirecting…");
+  } catch (err) {
+    fail(btn, msg, err, "Create company");
   }
 }
 

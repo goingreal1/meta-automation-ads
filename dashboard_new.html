@@ -3760,7 +3760,7 @@ window.refreshBalances = async function() {
     const token = crypto.randomUUID().replace(/-/g, "");
     const { error } = await supabaseClient.from("company_invites").insert({ role, email, token });
     if (error) { msg.innerHTML = `<div class="msg err">❌ Could not create invite: ${error.message}</div>`; return; }
-    const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}index.html?invite=${token}`;
+    const link = `${location.origin}${location.pathname.replace(/[^/]*$/, "")}setup-company.html?invite=${token}`;
     msg.innerHTML = `<div class="msg ok">Sending email...</div>`;
     try {
       const { data: { session } } = await supabaseClient.auth.getSession();
