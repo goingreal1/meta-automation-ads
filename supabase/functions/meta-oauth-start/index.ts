@@ -87,5 +87,6 @@ Deno.serve(async (req: Request) => {
     dialogUrl.searchParams.set("scope", SCOPES);
   }
 
+  console.log("meta-oauth-start dialog URL:", dialogUrl.toString());
   return new Response(null, { status: 302, headers: { Location: dialogUrl.toString() } });
 });
