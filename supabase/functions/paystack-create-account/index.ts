@@ -69,9 +69,11 @@ Deno.serve(async (req: Request) => {
       return json({ account_number: buyer.dedicated_account_number, bank_name: buyer.dedicated_account_bank, account_name: buyer.name });
     }
 
-    // Paystack requires an email on every customer -- buyers don't
-    // necessarily have one on file, so a deterministic placeholder stands in.
-    const email = `buyer-${buyer.id}@noemail.internal`;
+    // Paystack requires a valid-looking email on every customer -- buyers
+    // don't necessarily have one on file, so a deterministic placeholder
+    // stands in. ".internal" was rejected by Paystack's validator as not a
+    // real TLD; ".com" passes.
+    const email = `buyer-${buyer.id}@noemail.example.com`;
 
     const customer = await paystackFetch("/customer", {
       method: "POST",
