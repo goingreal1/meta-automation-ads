@@ -3619,6 +3619,7 @@ async function renderSettings(el) {
     <div class="panel">
       <div class="ph"><div class="ph-title">Share your ad account with us</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">In your own Meta Business Settings -&gt; Partners -&gt; "Give a partner access to your assets", paste the Business ID below and share your ad account. We'll pick it up automatically once it's approved -- no login here needed.</div>
+      <div style="font-size:11.5px;color:var(--accent);background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:8px;padding:8px 10px;margin-bottom:14px;">When Meta asks what access to grant: choose <strong>"View performance"/Analyst</strong> access, not "Manage campaigns." We only ever read spend and metrics -- view-only access is all we need, and it means we can't touch your budgets or campaigns even by accident.</div>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
         <div style="font-size:12.5px;">Our Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(partnerBizId || "unavailable right now")}</code></div>
         ${partnerBizId ? `<button type="button" class="btn btn-g" style="padding:2px 6px;font-size:10px;" onclick="navigator.clipboard.writeText('${escH(partnerBizId)}')">Copy</button>` : ""}
