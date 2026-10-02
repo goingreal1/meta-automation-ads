@@ -23,6 +23,11 @@ const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY") ?? "";
 const ELEVENLABS_AGENT_ID = Deno.env.get("ELEVENLABS_AGENT_ID") ?? "";
 const ELEVENLABS_PHONE_NUMBER_ID = Deno.env.get("ELEVENLABS_PHONE_NUMBER_ID") ?? "";
 const BUSINESS_NAME = Deno.env.get("BUSINESS_NAME") ?? "our wellness store";
+// For the pg_cron job that dials queued calls every ~10 minutes -- a
+// scheduled job isn't a logged-in user and shouldn't need the all-powerful
+// service role key sitting in a cron body, so it's gated by this narrower
+// shared secret instead (same pattern as sync-partner-accounts' sync_all).
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 
 // Don't ring customers at night. Lagos is UTC+1 with no DST.
 const CALL_START_HOUR = 8;
@@ -154,13 +159,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    if (!(await isAuthorized(req))) return json({ error: "Unauthorized" }, 401);
+    const body = await req.json().catch(() => ({}));
+
+    const cronAuthorized = body?.process_due && CRON_SECRET && body?.cron_secret === CRON_SECRET;
+    if (!cronAuthorized && !(await isAuthorized(req))) return json({ error: "Unauthorized" }, 401);
     // No blanket "must be set" check here anymore -- which credentials apply
     // depends on the order's company (resolveCallConfig), checked per-call in
     // dial() instead. The global env vars are only the fallback for whichever
     // company hasn't configured its own in company_settings.
-
-    const body = await req.json().catch(() => ({}));
 
     if (body?.process_due) {
       if (nextCallableTime().getTime() > Date.now()) return json({ processed: 0, reason: "outside calling hours" });
