@@ -1814,15 +1814,15 @@ async function renderPerformance(el, fromDate, toDate) {
     <div class="g4">
       <div class="kc"><div class="kc-lbl">Order revenue</div><div class="kc-val">${fN(buyerTot.revenue)}</div><div class="kc-sub">excl. cancelled/returned</div></div>
       <div class="kc"><div class="kc-lbl">ROAS (orders)</div><div class="kc-val a">${roasFmt(buyerTot.revenue, totals.spend)}</div></div>
-      <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roasFmt(buyerTot.delivered, totals.spend)}</div><div class="kc-sub">cash actually collected</div></div>
-      <div class="kc"><div class="kc-lbl">Delivered revenue</div><div class="kc-val">${fN(buyerTot.delivered)}</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roasFmt(buyerTot.delivered, totals.spend)}</div><div class="kc-sub">marked delivered -- not a payment confirmation</div></div>
+      <div class="kc"><div class="kc-lbl">Real ROAS</div><div class="kc-val a">${roasFmt(buyerTot.confirmed, totals.spend)}</div><div class="kc-sub">confirmed Paystack payments -- actual cash in hand</div></div>
     </div>
 
     <div class="panel">
       <div class="ph"><div class="ph-title">Spend &amp; ROAS by media buyer</div><div class="ph-count">Attributed by [CODE] in ad set / campaign name</div></div>
       ${!buyerList.length ? `<div class="empty"><div class="empty-ico">📊</div>No spend or orders in this range yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Spend</th><th>Orders</th><th>CPA</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
+        <tr><th>Buyer</th><th>Spend</th><th>Orders</th><th>CPA</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th></tr>
         ${buyerList.sort((a, b) => b.spend - a.spend).map(r => `<tr>
           <td class="s">${r.buyer ? `${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span>` : `<span style="color:var(--muted)">Unattributed</span>`}</td>
           <td>${fN(r.spend)}</td>
@@ -1831,6 +1831,7 @@ async function renderPerformance(el, fromDate, toDate) {
           <td>${fN(r.revenue)}</td>
           <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
           <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
+          <td class="${roasCls(r.confirmed, r.spend)}" title="Based on confirmed Paystack payments only.">${roasFmt(r.confirmed, r.spend)}</td>
         </tr>`).join("")}
       </table></div>`}
     </div>
@@ -3440,20 +3441,21 @@ async function fetchBuyerRoas(fromDateStr, toDateStr) {
     // security-definer RPC, not a direct table/view read -- every company
     // member sees the full leaderboard even though buyer-role RLS now
     // restricts the underlying orders table to each buyer's own rows.
-    sbRpc("media_buyer_daily_roas_agg", { from_date: fromDateStr || null, to_date: toDateStr || null }).catch(() => []),
+    sbRpc("media_buyer_daily_roas_agg_v2", { from_date: fromDateStr || null, to_date: toDateStr || null }).catch(() => []),
   ]);
   const agg = new Map();
   for (const r of rows || []) {
     const k = r.media_buyer_id ?? "none";
-    const a = agg.get(k) ?? { spend: 0, orders: 0, revenue: 0, delivered: 0 };
+    const a = agg.get(k) ?? { spend: 0, orders: 0, revenue: 0, delivered: 0, confirmed: 0 };
     a.spend += Number(r.spend_naira || 0); a.orders += Number(r.orders || 0);
     a.revenue += Number(r.revenue_naira || 0); a.delivered += Number(r.delivered_revenue_naira || 0);
+    a.confirmed += Number(r.confirmed_revenue_naira || 0);
     agg.set(k, a);
   }
   const byId = new Map((buyers || []).map(b => [b.id, b]));
   const list = [...agg.entries()].map(([id, a]) => ({ id, buyer: byId.get(id), ...a }));
-  for (const b of buyers || []) if (!agg.has(b.id)) list.push({ id: b.id, buyer: b, spend: 0, orders: 0, revenue: 0, delivered: 0 });
-  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, orders: t.orders + r.orders }), { spend: 0, revenue: 0, delivered: 0, orders: 0 });
+  for (const b of buyers || []) if (!agg.has(b.id)) list.push({ id: b.id, buyer: b, spend: 0, orders: 0, revenue: 0, delivered: 0, confirmed: 0 });
+  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, confirmed: t.confirmed + r.confirmed, orders: t.orders + r.orders }), { spend: 0, revenue: 0, delivered: 0, confirmed: 0, orders: 0 });
   return { list, tot };
 }
 
@@ -3483,7 +3485,7 @@ async function renderLeaderboard(el) {
       <div class="ph"><div class="ph-title">Media buyer rankings</div><div class="ph-count">Ranked by order revenue</div></div>
       ${!ranked.length ? `<div class="empty"><div class="empty-ico">🏆</div>No media buyers yet -- add one from Settings.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Rank</th><th>Buyer</th><th>Spend</th><th>Orders</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th></tr>
+        <tr><th>Rank</th><th>Buyer</th><th>Spend</th><th>Orders</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th></tr>
         ${ranked.map((r, i) => `<tr ${i < 3 ? 'style="background:var(--accentBg);"' : ""}>
           <td style="font-size:14px;font-weight:700;">#${i + 1}</td>
           <td class="s"><a href="javascript:void(0)" class="lbBuyerLink" data-id="${r.buyer.id}" style="color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;">${escH(r.buyer.name)}</a></td>
@@ -3492,6 +3494,7 @@ async function renderLeaderboard(el) {
           <td class="s">${fN(r.revenue)}</td>
           <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
           <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
+          <td class="${roasCls(r.confirmed, r.spend)}" title="Based on confirmed Paystack payments only -- the only figure that's actual cash in hand.">${roasFmt(r.confirmed, r.spend)}</td>
         </tr>`).join("")}
       </table></div>`}
     </div>
