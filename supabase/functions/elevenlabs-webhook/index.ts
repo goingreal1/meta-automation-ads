@@ -136,10 +136,21 @@ Deno.serve(async (req: Request) => {
 
     // Only promote from pending: never override a status a human already set.
     if (call.order_id && collected(analysis, "order_confirmed") === true && !wantsCancel) {
-      await supabase.from("orders")
+      const { data: promoted } = await supabase.from("orders")
         .update({ order_status: "valid", updated_at: new Date().toISOString() })
         .eq("id", call.order_id)
-        .eq("order_status", "pending");
+        .eq("order_status", "pending")
+        .select("id");
+      // Fire-and-forget -- the webhook's own response to ElevenLabs shouldn't
+      // wait on a WhatsApp send. Tells the customer where to pay and the
+      // assigned agent what to expect.
+      if (promoted?.length) {
+        fetch(`${SUPABASE_URL}/functions/v1/send-payment-whatsapp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({ order_id: call.order_id, type: "payment_request" }),
+        }).catch((err) => console.error("send-payment-whatsapp failed:", err));
+      }
     }
 
     return json({ ok: true, red_flags: redFlags });

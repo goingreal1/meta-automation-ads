@@ -292,25 +292,29 @@ Deno.serve(async (req: Request) => {
       else await callRequest;
     }
 
-    // Gives the customer a bank account to pay into right away -- payment
-    // confirmation then happens automatically via paystack-webhook, no human
-    // ever has to mark an order paid. Awaited (unlike the call above) since
-    // the customer needs these details in this same response; a failure
-    // here (Paystack down, no phone number, etc.) shouldn't fail the order
-    // itself -- it just means no payment account came back this time.
-    let payment: { account_number: string; bank_name: string; account_name: string; amount_naira: number } | null = null;
+    // Narration code the customer is asked to include in their transfer --
+    // paystack-webhook's primary (not guaranteed, see its own comment)
+    // signal for matching a deposit to this exact order. Short, human-typeable.
+    // Also ensures the buyer's own Paystack Dedicated Virtual Account exists
+    // (one per buyer, reused across every order of theirs -- not per order).
+    let payment: { account_number: string; bank_name: string; account_name: string; narration_code: string } | null = null;
     if (orderRow?.id) {
-      try {
-        const payRes = await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-account`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-          body: JSON.stringify({ order_id: orderRow.id }),
-        });
-        const payBody = await payRes.json();
-        if (payRes.ok && !payBody.error) payment = payBody;
-        else console.error("paystack-create-account failed:", payBody.error);
-      } catch (err) {
-        console.error("paystack-create-account failed:", err);
+      const narrationCode = `PAY${orderRow.id.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+      await supabase.from("orders").update({ payment_narration_code: narrationCode }).eq("id", orderRow.id);
+
+      if (mediaBuyerId) {
+        try {
+          const payRes = await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-account`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+            body: JSON.stringify({ media_buyer_id: mediaBuyerId }),
+          });
+          const payBody = await payRes.json();
+          if (payRes.ok && !payBody.error) payment = { ...payBody, narration_code: narrationCode };
+          else console.error("paystack-create-account failed:", payBody.error);
+        } catch (err) {
+          console.error("paystack-create-account failed:", err);
+        }
       }
     }
 
