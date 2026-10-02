@@ -1,0 +1,19 @@
+-- Dials every queued AI order-confirmation call whose scheduled time has
+-- come, every 10 minutes, so orders placed outside calling hours (or any
+-- order whose first dial attempt didn't fire for whatever reason) actually
+-- get called later instead of sitting in "queued" forever. Gated by
+-- CRON_SECRET (an edge function secret -- this file intentionally doesn't
+-- contain its value; the live job was scheduled directly against the
+-- project with the real secret substituted in).
+--
+-- select cron.schedule(
+--   'dial-queued-calls-every-10min',
+--   '*/10 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/place-order-call',
+--     headers := jsonb_build_object('Content-Type', 'application/json'),
+--     body := jsonb_build_object('process_due', true, 'cron_secret', '<CRON_SECRET value, not committed>')
+--   );
+--   $$
+-- );
