@@ -149,12 +149,28 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 .footer-logo{font-size:19px;font-weight:700;color:#fff;margin-bottom:12px;}
 .footer-tag{font-size:13.5px;color:#8c897e;max-width:260px;line-height:1.6;}
 .footer-cols{display:flex;gap:56px;flex-wrap:wrap;}
+.footer-col{border:none;}
+.footer-col summary{list-style:none;cursor:default;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.footer-col summary::-webkit-details-marker{display:none;}
+.footer-col summary::marker{content:'';}
+.footer-col summary h5{margin:0;}
+.footer-chevron{display:none;width:14px;height:14px;color:#716e63;flex-shrink:0;transition:transform .2s;}
+.footer-col-links{display:flex;flex-direction:column;}
 .footer-col h5{font-size:12px;font-weight:700;color:#8c897e;text-transform:uppercase;
   letter-spacing:.06em;margin-bottom:16px;}
 .footer-col a{display:block;font-size:13.5px;color:#c9c6bc;margin-bottom:11px;}
 .footer-col a:hover{color:#fff;}
 .footer-bottom{border-top:1px solid #35332b;padding-top:24px;display:flex;justify-content:space-between;
   align-items:center;flex-wrap:wrap;gap:12px;}
+@media (max-width:640px){
+  .footer-cols{flex-direction:column;gap:0;width:100%;}
+  .footer-col{border-bottom:1px solid #35332b;padding:16px 0;}
+  .footer-col summary{cursor:pointer;}
+  .footer-chevron{display:inline-flex;}
+  .footer-col[open] .footer-chevron{transform:rotate(90deg);}
+  .footer-col h5{margin-bottom:0;}
+  .footer-col-links{margin-top:14px;}
+}
 .footer-copy{font-size:12.5px;color:#716e63;}
 </style>
 </head>
@@ -387,17 +403,21 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         <div class="footer-tag">The operating system for performance commerce.</div>
       </div>
       <div class="footer-cols">
-        <div class="footer-col">
-          <h5>Product</h5>
-          <a href="#platform">Platform</a>
-          <a href="#modules">Modules</a>
-          <a href="#how">How it works</a>
-        </div>
-        <div class="footer-col">
-          <h5>Account</h5>
-          <a href="login.html">Log in</a>
-          <a href="login.html?mode=signup">Get started</a>
-        </div>
+        <details class="footer-col" open>
+          <summary><h5>Product</h5><span class="ico footer-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></summary>
+          <div class="footer-col-links">
+            <a href="#platform">Platform</a>
+            <a href="#modules">Modules</a>
+            <a href="#how">How it works</a>
+          </div>
+        </details>
+        <details class="footer-col" open>
+          <summary><h5>Account</h5><span class="ico footer-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></summary>
+          <div class="footer-col-links">
+            <a href="login.html">Log in</a>
+            <a href="login.html?mode=signup">Get started</a>
+          </div>
+        </details>
       </div>
     </div>
     <div class="footer-bottom">
@@ -406,6 +426,20 @@ footer{background:var(--dark2);padding:60px 0 32px;}
   </div>
 </footer>
 
-<script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+<script>
+document.getElementById('yr').textContent = new Date().getFullYear();
+(function () {
+  var cols = document.querySelectorAll('footer .footer-col');
+  var wasMobile = null;
+  function apply() {
+    var isMobile = window.innerWidth <= 640;
+    if (isMobile === wasMobile) return;
+    wasMobile = isMobile;
+    cols.forEach(function (d) { if (isMobile) d.removeAttribute('open'); else d.setAttribute('open', ''); });
+  }
+  apply();
+  window.addEventListener('resize', apply);
+})();
+</script>
 </body>
 </html>
