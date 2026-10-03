@@ -871,6 +871,10 @@ document.getElementById("tabsBar").addEventListener("click", e => {
   const t = e.target.closest(".tab-btn");
   if (!t) return;
   activeTab = t.dataset.tab;
+  // Clicking into Campaigns from elsewhere should always land on the list,
+  // not wherever the drill-down was left -- only "bvBackToCampaignsList"/
+  // the breadcrumb buttons inside the tab itself should preserve a detail view.
+  if (activeTab === "campaigns") campaignsView = { level: "list", campaignId: null, adSetId: null };
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === t));
   render();
 });
@@ -1690,136 +1694,294 @@ function bvAdSetLifecycle(a) {
   return { key: "off", label: status ? status.replace(/_/g, " ") : "off" };
 }
 
-async function renderCampaigns(el) {
-  const sets = await sbQuery("ad_sets", "select=*,campaigns(campaign_name,campaign_type),daily_metrics(spend_naira,ctr,cost_per_order_naira,metric_date)&order=created_at.desc&limit=150");
+// Meta Ads Manager-style drill-down: Campaigns list -> one Campaign's Ad
+// Sets -> one Ad Set's Ads (with live creative). campaignsView tracks where
+// we are; renderCampaigns (the tab entry point) just dispatches on it, so
+// the sidebar's "Campaigns" click always lands back at the list.
+let campaignsView = { level: "list", campaignId: null, adSetId: null };
 
-  // daily_metrics comes back embedded as an array (one row per day) — reduce to the latest day per ad set.
-  (sets||[]).forEach(a => {
-    const latest = (a.daily_metrics||[]).sort((x,y) => (x.metric_date < y.metric_date ? 1 : -1))[0];
-    a.ctr_latest = latest?.ctr ?? null;
-    a.cpa_latest = latest?.cost_per_order_naira ?? null;
-    a.spend_latest = latest?.spend_naira ?? null;
-    a.lifecycle = bvAdSetLifecycle(a);
-  });
-
-  const active    = (sets||[]).filter(a => a.lifecycle.key === "active").length;
-  const scheduled = (sets||[]).filter(a => a.lifecycle.key === "scheduled").length;
-  const off       = (sets||[]).filter(a => a.lifecycle.key === "off").length;
-
-  el.innerHTML = `
-    <div class="sh">
-      <div class="sh-title">Campaigns & Ad Sets</div>
-      <div class="sh-actions">
-        <button class="btn btn-b" id="btnPull2" onclick="pullAndRefresh()">📊 Pull & Refresh</button>
-      </div>
-    </div>
-    <div id="campMsg"></div>
-
-    <div class="g4">
-      <div class="kc"><div class="kc-lbl">Total ad sets</div><div class="kc-val">${sets?.length ?? 0}</div></div>
-      <div class="kc"><div class="kc-lbl">Active</div><div class="kc-val a">${active}</div></div>
-      <div class="kc"><div class="kc-lbl">Scheduled</div><div class="kc-val w">${scheduled}</div></div>
-      <div class="kc"><div class="kc-lbl">Off</div><div class="kc-val">${off}</div></div>
-    </div>
-
-    <div class="panel">
-      <div class="ph">
-        <div class="ph-title">All ad sets</div>
-        <div class="ph-count" style="font-size:10px;color:var(--muted);">
-          Kill: CTR &lt; ${CTR_KILL}% · Watch: ${CTR_KILL}–${CTR_WIN}% · Scale: ≥ ${CTR_WIN}% &amp; CPA ≤ ${fN(CPA_KILL)}
-        </div>
-      </div>
-      ${!sets?.length
-        ? `<div class="empty"><div class="empty-ico">🚀</div>No ad sets yet. Run a batch from Overview to stage your first test.</div>`
-        : `<div class="tbl-wrap"><table>
-          <tr><th>Ad Set</th><th>Campaign</th><th>Type</th><th>Ads</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
-          ${sets.map(a => {
-            const h    = hrs(a.created_at);
-            const ctrV = a.ctr_latest != null ? parseFloat(a.ctr_latest).toFixed(2) : null;
-            const cpaV = a.cpa_latest;
-            const spV  = a.spend_latest;
-            const cpaC = cpaV ? (cpaV <= CPA_WATCH ? "ctr-hot" : cpaV <= CPA_KILL ? "ctr-warm" : "ctr-cold") : "";
-            return `<tr>
-              <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${a.adset_name}">${a.adset_name}</td>
-              <td class="n" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.campaigns?.campaign_name ?? "—"}</td>
-              <td style="text-transform:lowercase;">${a.targeting_type ?? "—"}</td>
-              <td><button type="button" class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11px;" onclick="bvShowAdSetAds('${a.id}')">View ad copies</button></td>
-              <td>${fN(a.budget_naira)}</td>
-              <td class="${ctrCls(ctrV)}">${ctrV ? ctrV+"%" : "—"}</td>
-              <td class="${cpaC}">${fN(cpaV)}</td>
-              <td>${fN(spV)}</td>
-              <td>${h}h</td>
-              <td>${decision(ctrV, spV, h)}</td>
-              <td><span class="pill ${a.lifecycle.key}">${a.lifecycle.label}</span></td>
-            </tr>`;
-          }).join("")}
-        </table></div>`}
-    </div>`;
+function bvOpenCampaign(campaignId) {
+  campaignsView = { level: "campaign", campaignId, adSetId: null };
+  render();
+}
+function bvOpenAdSet(adSetId, campaignId) {
+  campaignsView = { level: "adset", campaignId, adSetId };
+  render();
+}
+function bvBackToCampaignsList() {
+  campaignsView = { level: "list", campaignId: null, adSetId: null };
+  render();
+}
+function bvBackToCampaign() {
+  campaignsView = { level: "campaign", campaignId: campaignsView.campaignId, adSetId: null };
+  render();
 }
 
-// Shows every real ad (and its creative -- image, headline, primary text)
-// actually running inside one ad set. Ad sets launched after the multi-copy
-// feature have rows in ad_set_ads (one per ad copy); older ad sets created
-// before it only ever had one ad, recorded on ad_sets.creative_id -- fall
-// back to that so every ad set, old or new, shows something here.
-async function bvShowAdSetAds(adSetId) {
-  const overlay = document.createElement("div");
-  overlay.id = "bvModalOverlay";
-  overlay.className = "bv-overlay";
-  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
-  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
-  document.body.appendChild(overlay);
+async function renderCampaigns(el) {
+  if (campaignsView.level === "campaign") return renderCampaignDetail(el, campaignsView.campaignId);
+  if (campaignsView.level === "adset") return renderAdSetDetail(el, campaignsView.adSetId, campaignsView.campaignId);
+  return renderCampaignsList(el);
+}
 
+async function bvTriggerStructureSyncInline(btnId, msgId) {
+  const btn = document.getElementById(btnId);
+  const msg = document.getElementById(msgId);
+  if (!btn) return;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Syncing…';
   try {
-    const [adSetAds, adSetRows] = await Promise.all([
-      sbQuery("ad_set_ads", `ad_set_id=eq.${adSetId}&select=*,creatives(creative_name,image_url,video_id,headline,primary_text,meta_ad_id)`),
-      sbQuery("ad_sets", `id=eq.${adSetId}&select=adset_name,creative_id,creatives(creative_name,image_url,video_id,headline,primary_text,meta_ad_id)`),
-    ]);
-
-    let ads = (adSetAds || []).map(r => ({ ...r.creatives, meta_ad_id: r.meta_ad_id }));
-    if (!ads.length && adSetRows?.[0]?.creatives) {
-      ads = [{ ...adSetRows[0].creatives }];
-    }
-    const adsetName = adSetRows?.[0]?.adset_name || "Ad set";
-
-    document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
-      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-      <h3 style="margin:0 0 4px;">${adsetName}</h3>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">${ads.length} ad cop${ads.length === 1 ? "y" : "ies"} running in this ad set</div>
-      ${!ads.length
-        ? `<div class="empty"><div class="empty-ico">🎨</div>No ad recorded for this ad set yet.</div>`
-        : ads.map(c => `
-          <div style="display:flex;gap:12px;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
-            ${c.image_url ? `<img src="${c.image_url}" style="width:70px;height:70px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<div style="width:70px;height:70px;border-radius:6px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">🎬</div>`}
-            <div style="min-width:0;">
-              <div style="font-weight:600;font-size:12.5px;">${c.headline || c.creative_name || "—"}</div>
-              <div style="font-size:11.5px;color:var(--muted);margin-top:3px;max-height:54px;overflow:hidden;">${(c.primary_text || "").slice(0, 180)}${(c.primary_text || "").length > 180 ? "…" : ""}</div>
-              ${c.meta_ad_id ? `<div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Meta ad ID: ${c.meta_ad_id}</div>` : ""}
-            </div>
-          </div>`).join("")}
-    `;
-  } catch (err) {
-    document.querySelector("#bvModalOverlay .bv-modal").innerHTML = `
-      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-      <div class="msg err">❌ Failed to load: ${err.message}</div>`;
+    const r = await sbFn("sync-meta-structure", {});
+    if (msg) msg.innerHTML = r.error
+      ? `<div class="msg err">❌ ${r.error}</div>`
+      : `<div class="msg ok">✅ Synced: ${r.summary?.campaigns ?? 0} campaigns, ${r.summary?.ad_sets ?? 0} ad sets, ${r.summary?.ads ?? 0} ads.${r.summary?.errors?.length ? ` (${r.summary.errors.length} error(s), check console)` : ""}</div>`;
+    if (r.summary?.errors?.length) console.warn("sync-meta-structure errors:", r.summary.errors);
+    setTimeout(render, 1200);
+  } catch (e) {
+    if (msg) msg.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = "☁️ Sync from Meta"; }
   }
 }
 
-async function pullAndRefresh() {
-  const btn = document.getElementById("btnPull2");
-  const msg = document.getElementById("campMsg");
+async function pullAndRefresh(btnId = "btnPull2", msgId = "campMsg") {
+  const btn = document.getElementById(btnId);
+  const msg = document.getElementById(msgId);
   if (!btn) return;
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Pulling…';
   try {
     const r = await sbFn("pull-meta-metrics", { ad_account_id: activeAccountId });
     if (msg) msg.innerHTML = r.error
       ? `<div class="msg err">❌ ${r.error}</div>`
-      : `<div class="msg ok">✅ Metrics pulled. Refreshing…</div>`;
-    setTimeout(render, 1300);
+      : `<div class="msg ok">✅ Metrics updated. ${r.processed ?? ""} ad sets processed.</div>`;
+    if (!r.error) setTimeout(render, 1200);
   } catch(e) {
     if (msg) msg.innerHTML = `<div class="msg err">❌ ${e.message}</div>`;
+  } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = "📊 Pull & Refresh"; }
   }
+}
+
+let campaignsStatusFilter = "all"; // all | active | paused
+
+// ── LEVEL 1: every campaign (live, recent, past) ────────────────────────────
+async function renderCampaignsList(el) {
+  const [campaigns, adSets, adSetAds] = await Promise.all([
+    sbQuery("campaigns", "select=*,ad_accounts(nickname,name)&order=created_at.desc&limit=200"),
+    sbQuery("ad_sets", "select=id,campaign_id,status,budget_naira,meta_raw,daily_metrics(spend_naira,ctr,orders,metric_date)&order=created_at.desc&limit=1000"),
+    sbQuery("ad_set_ads", "select=id,ad_set_id&limit=2000"),
+  ]);
+
+  const adSetsByCampaign = new Map();
+  for (const a of adSets || []) {
+    const latest = (a.daily_metrics || []).sort((x, y) => (x.metric_date < y.metric_date ? 1 : -1))[0];
+    a.spend_latest = Number(latest?.spend_naira || 0);
+    a.ctr_latest = latest?.ctr ?? null;
+    a.orders_latest = Number(latest?.orders || 0);
+    a.lifecycle = bvAdSetLifecycle(a);
+    if (!adSetsByCampaign.has(a.campaign_id)) adSetsByCampaign.set(a.campaign_id, []);
+    adSetsByCampaign.get(a.campaign_id).push(a);
+  }
+  const adCountByAdSet = new Map();
+  for (const r of adSetAds || []) adCountByAdSet.set(r.ad_set_id, (adCountByAdSet.get(r.ad_set_id) || 0) + 1);
+
+  const rows = (campaigns || []).map(c => {
+    const mySets = adSetsByCampaign.get(c.id) || [];
+    const adCount = mySets.reduce((s, a) => s + (adCountByAdSet.get(a.id) || 0), 0);
+    const spend = mySets.reduce((s, a) => s + a.spend_latest, 0);
+    const orders = mySets.reduce((s, a) => s + a.orders_latest, 0);
+    const anyActive = mySets.some(a => a.lifecycle.key === "active");
+    return { campaign: c, adSetCount: mySets.length, adCount, spend, orders, anyActive };
+  });
+
+  const filtered = rows.filter(r => {
+    if (campaignsStatusFilter === "active") return r.campaign.status === "active";
+    if (campaignsStatusFilter === "paused") return r.campaign.status !== "active";
+    return true;
+  });
+
+  const totActive = rows.filter(r => r.campaign.status === "active").length;
+
+  el.innerHTML = `
+    <div class="sh">
+      <div class="sh-title">Campaigns</div>
+      <div class="sh-actions">
+        <select id="campStatusFilter" style="width:auto;padding:5px 9px;font-size:12px;">
+          <option value="all" ${campaignsStatusFilter === "all" ? "selected" : ""}>All</option>
+          <option value="active" ${campaignsStatusFilter === "active" ? "selected" : ""}>Active</option>
+          <option value="paused" ${campaignsStatusFilter === "paused" ? "selected" : ""}>Paused / ended</option>
+        </select>
+        <button class="btn btn-g" id="btnStructSync2">☁️ Sync from Meta</button>
+        <button class="btn btn-b" id="btnPull2">📊 Pull & Refresh</button>
+      </div>
+    </div>
+    <div id="campMsg"></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Campaigns</div><div class="kc-val">${rows.length}</div></div>
+      <div class="kc"><div class="kc-lbl">Active</div><div class="kc-val a">${totActive}</div></div>
+      <div class="kc"><div class="kc-lbl">Ad sets</div><div class="kc-val">${adSets?.length ?? 0}</div></div>
+      <div class="kc"><div class="kc-lbl">Ads</div><div class="kc-val">${adSetAds?.length ?? 0}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">All campaigns</div><div class="ph-count">${filtered.length} shown</div></div>
+      ${!filtered.length
+        ? `<div class="empty"><div class="empty-ico">🚀</div>No campaigns yet. Launch one from Creative Vault, or Sync from Meta if you already have live campaigns running there.</div>`
+        : `<div class="tbl-wrap"><table>
+          <tr><th>Campaign</th><th>Ad account</th><th>Status</th><th>Ad sets</th><th>Ads</th><th>Budget/day</th><th>Spend</th><th>Orders</th><th>Created</th></tr>
+          ${filtered.map(r => `<tr class="bv-clickable-row" onclick="bvOpenCampaign('${r.campaign.id}')">
+            <td class="s n" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.campaign.campaign_name)}">${escH(r.campaign.campaign_name)}</td>
+            <td class="n" style="color:var(--muted);">${escH(r.campaign.ad_accounts?.nickname || r.campaign.ad_accounts?.name || "—")}</td>
+            <td><span class="pill ${r.anyActive ? "active" : r.campaign.status}">${r.anyActive ? "Active" : escH((r.campaign.status || "—").replace(/_/g, " "))}</span></td>
+            <td>${r.adSetCount}</td>
+            <td>${r.adCount}</td>
+            <td>${fN(r.campaign.daily_budget_naira)}</td>
+            <td>${fN(r.spend)}</td>
+            <td>${r.orders}</td>
+            <td>${ago(r.campaign.created_at)}</td>
+          </tr>`).join("")}
+        </table></div>`}
+    </div>`;
+
+  document.getElementById("campStatusFilter")?.addEventListener("change", e => { campaignsStatusFilter = e.target.value; render(); });
+  document.getElementById("btnStructSync2")?.addEventListener("click", () => bvTriggerStructureSyncInline("btnStructSync2", "campMsg"));
+  document.getElementById("btnPull2")?.addEventListener("click", () => pullAndRefresh("btnPull2", "campMsg"));
+}
+
+// ── LEVEL 2: one campaign's ad sets ─────────────────────────────────────────
+async function renderCampaignDetail(el, campaignId) {
+  const [campaignRows, adSets, adSetAds] = await Promise.all([
+    sbQuery("campaigns", `id=eq.${campaignId}&select=*,ad_accounts(nickname,name)`),
+    sbQuery("ad_sets", `campaign_id=eq.${campaignId}&select=*,daily_metrics(spend_naira,ctr,cost_per_order_naira,orders,metric_date)&order=created_at.asc`),
+    sbQuery("ad_set_ads", "select=id,ad_set_id"),
+  ]);
+  const campaign = campaignRows?.[0];
+  if (!campaign) { el.innerHTML = `<div class="empty"><div class="empty-ico">🚀</div>Campaign not found.</div>`; return; }
+
+  const adCountByAdSet = new Map();
+  for (const r of adSetAds || []) adCountByAdSet.set(r.ad_set_id, (adCountByAdSet.get(r.ad_set_id) || 0) + 1);
+
+  (adSets || []).forEach(a => {
+    const latest = (a.daily_metrics || []).sort((x, y) => (x.metric_date < y.metric_date ? 1 : -1))[0];
+    a.ctr_latest = latest?.ctr ?? null;
+    a.cpa_latest = latest?.cost_per_order_naira ?? null;
+    a.spend_latest = Number(latest?.spend_naira || 0);
+    a.orders_latest = Number(latest?.orders || 0);
+    a.lifecycle = bvAdSetLifecycle(a);
+    a.adCount = adCountByAdSet.get(a.id) || 0;
+  });
+
+  const totalSpend = (adSets || []).reduce((s, a) => s + a.spend_latest, 0);
+  const totalOrders = (adSets || []).reduce((s, a) => s + a.orders_latest, 0);
+  const totalAds = (adSets || []).reduce((s, a) => s + a.adCount, 0);
+
+  el.innerHTML = `
+    <div class="sh">
+      <div class="sh-title">
+        <button type="button" class="btn btn-g" style="padding:3px 10px;font-size:11px;margin-right:8px;" onclick="bvBackToCampaignsList()">← Campaigns</button>
+        ${escH(campaign.campaign_name)}
+      </div>
+      <div class="sh-actions"><button class="btn btn-b" id="btnPull3">📊 Pull & Refresh</button></div>
+    </div>
+    <div id="campMsg"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin:-8px 0 14px;">
+      <span class="pill ${(campaign.status || "").toLowerCase()}">${escH(campaign.status || "—")}</span>
+      &nbsp;${escH(campaign.ad_accounts?.nickname || campaign.ad_accounts?.name || "")}
+      &nbsp;· objective: ${escH(campaign.objective_raw || campaign.objective || "—")}
+      &nbsp;· created ${ago(campaign.created_at)}
+    </div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Ad sets</div><div class="kc-val">${adSets?.length ?? 0}</div></div>
+      <div class="kc"><div class="kc-lbl">Ads</div><div class="kc-val">${totalAds}</div></div>
+      <div class="kc"><div class="kc-lbl">Spend</div><div class="kc-val">${fN(totalSpend)}</div></div>
+      <div class="kc"><div class="kc-lbl">Orders</div><div class="kc-val a">${totalOrders}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Ad sets</div><div class="ph-count" style="font-size:10px;color:var(--muted);">Kill: CTR &lt; ${CTR_KILL}% · Watch: ${CTR_KILL}–${CTR_WIN}% · Scale: ≥ ${CTR_WIN}% &amp; CPA ≤ ${fN(CPA_KILL)}</div></div>
+      ${!adSets?.length
+        ? `<div class="empty"><div class="empty-ico">🎯</div>No ad sets synced for this campaign yet.</div>`
+        : `<div class="tbl-wrap"><table>
+          <tr><th>Ad set</th><th>Ads</th><th>Budget/day</th><th>CTR</th><th>CPA</th><th>Spend</th><th>Age</th><th>Decision</th><th>Status</th></tr>
+          ${adSets.map(a => {
+            const h = hrs(a.created_at);
+            const ctrV = a.ctr_latest != null ? parseFloat(a.ctr_latest).toFixed(2) : null;
+            const cpaC = a.cpa_latest ? (a.cpa_latest <= CPA_WATCH ? "ctr-hot" : a.cpa_latest <= CPA_KILL ? "ctr-warm" : "ctr-cold") : "";
+            return `<tr class="bv-clickable-row" onclick="bvOpenAdSet('${a.id}','${campaignId}')">
+              <td class="s n" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(a.adset_name)}">${escH(a.adset_name)}</td>
+              <td>${a.adCount}</td>
+              <td>${fN(a.budget_naira)}</td>
+              <td class="${ctrCls(ctrV)}">${ctrV ? ctrV + "%" : "—"}</td>
+              <td class="${cpaC}">${fN(a.cpa_latest)}</td>
+              <td>${fN(a.spend_latest)}</td>
+              <td>${h}h</td>
+              <td>${decision(ctrV, a.spend_latest, h)}</td>
+              <td><span class="pill ${a.lifecycle.key}">${a.lifecycle.label}</span></td>
+            </tr>`;
+          }).join("")}
+        </table></div>`}
+    </div>`;
+
+  document.getElementById("btnPull3")?.addEventListener("click", () => pullAndRefresh("btnPull3", "campMsg"));
+}
+
+// ── LEVEL 3: one ad set's ads, with live creative pulled back from Meta ────
+// ad_set_ads (one row per ad) is the real source for any ad set launched
+// after the multi-copy feature, or synced via sync-meta-structure; an ad set
+// that only ever had ad_sets.creative_id (pre-multi-copy, legacy) falls back
+// to that single creative so nothing old goes blank.
+async function renderAdSetDetail(el, adSetId, campaignId) {
+  const [adSetRows, adSetAds] = await Promise.all([
+    sbQuery("ad_sets", `id=eq.${adSetId}&select=*,campaigns(campaign_name)`),
+    sbQuery("ad_set_ads", `ad_set_id=eq.${adSetId}&select=*,creatives(creative_name,image_url,video_id,headline,primary_text,description,destination_link,cta_type,meta_ad_id,status)`),
+  ]);
+  const adSet = adSetRows?.[0];
+  if (!adSet) { el.innerHTML = `<div class="empty"><div class="empty-ico">🎯</div>Ad set not found.</div>`; return; }
+
+  let ads = (adSetAds || []).map(r => r.creatives).filter(Boolean);
+  if (!ads.length && adSet.creative_id) {
+    const fallback = await sbQuery("creatives", `id=eq.${adSet.creative_id}&select=creative_name,image_url,video_id,headline,primary_text,description,destination_link,cta_type,meta_ad_id,status`);
+    ads = fallback || [];
+  }
+
+  const genderLabel = (adSet.genders || []).join(", ") || "all";
+  const geoLabel = adSet.states?.length ? adSet.states.join(", ") : (adSet.countries || ["NG"]).join(", ");
+
+  el.innerHTML = `
+    <div class="sh">
+      <div class="sh-title">
+        <button type="button" class="btn btn-g" style="padding:3px 10px;font-size:11px;margin-right:8px;" onclick="bvBackToCampaign()">← ${escH(adSet.campaigns?.campaign_name || "Campaign")}</button>
+        ${escH(adSet.adset_name)}
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin:-8px 0 14px;">
+      <span class="pill ${bvAdSetLifecycle(adSet).key}">${bvAdSetLifecycle(adSet).label}</span>
+      &nbsp;${fN(adSet.budget_naira)}/day &nbsp;· ${adSet.age_min ?? "—"}–${adSet.age_max ?? "—"} &nbsp;· ${escH(genderLabel)} &nbsp;· ${escH(geoLabel)}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Ads</div><div class="ph-count">${ads.length} ad${ads.length === 1 ? "" : "s"} in this ad set</div></div>
+      ${!ads.length
+        ? `<div class="empty"><div class="empty-ico">🎨</div>No ad recorded for this ad set yet -- try "Sync from Meta" on the Campaigns tab.</div>`
+        : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+          ${ads.map(c => `
+          <div style="border:1px solid var(--border);border-radius:10px;padding:12px;">
+            <div style="display:flex;gap:10px;">
+              ${c.image_url ? `<img src="${c.image_url}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<div style="width:64px;height:64px;border-radius:6px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${c.video_id ? "🎬" : "🖼️"}</div>`}
+              <div style="min-width:0;">
+                <div style="font-weight:600;font-size:12.5px;">${escH(c.headline || c.creative_name || "—")}</div>
+                ${c.status ? `<span class="pill ${c.status}" style="margin-top:3px;">${escH(c.status)}</span>` : ""}
+              </div>
+            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:8px;max-height:60px;overflow:hidden;">${escH((c.primary_text || "").slice(0, 200))}${(c.primary_text || "").length > 200 ? "…" : ""}</div>
+            ${c.destination_link ? `<div style="font-size:10.5px;color:var(--accent);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🔗 ${escH(c.destination_link)}</div>` : ""}
+            <div style="font-size:10px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between;">
+              <span>${c.cta_type ? escH(c.cta_type.replace(/_/g, " ")) : ""}</span>
+              <span>${c.meta_ad_id ? `Ad ${escH(c.meta_ad_id)}` : ""}</span>
+            </div>
+          </div>`).join("")}
+        </div>`}
+    </div>`;
 }
 
 // ── TAB: PERFORMANCE ─────────────────────────────────────────────────────────
