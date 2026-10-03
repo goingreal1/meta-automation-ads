@@ -3756,18 +3756,18 @@ async function renderWallet(el) {
     try {
       const r = await sbFn("check-account-status", { ad_account_id: adAccountId });
       if (r.error) throw new Error(r.error);
+      // check-account-status prefers Meta's funding_source_details (the real
+      // remaining prepaid wallet balance) over the plain `balance` field
+      // (accrued unbilled spend, not funds left) -- balance_source tells us
+      // which one it actually got, so we can flag it when it had to fall
+      // back. It also already writes balance_naira to the DB itself, so
+      // there's nothing left to persist here.
       result.innerHTML = `
-        <div style="font-size:20px;font-weight:700;color:var(--text);">${escH(r.current_balance)}</div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">${escH(r.name || "")} -- ${escH(r.status || "")} -- spent all-time: ${escH(r.total_amount_spent_alltime || "—")} -- spend cap: ${escH(r.spend_cap || "—")}</div>
+        <div style="font-size:20px;font-weight:700;color:var(--text);">${fN(r.balance_naira)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">${escH(r.name || "")} -- ${escH(r.status || "")} -- spent all-time: ${fN(r.amount_spent_naira)} -- spend cap: ${r.spend_cap_naira != null ? fN(r.spend_cap_naira) : "none set"}</div>
+        ${r.balance_source === "accrued_spend_fallback" ? `<div style="font-size:10px;color:var(--warn);margin-top:4px;">⚠️ No wallet balance reported for this account -- showing accrued spend instead, which is not the same as funds remaining.</div>` : ""}
       `;
-      // check-account-status is a pure live read -- persist it here so the
-      // low-balance cron (which reads ad_accounts.balance_naira) sees a
-      // fresh number too, instead of only ever showing it in this panel.
-      const numericBalance = typeof r.current_balance === "string" ? Number(r.current_balance.replace(/[^\d.]/g, "")) : null;
-      if (numericBalance != null && !Number.isNaN(numericBalance)) {
-        await supabaseClient.from("ad_accounts").update({ balance_naira: numericBalance, balance_updated_at: new Date().toISOString() }).eq("id", adAccountId);
-        await loadAccounts();
-      }
+      await loadAccounts();
     } catch (err) {
       result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
     } finally {
