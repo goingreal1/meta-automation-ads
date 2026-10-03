@@ -923,13 +923,16 @@ async function renderOverview(el) {
     // (RLS already narrows this to a buyer's own ad sets when they're not an
     // owner/admin -- "company-wide" here just means "not account-selector-filtered".)
     sbQuery("daily_metrics", `select=metric_date,spend_naira,orders,clicks,impressions,reach&metric_date=gte.${sevenDaysAgo}`, { allAccounts: true }).catch(() => []),
-    fetchWalletBalances().catch(() => ({ walletBalances: {} })),
+    fetchWalletBalances().catch(() => ({ walletBalances: {}, companyWalletBalance: 0 })),
   ]);
   const isAdminOv = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myIdOv = window.myProfile?.media_buyer_id || null;
-  const walletChipBalance = isAdminOv
-    ? Object.values(wallet.walletBalances).reduce((s, w) => s + w.balance, 0)
-    : (myIdOv ? (wallet.walletBalances[myIdOv]?.balance ?? 0) : null);
+  // Admin sees the real spendable company balance; a buyer has no wallet
+  // of their own, so their chip is just "what's approved and waiting on
+  // you to send" -- hidden entirely when there's nothing to act on.
+  const myApprovedOv = myIdOv ? (wallet.walletBalances[myIdOv]?.approved ?? 0) : 0;
+  const walletChipLabel = isAdminOv ? "Company wallet" : "Ready to send";
+  const walletChipBalance = isAdminOv ? wallet.companyWalletBalance : (myApprovedOv > 0 ? myApprovedOv : null);
 
   // Aggregate the (possibly many-rows-per-day, one per ad set) rows into one
   // total per calendar day.
@@ -962,7 +965,7 @@ async function renderOverview(el) {
 
     ${walletChipBalance !== null ? `
     <div class="wallet-chip" onclick="activeTab='wallet'; document.querySelector('[data-tab=wallet]').click();">
-      💰 ${isAdminOv ? "Company wallet" : "Your wallet"}: ${fN(walletChipBalance)} <span style="opacity:.7;">→ Wallet</span>
+      💰 ${walletChipLabel}: ${fN(walletChipBalance)} <span style="opacity:.7;">→ Wallet</span>
     </div>` : ""}
 
     <!-- Quick Actions -->
@@ -3598,33 +3601,47 @@ async function bvShowBuyerProfile(row) {
 // buyer hasn't sent it to Meta yet; "transferred" means a real Paystack
 // transfer moved it. Both get reserved out of the spendable balance so a
 // buyer can't request the same confirmed revenue twice.
-const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0, balance: 0 });
+// A buyer's DVA only ever collects customer payments -- it was never
+// their own spendable "wallet." The real spendable pool is the company's:
+// every buyer's confirmed customer payments, PLUS whatever the admin has
+// deposited directly into the company's own DVA (admin_topup), minus
+// whatever's already approved/sent to an ad account or withdrawn to the
+// admin's own bank. walletBalances below is kept per-buyer for
+// *attribution* only (ROAS, "who generated this") -- it is not a balance
+// any buyer can spend.
+const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0 });
 async function fetchWalletBalances() {
-  const [buyers, confirmedPayments, fundRequests] = await Promise.all([
+  const [buyers, confirmedPayments, fundRequests, withdrawals] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     // RLS scopes this to "my own buyer row" for a buyer, or the whole
-    // company for an admin -- one query serves both, client-side sums below
-    // turn raw rows into a per-buyer wallet balance.
-    sbQuery("payments", "select=media_buyer_id,amount_naira&status=eq.confirmed").catch(() => []),
+    // company for an admin -- one query serves both.
+    sbQuery("payments", "select=media_buyer_id,amount_naira,source&status=eq.confirmed").catch(() => []),
     sbQuery("fund_requests", "select=*&order=requested_at.desc&limit=100").catch(() => []),
+    sbQuery("admin_withdrawals", "select=amount_naira,status&order=created_at.desc&limit=200").catch(() => []),
   ]);
   const walletBalances = {};
   for (const b of buyers || []) walletBalances[b.id] = walletBlank();
+  let companyTopups = 0;
   for (const p of confirmedPayments || []) {
-    if (!p.media_buyer_id) continue;
-    walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || walletBlank();
-    walletBalances[p.media_buyer_id].confirmed += Number(p.amount_naira || 0);
+    if (p.media_buyer_id) {
+      walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || walletBlank();
+      walletBalances[p.media_buyer_id].confirmed += Number(p.amount_naira || 0);
+    } else if (p.source === "admin_topup") {
+      companyTopups += Number(p.amount_naira || 0);
+    }
   }
+  let approvedTotal = 0, transferredTotal = 0;
   for (const f of fundRequests || []) {
     if (f.status !== "approved" && f.status !== "transferred") continue;
     walletBalances[f.media_buyer_id] = walletBalances[f.media_buyer_id] || walletBlank();
-    walletBalances[f.media_buyer_id][f.status === "approved" ? "approved" : "transferred"] += Number(f.amount_naira || 0);
+    walletBalances[f.media_buyer_id][f.status] += Number(f.amount_naira || 0);
+    if (f.status === "approved") approvedTotal += Number(f.amount_naira || 0);
+    else transferredTotal += Number(f.amount_naira || 0);
   }
-  for (const k in walletBalances) {
-    const w = walletBalances[k];
-    w.balance = w.confirmed - w.approved - w.transferred;
-  }
-  return { buyers: buyers || [], fundRequests: fundRequests || [], walletBalances };
+  const withdrawnTotal = (withdrawals || []).filter(w => w.status === "sent").reduce((s, w) => s + Number(w.amount_naira || 0), 0);
+  const totalRevenue = Object.values(walletBalances).reduce((s, w) => s + w.confirmed, 0);
+  const companyWalletBalance = totalRevenue + companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
+  return { buyers: buyers || [], fundRequests: fundRequests || [], withdrawals: withdrawals || [], walletBalances, companyTopups, approvedTotal, transferredTotal, withdrawnTotal, totalRevenue, companyWalletBalance };
 }
 
 async function renderWallet(el) {
@@ -3632,25 +3649,31 @@ async function renderWallet(el) {
   const myId = window.myProfile?.media_buyer_id || null;
   const blank = walletBlank;
 
-  const { buyers, fundRequests, walletBalances } = await fetchWalletBalances();
+  const [{ buyers, fundRequests, withdrawals, walletBalances, companyTopups, companyWalletBalance }, company] = await Promise.all([
+    fetchWalletBalances(),
+    sbQuery("companies", "select=id,name,dedicated_account_number,dedicated_account_bank&limit=1").then(r => r?.[0]).catch(() => null),
+  ]);
   // Richer than fetchWalletBalances' own payments query (which only pulls
-  // the two columns it needs for sums) -- this one is for the transaction
+  // the columns it needs for sums) -- this one is for the transaction
   // ledger below, so it needs the order link and timestamp too. RLS scopes
   // it the same way: a buyer only ever gets their own.
-  const confirmedPayments = await sbQuery("payments", "select=id,amount_naira,paid_at,media_buyer_id,orders(customer_name)&status=eq.confirmed&order=paid_at.desc&limit=100").catch(() => []);
+  const confirmedPayments = await sbQuery("payments", "select=id,amount_naira,paid_at,media_buyer_id,source,orders(customer_name)&status=eq.confirmed&order=paid_at.desc&limit=100").catch(() => []);
 
-  const myWallet = myId ? (walletBalances[myId] || blank()) : blank();
-  const companyTotalBalance = Object.values(walletBalances).reduce((s, w) => s + w.balance, 0);
+  const myRevenue = myId ? (walletBalances[myId] || blank()) : blank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
   const readyToSend = myRequests.filter(f => f.status === "approved");
-  const myBuyerRow = myId ? (buyers || []).find(b => b.id === myId) : null;
 
   // One combined, chronological ledger -- "where did this number come
-  // from": a customer payment is a credit, a transfer out to an ad account
-  // is a debit. Buyers see only their own; admins see every buyer's,
-  // labelled with who it belongs to.
+  // from": a customer payment or an admin deposit is a credit; a transfer
+  // out to an ad account or a withdrawal to the admin's own bank is a
+  // debit. Buyers see only their own payments; admins see everything.
   const ledger = [];
   for (const p of confirmedPayments || []) {
+    if (p.source === "admin_topup") {
+      if (!isAdmin) continue;
+      ledger.push({ date: p.paid_at, type: "credit", label: "Company funding (admin deposit)", detail: null, buyerName: null, amount: p.amount_naira });
+      continue;
+    }
     if (!isAdmin && p.media_buyer_id !== myId) continue;
     const buyerName = (buyers || []).find(b => b.id === p.media_buyer_id)?.name;
     ledger.push({ date: p.paid_at, type: "credit", label: "Customer payment", detail: p.orders?.customer_name || null, buyerName, amount: p.amount_naira });
@@ -3661,17 +3684,27 @@ async function renderWallet(el) {
     const buyerName = (buyers || []).find(b => b.id === f.media_buyer_id)?.name;
     ledger.push({ date: f.transferred_at, type: "debit", label: "Sent to ad account", detail: f.destination_account_name || null, buyerName, amount: f.amount_naira });
   }
+  if (isAdmin) {
+    for (const w of withdrawals || []) {
+      if (w.status !== "sent") continue;
+      ledger.push({ date: w.sent_at || w.created_at, type: "debit", label: "Withdrawn to bank", detail: w.destination_account_name || null, buyerName: null, amount: w.amount_naira });
+    }
+  }
   ledger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Wallet</div></div>
 
     <div class="wallet-hero">
-      <div class="wallet-hero-lbl">${isAdmin ? "Company wallet balance" : "Your wallet balance"}</div>
-      <div class="wallet-hero-val">${fN(isAdmin ? companyTotalBalance : myWallet.balance)}</div>
-      <div class="wallet-hero-sub">Confirmed customer payments, minus what's already approved or sent to an ad account. ${isAdmin ? "This is a ledger we compute -- all buyers' real money sits in one shared Paystack balance below, not separate pots." : "This is a ledger, not a separate account -- the real money already landed in our Paystack balance when your customer paid."}</div>
+      <div class="wallet-hero-lbl">${isAdmin ? "Company wallet balance" : "Revenue you've generated"}</div>
+      <div class="wallet-hero-val">${fN(isAdmin ? companyWalletBalance : myRevenue.confirmed)}</div>
+      <div class="wallet-hero-sub">${isAdmin
+        ? "Every buyer's confirmed customer payments, plus whatever you've deposited directly, minus what's already approved/sent or withdrawn. The real money sits in one shared Paystack balance below -- this is a computed ledger of it, not a separate pot."
+        : "This is attribution for your sales, not a balance you can spend. Request funds below -- the admin approves from the company's own wallet, then you send it yourself."}</div>
       <div class="wallet-hero-actions">
         ${!isAdmin && myId ? `<button type="button" class="btn" onclick="document.getElementById('fundReqForm')?.scrollIntoView({behavior:'smooth'})">+ Request funds</button>` : ""}
+        ${isAdmin ? `<button type="button" class="btn" onclick="document.getElementById('companyAcctPanel')?.scrollIntoView({behavior:'smooth'})">+ Add funds</button>
+        <button type="button" class="btn" onclick="document.getElementById('adminWithdrawPanel')?.scrollIntoView({behavior:'smooth'})">Withdraw to bank</button>` : ""}
         <button type="button" class="btn" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button>
       </div>
     </div>
@@ -3679,25 +3712,40 @@ async function renderWallet(el) {
     ${isAdmin ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Platform Paystack balance</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">The real, actual money sitting in your Paystack account right now -- every buyer's transfer pulls from this one shared balance, not a separate pot per buyer. Check this before approving a large request.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">The real, actual money sitting in your Paystack account right now. Check this before approving a large request -- the computed balance above can only ever be as accurate as this.</div>
       <div id="paystackBalanceResult" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">
         <button type="button" class="btn btn-g" id="checkPaystackBalBtn" style="font-size:10px;padding:4px 10px;">Check real balance</button>
       </div>
-    </div>` : ""}
+    </div>
 
-    ${!isAdmin && myBuyerRow ? `
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Your payment collection account</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Customers pay into this account -- it's what's shown to them after an order is confirmed. Every confirmed payment here flows into your wallet balance above.</div>
-      ${myBuyerRow.dedicated_account_number ? `
-      <div style="font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(myBuyerRow.dedicated_account_number)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escH(myBuyerRow.dedicated_account_bank || "")}</div>
-      ` : `<div style="font-size:11.5px;color:var(--muted);">Not set up yet -- this is created automatically the first time an order is confirmed against your name.</div>`}
-    </div>` : ""}
+    <div class="panel" id="companyAcctPanel">
+      <div class="ph"><div class="ph-title">Add funds to the company wallet</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Transfer your own money (e.g. from Access Bank) into this account to fund ad spend -- useful before any customer payments have landed, or any time you want to top up directly.</div>
+      ${company?.dedicated_account_number ? `
+      <div style="font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(company.dedicated_account_number)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escH(company.dedicated_account_bank || "")}</div>
+      ` : `
+      <button type="button" class="btn btn-a" id="createCompanyAcctBtn" style="padding:4px 10px;font-size:10px;">Create company account</button>
+      <div id="companyAcctResult" style="margin-top:8px;"></div>
+      `}
+    </div>
 
-    ${isAdmin && buyers?.length ? `
+    <div class="panel" id="adminWithdrawPanel">
+      <div class="ph"><div class="ph-title">Withdraw to your bank</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Send money from the company's Paystack balance straight to any of your own bank accounts -- unrestricted, unlike a buyer's ad-account-only transfer.</div>
+      <div class="fg">
+        <div class="field"><label>Bank</label><select id="adminWithdrawBank"><option value="">Loading banks…</option></select></div>
+        <div class="field"><label>Account number</label><input type="text" id="adminWithdrawAcctNum" placeholder="10-digit account number"></div>
+        <div class="field"><label>Amount</label><input type="number" id="adminWithdrawAmount" min="1" step="1" placeholder="e.g. 50000"></div>
+      </div>
+      <button type="button" class="btn btn-a" id="adminWithdrawBtn" style="margin-top:8px;padding:4px 10px;font-size:10px;">Withdraw</button>
+      <div id="adminWithdrawResult" style="margin-top:8px;"></div>
+    </div>
+
     <div class="panel">
       <div class="ph"><div class="ph-title">Buyer payment collection accounts</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Customers pay into these -- not spendable by the buyer, just where their orders' payments land before flowing into the company wallet above.</div>
+      ${!buyers?.length ? `<div class="empty"><div class="empty-ico">💰</div>No media buyers yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Buyer</th><th>Account number</th><th>Bank</th></tr>
         ${buyers.map(b => `<tr>
@@ -3705,8 +3753,21 @@ async function renderWallet(el) {
           <td class="n">${escH(b.dedicated_account_number || "—")}</td>
           <td class="s">${escH(b.dedicated_account_bank || "—")}</td>
         </tr>`).join("")}
-      </table></div>
+      </table></div>`}
     </div>` : ""}
+
+    ${!isAdmin && myId ? (() => {
+      const myBuyerRow = (buyers || []).find(b => b.id === myId);
+      return `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your payment collection account</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Customers pay into this account after their order is confirmed. It's not a wallet you can spend from -- every confirmed payment here flows into the company's wallet, and you request funds from the admin below.</div>
+      ${myBuyerRow?.dedicated_account_number ? `
+      <div style="font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(myBuyerRow.dedicated_account_number)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escH(myBuyerRow.dedicated_account_bank || "")}</div>
+      ` : `<div style="font-size:11.5px;color:var(--muted);">Not set up yet -- this is created automatically the first time an order is confirmed against your name.</div>`}
+    </div>`;
+    })() : ""}
 
     <div class="panel" id="adBalanceCheckPanel">
       <div class="ph"><div class="ph-title">Ad account balance</div></div>
@@ -3770,7 +3831,7 @@ async function renderWallet(el) {
     ${isAdmin ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Funding requests</div><div class="ph-count">${(fundRequests || []).filter(f => f.status === "pending").length} pending</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving releases that amount to the buyer's wallet as "ready to send" -- they then trigger the transfer themselves. We strictly check the destination account name resolves to Facebook/Meta before any transfer goes through.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving releases that amount from the company wallet as "ready to send" -- the buyer then triggers the transfer themselves, straight to their own ad account. We strictly check the destination account name resolves to Facebook/Meta before any transfer goes through.</div>
       ${!fundRequests?.length ? `<div class="empty"><div class="empty-ico">💸</div>No funding requests yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Buyer</th><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th></tr>
@@ -3792,10 +3853,11 @@ async function renderWallet(el) {
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Buyer wallet balances</div></div>
+      <div class="ph"><div class="ph-title">Revenue by buyer</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Attribution only -- for ROAS and seeing who's generating what. Not a per-buyer balance; the spendable pool is the company wallet above.</div>
       ${!buyers?.length ? `<div class="empty"><div class="empty-ico">💰</div>No media buyers yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Approved, not sent</th><th>Sent to Meta</th><th>Balance</th></tr>
+        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Approved against it</th><th>Sent to Meta</th></tr>
         ${buyers.map(b => {
           const w = walletBalances[b.id] || blank();
           return `<tr>
@@ -3803,7 +3865,6 @@ async function renderWallet(el) {
             <td class="n">${fN(w.confirmed)}</td>
             <td class="n">${fN(w.approved)}</td>
             <td class="n">${fN(w.transferred)}</td>
-            <td class="n s">${fN(w.balance)}</td>
           </tr>`;
         }).join("")}
       </table></div>`}
@@ -3836,6 +3897,48 @@ async function renderWallet(el) {
       result.innerHTML = fN(r.balance_naira);
     } catch (err) {
       result.innerHTML = `<div class="msg err" style="font-size:11.5px;">❌ ${escH(err.message)}</div>`;
+    }
+  });
+
+  document.getElementById("createCompanyAcctBtn")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const result = document.getElementById("companyAcctResult");
+    btn.disabled = true; btn.textContent = "Creating…";
+    try {
+      const r = await sbFn("paystack-create-company-account", { access_token: sessionData.access_token });
+      if (r.error) throw new Error(r.error);
+      renderWallet(el);
+    } catch (err) {
+      result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = "Create company account";
+    }
+  });
+
+  if (document.getElementById("adminWithdrawBank")) {
+    sbFn("paystack-list-banks", null, "GET").then(r => {
+      const sel = document.getElementById("adminWithdrawBank");
+      if (!r.banks?.length) { sel.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
+      sel.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
+    }).catch(() => {});
+  }
+
+  document.getElementById("adminWithdrawBtn")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const result = document.getElementById("adminWithdrawResult");
+    const bank_code = document.getElementById("adminWithdrawBank").value;
+    const account_number = document.getElementById("adminWithdrawAcctNum").value.trim();
+    const amount_naira = Number(document.getElementById("adminWithdrawAmount").value);
+    if (!bank_code || !account_number || !amount_naira) { result.innerHTML = `<div class="msg err">❌ Fill in bank, account number and amount.</div>`; return; }
+    if (!confirm(`Withdraw ${fN(amount_naira)} to this account? This sends real money.`)) return;
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      const r = await sbFn("paystack-admin-withdraw", { access_token: sessionData.access_token, amount_naira, account_number, bank_code });
+      if (r.error) throw new Error(r.error);
+      bvToast(`Sent to ${r.account_name}`);
+      renderWallet(el);
+    } catch (err) {
+      result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = "Withdraw";
     }
   });
 

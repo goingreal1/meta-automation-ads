@@ -85,6 +85,25 @@ Deno.serve(async (req: Request) => {
       const narration = String(data.authorization?.narration ?? "");
       const senderName = normalizeName(data.authorization?.sender_name);
 
+      // Company-level DVA (admin depositing their own money) -- always
+      // auto-confirmed on arrival, no order to match against since it was
+      // never tied to a customer order in the first place.
+      const { data: company } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("paystack_customer_code", customerCode)
+        .maybeSingle();
+      if (company) {
+        const { error } = await supabase.from("payments").insert({
+          company_id: company.id, order_id: null, media_buyer_id: null,
+          amount_naira: amountNaira, status: "confirmed", source: "admin_topup",
+          channel: data.channel, paid_at: new Date().toISOString(),
+          paystack_reference: reference, raw_event: event,
+        });
+        if (error) console.error("paystack-webhook admin_topup insert error:", error.message);
+        return new Response("ok", { status: 200 });
+      }
+
       const { data: buyer } = await supabase
         .from("media_buyers")
         .select("id, company_id")
