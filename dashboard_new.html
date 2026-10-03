@@ -2540,18 +2540,31 @@ async function renderSupportQueue(el) {
   const myId = sessionData?.user?.id ?? null;
   const isSupportRole = role === "owner" || role === "admin" || role === "customer_care";
 
-  const [calls, myResolvedCount] = await Promise.all([
+  const isCustomerCare = role === "customer_care";
+
+  const [calls, myDeals] = await Promise.all([
     sbQuery(
       "voice_calls",
       "select=*,orders(customer_name,customer_phone,customer_address,customer_city,customer_state,product_name,order_value_naira,order_status),assignee:profiles!voice_calls_assigned_to_fkey(display_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=100"
     ).catch(() => []),
-    // Personal tally for whoever's actually working the queue -- customer
-    // care never had any individual stat tied to their name before this;
-    // it was pure shared-pool with no record of who handled what.
-    isSupportRole && role === "customer_care"
-      ? sbCount("voice_calls", `assigned_to=eq.${myId}&human_resolved_at=not.is.null`).catch(() => 0)
+    // AI places the calls, but once one's assigned to a person, what that
+    // customer actually pays is the basis for their commission -- so the
+    // thing worth tallying isn't "resolved" (closing the ticket), it's
+    // "closed" (the order it was tied to actually got paid for).
+    isCustomerCare
+      ? sbQuery("voice_calls", `select=id,human_resolved_at,orders(order_value_naira,order_status,payments(status,amount_naira,paid_at))&assigned_to=eq.${myId}&order_id=not.is.null&order=created_at.desc&limit=300`).catch(() => [])
       : Promise.resolve(null),
   ]);
+
+  let myResolvedCount = null, myClosedCount = 0, myClosedRevenue = 0, myAwaitingCount = 0;
+  if (myDeals) {
+    myResolvedCount = myDeals.filter(c => c.human_resolved_at).length;
+    for (const c of myDeals) {
+      const payment = c.orders?.payments?.[0];
+      if (payment?.status === "confirmed") { myClosedCount++; myClosedRevenue += Number(payment.amount_naira || 0); }
+      else if (c.orders && c.orders.order_status !== "cancelled" && c.orders.order_status !== "returned") myAwaitingCount++;
+    }
+  }
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Support Queue</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
@@ -2560,9 +2573,12 @@ async function renderSupportQueue(el) {
       You're only seeing escalations tied to your own orders here -- the full company-wide queue is for owners, admins, and customer care. Ask your admin for a customer-care invite if that's what you need.
     </div></div>` : ""}
 
-    ${myResolvedCount !== null ? `
+    ${myDeals ? `
     <div class="g4" style="margin-bottom:18px;">
       <div class="kc"><div class="kc-lbl">You've resolved</div><div class="kc-val a">${myResolvedCount}</div><div class="kc-sub">all time</div></div>
+      <div class="kc"><div class="kc-lbl">Deals closed</div><div class="kc-val a">${myClosedCount}</div><div class="kc-sub">customer actually paid</div></div>
+      <div class="kc"><div class="kc-lbl">Revenue closed</div><div class="kc-val a">${fN(myClosedRevenue)}</div><div class="kc-sub">what commission is based on</div></div>
+      <div class="kc"><div class="kc-lbl">Awaiting payment</div><div class="kc-val w">${myAwaitingCount}</div><div class="kc-sub">assigned, not paid yet</div></div>
     </div>` : ""}
 
     <div class="panel">
