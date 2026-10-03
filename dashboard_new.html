@@ -3554,13 +3554,32 @@ async function bvShowBuyerProfile(row) {
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 async function renderSettings(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
-  const [buyers, company, invites, teamMembers, partnerBizId] = await Promise.all([
+  const [buyers, company, invites, teamMembers, partnerBizId, confirmedPayments, fundRequests] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
     isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
     isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
     sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => r.business_id).catch(() => null),
+    // RLS already scopes these to "my own buyer row" for a buyer, or the
+    // whole company for an admin -- one query serves both, client-side sums
+    // below turn raw rows into a per-buyer wallet balance (PostgREST has no
+    // generic aggregate endpoint without a dedicated view/RPC).
+    sbQuery("payments", "select=media_buyer_id,amount_naira&status=eq.confirmed").catch(() => []),
+    sbQuery("fund_requests", "select=*&order=requested_at.desc&limit=100").catch(() => []),
   ]);
+  const walletBalances = {}; // media_buyer_id -> { confirmed, approved, balance }
+  for (const b of buyers || []) walletBalances[b.id] = { confirmed: 0, approved: 0, balance: 0 };
+  for (const p of confirmedPayments || []) {
+    if (!p.media_buyer_id) continue;
+    walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || { confirmed: 0, approved: 0, balance: 0 };
+    walletBalances[p.media_buyer_id].confirmed += Number(p.amount_naira || 0);
+  }
+  for (const f of fundRequests || []) {
+    if (f.status !== "approved") continue;
+    walletBalances[f.media_buyer_id] = walletBalances[f.media_buyer_id] || { confirmed: 0, approved: 0, balance: 0 };
+    walletBalances[f.media_buyer_id].approved += Number(f.amount_naira || 0);
+  }
+  for (const k in walletBalances) walletBalances[k].balance = walletBalances[k].confirmed - walletBalances[k].approved;
   const oauthToast = window.oauthToast;
   delete window.oauthToast;
 
@@ -3611,6 +3630,36 @@ async function renderSettings(el) {
     </div>
 
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
+      const myId = window.myProfile.media_buyer_id;
+      const myWallet = walletBalances[myId] || { confirmed: 0, approved: 0, balance: 0 };
+      const myRequests = (fundRequests || []).filter(f => f.media_buyer_id === myId);
+      return `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your wallet</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Balance = revenue confirmed as paid into your dedicated account, minus funds already approved and paid out to you. This is a read-only ledger -- you can request funds, never send or move money yourself.</div>
+      <div style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:14px;">${fN(myWallet.balance)}</div>
+      <form id="fundReqForm">
+        <div class="fg">
+          <div class="field"><label>Amount to request *</label><input id="fr_amount" type="number" min="1" step="1" required placeholder="e.g. 50000"></div>
+          <div class="field"><label>Note (optional)</label><input id="fr_note" placeholder="what it's for"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
+        <div id="fundReqMsg"></div>
+      </form>
+      ${myRequests.length ? `
+      <div class="tbl-wrap" style="margin-top:16px;"><table>
+        <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th></tr>
+        ${myRequests.map(f => `<tr>
+          <td>${ago(f.requested_at)}</td>
+          <td class="n">${fN(f.amount_naira)}</td>
+          <td class="s">${escH(f.note || "—")}</td>
+          <td><span class="pill ${f.status === "approved" ? "active" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
+        </tr>`).join("")}
+      </table></div>` : ""}
+    </div>`;
+    })()}
+
+    ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
       // Self-service for a buyer who isn't an admin -- they share their own
       // ad account with the platform's Business Manager directly from their
       // own Meta Business Settings, no login on this dashboard at all. They
@@ -3639,6 +3688,46 @@ async function renderSettings(el) {
     })()}
 
     ${!isAdmin ? "" : `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Funding requests</div><div class="ph-count">${(fundRequests || []).filter(f => f.status === "pending").length} pending</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving a request is bookkeeping only -- it records that you paid the buyer out separately and lowers their wallet balance here. We never move money automatically.</div>
+      ${!fundRequests?.length ? `<div class="empty"><div class="empty-ico">💸</div>No funding requests yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th></tr>
+        ${fundRequests.map(f => {
+          const buyer = (buyers || []).find(b => b.id === f.media_buyer_id);
+          return `<tr>
+            <td class="s n">${escH(buyer?.name || "—")}</td>
+            <td>${ago(f.requested_at)}</td>
+            <td class="n">${fN(f.amount_naira)}</td>
+            <td class="s">${escH(f.note || "—")}</td>
+            <td><span class="pill ${f.status === "approved" ? "active" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
+            <td>${f.status === "pending" ? `
+              <button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 8px;font-size:10px;">Approve</button>
+              <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;">Decline</button>
+            ` : "—"}</td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Buyer wallet balances</div></div>
+      ${!buyers?.length ? `<div class="empty"><div class="empty-ico">💰</div>Add a buyer below first.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Paid out</th><th>Balance</th></tr>
+        ${buyers.map(b => {
+          const w = walletBalances[b.id] || { confirmed: 0, approved: 0, balance: 0 };
+          return `<tr>
+            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
+            <td class="n">${fN(w.confirmed)}</td>
+            <td class="n">${fN(w.approved)}</td>
+            <td class="n s">${fN(w.balance)}</td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
     <div class="panel">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
@@ -3850,6 +3939,36 @@ window.refreshBalances = async function() {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
     }
   });
+
+  document.getElementById("fundReqForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("fundReqMsg");
+    const amount = Number(document.getElementById("fr_amount").value);
+    const note = document.getElementById("fr_note").value.trim();
+    if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter a valid amount.</div>`; return; }
+    const { error } = await supabaseClient.from("fund_requests").insert({
+      company_id: company.id,
+      media_buyer_id: window.myProfile.media_buyer_id,
+      amount_naira: amount,
+      note: note || null,
+    });
+    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; return; }
+    msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
+    renderSettings(el);
+  });
+
+  document.querySelectorAll(".fundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
+    const decision = btn.dataset.decision;
+    if (decision === "declined" && !confirm("Decline this funding request?")) return;
+    btn.disabled = true;
+    const { error } = await supabaseClient.from("fund_requests").update({
+      status: decision,
+      decided_at: new Date().toISOString(),
+      decided_by: sessionData.user.id,
+    }).eq("id", btn.dataset.id);
+    if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
+    renderSettings(el);
+  }));
 
   document.querySelectorAll(".waRemoveBtn").forEach(btn => btn.addEventListener("click", async () => {
     if (!confirm("Remove this WhatsApp number? Past conversations stay, but new messages on it won't show up anywhere.")) return;
