@@ -168,8 +168,6 @@ a{color:inherit;}
 .wallet-hero-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
 .wallet-hero-actions .btn{background:var(--bg);border:1px solid var(--bg);color:var(--text);font-weight:600;}
 .wallet-hero-actions .btn:hover{opacity:.82;}
-.wallet-hero-click{cursor:pointer;transition:opacity .15s;}
-.wallet-hero-click:hover{opacity:.9;}
 .wallet-chip{
   display:inline-flex;align-items:center;gap:8px;background:var(--panel2);
   border:1px solid var(--border);color:var(--text);border-radius:20px;
@@ -3651,81 +3649,38 @@ async function fetchWalletBalances() {
   return { buyers: buyers || [], fundRequests: fundRequests || [], withdrawals: withdrawals || [], walletBalances, companyTopups, approvedTotal, transferredTotal, withdrawnTotal, totalRevenue, fundingWalletBalance };
 }
 
-// Admin-only. Everything to do with the company's actual money -- topping
-// up, withdrawing to a real bank, and deciding buyer fund requests -- lives
-// behind this one modal now, opened by tapping the Funding wallet card.
-// Nobody checks a Paystack balance directly; the funding wallet number (its
-// own running total, derived in fetchWalletBalances) is the only balance
-// anyone sees, same as a real neobank never surfaces its correspondent bank.
-async function bvShowFundingWalletModal() {
+// Admin-only. One focused modal per action -- "Add funds", "Withdraw" --
+// each opened by its own button on the Funding wallet card. Fund requests
+// are deliberately NOT in a modal: they're an always-visible panel on the
+// page itself, so approving one is a single tap, not open-modal-then-tap.
+async function bvShowAddFundsModal() {
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
   overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
-  overlay.innerHTML = `<div class="bv-modal" style="max-width:560px;"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
   document.body.appendChild(overlay);
-  await bvRenderFundingWalletModal();
+  await bvRenderAddFundsModal();
 }
 
-async function bvRenderFundingWalletModal() {
+async function bvRenderAddFundsModal() {
   const modal = document.querySelector("#bvModalOverlay .bv-modal");
   if (!modal) return;
-
-  const [wallet, companyRows] = await Promise.all([
-    fetchWalletBalances(),
-    sbQuery("companies", "select=id,name,dedicated_account_number,dedicated_account_bank&limit=1").catch(() => []),
-  ]);
-  const { fundingWalletBalance, fundRequests, buyers } = wallet;
+  const companyRows = await sbQuery("companies", "select=id,name,dedicated_account_number,dedicated_account_bank&limit=1").catch(() => []);
   const company = companyRows?.[0];
-  const pending = (fundRequests || []).filter(f => f.status === "pending");
 
   modal.innerHTML = `
     <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-    <div class="ph-title" style="margin-bottom:2px;">Funding wallet</div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;margin:6px 0 2px;${fundingWalletBalance < 0 ? "color:var(--danger);" : ""}">${fN(fundingWalletBalance)}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">${fundingWalletBalance < 0 ? "⚠️ You've approved more than you've deposited -- add funds before approving anything else." : "What you've personally deposited, minus approved, sent and withdrawn."}</div>
-
-    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Add funds</div>
-      ${company?.dedicated_account_number ? `
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Transfer from your own bank (Opay, Access, etc.) into this account -- it lands here automatically.</div>
-      <div style="font-size:17px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(company.dedicated_account_number)}</div>
-      <div style="font-size:11.5px;color:var(--muted);">${escH(company.dedicated_account_bank || "")}</div>
-      ` : `
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Set up a deposit account once, then transfer into it any time.</div>
-      <button type="button" class="btn btn-a" id="modalCreateCompanyAcctBtn" style="padding:4px 10px;font-size:10px;">Create deposit account</button>
-      <div id="modalCompanyAcctResult" style="margin-top:8px;"></div>
-      `}
-    </div>
-
-    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Withdraw to your bank</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Move money out of the funding wallet straight to any of your own real bank accounts.</div>
-      <div class="fg">
-        <div class="field"><label>Bank</label><select id="modalWithdrawBank"><option value="">Loading banks…</option></select></div>
-        <div class="field"><label>Account number</label><input type="text" id="modalWithdrawAcctNum" placeholder="10-digit account number"></div>
-        <div class="field"><label>Amount</label><input type="number" min="1" step="1" id="modalWithdrawAmount" placeholder="e.g. 50000"></div>
-      </div>
-      <button type="button" class="btn btn-a" id="modalWithdrawBtn" style="margin-top:8px;padding:4px 10px;font-size:10px;">Withdraw</button>
-      <div id="modalWithdrawResult" style="margin-top:8px;"></div>
-    </div>
-
-    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Funding requests${pending.length ? ` (${pending.length} pending)` : ""}</div>
-      ${!pending.length ? `<div style="font-size:11.5px;color:var(--muted);">No pending requests.</div>` : pending.map(f => {
-        const buyerName = (buyers || []).find(b => b.id === f.media_buyer_id)?.name || "—";
-        const short = Number(f.amount_naira) > fundingWalletBalance;
-        return `
-        <div style="border-bottom:1px solid var(--border);padding:8px 0;">
-          <div style="font-size:12px;"><b>${escH(buyerName)}</b> -- ${fN(f.amount_naira)}</div>
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">${escH(f.note || "")} -- ${ago(f.requested_at)}</div>
-          ${short
-            ? `<div style="font-size:10.5px;color:var(--danger);">⚠️ Funding wallet short by ${fN(Number(f.amount_naira) - fundingWalletBalance)}</div>`
-            : `<button type="button" class="btn btn-a modalFundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 10px;font-size:10px;">Approve</button>
-               <button type="button" class="btn modalFundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 10px;font-size:10px;">Decline</button>`}
-        </div>`;
-      }).join("")}
-    </div>
+    <div class="ph-title" style="margin-bottom:10px;">Add funds</div>
+    ${company?.dedicated_account_number ? `
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Transfer from your own bank (Opay, Access, etc.) into this account -- it lands in your funding wallet automatically.</div>
+    <div style="font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(company.dedicated_account_number)}</div>
+    <div style="font-size:12px;color:var(--muted);">${escH(company.dedicated_account_bank || "")}</div>
+    ` : `
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Set up a deposit account once, then transfer into it any time.</div>
+    <button type="button" class="btn btn-a" id="modalCreateCompanyAcctBtn" style="padding:4px 10px;font-size:10px;">Create deposit account</button>
+    <div id="modalCompanyAcctResult" style="margin-top:8px;"></div>
+    `}
   `;
 
   document.getElementById("modalCreateCompanyAcctBtn")?.addEventListener("click", async (e) => {
@@ -3735,12 +3690,33 @@ async function bvRenderFundingWalletModal() {
     try {
       const r = await sbFn("paystack-create-company-account", { access_token: sessionData.access_token });
       if (r.error) throw new Error(r.error);
-      await bvRenderFundingWalletModal();
+      await bvRenderAddFundsModal();
     } catch (err) {
       result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
       btn.disabled = false; btn.textContent = "Create deposit account";
     }
   });
+}
+
+async function bvShowAdminWithdrawModal() {
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `
+    <div class="bv-modal">
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="ph-title" style="margin-bottom:10px;">Withdraw to your bank</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Move money out of the funding wallet straight to any of your own real bank accounts.</div>
+      <div class="fg">
+        <div class="field"><label>Bank</label><select id="modalWithdrawBank"><option value="">Loading banks…</option></select></div>
+        <div class="field"><label>Account number</label><input type="text" id="modalWithdrawAcctNum" placeholder="10-digit account number"></div>
+        <div class="field"><label>Amount</label><input type="number" min="1" step="1" id="modalWithdrawAmount" placeholder="e.g. 50000"></div>
+      </div>
+      <button type="button" class="btn btn-a" id="modalWithdrawBtn" style="margin-top:10px;padding:4px 10px;font-size:10px;">Withdraw</button>
+      <div id="modalWithdrawResult" style="margin-top:8px;"></div>
+    </div>`;
+  document.body.appendChild(overlay);
 
   sbFn("paystack-list-banks", null, "GET").then(r => {
     const sel = document.getElementById("modalWithdrawBank");
@@ -3762,79 +3738,26 @@ async function bvRenderFundingWalletModal() {
       const r = await sbFn("paystack-admin-withdraw", { access_token: sessionData.access_token, amount_naira, account_number, bank_code });
       if (r.error) throw new Error(r.error);
       bvToast(`Sent to ${r.account_name}`);
-      await bvRenderFundingWalletModal();
+      bvCloseModal();
       renderWallet(document.getElementById("mainContent"));
     } catch (err) {
       result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
       btn.disabled = false; btn.textContent = "Withdraw";
     }
   });
-
-  document.querySelectorAll(".modalFundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
-    const decision = btn.dataset.decision;
-    if (decision === "declined" && !confirm("Decline this funding request?")) return;
-    if (decision === "approved") {
-      // Re-check against a fresh balance at the moment of the click, not
-      // just the number the modal happened to render with -- avoids
-      // approving past the funding wallet if something else changed it
-      // (another admin approving, a new deposit) since this modal opened.
-      const [{ fundingWalletBalance: freshBalance }, freshReq] = await Promise.all([
-        fetchWalletBalances(),
-        supabaseClient.from("fund_requests").select("amount_naira, status").eq("id", btn.dataset.id).maybeSingle().then(r => r.data),
-      ]);
-      if (!freshReq || freshReq.status !== "pending") { alert("This request isn't pending anymore -- refreshing."); await bvRenderFundingWalletModal(); return; }
-      if (Number(freshReq.amount_naira) > freshBalance) {
-        alert(`Funding wallet balance (${fN(freshBalance)}) can't cover this request (${fN(freshReq.amount_naira)}). Add funds first.`);
-        await bvRenderFundingWalletModal();
-        return;
-      }
-    }
-    btn.disabled = true;
-    const { error } = await supabaseClient.from("fund_requests").update({
-      status: decision,
-      decided_at: new Date().toISOString(),
-      decided_by: sessionData.user.id,
-    }).eq("id", btn.dataset.id);
-    if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
-    sbFn("send-internal-whatsapp", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
-    sbFn("send-internal-email", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
-    await bvRenderFundingWalletModal();
-    renderWallet(document.getElementById("mainContent"));
-  }));
 }
 
-// Buyer-only mirror of bvShowFundingWalletModal: requesting funds and
-// transferring an approved request to Meta both happen inside one modal
-// opened by tapping the Funding wallet card, not scattered across
-// always-visible panels on the page.
-async function bvShowMyFundingModal() {
+// Buyer-only: "Request funds" and "Transfer" each get their own button on
+// the Funding wallet card, each opening its own single-purpose modal.
+async function bvShowRequestFundsModal() {
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
   overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
-  overlay.innerHTML = `<div class="bv-modal" style="max-width:520px;"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
-  document.body.appendChild(overlay);
-  await bvRenderMyFundingModal();
-}
-
-async function bvRenderMyFundingModal() {
-  const modal = document.querySelector("#bvModalOverlay .bv-modal");
-  if (!modal) return;
-
-  const myId = window.myProfile?.media_buyer_id;
-  const wallet = await fetchWalletBalances();
-  const myRevenue = myId ? (wallet.walletBalances[myId] || walletBlank()) : walletBlank();
-  const myRequests = myId ? (wallet.fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
-  const readyToSend = myRequests.filter(f => f.status === "approved");
-
-  modal.innerHTML = `
-    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-    <div class="ph-title" style="margin-bottom:2px;">Funding wallet</div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;margin:6px 0 2px;">${fN(myRevenue.approved)}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">Approved by admin, ready for you to send to your ad account.</div>
-
-    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Request funds</div>
+  overlay.innerHTML = `
+    <div class="bv-modal">
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="ph-title" style="margin-bottom:10px;">Request funds</div>
       <form id="modalFundReqForm">
         <div class="fg">
           <div class="field"><label>Amount to request *</label><input id="modal_fr_amount" type="number" min="1" step="1" required placeholder="e.g. 50000"></div>
@@ -3843,23 +3766,8 @@ async function bvRenderMyFundingModal() {
         <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
         <div id="modalFundReqMsg"></div>
       </form>
-    </div>
-
-    ${readyToSend.length ? `
-    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Available to transfer</div>
-      ${readyToSend.map(f => `
-      <div style="border-bottom:1px solid var(--border);padding:8px 0;">
-        <div style="font-size:12px;margin-bottom:6px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
-        <div class="fg">
-          <div class="field"><label>Bank</label><select class="modalMetaSendBank" data-id="${f.id}"><option value="">Loading banks…</option></select></div>
-          <div class="field"><label>Account number</label><input type="text" class="modalMetaSendAcctNum" data-id="${f.id}" placeholder="10-digit account number"></div>
-        </div>
-        <button type="button" class="btn btn-a modalSendToMetaBtn" data-id="${f.id}" style="margin-top:6px;padding:4px 10px;font-size:10px;">Transfer</button>
-        <div class="modalSendToMetaMsg" data-id="${f.id}" style="margin-top:6px;"></div>
-      </div>`).join("")}
-    </div>` : ""}
-  `;
+    </div>`;
+  document.body.appendChild(overlay);
 
   document.getElementById("modalFundReqForm")?.addEventListener("submit", async e => {
     e.preventDefault();
@@ -3877,9 +3785,39 @@ async function bvRenderMyFundingModal() {
     msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
     sbFn("send-internal-whatsapp", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
     sbFn("send-internal-email", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
-    await bvRenderMyFundingModal();
+    bvCloseModal();
     renderWallet(document.getElementById("mainContent"));
   });
+}
+
+async function bvShowTransferModal() {
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+
+  const myId = window.myProfile?.media_buyer_id;
+  const wallet = await fetchWalletBalances();
+  const readyToSend = myId ? (wallet.fundRequests || []).filter(f => f.media_buyer_id === myId && f.status === "approved") : [];
+
+  const modal = document.querySelector("#bvModalOverlay .bv-modal");
+  if (!modal) return;
+  modal.innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:10px;">Transfer to your ad account</div>
+    ${!readyToSend.length ? `<div style="font-size:11.5px;color:var(--muted);">Nothing approved yet.</div>` : readyToSend.map(f => `
+    <div style="border-bottom:1px solid var(--border);padding:8px 0;">
+      <div style="font-size:12px;margin-bottom:6px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
+      <div class="fg">
+        <div class="field"><label>Bank</label><select class="modalMetaSendBank" data-id="${f.id}"><option value="">Loading banks…</option></select></div>
+        <div class="field"><label>Account number</label><input type="text" class="modalMetaSendAcctNum" data-id="${f.id}" placeholder="10-digit account number"></div>
+      </div>
+      <button type="button" class="btn btn-a modalSendToMetaBtn" data-id="${f.id}" style="margin-top:6px;padding:4px 10px;font-size:10px;">Transfer</button>
+      <div class="modalSendToMetaMsg" data-id="${f.id}" style="margin-top:6px;"></div>
+    </div>`).join("")}
+  `;
 
   document.querySelectorAll(".modalMetaSendBank").forEach(sel => {
     sbFn("paystack-list-banks", null, "GET").then(r => {
@@ -3905,7 +3843,7 @@ async function bvRenderMyFundingModal() {
         return;
       }
       bvToast("Transfer sent");
-      await bvRenderMyFundingModal();
+      bvCloseModal();
       renderWallet(document.getElementById("mainContent"));
     } catch (err) {
       msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
@@ -3931,6 +3869,7 @@ async function renderWallet(el) {
 
   const myRevenue = myId ? (walletBalances[myId] || walletBlank()) : walletBlank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
+  const readyToSendCount = myRequests.filter(f => f.status === "approved").length;
 
   // One combined, chronological ledger -- "where did this number come
   // from": a customer payment or an admin deposit is a credit; a transfer
@@ -3973,14 +3912,23 @@ async function renderWallet(el) {
           : "Confirmed customer payments on orders you generated. Informational, feeds your ROAS -- not something you can spend directly."}</div>
       </div>
 
-      <div class="wallet-hero wallet-hero-click" style="margin-bottom:0;${isAdmin && fundingWalletBalance < 0 ? "outline:2px solid var(--danger);" : ""}" onclick="${isAdmin ? "bvShowFundingWalletModal()" : "bvShowMyFundingModal()"}">
+      <div class="wallet-hero" style="margin-bottom:0;${isAdmin && fundingWalletBalance < 0 ? "outline:2px solid var(--danger);" : ""}">
         <div class="wallet-hero-lbl">Funding wallet${isAdmin ? "" : " (ready to send)"}</div>
         <div class="wallet-hero-val" style="${!isAdmin || fundingWalletBalance >= 0 ? "" : "color:var(--danger);"}">${fN(isAdmin ? fundingWalletBalance : myRevenue.approved)}</div>
         <div class="wallet-hero-sub">${isAdmin
           ? (fundingWalletBalance < 0
-              ? "⚠️ Low balance -- you've approved more than you've deposited. Tap to top up before approving anything else."
-              : "What you've personally deposited, minus what's approved/sent/withdrawn. Tap to add funds, withdraw, or review requests.")
-          : "Approved by admin, ready for you to send to your ad account. Tap to request funds or transfer."}</div>
+              ? "⚠️ Low balance -- you've approved more than you've deposited. Add funds before approving anything else."
+              : "What you've personally deposited, minus what's approved/sent/withdrawn.")
+          : "Approved by admin, ready for you to send to your ad account."}</div>
+        <div class="wallet-hero-actions">
+          ${isAdmin ? `
+          <button type="button" class="btn" onclick="bvShowAddFundsModal()">+ Add funds</button>
+          <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Withdraw</button>
+          ` : myId ? `
+          <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds</button>
+          ${readyToSendCount ? `<button type="button" class="btn" onclick="bvShowTransferModal()">Transfer</button>` : ""}
+          ` : ""}
+        </div>
       </div>
     </div>
     <div style="margin-bottom:18px;"><button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button></div>
@@ -3999,6 +3947,27 @@ async function renderWallet(el) {
         </tr>`).join("")}
       </table></div>`}
     </div>` : ""}
+
+    ${isAdmin ? (() => {
+      const pending = (fundRequests || []).filter(f => f.status === "pending");
+      return `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Funding requests${pending.length ? ` (${pending.length} pending)` : ""}</div></div>
+      ${!pending.length ? `<div class="empty"><div class="empty-ico">💸</div>No pending requests.</div>` : pending.map(f => {
+        const buyerName = (buyers || []).find(b => b.id === f.media_buyer_id)?.name || "—";
+        const short = Number(f.amount_naira) > fundingWalletBalance;
+        return `
+        <div style="border-bottom:1px solid var(--border);padding:8px 0;">
+          <div style="font-size:12.5px;"><b>${escH(buyerName)}</b> -- ${fN(f.amount_naira)}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">${escH(f.note || "")} -- ${ago(f.requested_at)}</div>
+          ${short
+            ? `<div style="font-size:10.5px;color:var(--danger);">⚠️ Funding wallet short by ${fN(Number(f.amount_naira) - fundingWalletBalance)}</div>`
+            : `<button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 10px;font-size:10px;">Approve</button>
+               <button type="button" class="btn fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 10px;font-size:10px;">Decline</button>`}
+        </div>`;
+      }).join("")}
+    </div>`;
+    })() : ""}
 
     ${!isAdmin && myId ? (() => {
       const myBuyerRow = (buyers || []).find(b => b.id === myId);
@@ -4108,6 +4077,36 @@ async function renderWallet(el) {
     }
   });
 
+  document.querySelectorAll(".fundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
+    const decision = btn.dataset.decision;
+    if (decision === "declined" && !confirm("Decline this funding request?")) return;
+    if (decision === "approved") {
+      // Re-check against a fresh balance at the moment of the click, not
+      // just the number the page happened to render with -- avoids
+      // approving past the funding wallet if something else changed it
+      // (another admin approving, a new deposit) since this page loaded.
+      const [{ fundingWalletBalance: freshBalance }, freshReq] = await Promise.all([
+        fetchWalletBalances(),
+        supabaseClient.from("fund_requests").select("amount_naira, status").eq("id", btn.dataset.id).maybeSingle().then(r => r.data),
+      ]);
+      if (!freshReq || freshReq.status !== "pending") { alert("This request isn't pending anymore -- refreshing."); renderWallet(el); return; }
+      if (Number(freshReq.amount_naira) > freshBalance) {
+        alert(`Funding wallet balance (${fN(freshBalance)}) can't cover this request (${fN(freshReq.amount_naira)}). Add funds first.`);
+        renderWallet(el);
+        return;
+      }
+    }
+    btn.disabled = true;
+    const { error } = await supabaseClient.from("fund_requests").update({
+      status: decision,
+      decided_at: new Date().toISOString(),
+      decided_by: sessionData.user.id,
+    }).eq("id", btn.dataset.id);
+    if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
+    sbFn("send-internal-whatsapp", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
+    sbFn("send-internal-email", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
+    renderWallet(el);
+  }));
 }
 
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
