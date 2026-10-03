@@ -1,174 +1,161 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Revora — The operating system for performance commerce</title>
 <meta name="description" content="Revora connects ad spend to delivered revenue: Meta Ads automation, AI order confirmation, WhatsApp selling, delivery tracking, and funding in one place.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* ── THEME TOKENS (matches the Revora dashboard) ─────────────────────────────── */
-[data-theme="dark"] {
-  --bg:#09090b; --panel:#111113; --panel2:#18181c;
-  --border:#27272d; --borderStrong:#38383f;
-  --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
-  --accent:#4ec99e; --accentDk:#1a9e75;
-  --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
-  --blue:#5a9fff; --blueBg:rgba(90,159,255,.10);
-  --shadow:0 8px 40px rgba(0,0,0,.55);
+:root{
+  --bg:#ffffff; --bg2:#faf9f7; --ink:#f3f1ec;
+  --text:#14130f; --text2:#55524a; --muted:#8c887c;
+  --border:#e7e3da; --borderStrong:#d6d1c4;
+  --accent:#1a7a5e; --accentDk:#125c46; --accentBg:#eaf4f0;
+  --dark:#14130f; --dark2:#201e18;
 }
-
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 body{
   background:var(--bg);color:var(--text);
-  font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;
+  font-family:'Inter',system-ui,sans-serif;font-size:16px;line-height:1.6;
   -webkit-font-smoothing:antialiased;
 }
 a{color:inherit;text-decoration:none;}
-.mono{font-family:'JetBrains Mono',monospace;}
-img,svg{display:block;max-width:100%;}
-.container{max-width:1160px;margin:0 auto;padding:0 24px;}
+img,svg{display:block;}
+.serif{font-family:'Fraunces',Georgia,serif;}
+.container{max-width:1160px;margin:0 auto;padding:0 28px;}
+.ico{display:inline-flex;flex-shrink:0;}
+.ico svg{width:100%;height:100%;}
 
 /* ── BUTTONS ──────────────────────────────────────────────────────────────── */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  padding:11px 20px;border-radius:9px;font-size:14px;font-weight:600;
-  cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap;}
-.btn-primary{background:var(--accent);color:#06120d;}
-.btn-primary:hover{background:var(--accentDk);transform:translateY(-1px);}
-.btn-ghost{background:transparent;color:var(--text);border-color:var(--border);}
-.btn-ghost:hover{border-color:var(--borderStrong);background:var(--panel2);}
-.btn-lg{padding:14px 26px;font-size:15.5px;border-radius:10px;}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:12px 22px;border-radius:7px;font-size:14.5px;font-weight:600;
+  cursor:pointer;border:1.5px solid transparent;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accentDk);}
+.btn-dark{background:var(--dark);color:#fff;}
+.btn-dark:hover{background:#000;}
+.btn-outline{background:transparent;color:var(--text);border-color:var(--borderStrong);}
+.btn-outline:hover{border-color:var(--text);}
+.btn-ghost{background:transparent;color:var(--text2);font-weight:600;}
+.btn-ghost:hover{color:var(--text);}
+.btn-lg{padding:14px 28px;font-size:15.5px;border-radius:8px;}
 
 /* ── NAV ──────────────────────────────────────────────────────────────────── */
-.nav{position:sticky;top:0;z-index:50;background:rgba(9,9,11,.82);backdrop-filter:blur(10px);
+.nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
   border-bottom:1px solid var(--border);}
-.nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;}
-.nav-logo{font-size:19px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
-.nav-logo-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);}
-.nav-links{display:flex;align-items:center;gap:28px;font-size:13.5px;color:var(--text2);font-weight:500;}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:72px;}
+.nav-logo{font-size:21px;font-weight:700;letter-spacing:-.01em;}
+.nav-links{display:flex;align-items:center;gap:30px;font-size:14px;color:var(--text2);font-weight:500;}
 .nav-links a:hover{color:var(--text);}
-.nav-actions{display:flex;align-items:center;gap:10px;}
-@media (max-width:760px){ .nav-links{display:none;} }
+.nav-actions{display:flex;align-items:center;gap:8px;}
+@media (max-width:780px){ .nav-links{display:none;} }
 
 /* ── HERO ─────────────────────────────────────────────────────────────────── */
-.hero{padding:96px 0 72px;position:relative;overflow:hidden;}
-.hero::before{content:"";position:absolute;top:-180px;left:50%;transform:translateX(-50%);
-  width:900px;height:500px;background:radial-gradient(ellipse at center, rgba(78,201,158,.14), transparent 70%);
-  pointer-events:none;}
-.hero-inner{position:relative;max-width:780px;margin:0 auto;text-align:center;}
-.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
-  color:var(--accent);background:var(--accentBg);border:1px solid var(--accentBdr);
-  padding:6px 13px;border-radius:99px;margin-bottom:22px;}
-h1{font-size:54px;line-height:1.08;letter-spacing:-.03em;font-weight:800;margin-bottom:20px;}
-h1 .grad{background:linear-gradient(90deg,var(--accent),#7fe0bf);-webkit-background-clip:text;background-clip:text;color:transparent;}
-.hero p{font-size:18px;color:var(--text2);max-width:600px;margin:0 auto 34px;line-height:1.6;}
-.hero-ctas{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
-.hero-note{font-size:12.5px;color:var(--muted);}
-@media (max-width:640px){ h1{font-size:36px;} .hero p{font-size:16px;} }
+.hero{padding:88px 0 0;}
+.hero-inner{max-width:760px;margin:0 auto;text-align:center;}
+.eyebrow{font-size:12.5px;font-weight:700;color:var(--text2);text-transform:uppercase;
+  letter-spacing:.09em;margin-bottom:22px;}
+h1{font-size:58px;line-height:1.08;letter-spacing:-.02em;font-weight:600;margin-bottom:24px;}
+h1 .dot{color:var(--accent);}
+.hero p{font-size:19px;color:var(--text2);max-width:600px;margin:0 auto 36px;line-height:1.55;}
+.hero-ctas{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.hero-note{font-size:13px;color:var(--muted);margin-bottom:64px;}
+@media (max-width:640px){ h1{font-size:38px;} .hero p{font-size:16.5px;} }
 
-/* ── PIPELINE STRIP ───────────────────────────────────────────────────────── */
-.pipeline{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;
-  margin:56px auto 0;max-width:900px;}
-.pipe-step{display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 18px;}
-.pipe-ico{width:46px;height:46px;border-radius:12px;background:var(--panel);border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;font-size:19px;}
-.pipe-lbl{font-size:12.5px;font-weight:600;color:var(--text2);}
-.pipe-arrow{color:var(--muted);font-size:16px;margin:0 2px;}
-@media (max-width:760px){ .pipe-arrow{display:none;} .pipeline{gap:14px 0;} }
-
-/* ── DASHBOARD MOCK ───────────────────────────────────────────────────────── */
-.mock-wrap{max-width:980px;margin:64px auto 0;}
-.mock{background:var(--panel);border:1px solid var(--border);border-radius:14px;
-  box-shadow:var(--shadow);overflow:hidden;}
-.mock-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;border-bottom:1px solid var(--border);}
+/* ── PRODUCT MOCK ─────────────────────────────────────────────────────────── */
+.mock-wrap{max-width:980px;margin:0 auto;padding:0 20px;}
+.mock{background:#fff;border:1px solid var(--border);border-radius:14px 14px 0 0;
+  box-shadow:0 24px 70px -24px rgba(20,19,15,.18);overflow:hidden;border-bottom:none;}
+.mock-bar{display:flex;align-items:center;gap:7px;padding:13px 18px;border-bottom:1px solid var(--border);background:var(--bg2);}
 .mock-dot{width:9px;height:9px;border-radius:50%;background:var(--border);}
-.mock-tabs{display:flex;gap:4px;padding:10px 14px;border-bottom:1px solid var(--border);overflow-x:auto;}
-.mock-tab{font-size:11.5px;font-weight:600;color:var(--muted);padding:6px 12px;border-radius:7px;white-space:nowrap;}
+.mock-tabs{display:flex;gap:2px;padding:10px 16px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.mock-tab{font-size:12px;font-weight:600;color:var(--muted);padding:7px 13px;border-radius:7px;white-space:nowrap;}
 .mock-tab.active{color:var(--accent);background:var(--accentBg);}
-.mock-body{padding:22px;}
+.mock-body{padding:26px;}
 .mock-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
-.mock-kc{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px;}
-.mock-kc-lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
-.mock-kc-val{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;}
+.mock-kc{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:15px;}
+.mock-kc-lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px;font-weight:600;}
+.mock-kc-val{font-family:'Fraunces',serif;font-size:21px;font-weight:600;}
 .mock-kc-val.a{color:var(--accent);}
-.mock-rows{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:4px;}
-.mock-row{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:12px;}
+.mock-rows{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:4px;}
+.mock-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;font-size:12.5px;}
 .mock-row+.mock-row{border-top:1px solid var(--border);}
-.mock-row-name{color:var(--text2);}
+.mock-row-name{color:var(--text2);font-weight:500;}
 .mock-pill{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
-  padding:2px 8px;border-radius:99px;background:var(--accentBg);color:var(--accent);}
+  padding:3px 9px;border-radius:99px;background:var(--accentBg);color:var(--accent);}
 @media (max-width:640px){ .mock-kpis{grid-template-columns:repeat(2,1fr);} }
 
-/* ── SECTION HEADINGS ─────────────────────────────────────────────────────── */
-.section{padding:88px 0;}
+/* ── SECTION HEADS ────────────────────────────────────────────────────────── */
+.section{padding:100px 0;}
 .section-border{border-top:1px solid var(--border);}
-.section-head{max-width:620px;margin:0 auto 52px;text-align:center;}
+.section-head{max-width:640px;margin:0 auto 56px;}
+.section-head.center{text-align:center;}
 .section-eyebrow{font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;
-  letter-spacing:.08em;margin-bottom:12px;}
-.section-head h2{font-size:34px;font-weight:800;letter-spacing:-.02em;margin-bottom:14px;}
-.section-head p{color:var(--text2);font-size:16px;}
+  letter-spacing:.08em;margin-bottom:14px;}
+.section-head h2{font-size:36px;font-weight:600;letter-spacing:-.015em;margin-bottom:16px;}
+.section-head p{color:var(--text2);font-size:17px;line-height:1.6;}
 
-/* ── FEATURE GRID ─────────────────────────────────────────────────────────── */
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
-.feat-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;
-  transition:border-color .15s,transform .15s;}
-.feat-card:hover{border-color:var(--borderStrong);transform:translateY(-2px);}
-.feat-ico{width:40px;height:40px;border-radius:10px;background:var(--accentBg);
-  display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:16px;}
-.feat-card h3{font-size:16px;font-weight:700;margin-bottom:8px;}
-.feat-card p{font-size:13.5px;color:var(--text2);line-height:1.6;}
-@media (max-width:860px){ .feat-grid{grid-template-columns:1fr 1fr;} }
-@media (max-width:600px){ .feat-grid{grid-template-columns:1fr;} }
+/* ── INTRO / PROBLEM STATEMENT ────────────────────────────────────────────── */
+.intro{max-width:680px;margin:0 auto;text-align:center;padding:90px 0 0;}
+.intro p{font-size:19px;color:var(--text2);line-height:1.6;}
+.intro p+p{margin-top:18px;}
+.intro strong{color:var(--text);font-weight:600;}
 
-/* ── MODULES (ads/sales/ops/finance/ai) ──────────────────────────────────── */
-.modules{display:flex;flex-direction:column;gap:14px;}
-.module-row{display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center;
-  background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:28px 30px;}
-.module-tag{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;
-  text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin-bottom:8px;}
-.module-row h3{font-size:20px;font-weight:700;letter-spacing:-.01em;}
-.module-chips{display:flex;flex-wrap:wrap;gap:8px;}
-.module-chip{font-size:12.5px;font-weight:500;color:var(--text2);background:var(--panel2);
-  border:1px solid var(--border);padding:7px 13px;border-radius:99px;}
-@media (max-width:760px){ .module-row{grid-template-columns:1fr;gap:12px;} }
+/* ── HUB CARDS ────────────────────────────────────────────────────────────── */
+.hub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.hub-card{border:1px solid var(--border);border-radius:14px;padding:30px 28px;background:#fff;}
+.hub-head{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+.hub-ico{width:26px;height:26px;color:var(--accent);}
+.hub-card h3{font-size:18px;font-weight:600;letter-spacing:-.01em;}
+.hub-divider{border:none;border-top:1px dashed var(--border);margin-bottom:18px;}
+.hub-list{list-style:none;display:flex;flex-direction:column;gap:11px;}
+.hub-list li{display:flex;align-items:flex-start;gap:9px;font-size:14px;color:var(--text2);line-height:1.5;}
+.hub-check{width:15px;height:15px;color:var(--accent);flex-shrink:0;margin-top:2px;}
+@media (max-width:900px){ .hub-grid{grid-template-columns:1fr 1fr;} }
+@media (max-width:600px){ .hub-grid{grid-template-columns:1fr;} }
 
-/* ── HOW IT WORKS ─────────────────────────────────────────────────────────── */
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
-.step{position:relative;padding-top:8px;}
-.step-num{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--accent);
-  background:var(--accentBg);border:1px solid var(--accentBdr);width:34px;height:34px;border-radius:9px;
-  display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
-.step h3{font-size:17px;font-weight:700;margin-bottom:8px;}
-.step p{font-size:13.5px;color:var(--text2);line-height:1.6;}
-@media (max-width:760px){ .steps{grid-template-columns:1fr;gap:32px;} }
+/* ── STEPS ────────────────────────────────────────────────────────────────── */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;}
+.step-num{font-family:'Fraunces',serif;font-size:15px;font-weight:600;color:var(--accent);
+  margin-bottom:16px;}
+.step h3{font-size:18px;font-weight:600;margin-bottom:10px;letter-spacing:-.01em;}
+.step p{font-size:14.5px;color:var(--text2);line-height:1.6;}
+.step-line{height:1px;background:var(--border);margin-bottom:24px;}
+@media (max-width:760px){ .steps{grid-template-columns:1fr;gap:36px;} }
 
-/* ── ROLES STRIP ──────────────────────────────────────────────────────────── */
-.roles{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
-.role-card{text-align:center;padding:22px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);}
-.role-ico{font-size:24px;margin-bottom:10px;}
-.role-card h4{font-size:13.5px;font-weight:700;margin-bottom:4px;}
-.role-card p{font-size:11.5px;color:var(--muted);line-height:1.5;}
+/* ── ROLES ────────────────────────────────────────────────────────────────── */
+.roles{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.role-card{background:#fff;text-align:center;padding:30px 14px;}
+.role-ico{width:24px;height:24px;color:var(--accent);margin:0 auto 14px;}
+.role-card h4{font-size:14px;font-weight:600;margin-bottom:5px;}
+.role-card p{font-size:12px;color:var(--muted);line-height:1.5;}
 @media (max-width:860px){ .roles{grid-template-columns:repeat(3,1fr);} }
 @media (max-width:560px){ .roles{grid-template-columns:repeat(2,1fr);} }
 
 /* ── CTA BAND ─────────────────────────────────────────────────────────────── */
-.cta-band{background:linear-gradient(135deg,var(--panel),var(--panel2));border:1px solid var(--border);
-  border-radius:22px;padding:64px 40px;text-align:center;position:relative;overflow:hidden;}
-.cta-band::before{content:"";position:absolute;top:-120px;right:-80px;width:400px;height:400px;
-  background:radial-gradient(circle,rgba(78,201,158,.16),transparent 70%);}
-.cta-band h2{font-size:32px;font-weight:800;letter-spacing:-.02em;margin-bottom:14px;position:relative;}
-.cta-band p{color:var(--text2);font-size:15.5px;margin-bottom:30px;position:relative;}
-.cta-band .hero-ctas{position:relative;}
+.cta-section{background:var(--dark);padding:100px 0;}
+.cta-inner{max-width:620px;margin:0 auto;text-align:center;}
+.cta-inner h2{color:#fff;font-size:38px;font-weight:600;letter-spacing:-.02em;margin-bottom:18px;}
+.cta-inner p{color:#a8a59b;font-size:16.5px;margin-bottom:34px;}
 
 /* ── FOOTER ───────────────────────────────────────────────────────────────── */
-footer{border-top:1px solid var(--border);padding:40px 0;}
-.footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
-.footer-logo{font-size:15px;font-weight:800;letter-spacing:-.02em;}
-.footer-copy{font-size:12.5px;color:var(--muted);}
-.footer-links{display:flex;gap:22px;font-size:12.5px;color:var(--text2);}
-.footer-links a:hover{color:var(--text);}
+footer{background:var(--dark2);padding:60px 0 32px;}
+.footer-top{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap;margin-bottom:48px;}
+.footer-logo{font-size:19px;font-weight:700;color:#fff;margin-bottom:12px;}
+.footer-tag{font-size:13.5px;color:#8c897e;max-width:260px;line-height:1.6;}
+.footer-cols{display:flex;gap:56px;flex-wrap:wrap;}
+.footer-col h5{font-size:12px;font-weight:700;color:#8c897e;text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:16px;}
+.footer-col a{display:block;font-size:13.5px;color:#c9c6bc;margin-bottom:11px;}
+.footer-col a:hover{color:#fff;}
+.footer-bottom{border-top:1px solid #35332b;padding-top:24px;display:flex;justify-content:space-between;
+  align-items:center;flex-wrap:wrap;gap:12px;}
+.footer-copy{font-size:12.5px;color:#716e63;}
 </style>
 </head>
 <body>
@@ -176,7 +163,7 @@ footer{border-top:1px solid var(--border);padding:40px 0;}
 <!-- NAV -->
 <nav class="nav">
   <div class="container nav-inner">
-    <a href="#" class="nav-logo"><span class="nav-logo-dot"></span>Revora</a>
+    <a href="#" class="nav-logo serif">Revora</a>
     <div class="nav-links">
       <a href="#platform">Platform</a>
       <a href="#modules">Modules</a>
@@ -185,7 +172,7 @@ footer{border-top:1px solid var(--border);padding:40px 0;}
     </div>
     <div class="nav-actions">
       <a href="login.html" class="btn btn-ghost">Log in</a>
-      <a href="login.html?mode=signup" class="btn btn-primary">Get started</a>
+      <a href="login.html?mode=signup" class="btn btn-dark">Get started</a>
     </div>
   </div>
 </nav>
@@ -193,144 +180,124 @@ footer{border-top:1px solid var(--border);padding:40px 0;}
 <!-- HERO -->
 <header class="hero">
   <div class="container hero-inner">
-    <div class="eyebrow">⚡ Built for Meta Ads-driven commerce teams</div>
-    <h1>The operating system for<br><span class="grad">performance commerce.</span></h1>
-    <p>Revora connects your ad spend to the revenue it actually produces — campaigns, AI order confirmation, WhatsApp selling, delivery, and funding, all in one place instead of six disconnected tools.</p>
+    <div class="eyebrow">Revenue operations for commerce teams</div>
+    <h1 class="serif">Ad spend, orders, and delivery —<br>finally one system<span class="dot">.</span></h1>
+    <p>Revora connects what you spend on Meta Ads to the revenue it actually produces — campaigns, AI order confirmation, WhatsApp selling, delivery, and funding, in one place.</p>
     <div class="hero-ctas">
       <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
-      <a href="login.html" class="btn btn-ghost btn-lg">Log in</a>
+      <a href="login.html" class="btn btn-outline btn-lg">Log in</a>
     </div>
     <div class="hero-note">No credit card required · Set up your company in minutes</div>
+  </div>
 
-    <div class="pipeline">
-      <div class="pipe-step"><div class="pipe-ico">📣</div><div class="pipe-lbl">Ads</div></div>
-      <div class="pipe-arrow">→</div>
-      <div class="pipe-step"><div class="pipe-ico">🛒</div><div class="pipe-lbl">Orders</div></div>
-      <div class="pipe-arrow">→</div>
-      <div class="pipe-step"><div class="pipe-ico">📞</div><div class="pipe-lbl">Confirmation</div></div>
-      <div class="pipe-arrow">→</div>
-      <div class="pipe-step"><div class="pipe-ico">🛵</div><div class="pipe-lbl">Delivery</div></div>
-      <div class="pipe-arrow">→</div>
-      <div class="pipe-step"><div class="pipe-ico">💰</div><div class="pipe-lbl">Revenue</div></div>
-    </div>
-
-    <div class="mock-wrap">
-      <div class="mock">
-        <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
-        <div class="mock-tabs">
-          <div class="mock-tab active">Overview</div>
-          <div class="mock-tab">Campaigns</div>
-          <div class="mock-tab">Orders</div>
-          <div class="mock-tab">Wallet</div>
-          <div class="mock-tab">Leaderboard</div>
-          <div class="mock-tab">Delivery</div>
+  <div class="mock-wrap">
+    <div class="mock">
+      <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+      <div class="mock-tabs">
+        <div class="mock-tab active">Overview</div>
+        <div class="mock-tab">Campaigns</div>
+        <div class="mock-tab">Orders</div>
+        <div class="mock-tab">Wallet</div>
+        <div class="mock-tab">Leaderboard</div>
+        <div class="mock-tab">Delivery</div>
+      </div>
+      <div class="mock-body">
+        <div class="mock-kpis">
+          <div class="mock-kc"><div class="mock-kc-lbl">Ad spend</div><div class="mock-kc-val">₦482,000</div></div>
+          <div class="mock-kc"><div class="mock-kc-lbl">Orders</div><div class="mock-kc-val">214</div></div>
+          <div class="mock-kc"><div class="mock-kc-lbl">Real ROAS</div><div class="mock-kc-val a">3.4x</div></div>
+          <div class="mock-kc"><div class="mock-kc-lbl">Delivery rate</div><div class="mock-kc-val a">78%</div></div>
         </div>
-        <div class="mock-body">
-          <div class="mock-kpis">
-            <div class="mock-kc"><div class="mock-kc-lbl">Ad spend</div><div class="mock-kc-val">₦482,000</div></div>
-            <div class="mock-kc"><div class="mock-kc-lbl">Orders</div><div class="mock-kc-val">214</div></div>
-            <div class="mock-kc"><div class="mock-kc-lbl">Real ROAS</div><div class="mock-kc-val a">3.4x</div></div>
-            <div class="mock-kc"><div class="mock-kc-lbl">Delivery rate</div><div class="mock-kc-val a">78%</div></div>
-          </div>
-          <div class="mock-rows">
-            <div class="mock-row"><span class="mock-row-name">Lunessa Whatsapp ADSET</span><span class="mock-pill">active</span></div>
-            <div class="mock-row"><span class="mock-row-name">Lunessa AD SET — Women</span><span class="mock-pill">active</span></div>
-            <div class="mock-row"><span class="mock-row-name">Lunessa AD SET — Men</span><span class="mock-pill">active</span></div>
-          </div>
+        <div class="mock-rows">
+          <div class="mock-row"><span class="mock-row-name">Lunessa Whatsapp ADSET</span><span class="mock-pill">active</span></div>
+          <div class="mock-row"><span class="mock-row-name">Lunessa AD SET — Women</span><span class="mock-pill">active</span></div>
+          <div class="mock-row"><span class="mock-row-name">Lunessa AD SET — Men</span><span class="mock-pill">active</span></div>
         </div>
       </div>
     </div>
   </div>
 </header>
 
-<!-- PLATFORM / FEATURES -->
-<section class="section section-border" id="platform">
-  <div class="container">
-    <div class="section-head">
-      <div class="section-eyebrow">Platform</div>
-      <h2>Everything between a click and cash in hand</h2>
-      <p>Most teams stitch this together from Meta Ads Manager, a spreadsheet, a WhatsApp number, and a bank app. Revora is the one place that actually connects them.</p>
-    </div>
-    <div class="feat-grid">
-      <div class="feat-card">
-        <div class="feat-ico">📣</div>
-        <h3>Live campaign structure</h3>
-        <p>Every campaign, ad set, and ad synced straight from Meta — real creative, copy, and performance, drilled down the way Ads Manager shows it, not a flattened spreadsheet.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-ico">🤖</div>
-        <h3>AI order confirmation</h3>
-        <p>New orders get an automatic confirmation call before anything ships — catching fake numbers and no-shows before a rider is ever dispatched.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-ico">💬</div>
-        <h3>WhatsApp selling</h3>
-        <p>A connected WhatsApp number that talks to customers, answers product questions, and takes orders directly inside the chat.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-ico">🛵</div>
-        <h3>Delivery &amp; collections</h3>
-        <p>Every rider sees their own assignments and exactly which customers already paid online versus who still owes on delivery — no more guessing or double-collecting.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-ico">💰</div>
-        <h3>Real funding wallet</h3>
-        <p>Admins fund a real wallet from their own bank, buyers request what they need for ad spend, and every transfer is tracked back to who approved it.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-ico">📊</div>
-        <h3>Real ROAS, not guesswork</h3>
-        <p>ROAS calculated off confirmed payments — not just orders placed — so scaling decisions are based on cash that actually landed.</p>
-      </div>
-    </div>
-  </div>
+<!-- INTRO / PROBLEM STATEMENT -->
+<section class="intro" id="platform">
+  <p>Most teams run ads in one tab, track orders in a spreadsheet, confirm customers by hand, and reconcile delivery and cash days later — if at all.</p>
+  <p><strong>Revora is the one place that actually connects them</strong> — so a naira spent on an ad can be traced all the way to a naira collected on delivery.</p>
 </section>
 
-<!-- MODULES -->
-<section class="section section-border" id="modules">
+<!-- HUB CARDS -->
+<section class="section" id="modules">
   <div class="container">
-    <div class="section-head">
+    <div class="section-head center">
       <div class="section-eyebrow">One system, five jobs</div>
-      <h2>Not just another CRM</h2>
-      <p>Revora is built around how a performance commerce team actually operates — marketing, sales, operations, and finance, reading from the same numbers.</p>
+      <h2 class="serif">Not just another CRM</h2>
+      <p>Built around how a performance commerce team actually operates — marketing, sales, operations, and finance, reading from the same numbers.</p>
     </div>
-    <div class="modules">
-      <div class="module-row">
-        <div><div class="module-tag">📣 Marketing</div><h3>Ad spend, under control</h3></div>
-        <div class="module-chips">
-          <span class="module-chip">Campaigns</span><span class="module-chip">Ad sets</span>
-          <span class="module-chip">Creative Vault</span><span class="module-chip">Kill / scale decisions</span>
-          <span class="module-chip">Spend &amp; CPA</span>
+    <div class="hub-grid">
+      <div class="hub-card">
+        <div class="hub-head">
+          <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
+          <h3>Marketing</h3>
         </div>
+        <hr class="hub-divider">
+        <ul class="hub-list">
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Every campaign, ad set, and ad synced live from Meta</li>
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Automatic kill / scale decisions on CTR and CPA</li>
+        </ul>
       </div>
-      <div class="module-row">
-        <div><div class="module-tag">🛒 Sales &amp; CRM</div><h3>From lead to delivered order</h3></div>
-        <div class="module-chips">
-          <span class="module-chip">Orders</span><span class="module-chip">Order forms</span>
-          <span class="module-chip">AI call confirmation</span><span class="module-chip">Support queue</span>
-          <span class="module-chip">Conversations</span>
+      <div class="hub-card">
+        <div class="hub-head">
+          <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
+          <h3>Sales &amp; CRM</h3>
         </div>
+        <hr class="hub-divider">
+        <ul class="hub-list">
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Orders confirmed by AI before a rider is dispatched</li>
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>A WhatsApp number that sells and answers questions</li>
+        </ul>
       </div>
-      <div class="module-row">
-        <div><div class="module-tag">🛵 Operations</div><h3>Media buyers, riders, support</h3></div>
-        <div class="module-chips">
-          <span class="module-chip">Leaderboard</span><span class="module-chip">Delivery assignments</span>
-          <span class="module-chip">Escalation claiming</span><span class="module-chip">Role-based access</span>
+      <div class="hub-card">
+        <div class="hub-head">
+          <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>
+          <h3>Operations</h3>
         </div>
+        <hr class="hub-divider">
+        <ul class="hub-list">
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Riders see only their own assignments and payment status</li>
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Media buyer leaderboard, ranked by real revenue</li>
+        </ul>
       </div>
-      <div class="module-row">
-        <div><div class="module-tag">💰 Finance</div><h3>Where the money actually is</h3></div>
-        <div class="module-chips">
-          <span class="module-chip">Funding wallet</span><span class="module-chip">Revenue wallet</span>
-          <span class="module-chip">Payment confirmation</span><span class="module-chip">Transaction ledger</span>
+      <div class="hub-card">
+        <div class="hub-head">
+          <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
+          <h3>Finance</h3>
         </div>
+        <hr class="hub-divider">
+        <ul class="hub-list">
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>A real funding wallet admins top up and buyers request from</li>
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Every naira traced: who approved it, who sent it</li>
+        </ul>
       </div>
-      <div class="module-row">
-        <div><div class="module-tag">🤖 AI</div><h3>The parts that run themselves</h3></div>
-        <div class="module-chips">
-          <span class="module-chip">Order confirmation calls</span><span class="module-chip">WhatsApp sales agent</span>
-          <span class="module-chip">Ad set alerts</span><span class="module-chip">Low-balance warnings</span>
+      <div class="hub-card">
+        <div class="hub-head">
+          <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+          <h3>AI</h3>
         </div>
+        <hr class="hub-divider">
+        <ul class="hub-list">
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Order confirmation calls, placed automatically</li>
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Low-balance and ad set alerts before money runs out</li>
+        </ul>
+      </div>
+      <div class="hub-card">
+        <div class="hub-head">
+          <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+          <h3>Real ROAS</h3>
+        </div>
+        <hr class="hub-divider">
+        <ul class="hub-list">
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>ROAS calculated off confirmed payments, not orders placed</li>
+          <li><span class="ico hub-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>Scaling decisions based on cash that actually landed</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -339,22 +306,25 @@ footer{border-top:1px solid var(--border);padding:40px 0;}
 <!-- HOW IT WORKS -->
 <section class="section section-border" id="how">
   <div class="container">
-    <div class="section-head">
+    <div class="section-head center">
       <div class="section-eyebrow">How it works</div>
-      <h2>Set up once, running the same day</h2>
+      <h2 class="serif">Set up once, running the same day</h2>
     </div>
     <div class="steps">
       <div class="step">
+        <div class="step-line"></div>
         <div class="step-num">01</div>
         <h3>Create your company</h3>
         <p>Sign up, name your company, and invite your team — media buyers, customer care, delivery agents — each with their own role and view.</p>
       </div>
       <div class="step">
+        <div class="step-line"></div>
         <div class="step-num">02</div>
         <h3>Connect Meta &amp; WhatsApp</h3>
         <p>Share your ad account with Revora's Business ID and connect a WhatsApp number — no OAuth dance, just Business Manager sharing.</p>
       </div>
       <div class="step">
+        <div class="step-line"></div>
         <div class="step-num">03</div>
         <h3>Watch it run</h3>
         <p>Orders get confirmed, campaigns get tracked, deliveries get assigned, and revenue gets reconciled — automatically, every day.</p>
@@ -366,44 +336,73 @@ footer{border-top:1px solid var(--border);padding:40px 0;}
 <!-- ROLES -->
 <section class="section section-border" id="roles">
   <div class="container">
-    <div class="section-head">
+    <div class="section-head center">
       <div class="section-eyebrow">Built for the whole team</div>
-      <h2>Everyone sees what's theirs</h2>
+      <h2 class="serif">Everyone sees what's theirs</h2>
       <p>No role sees a cluttered dashboard full of tools that aren't their job.</p>
     </div>
     <div class="roles">
-      <div class="role-card"><div class="role-ico">👑</div><h4>Owner / Admin</h4><p>Full visibility, funding, approvals</p></div>
-      <div class="role-card"><div class="role-ico">📣</div><h4>Media buyer</h4><p>Their own campaigns &amp; requests</p></div>
-      <div class="role-card"><div class="role-ico">🎧</div><h4>Customer care</h4><p>Escalations &amp; deals closed</p></div>
-      <div class="role-card"><div class="role-ico">🛵</div><h4>Delivery agent</h4><p>Their own assignments &amp; revenue</p></div>
-      <div class="role-card"><div class="role-ico">🏢</div><h4>Your company</h4><p>One source of truth for all of it</p></div>
+      <div class="role-card">
+        <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2-6.3-4.5-6.3 4.5 2.3-7.2-6-4.4h7.6z"/></svg></span>
+        <h4>Owner / Admin</h4><p>Full visibility, funding, approvals</p>
+      </div>
+      <div class="role-card">
+        <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
+        <h4>Media buyer</h4><p>Their own campaigns &amp; requests</p>
+      </div>
+      <div class="role-card">
+        <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span>
+        <h4>Customer care</h4><p>Escalations &amp; deals closed</p>
+      </div>
+      <div class="role-card">
+        <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>
+        <h4>Delivery agent</h4><p>Their own assignments &amp; revenue</p>
+      </div>
+      <div class="role-card">
+        <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4 8 4v14M9 9h1m-1 4h1m4-4h1m-1 4h1M9 21v-4h6v4"/></svg></span>
+        <h4>Your company</h4><p>One source of truth for all of it</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- CTA BAND -->
-<section class="section section-border">
-  <div class="container">
-    <div class="cta-band">
-      <h2>Connect your ad spend to real revenue</h2>
-      <p>Set up your company and invite your team in minutes.</p>
-      <div class="hero-ctas">
-        <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
-        <a href="login.html" class="btn btn-ghost btn-lg">Log in</a>
-      </div>
+<!-- CTA -->
+<section class="cta-section">
+  <div class="container cta-inner">
+    <h2 class="serif">Connect your ad spend to real revenue</h2>
+    <p>Set up your company and invite your team in minutes.</p>
+    <div class="hero-ctas">
+      <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
+      <a href="login.html" class="btn btn-outline btn-lg" style="color:#fff;border-color:#3d3a30;">Log in</a>
     </div>
   </div>
 </section>
 
 <!-- FOOTER -->
 <footer>
-  <div class="container footer-inner">
-    <div class="footer-logo">Revora</div>
-    <div class="footer-links">
-      <a href="login.html">Log in</a>
-      <a href="login.html?mode=signup">Get started</a>
+  <div class="container">
+    <div class="footer-top">
+      <div>
+        <div class="footer-logo serif">Revora</div>
+        <div class="footer-tag">The operating system for performance commerce.</div>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h5>Product</h5>
+          <a href="#platform">Platform</a>
+          <a href="#modules">Modules</a>
+          <a href="#how">How it works</a>
+        </div>
+        <div class="footer-col">
+          <h5>Account</h5>
+          <a href="login.html">Log in</a>
+          <a href="login.html?mode=signup">Get started</a>
+        </div>
+      </div>
     </div>
-    <div class="footer-copy">© <span id="yr"></span> Revora. All rights reserved.</div>
+    <div class="footer-bottom">
+      <div class="footer-copy">© <span id="yr"></span> Revora. All rights reserved.</div>
+    </div>
   </div>
 </footer>
 
