@@ -721,6 +721,14 @@ async function launchAdSetGroup(
         daily_budget_naira: budgetType === "abo" ? null : totalBudgetNaira,
         status: "paused",
         ad_account_id: creative.ad_account_id,
+        // Every row below (campaigns/creatives/ad_sets/ad_set_ads) must carry
+        // company_id -- every read anywhere in the dashboard filters by
+        // company_id = current_company_id(), and this runs on the service
+        // role key which bypasses RLS on the way IN, so a missing company_id
+        // here doesn't error, it just makes the row permanently invisible to
+        // everyone the moment it's created. Confirmed live: campaigns/ad_sets
+        // were completely empty company-wide despite this pipeline existing.
+        company_id: creative.company_id,
       })
       .select("id")
       .single();
@@ -772,6 +780,7 @@ async function launchAdSetGroup(
           cta_type: ctaType,
           meta_ad_id: adCreativeId,
           status: "testing",
+          company_id: creative.company_id,
         })
         .select("id")
         .single();
@@ -844,6 +853,11 @@ async function launchAdSetGroup(
           countries: ["NG"],
           optimization_goal: optimizationGoal,
           bid_strategy: REAL_BID_STRATEGY,
+          company_id: creative.company_id,
+          // Buyer-role RLS on ad_sets requires media_buyer_id to match the
+          // viewer's own profile (owner/admin bypass it) -- without this, the
+          // buyer who actually launched the test couldn't see it themselves.
+          media_buyer_id: creative.ad_accounts?.media_buyer_id || null,
         })
         .select("id")
         .single();
@@ -882,7 +896,7 @@ async function launchAdSetGroup(
         }
         const { error: adSetAdErr } = await supabase
           .from("ad_set_ads")
-          .insert({ ad_set_id: a.row.id, creative_id: lc.id, meta_ad_id: adId });
+          .insert({ ad_set_id: a.row.id, creative_id: lc.id, meta_ad_id: adId, company_id: creative.company_id });
         if (adSetAdErr) console.error(`Failed to record ad_set_ads for "${a.label}"/${lc.fileName}:`, adSetAdErr);
       }
     }
@@ -925,7 +939,7 @@ Deno.serve(async (req: Request) => {
     let pendingQuery = supabase
       .from("creative_assets")
       .select(
-        "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
+        "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
       )
       .eq("test_status", "untested")
       .order("uploaded_at", { ascending: true });

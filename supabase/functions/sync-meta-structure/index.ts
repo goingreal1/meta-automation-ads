@@ -78,6 +78,15 @@ Deno.serve(async (_req: Request) => {
           lifetime_budget_naira: c.lifetime_budget ? Number(c.lifetime_budget) / 100 : null,
           status: (c.status ?? "").toLowerCase(),
           ad_account_id: account.id,
+          // Every row this function writes used to come back with
+          // company_id null -- it runs on the service role key, which
+          // bypasses RLS on the way IN, but every read anywhere in the
+          // dashboard filters by company_id = current_company_id(), so a
+          // null here made the row permanently invisible to everyone,
+          // forever, the moment it was synced. Confirmed live: campaigns
+          // and ad_sets were both completely empty despite this function
+          // existing and (per its own summary counts) appearing to work.
+          company_id: account.company_id,
           meta_raw: c,
         }, { onConflict: "meta_campaign_id" }).select().single();
         summary.campaigns++;
@@ -108,6 +117,11 @@ Deno.serve(async (_req: Request) => {
             // by the active account). Confirmed live: real synced ad sets with
             // real spend were invisible everywhere downstream because of this.
             ad_account_id: account.id,
+            company_id: account.company_id,
+            // Buyer-role RLS on ad_sets requires media_buyer_id to match the
+            // viewer's own profile (owner/admin bypass it) -- without this, a
+            // buyer logging in would never see their own synced ad sets at all.
+            media_buyer_id: account.media_buyer_id,
             adset_name: as.name,
             targeting_type: targetingType,
             budget_naira: as.daily_budget ? Number(as.daily_budget) / 100 : (as.lifetime_budget ? Number(as.lifetime_budget) / 100 : null),
@@ -150,7 +164,7 @@ Deno.serve(async (_req: Request) => {
             const destLink = linkData.link ?? videoData.call_to_action?.value?.link ?? creative.link_url ?? null;
             const ctaType = linkData.call_to_action?.type ?? videoData.call_to_action?.type ?? null;
 
-            await supabase.from("creatives").upsert({
+            const { data: creativeRow, error: creativeErr } = await supabase.from("creatives").upsert({
               meta_ad_id: ad.id,
               creative_name: ad.name,
               // creatives.status has a check constraint allowing only testing/winner/
@@ -167,14 +181,28 @@ Deno.serve(async (_req: Request) => {
               video_url: imageUrl ?? videoId,
               destination_link: destLink,
               cta_type: ctaType,
+              company_id: account.company_id,
               meta_raw: ad,
-            }, { onConflict: "meta_ad_id" });
+            }, { onConflict: "meta_ad_id" }).select().single();
+            if (creativeErr) summary.errors.push(`creatives upsert (${ad.id}): ${creativeErr.message}`);
             summary.ads++;
 
-            // Link the ad_set to this creative if not already linked
-            if (adSetRow && !adSetRow.creative_id) {
-              const { data: creativeRow } = await supabase.from("creatives").select("id").eq("meta_ad_id", ad.id).maybeSingle();
-              if (creativeRow) {
+            // Every ad in this ad set gets its own ad_set_ads row -- this used
+            // to only ever set ad_sets.creative_id for the FIRST ad found, so
+            // an ad set with 2-5 ads (the whole point of a 1-5-5 test
+            // structure) only ever showed one of them anywhere in the
+            // dashboard. ad_set_ads is the real many-to-many join; creative_id
+            // on ad_sets stays as a legacy single-ad fallback for old rows.
+            if (adSetRow && creativeRow) {
+              const { error: adSetAdErr } = await supabase.from("ad_set_ads").upsert({
+                ad_set_id: adSetRow.id,
+                creative_id: creativeRow.id,
+                meta_ad_id: ad.id,
+                company_id: account.company_id,
+              }, { onConflict: "meta_ad_id" });
+              if (adSetAdErr) summary.errors.push(`ad_set_ads upsert (${ad.id}): ${adSetAdErr.message}`);
+
+              if (!adSetRow.creative_id) {
                 await supabase.from("ad_sets").update({ creative_id: creativeRow.id }).eq("id", adSetRow.id);
               }
             }
