@@ -3567,19 +3567,28 @@ async function renderSettings(el) {
     sbQuery("payments", "select=media_buyer_id,amount_naira&status=eq.confirmed").catch(() => []),
     sbQuery("fund_requests", "select=*&order=requested_at.desc&limit=100").catch(() => []),
   ]);
-  const walletBalances = {}; // media_buyer_id -> { confirmed, approved, balance }
-  for (const b of buyers || []) walletBalances[b.id] = { confirmed: 0, approved: 0, balance: 0 };
+  // A fund_requests row's lifecycle is pending -> approved -> transferred
+  // (or declined). "approved" means an admin signed off on the amount but
+  // the buyer hasn't sent it to Meta yet; "transferred" means a real
+  // Paystack transfer moved it. Both get reserved out of the spendable
+  // balance so a buyer can't request the same confirmed revenue twice.
+  const walletBalances = {}; // media_buyer_id -> { confirmed, approved, transferred, balance }
+  const blank = () => ({ confirmed: 0, approved: 0, transferred: 0, balance: 0 });
+  for (const b of buyers || []) walletBalances[b.id] = blank();
   for (const p of confirmedPayments || []) {
     if (!p.media_buyer_id) continue;
-    walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || { confirmed: 0, approved: 0, balance: 0 };
+    walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || blank();
     walletBalances[p.media_buyer_id].confirmed += Number(p.amount_naira || 0);
   }
   for (const f of fundRequests || []) {
-    if (f.status !== "approved") continue;
-    walletBalances[f.media_buyer_id] = walletBalances[f.media_buyer_id] || { confirmed: 0, approved: 0, balance: 0 };
-    walletBalances[f.media_buyer_id].approved += Number(f.amount_naira || 0);
+    if (f.status !== "approved" && f.status !== "transferred") continue;
+    walletBalances[f.media_buyer_id] = walletBalances[f.media_buyer_id] || blank();
+    walletBalances[f.media_buyer_id][f.status === "approved" ? "approved" : "transferred"] += Number(f.amount_naira || 0);
   }
-  for (const k in walletBalances) walletBalances[k].balance = walletBalances[k].confirmed - walletBalances[k].approved;
+  for (const k in walletBalances) {
+    const w = walletBalances[k];
+    w.balance = w.confirmed - w.approved - w.transferred;
+  }
   const oauthToast = window.oauthToast;
   delete window.oauthToast;
 
@@ -3631,13 +3640,37 @@ async function renderSettings(el) {
 
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
       const myId = window.myProfile.media_buyer_id;
-      const myWallet = walletBalances[myId] || { confirmed: 0, approved: 0, balance: 0 };
+      const myBuyer = (buyers || []).find(b => b.id === myId);
+      const myWallet = walletBalances[myId] || { confirmed: 0, approved: 0, transferred: 0, balance: 0 };
       const myRequests = (fundRequests || []).filter(f => f.media_buyer_id === myId);
+      const readyToSend = myRequests.filter(f => f.status === "approved");
+      const verified = !!myBuyer?.meta_ads_verified;
       return `
     <div class="panel">
       <div class="ph"><div class="ph-title">Your wallet</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Balance = revenue confirmed as paid into your dedicated account, minus funds already approved and paid out to you. This is a read-only ledger -- you can request funds, never send or move money yourself.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Balance = revenue confirmed as paid into your dedicated account, minus funds already approved or sent to Meta. You never send money to an arbitrary account -- only to your own verified Meta Ads bank account below, and only amounts an admin already approved.</div>
       <div style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:14px;">${fN(myWallet.balance)}</div>
+
+      <div style="background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;">Your Meta Ads top-up account</div>
+        ${verified ? `
+        <div style="font-size:12px;color:var(--text);">✅ ${escH(myBuyer.meta_ads_account_name)} -- ${escH(myBuyer.meta_ads_bank_name)} ${escH(myBuyer.meta_ads_bank_account_number)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Verified as a Facebook/Meta account. <a href="#" id="metaAcctChangeLink" style="color:var(--accent);">Change it</a></div>
+        ` : `
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Enter the bank account number Meta's Ads Manager gave you for bank-transfer top-ups. We verify the name resolves to Facebook/Meta before saving it -- we won't accept any other account.</div>
+        `}
+        <div id="metaAcctForm" style="${verified ? "display:none;" : ""}margin-top:8px;">
+          <div class="fg">
+            <div class="field"><label>Bank</label>
+              <select id="meta_bank_code"><option value="">Loading banks…</option></select>
+            </div>
+            <div class="field"><label>Account number</label><input id="meta_acct_num" placeholder="10-digit account number" value="${escH(myBuyer?.meta_ads_bank_account_number || "")}"></div>
+          </div>
+          <button type="button" class="btn btn-a" id="metaAcctVerifyBtn" style="margin-top:8px;padding:4px 10px;font-size:10px;">Verify &amp; save</button>
+          <div id="metaAcctMsg" style="margin-top:6px;"></div>
+        </div>
+      </div>
+
       <form id="fundReqForm">
         <div class="fg">
           <div class="field"><label>Amount to request *</label><input id="fr_amount" type="number" min="1" step="1" required placeholder="e.g. 50000"></div>
@@ -3646,6 +3679,14 @@ async function renderSettings(el) {
         <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
         <div id="fundReqMsg"></div>
       </form>
+      ${readyToSend.length ? `
+      <div style="margin-top:16px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px;">Approved -- ready to send to Meta</div>
+        ${readyToSend.map(f => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+          <div style="font-size:12px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
+          <button type="button" class="btn btn-a sendToMetaBtn" data-id="${f.id}" ${verified ? "" : "disabled title=\"Verify your Meta Ads account above first\""} style="padding:3px 8px;font-size:10px;">Send to Meta Ads</button>
+        </div>`).join("")}
+      </div>` : ""}
       ${myRequests.length ? `
       <div class="tbl-wrap" style="margin-top:16px;"><table>
         <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th></tr>
@@ -3653,7 +3694,7 @@ async function renderSettings(el) {
           <td>${ago(f.requested_at)}</td>
           <td class="n">${fN(f.amount_naira)}</td>
           <td class="s">${escH(f.note || "—")}</td>
-          <td><span class="pill ${f.status === "approved" ? "active" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
+          <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span>${f.transfer_error ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">${escH(f.transfer_error)}</div>` : ""}</td>
         </tr>`).join("")}
       </table></div>` : ""}
     </div>`;
@@ -3690,7 +3731,7 @@ async function renderSettings(el) {
     ${!isAdmin ? "" : `
     <div class="panel">
       <div class="ph"><div class="ph-title">Funding requests</div><div class="ph-count">${(fundRequests || []).filter(f => f.status === "pending").length} pending</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving a request is bookkeeping only -- it records that you paid the buyer out separately and lowers their wallet balance here. We never move money automatically.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving releases that amount to the buyer's wallet as "ready to send" -- they then trigger the actual transfer themselves, straight into their own verified Meta Ads bank account. We never move money on their behalf.</div>
       ${!fundRequests?.length ? `<div class="empty"><div class="empty-ico">💸</div>No funding requests yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Buyer</th><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th></tr>
@@ -3701,11 +3742,11 @@ async function renderSettings(el) {
             <td>${ago(f.requested_at)}</td>
             <td class="n">${fN(f.amount_naira)}</td>
             <td class="s">${escH(f.note || "—")}</td>
-            <td><span class="pill ${f.status === "approved" ? "active" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
+            <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
             <td>${f.status === "pending" ? `
               <button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 8px;font-size:10px;">Approve</button>
               <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;">Decline</button>
-            ` : "—"}</td>
+            ` : f.status === "approved" ? `<span style="font-size:10.5px;color:var(--muted);">waiting on buyer to send</span>` : "—"}</td>
           </tr>`;
         }).join("")}
       </table></div>`}
@@ -3715,13 +3756,14 @@ async function renderSettings(el) {
       <div class="ph"><div class="ph-title">Buyer wallet balances</div></div>
       ${!buyers?.length ? `<div class="empty"><div class="empty-ico">💰</div>Add a buyer below first.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Paid out</th><th>Balance</th></tr>
+        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Approved, not sent</th><th>Sent to Meta</th><th>Balance</th></tr>
         ${buyers.map(b => {
-          const w = walletBalances[b.id] || { confirmed: 0, approved: 0, balance: 0 };
+          const w = walletBalances[b.id] || { confirmed: 0, approved: 0, transferred: 0, balance: 0 };
           return `<tr>
             <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
             <td class="n">${fN(w.confirmed)}</td>
             <td class="n">${fN(w.approved)}</td>
+            <td class="n">${fN(w.transferred)}</td>
             <td class="n s">${fN(w.balance)}</td>
           </tr>`;
         }).join("")}
@@ -3968,6 +4010,58 @@ window.refreshBalances = async function() {
     }).eq("id", btn.dataset.id);
     if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
     renderSettings(el);
+  }));
+
+  // Buyer self-service: register (and verify) the Meta Ads bank account
+  // their approved wallet balance will be transferred into.
+  if (document.getElementById("metaAcctForm")) {
+    const bankSelect = document.getElementById("meta_bank_code");
+    sbFn("paystack-list-banks", null, "GET").then(r => {
+      if (!r.banks?.length) { bankSelect.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
+      bankSelect.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
+    }).catch(() => { bankSelect.innerHTML = `<option value="">Couldn't load banks</option>`; });
+
+    document.getElementById("metaAcctChangeLink")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      document.getElementById("metaAcctForm").style.display = "block";
+    });
+
+    document.getElementById("metaAcctVerifyBtn")?.addEventListener("click", async (e) => {
+      const btn = e.target;
+      const msg = document.getElementById("metaAcctMsg");
+      const bank_code = document.getElementById("meta_bank_code").value;
+      const account_number = document.getElementById("meta_acct_num").value.trim();
+      if (!bank_code || !account_number) { msg.innerHTML = `<div class="msg err">❌ Pick a bank and enter the account number.</div>`; return; }
+      btn.disabled = true; btn.textContent = "Verifying…";
+      try {
+        const r = await sbFn("paystack-verify-meta-account", { media_buyer_id: window.myProfile.media_buyer_id, account_number, bank_code });
+        if (r.error) throw new Error(r.error);
+        if (!r.verified) {
+          msg.innerHTML = `<div class="msg err">❌ ${escH(r.reason || "Could not verify this account.")} (Resolved name: ${escH(r.account_name || "unknown")})</div>`;
+        } else {
+          msg.innerHTML = `<div class="msg ok">✅ Verified as ${escH(r.account_name)}.</div>`;
+          renderSettings(el);
+        }
+      } catch (err) {
+        msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      } finally {
+        btn.disabled = false; btn.textContent = "Verify & save";
+      }
+    });
+  }
+
+  document.querySelectorAll(".sendToMetaBtn").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Send this amount to your verified Meta Ads account now? This triggers a real transfer.")) return;
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      const r = await sbFn("paystack-transfer-to-meta", { fund_request_id: btn.dataset.id });
+      if (r.error) throw new Error(r.error);
+      bvToast(`Sent to ${r.account_name || "Meta Ads"}`);
+      renderSettings(el);
+    } catch (err) {
+      alert("Transfer failed: " + err.message);
+      btn.disabled = false; btn.textContent = "Send to Meta Ads";
+    }
   }));
 
   document.querySelectorAll(".waRemoveBtn").forEach(btn => btn.addEventListener("click", async () => {
