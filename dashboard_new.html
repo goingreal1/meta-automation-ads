@@ -3654,6 +3654,7 @@ async function fetchWalletBalances() {
 // are deliberately NOT in a modal: they're an always-visible panel on the
 // page itself, so approving one is a single tap, not open-modal-then-tap.
 async function bvShowAddFundsModal() {
+  bvCloseModal();
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
@@ -3699,6 +3700,7 @@ async function bvRenderAddFundsModal() {
 }
 
 async function bvShowAdminWithdrawModal() {
+  bvCloseModal();
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
@@ -3750,6 +3752,7 @@ async function bvShowAdminWithdrawModal() {
 // Buyer-only: "Request funds" and "Transfer" each get their own button on
 // the Funding wallet card, each opening its own single-purpose modal.
 async function bvShowRequestFundsModal() {
+  bvCloseModal();
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
@@ -3758,9 +3761,9 @@ async function bvShowRequestFundsModal() {
     <div class="bv-modal">
       <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
       <div class="ph-title" style="margin-bottom:10px;">Request funds</div>
-      <form id="modalFundReqForm">
+      <form id="modalFundReqForm" novalidate>
         <div class="fg">
-          <div class="field"><label>Amount to request *</label><input id="modal_fr_amount" type="number" min="1" step="1" required placeholder="e.g. 50000"></div>
+          <div class="field"><label>Amount to request *</label><input id="modal_fr_amount" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 50000"></div>
           <div class="field"><label>Note (optional)</label><input id="modal_fr_note" placeholder="what it's for"></div>
         </div>
         <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
@@ -3769,19 +3772,27 @@ async function bvShowRequestFundsModal() {
     </div>`;
   document.body.appendChild(overlay);
 
+  // novalidate + manual check below on purpose -- the browser's native
+  // "required" validation bubble doesn't position itself reliably inside
+  // this modal, so a blank/invalid amount silently blocks the submit event
+  // with no visible feedback. Looked exactly like "the button doesn't
+  // work" -- it was actually working every time, just invisibly refusing.
   document.getElementById("modalFundReqForm")?.addEventListener("submit", async e => {
     e.preventDefault();
+    const btn = e.target.querySelector("button[type=submit]");
     const msg = document.getElementById("modalFundReqMsg");
     const amount = Number(document.getElementById("modal_fr_amount").value);
     const note = document.getElementById("modal_fr_note").value.trim();
     if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter a valid amount.</div>`; return; }
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = "Submitting…";
     const { data: inserted, error } = await supabaseClient.from("fund_requests").insert({
       company_id: window.myProfile.company_id,
       media_buyer_id: window.myProfile.media_buyer_id,
       amount_naira: amount,
       note: note || null,
     }).select().single();
-    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; return; }
+    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; btn.disabled = false; btn.textContent = "Request funds"; return; }
     msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
     sbFn("send-internal-whatsapp", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
     sbFn("send-internal-email", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
@@ -3791,6 +3802,7 @@ async function bvShowRequestFundsModal() {
 }
 
 async function bvShowTransferModal() {
+  bvCloseModal();
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
@@ -3917,12 +3929,12 @@ async function renderWallet(el) {
         <div class="wallet-hero-val" style="${!isAdmin || fundingWalletBalance >= 0 ? "" : "color:var(--danger);"}">${fN(isAdmin ? fundingWalletBalance : myRevenue.approved)}</div>
         <div class="wallet-hero-sub">${isAdmin
           ? (fundingWalletBalance < 0
-              ? "⚠️ Low balance -- you've approved more than you've deposited. Add funds before approving anything else."
+              ? "⚠️ Low balance -- you've approved more than you've deposited."
               : "What you've personally deposited, minus what's approved/sent/withdrawn.")
           : "Approved by admin, ready for you to send to your ad account."}</div>
         <div class="wallet-hero-actions">
           ${isAdmin ? `
-          <button type="button" class="btn" onclick="bvShowAddFundsModal()">+ Add funds</button>
+          ${fundingWalletBalance < 0 ? `<button type="button" class="btn" style="background:var(--danger);border-color:var(--danger);color:#fff;" onclick="bvShowAddFundsModal()">⚠️ Top up now</button>` : `<button type="button" class="btn" onclick="bvShowAddFundsModal()">+ Add funds</button>`}
           <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Withdraw</button>
           ` : myId ? `
           <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds</button>
