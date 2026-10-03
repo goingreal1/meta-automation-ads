@@ -1933,12 +1933,15 @@ async function renderCampaignDetail(el, campaignId) {
 async function renderAdSetDetail(el, adSetId, campaignId) {
   const [adSetRows, adSetAds] = await Promise.all([
     sbQuery("ad_sets", `id=eq.${adSetId}&select=*,campaigns(campaign_name)`),
-    sbQuery("ad_set_ads", `ad_set_id=eq.${adSetId}&select=*,creatives(creative_name,image_url,video_id,headline,primary_text,description,destination_link,cta_type,meta_ad_id,status)`),
+    sbQuery("ad_set_ads", `ad_set_id=eq.${adSetId}&select=*,creatives(creative_name,image_url,video_id,headline,primary_text,description,destination_link,cta_type,meta_ad_id,status),daily_metrics(spend_naira,ctr,orders,cost_per_order_naira,metric_date)`),
   ]);
   const adSet = adSetRows?.[0];
   if (!adSet) { el.innerHTML = `<div class="empty"><div class="empty-ico">🎯</div>Ad set not found.</div>`; return; }
 
-  let ads = (adSetAds || []).map(r => r.creatives).filter(Boolean);
+  let ads = (adSetAds || []).map(r => {
+    const latest = (r.daily_metrics || []).sort((x, y) => (x.metric_date < y.metric_date ? 1 : -1))[0];
+    return { ...r.creatives, spend_latest: latest?.spend_naira ?? null, ctr_latest: latest?.ctr ?? null, orders_latest: latest?.orders ?? null, cpa_latest: latest?.cost_per_order_naira ?? null };
+  }).filter(c => c.meta_ad_id || c.creative_name);
   if (!ads.length && adSet.creative_id) {
     const fallback = await sbQuery("creatives", `id=eq.${adSet.creative_id}&select=creative_name,image_url,video_id,headline,primary_text,description,destination_link,cta_type,meta_ad_id,status`);
     ads = fallback || [];
@@ -1975,6 +1978,13 @@ async function renderAdSetDetail(el, adSetId, campaignId) {
             </div>
             <div style="font-size:11.5px;color:var(--muted);margin-top:8px;max-height:60px;overflow:hidden;">${escH((c.primary_text || "").slice(0, 200))}${(c.primary_text || "").length > 200 ? "…" : ""}</div>
             ${c.destination_link ? `<div style="font-size:10.5px;color:var(--accent);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🔗 ${escH(c.destination_link)}</div>` : ""}
+            ${c.spend_latest != null ? `
+            <div style="display:flex;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:10.5px;">
+              <div><div style="color:var(--muted);">Spend</div><div class="s">${fN(c.spend_latest)}</div></div>
+              <div><div style="color:var(--muted);">CTR</div><div class="${ctrCls(c.ctr_latest)}">${c.ctr_latest != null ? parseFloat(c.ctr_latest).toFixed(2) + "%" : "—"}</div></div>
+              <div><div style="color:var(--muted);">Orders</div><div class="s">${c.orders_latest ?? 0}</div></div>
+              <div><div style="color:var(--muted);">CPA</div><div class="s">${c.cpa_latest != null ? fN(c.cpa_latest) : "—"}</div></div>
+            </div>` : `<div style="font-size:10px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">No per-ad metrics yet -- "Pull & Refresh" on the Campaigns tab.</div>`}
             <div style="font-size:10px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between;">
               <span>${c.cta_type ? escH(c.cta_type.replace(/_/g, " ")) : ""}</span>
               <span>${c.meta_ad_id ? `Ad ${escH(c.meta_ad_id)}` : ""}</span>

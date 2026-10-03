@@ -273,6 +273,77 @@ Deno.serve(async (req: Request) => {
         }
       } catch(e) { console.error("Ad sync error", e); }
 
+      // ── 2.3 Pull AD-LEVEL insights ──────────────────────────────────────────
+      // Everything above this point is ad-set-level -- enough to tell you an ad
+      // set is winning, not which specific creative inside it is carrying that.
+      // Matches each Meta ad back to its ad_set_ads row (written by
+      // sync-meta-structure or ai-auto-launch-tests) via meta_ad_id; an ad not
+      // synced into ad_set_ads yet (sync-meta-structure hasn't run) is skipped
+      // rather than auto-imported here, to avoid duplicating that function's
+      // more complete campaign/ad-set/ad linking logic in two places.
+      try {
+        const adInsightFields = [
+          "ad_id", "adset_id", "spend", "impressions", "reach",
+          "clicks", "ctr", "cpc", "cpm", "frequency", "actions",
+        ].join(",");
+        const adIncrementStr = isBackfill ? "&time_increment=1" : "";
+        const adInsightsUrl =
+          `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/insights` +
+          `?level=ad&fields=${adInsightFields}&date_preset=${datePreset}${adIncrementStr}&access_token=${token}`;
+        const adInsRes = await fetch(adInsightsUrl);
+        const adInsData = await adInsRes.json();
+
+        if (adInsData.data) {
+          for (const row of adInsData.data) {
+            const { data: adSetAdRow } = await supabase
+              .from("ad_set_ads")
+              .select("id, ad_set_id")
+              .eq("meta_ad_id", row.ad_id)
+              .maybeSingle();
+            if (!adSetAdRow) continue;
+
+            const spend = parseFloat(row.spend ?? "0");
+            const impressions = parseInt(row.impressions ?? "0");
+            const reach = parseInt(row.reach ?? "0");
+            const clicks = parseInt(row.clicks ?? "0");
+            const ctr = parseFloat(row.ctr ?? "0");
+            const cpc = parseFloat(row.cpc ?? "0");
+            const cpm = parseFloat(row.cpm ?? "0");
+            const frequency = parseFloat(row.frequency ?? "0");
+            const purchaseAction = (row.actions ?? []).find(
+              (a: { action_type: string }) =>
+                a.action_type === "purchase" || a.action_type === "offsite_conversion.fb_pixel_purchase",
+            );
+            const orders = purchaseAction ? parseInt(purchaseAction.value) : 0;
+            const costPerOrder = orders > 0 ? spend / orders : null;
+
+            const { error: adMetricErr } = await supabase.from("daily_metrics").upsert({
+              ad_set_ad_id: adSetAdRow.id,
+              // Parent ad_set_id too -- so a plain ad-set-level rollup query
+              // (sum spend where ad_set_id = X) can include per-ad rows without
+              // a join through ad_set_ads, while the unique constraint on
+              // (ad_set_ad_id, metric_date) keeps each ad's own row distinct
+              // from its ad set's own aggregate row (ad_set_ad_id null there).
+              ad_set_id: adSetAdRow.ad_set_id,
+              ad_account_id: account.id,
+              company_id: account.company_id,
+              metric_date: row.date_start || today,
+              spend_naira: spend,
+              impressions,
+              reach,
+              clicks,
+              ctr,
+              cpc_naira: cpc,
+              cpm_naira: cpm,
+              frequency,
+              orders,
+              cost_per_order_naira: costPerOrder,
+            }, { onConflict: "ad_set_ad_id,metric_date" });
+            if (adMetricErr) console.error(`Ad-level metrics upsert error (${row.ad_id}):`, adMetricErr.message);
+          }
+        }
+      } catch (e) { console.error("Ad-level insights error", e); }
+
       const fields = [
         "adset_id", "adset_name", "spend", "impressions", "reach",
         "clicks", "ctr", "cpc", "cpm", "frequency", "actions",
