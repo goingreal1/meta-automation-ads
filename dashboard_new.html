@@ -157,24 +157,30 @@ a{color:inherit;}
 .kc-val.d{color:var(--danger);}
 .kc-val.b{color:var(--blue);}
 
-/* ── WALLET (fintech-style balance card + overview chip) ──────────────────── */
+/* ── WALLET (clean monochrome balance card + overview chip) ───────────────── */
 .wallet-hero{
-  background:linear-gradient(135deg, var(--accentDk), var(--accent));
-  border-radius:14px;padding:22px 24px;color:#fff;margin-bottom:18px;box-shadow:var(--shadow);
+  background:var(--text);color:var(--bg);
+  border-radius:14px;padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow);
 }
-.wallet-hero-lbl{font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.wallet-hero-lbl{font-size:11px;opacity:.65;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
 .wallet-hero-val{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;line-height:1.1;}
-.wallet-hero-sub{font-size:11px;opacity:.85;margin-top:6px;}
+.wallet-hero-sub{font-size:11px;opacity:.65;margin-top:6px;}
 .wallet-hero-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
-.wallet-hero-actions .btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.32);color:#fff;}
-.wallet-hero-actions .btn:hover{background:rgba(255,255,255,.26);}
+.wallet-hero-actions .btn{background:var(--bg);border:1px solid var(--bg);color:var(--text);font-weight:600;}
+.wallet-hero-actions .btn:hover{opacity:.82;}
 .wallet-chip{
-  display:inline-flex;align-items:center;gap:8px;background:var(--accentBg);
-  border:1px solid var(--accentBdr);color:var(--accent);border-radius:20px;
+  display:inline-flex;align-items:center;gap:8px;background:var(--panel2);
+  border:1px solid var(--border);color:var(--text);border-radius:20px;
   padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:16px;
-  font-family:'JetBrains Mono',monospace;transition:background .14s;
+  font-family:'JetBrains Mono',monospace;transition:border-color .14s;
 }
-.wallet-chip:hover{background:var(--accentBdr);}
+.wallet-chip:hover{border-color:var(--borderStrong);}
+.ledger-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
+.ledger-row:last-child{border-bottom:none;}
+.ledger-ico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;background:var(--panel2);}
+.ledger-amt{font-family:'JetBrains Mono',monospace;font-weight:600;white-space:nowrap;}
+.ledger-amt.credit{color:var(--accent);}
+.ledger-amt.debit{color:var(--text2);}
 
 /* ── PROGRESS BAR ──────────────────────────────────────────────────────────── */
 .pbar{height:3px;border-radius:2px;background:var(--border);margin-top:8px;overflow:hidden;}
@@ -3627,11 +3633,35 @@ async function renderWallet(el) {
   const blank = walletBlank;
 
   const { buyers, fundRequests, walletBalances } = await fetchWalletBalances();
+  // Richer than fetchWalletBalances' own payments query (which only pulls
+  // the two columns it needs for sums) -- this one is for the transaction
+  // ledger below, so it needs the order link and timestamp too. RLS scopes
+  // it the same way: a buyer only ever gets their own.
+  const confirmedPayments = await sbQuery("payments", "select=id,amount_naira,paid_at,media_buyer_id,orders(customer_name)&status=eq.confirmed&order=paid_at.desc&limit=100").catch(() => []);
 
   const myWallet = myId ? (walletBalances[myId] || blank()) : blank();
   const companyTotalBalance = Object.values(walletBalances).reduce((s, w) => s + w.balance, 0);
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
   const readyToSend = myRequests.filter(f => f.status === "approved");
+  const myBuyerRow = myId ? (buyers || []).find(b => b.id === myId) : null;
+
+  // One combined, chronological ledger -- "where did this number come
+  // from": a customer payment is a credit, a transfer out to an ad account
+  // is a debit. Buyers see only their own; admins see every buyer's,
+  // labelled with who it belongs to.
+  const ledger = [];
+  for (const p of confirmedPayments || []) {
+    if (!isAdmin && p.media_buyer_id !== myId) continue;
+    const buyerName = (buyers || []).find(b => b.id === p.media_buyer_id)?.name;
+    ledger.push({ date: p.paid_at, type: "credit", label: "Customer payment", detail: p.orders?.customer_name || null, buyerName, amount: p.amount_naira });
+  }
+  for (const f of fundRequests || []) {
+    if (f.status !== "transferred") continue;
+    if (!isAdmin && f.media_buyer_id !== myId) continue;
+    const buyerName = (buyers || []).find(b => b.id === f.media_buyer_id)?.name;
+    ledger.push({ date: f.transferred_at, type: "debit", label: "Sent to ad account", detail: f.destination_account_name || null, buyerName, amount: f.amount_naira });
+  }
+  ledger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Wallet</div></div>
@@ -3639,12 +3669,44 @@ async function renderWallet(el) {
     <div class="wallet-hero">
       <div class="wallet-hero-lbl">${isAdmin ? "Company wallet balance" : "Your wallet balance"}</div>
       <div class="wallet-hero-val">${fN(isAdmin ? companyTotalBalance : myWallet.balance)}</div>
-      <div class="wallet-hero-sub">Confirmed customer payments, minus what's already approved or sent to an ad account.</div>
+      <div class="wallet-hero-sub">Confirmed customer payments, minus what's already approved or sent to an ad account. ${isAdmin ? "This is a ledger we compute -- all buyers' real money sits in one shared Paystack balance below, not separate pots." : "This is a ledger, not a separate account -- the real money already landed in our Paystack balance when your customer paid."}</div>
       <div class="wallet-hero-actions">
         ${!isAdmin && myId ? `<button type="button" class="btn" onclick="document.getElementById('fundReqForm')?.scrollIntoView({behavior:'smooth'})">+ Request funds</button>` : ""}
         <button type="button" class="btn" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button>
       </div>
     </div>
+
+    ${isAdmin ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Platform Paystack balance</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">The real, actual money sitting in your Paystack account right now -- every buyer's transfer pulls from this one shared balance, not a separate pot per buyer. Check this before approving a large request.</div>
+      <div id="paystackBalanceResult" style="font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;">
+        <button type="button" class="btn btn-g" id="checkPaystackBalBtn" style="font-size:10px;padding:4px 10px;">Check real balance</button>
+      </div>
+    </div>` : ""}
+
+    ${!isAdmin && myBuyerRow ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your payment collection account</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Customers pay into this account -- it's what's shown to them after an order is confirmed. Every confirmed payment here flows into your wallet balance above.</div>
+      ${myBuyerRow.dedicated_account_number ? `
+      <div style="font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(myBuyerRow.dedicated_account_number)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escH(myBuyerRow.dedicated_account_bank || "")}</div>
+      ` : `<div style="font-size:11.5px;color:var(--muted);">Not set up yet -- this is created automatically the first time an order is confirmed against your name.</div>`}
+    </div>` : ""}
+
+    ${isAdmin && buyers?.length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Buyer payment collection accounts</div></div>
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Account number</th><th>Bank</th></tr>
+        ${buyers.map(b => `<tr>
+          <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
+          <td class="n">${escH(b.dedicated_account_number || "—")}</td>
+          <td class="s">${escH(b.dedicated_account_bank || "—")}</td>
+        </tr>`).join("")}
+      </table></div>
+    </div>` : ""}
 
     <div class="panel" id="adBalanceCheckPanel">
       <div class="ph"><div class="ph-title">Ad account balance</div></div>
@@ -3746,7 +3808,36 @@ async function renderWallet(el) {
         }).join("")}
       </table></div>`}
     </div>` : ""}
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Transactions</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Every confirmed customer payment (credit) and every transfer sent to an ad account (debit)${isAdmin ? ", across all buyers" : ""} -- so you can always tell which is which.</div>
+      ${!ledger.length ? `<div class="empty"><div class="empty-ico">📒</div>No transactions yet.</div>` : ledger.slice(0, 50).map(t => `
+      <div class="ledger-row">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+          <div class="ledger-ico">${t.type === "credit" ? "⬇" : "⬆"}</div>
+          <div style="min-width:0;">
+            <div style="font-size:12.5px;font-weight:600;">${escH(t.label)}${isAdmin && t.buyerName ? ` -- ${escH(t.buyerName)}` : ""}</div>
+            <div style="font-size:10.5px;color:var(--muted);">${t.detail ? escH(t.detail) + " -- " : ""}${ago(t.date)}</div>
+          </div>
+        </div>
+        <div class="ledger-amt ${t.type}">${t.type === "credit" ? "+" : "-"}${fN(t.amount)}</div>
+      </div>`).join("")}
+    </div>
   `;
+
+  document.getElementById("checkPaystackBalBtn")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const result = document.getElementById("paystackBalanceResult");
+    btn.disabled = true; btn.textContent = "Checking…";
+    try {
+      const r = await sbFn("paystack-balance", { access_token: sessionData.access_token });
+      if (r.error) throw new Error(r.error);
+      result.innerHTML = fN(r.balance_naira);
+    } catch (err) {
+      result.innerHTML = `<div class="msg err" style="font-size:11.5px;">❌ ${escH(err.message)}</div>`;
+    }
+  });
 
   document.getElementById("walletCheckBalBtn")?.addEventListener("click", async (e) => {
     const btn = e.target;
