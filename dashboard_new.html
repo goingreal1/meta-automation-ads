@@ -592,7 +592,7 @@ async function init() {
   // A brand-new signup lands here before ever visiting setup-company.html
   // (e.g. they bookmarked this page) -- send them there instead of showing
   // a dashboard with nothing in it because every RLS policy denies them.
-  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id, whatsapp_number").eq("id", session.user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id, delivery_agent_id, whatsapp_number").eq("id", session.user.id).maybeSingle();
   if (!profile?.company_id) {
     window.location.href = "setup-company.html";
     return;
@@ -609,13 +609,17 @@ async function init() {
     hdrUser.style.display = "block";
   }
 
-  // The Wallet tab has nothing to show customer_care or delivery_agent --
-  // no DVA of their own, no requests to make, nothing to approve -- so it
-  // used to render two blank ₦0 cards with no actions, which just looked
-  // broken. Hide the link instead; payment status per order now lives on
-  // the Orders/Delivery tabs they already have, via bvPaymentCell.
-  if (["customer_care", "delivery_agent"].includes(profile.role)) {
-    document.querySelector('[data-tab="wallet"]')?.style.setProperty("display", "none");
+  // Every tab used to render for every role -- fine for owner/admin/buyer,
+  // but customer_care and delivery_agent got a sidebar full of links to
+  // ad-spend/campaign/wallet tooling that's not their job and (for most of
+  // it) RLS leaves empty anyway. Hide what's not theirs instead of leaving
+  // them to discover that the hard way.
+  const HIDDEN_TABS_BY_ROLE = {
+    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "conversations", "website-leads", "approvals", "earnings"],
+    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "approvals", "earnings"],
+  };
+  for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
+    document.querySelector(`[data-tab="${tab}"]`)?.style.setProperty("display", "none");
   }
 
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
@@ -2533,12 +2537,21 @@ async function renderCallLogs(el) {
 // a buyer only ever sees their own -- this view just surfaces it as a queue.
 async function renderSupportQueue(el) {
   const role = window.myProfile?.role;
+  const myId = sessionData?.user?.id ?? null;
   const isSupportRole = role === "owner" || role === "admin" || role === "customer_care";
 
-  const calls = await sbQuery(
-    "voice_calls",
-    "select=*,orders(customer_name,customer_phone,customer_address,customer_city,customer_state,product_name,order_value_naira,order_status)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=100"
-  ).catch(() => []);
+  const [calls, myResolvedCount] = await Promise.all([
+    sbQuery(
+      "voice_calls",
+      "select=*,orders(customer_name,customer_phone,customer_address,customer_city,customer_state,product_name,order_value_naira,order_status),assignee:profiles!voice_calls_assigned_to_fkey(display_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=100"
+    ).catch(() => []),
+    // Personal tally for whoever's actually working the queue -- customer
+    // care never had any individual stat tied to their name before this;
+    // it was pure shared-pool with no record of who handled what.
+    isSupportRole && role === "customer_care"
+      ? sbCount("voice_calls", `assigned_to=eq.${myId}&human_resolved_at=not.is.null`).catch(() => 0)
+      : Promise.resolve(null),
+  ]);
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Support Queue</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
@@ -2547,13 +2560,19 @@ async function renderSupportQueue(el) {
       You're only seeing escalations tied to your own orders here -- the full company-wide queue is for owners, admins, and customer care. Ask your admin for a customer-care invite if that's what you need.
     </div></div>` : ""}
 
+    ${myResolvedCount !== null ? `
+    <div class="g4" style="margin-bottom:18px;">
+      <div class="kc"><div class="kc-lbl">You've resolved</div><div class="kc-val a">${myResolvedCount}</div><div class="kc-sub">all time</div></div>
+    </div>` : ""}
+
     <div class="panel">
       <div class="ph"><div class="ph-title">Open escalations</div><div class="ph-count">${calls?.length ?? 0} waiting on a human</div></div>
       ${!calls?.length ? `<div class="empty"><div class="empty-ico">✅</div>Nothing waiting -- every AI-flagged call has been handled.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Order status</th><th>Why flagged</th><th>Flagged</th><th></th></tr>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Order status</th><th>Why flagged</th><th>Flagged</th><th>Assigned</th><th></th></tr>
         ${calls.map(c => {
           const o = c.orders;
+          const mine = c.assigned_to === myId;
           return `<tr>
             <td class="s n">${escH(o?.customer_name ?? "—")}</td>
             <td class="n"><a href="tel:${escH(o?.customer_phone ?? "")}" style="color:inherit;">${escH(o?.customer_phone ?? "—")}</a></td>
@@ -2561,11 +2580,21 @@ async function renderSupportQueue(el) {
             <td>${o?.order_status ? `<span class="pill ${o.order_status}">${escH(o.order_status)}</span>` : "—"}</td>
             <td style="max-width:280px;font-size:12px;color:var(--text2);">${escH(c.summary || "No summary recorded.")}</td>
             <td class="n">${ago(c.created_at)}</td>
+            <td class="n">${c.assigned_to
+              ? `<span class="pill ${mine ? "active" : "pending"}">${mine ? "You" : escH(c.assignee?.display_name || "Claimed")}</span>`
+              : `<button type="button" class="btn btn-g supportClaim" data-cid="${c.id}" style="padding:3px 10px;font-size:10px;">Claim</button>`}</td>
             <td><button type="button" class="btn btn-a supportResolve" data-cid="${c.id}" style="padding:3px 10px;font-size:10px;white-space:nowrap;">Resolve</button></td>
           </tr>`;
         }).join("")}
       </table></div>`}
     </div>`;
+
+  document.querySelectorAll(".supportClaim").forEach(btn => btn.addEventListener("click", async e => {
+    const { error } = await supabaseClient.from("voice_calls")
+      .update({ assigned_to: myId }).eq("id", e.target.dataset.cid).is("assigned_to", null);
+    if (error) { alert("Could not claim: " + error.message); return; }
+    renderSupportQueue(el);
+  }));
 
   document.querySelectorAll(".supportResolve").forEach(btn => btn.addEventListener("click", async e => {
     const { error } = await supabaseClient.from("voice_calls")
@@ -2578,11 +2607,18 @@ async function renderSupportQueue(el) {
 
 // ── TAB: DELIVERY (riders) ───────────────────────────────────────────────────
 async function renderRiders(el) {
+  const isDeliveryAgent = window.myProfile?.role === "delivery_agent";
   const [agents, orders] = await Promise.all([
     sbQuery("delivery_agents", "select=*&order=name.asc"),
-    sbQuery("orders", "select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc"),
+    sbQuery("orders", `select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_phone,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc`),
   ]);
   for (const o of orders || []) o.payment = (o.payments || [])[0] || null;
+
+  // orders is already RLS-scoped to just this agent's own assignments for
+  // a delivery_agent login -- so there's no "company roster" to show them,
+  // only their own work and what it's worth, which is what they actually
+  // asked for: "do I get to see my own revenue."
+  if (isDeliveryAgent) return renderMyDeliveries(el, orders || [], agents || []);
 
   const byAgent = new Map();
   for (const a of agents || []) byAgent.set(a.id, { agent: a, assigned: 0, delivered: 0, revenue: 0 });
@@ -2637,6 +2673,53 @@ async function renderRiders(el) {
           <td class="s n">${escH(o.customer_name ?? "—")}</td>
           <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
           <td class="n">${escH(byAgent.get(o.delivery_agent_id)?.agent.name ?? "—")}</td>
+          <td>${bvPaymentCell(o)}</td>
+          <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+          <td>${ago(o.ordered_at)}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>`;
+}
+
+// A delivery agent's own view: what's assigned to them, what they've
+// delivered, and what that's worth -- no other agent's data in sight.
+function renderMyDeliveries(el, orders, agents) {
+  const myAgent = agents.find(a => a.id === window.myProfile?.delivery_agent_id);
+  const delivered = orders.filter(o => o.order_status === "delivered");
+  const totalRevenue = delivered.reduce((s, o) => s + Number(o.order_value_naira || 0), 0);
+  const rate = orders.length ? (delivered.length / orders.length * 100).toFixed(1) : "0";
+
+  const now = new Date();
+  const thisMonthDelivered = delivered.filter(o => o.delivered_at && new Date(o.delivered_at).getMonth() === now.getMonth() && new Date(o.delivered_at).getFullYear() === now.getFullYear());
+  const thisMonthRevenue = thisMonthDelivered.reduce((s, o) => s + Number(o.order_value_naira || 0), 0);
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">My Deliveries</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Assigned to you</div><div class="kc-val">${orders.length}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${delivered.length}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rate >= 70 ? "a" : "w"}">${rate}%</div></div>
+      <div class="kc"><div class="kc-lbl">Revenue delivered</div><div class="kc-val a">${fN(totalRevenue)}</div><div class="kc-sub">all time</div></div>
+    </div>
+
+    <div class="g2" style="margin-bottom:18px;">
+      <div class="kc"><div class="kc-lbl">This month</div><div class="kc-val">${thisMonthDelivered.length} delivered</div><div class="kc-sub">${fN(thisMonthRevenue)}</div></div>
+      <div class="kc"><div class="kc-lbl">Your zone</div><div class="kc-val" style="font-size:16px;">${escH(myAgent?.zone || "—")}</div><div class="kc-sub">${escH(myAgent?.phone || "")}</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your assignments</div></div>
+      ${!orders.length ? `<div class="empty"><div class="empty-ico">📦</div>Nothing assigned to you yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Customer</th><th>Phone</th><th>City</th><th>Value</th><th>Payment</th><th>Status</th><th>Assigned</th></tr>
+        ${orders.map(o => `<tr>
+          <td class="s n">${escH(o.customer_name ?? "—")}</td>
+          <td class="n">${o.customer_phone
+            ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${escH(o.customer_phone)}</a>`
+            : "—"}</td>
+          <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
+          <td>${fN(o.order_value_naira)}</td>
           <td>${bvPaymentCell(o)}</td>
           <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
           <td>${ago(o.ordered_at)}</td>
