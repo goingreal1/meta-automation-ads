@@ -609,6 +609,15 @@ async function init() {
     hdrUser.style.display = "block";
   }
 
+  // The Wallet tab has nothing to show customer_care or delivery_agent --
+  // no DVA of their own, no requests to make, nothing to approve -- so it
+  // used to render two blank ₦0 cards with no actions, which just looked
+  // broken. Hide the link instead; payment status per order now lives on
+  // the Orders/Delivery tabs they already have, via bvPaymentCell.
+  if (["customer_care", "delivery_agent"].includes(profile.role)) {
+    document.querySelector('[data-tab="wallet"]')?.style.setProperty("display", "none");
+  }
+
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
   // with ?meta_oauth=connected|error&detail=... once a buyer finishes
   // connecting their Facebook Business Manager -- land on Settings with the
@@ -2269,13 +2278,18 @@ async function renderOrders(el) {
     sbCount("orders", "order_status=eq.delivered"),
     sbCount("orders", "order_status=eq.returned"),
     sbCount("orders", "order_status=eq.pending"),
-    sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
+    sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at),payments(status,amount_naira,paid_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
     sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
   ]);
   (orders || []).forEach(o => {
     // voice_calls comes back as an array (reverse FK) -- there's at most one
     // call per order in practice, but take the most recent if that ever changes.
     o.voice_call = (o.voice_calls || []).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0] || null;
+    // payments.order_id is unique, so at most one row -- whether it's already
+    // confirmed is exactly what a delivery agent needs before deciding to
+    // collect cash on delivery, and what customer care needs to answer "did
+    // my payment go through" without guessing from order_status alone.
+    o.payment = (o.payments || [])[0] || null;
   });
 
   const rate  = tot ? (deliv / tot * 100).toFixed(1) : "0";
@@ -2315,7 +2329,7 @@ async function renderOrders(el) {
       <div class="ph"><div class="ph-title">All orders</div><div class="ph-count">${pend} pending</div></div>
       ${!tot ? `<div class="empty"><div class="empty-ico">📦</div>No orders yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Buyer</th><th>AI call</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
+        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Buyer</th><th>AI call</th><th>Payment</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
         ${orders.map(o => `<tr>
           <td class="s n">${o.customer_name ?? "—"}</td>
           <td class="n">${o.customer_phone
@@ -2325,6 +2339,7 @@ async function renderOrders(el) {
           <td>${fN(o.order_value_naira)}</td>
           <td class="n">${o.media_buyers ? `${escH(o.media_buyers.code)}` : `<span style="color:var(--muted);">—</span>`}</td>
           <td>${bvOrderCallCell(o)}</td>
+          <td>${bvPaymentCell(o)}</td>
           <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span></td>
           <td>${ago(o.ordered_at)}</td>
           <td>
@@ -2406,6 +2421,19 @@ function bvOrderCallCell(o) {
   const labels = { queued: "Queued", dialing: "Dialing…", initiated: "In call…", done: "✅ Confirmed", failed: "❌ Failed" };
   const cls = { done: "delivered", failed: "returned", queued: "pending", dialing: "pending", initiated: "active" }[c.status] || "pending";
   return `<span class="pill ${cls}" title="${escH(c.summary || "")}">${labels[c.status] || c.status}</span>${c.status === "failed" ? ` <button type="button" class="callNowBtn btn btn-g" data-oid="${o.id}" style="padding:2px 6px;font-size:9px;">retry</button>` : ""}`;
+}
+
+// Whether a customer already paid for this order online (via their buyer's
+// DVA), or it's still cash-on-delivery -- the single most important thing a
+// delivery agent needs to know before knocking on a door, and what customer
+// care needs to answer "did my payment go through" without digging into the
+// Wallet tab (which they don't have access to in the first place).
+function bvPaymentCell(o) {
+  const p = o.payment;
+  if (!p) return `<span class="pill untested">💵 Collect on delivery</span>`;
+  if (p.status === "confirmed") return `<span class="pill delivered" title="Paid ${ago(p.paid_at)}">✅ Paid online</span>`;
+  if (p.status === "unmatched") return `<span class="pill returned" title="A deposit arrived but couldn't be matched to this order -- check with admin before collecting cash too.">⚠️ Unmatched deposit</span>`;
+  return `<span class="pill pending">⏳ Payment pending</span>`;
 }
 
 // ── TAB: AI CALL LOGS ─────────────────────────────────────────────────────────
@@ -2552,8 +2580,9 @@ async function renderSupportQueue(el) {
 async function renderRiders(el) {
   const [agents, orders] = await Promise.all([
     sbQuery("delivery_agents", "select=*&order=name.asc"),
-    sbQuery("orders", "select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_city,customer_state,ordered_at,delivered_at&delivery_agent_id=not.is.null&order=ordered_at.desc"),
+    sbQuery("orders", "select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc"),
   ]);
+  for (const o of orders || []) o.payment = (o.payments || [])[0] || null;
 
   const byAgent = new Map();
   for (const a of agents || []) byAgent.set(a.id, { agent: a, assigned: 0, delivered: 0, revenue: 0 });
@@ -2603,11 +2632,12 @@ async function renderRiders(el) {
       <div class="ph"><div class="ph-title">Recent assignments</div></div>
       ${!orders?.length ? `<div class="empty"><div class="empty-ico">📦</div>No orders assigned yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>City</th><th>Agent</th><th>Status</th><th>Assigned</th></tr>
+        <tr><th>Customer</th><th>City</th><th>Agent</th><th>Payment</th><th>Status</th><th>Assigned</th></tr>
         ${orders.slice(0, 40).map(o => `<tr>
           <td class="s n">${escH(o.customer_name ?? "—")}</td>
           <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
           <td class="n">${escH(byAgent.get(o.delivery_agent_id)?.agent.name ?? "—")}</td>
+          <td>${bvPaymentCell(o)}</td>
           <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
           <td>${ago(o.ordered_at)}</td>
         </tr>`).join("")}
