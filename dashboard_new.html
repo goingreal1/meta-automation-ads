@@ -157,6 +157,25 @@ a{color:inherit;}
 .kc-val.d{color:var(--danger);}
 .kc-val.b{color:var(--blue);}
 
+/* ── WALLET (fintech-style balance card + overview chip) ──────────────────── */
+.wallet-hero{
+  background:linear-gradient(135deg, var(--accentDk), var(--accent));
+  border-radius:14px;padding:22px 24px;color:#fff;margin-bottom:18px;box-shadow:var(--shadow);
+}
+.wallet-hero-lbl{font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.wallet-hero-val{font-family:'JetBrains Mono',monospace;font-size:34px;font-weight:700;line-height:1.1;}
+.wallet-hero-sub{font-size:11px;opacity:.85;margin-top:6px;}
+.wallet-hero-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+.wallet-hero-actions .btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.32);color:#fff;}
+.wallet-hero-actions .btn:hover{background:rgba(255,255,255,.26);}
+.wallet-chip{
+  display:inline-flex;align-items:center;gap:8px;background:var(--accentBg);
+  border:1px solid var(--accentBdr);color:var(--accent);border-radius:20px;
+  padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:16px;
+  font-family:'JetBrains Mono',monospace;transition:background .14s;
+}
+.wallet-chip:hover{background:var(--accentBdr);}
+
 /* ── PROGRESS BAR ──────────────────────────────────────────────────────────── */
 .pbar{height:3px;border-radius:2px;background:var(--border);margin-top:8px;overflow:hidden;}
 .pbar-fill{height:100%;border-radius:2px;transition:width .7s ease;}
@@ -471,6 +490,7 @@ textarea{resize:vertical;min-height:76px;}
     <div class="tab-btn" data-tab="vault">Creative Vault</div>
 
     <div class="sidebar-group-lbl">Business</div>
+    <div class="tab-btn" data-tab="wallet">💰 Wallet</div>
     <div class="tab-btn" data-tab="products">Products</div>
     <div class="tab-btn" data-tab="conversations">Conversations</div>
     <div class="tab-btn" data-tab="website-leads">Website Leads</div>
@@ -861,6 +881,7 @@ async function render() {
   c.innerHTML = `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>`;
   try {
     if      (activeTab === "overview")  await renderOverview(c);
+    else if (activeTab === "wallet")    await renderWallet(c);
     else if (activeTab === "vault")     await renderVault(c);
     else if (activeTab === "campaigns") await renderCampaigns(c);
     else if (activeTab === "performance") await renderPerformance(c);
@@ -884,7 +905,7 @@ async function render() {
 // ── TAB: OVERVIEW ─────────────────────────────────────────────────────────────
 async function renderOverview(el) {
   const sevenDaysAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-  const [tot, deliv, returned, rawMetrics] = await Promise.all([
+  const [tot, deliv, returned, rawMetrics, wallet] = await Promise.all([
     sbCount("orders"),
     sbCount("orders", "order_status=eq.delivered"),
     sbCount("orders", "order_status=eq.returned"),
@@ -896,7 +917,13 @@ async function renderOverview(el) {
     // (RLS already narrows this to a buyer's own ad sets when they're not an
     // owner/admin -- "company-wide" here just means "not account-selector-filtered".)
     sbQuery("daily_metrics", `select=metric_date,spend_naira,orders,clicks,impressions,reach&metric_date=gte.${sevenDaysAgo}`, { allAccounts: true }).catch(() => []),
+    fetchWalletBalances().catch(() => ({ walletBalances: {} })),
   ]);
+  const isAdminOv = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const myIdOv = window.myProfile?.media_buyer_id || null;
+  const walletChipBalance = isAdminOv
+    ? Object.values(wallet.walletBalances).reduce((s, w) => s + w.balance, 0)
+    : (myIdOv ? (wallet.walletBalances[myIdOv]?.balance ?? 0) : null);
 
   // Aggregate the (possibly many-rows-per-day, one per ad set) rows into one
   // total per calendar day.
@@ -926,6 +953,11 @@ async function renderOverview(el) {
       <div class="sh-title">Overview</div>
       <div class="sh-actions" id="qaActions"></div>
     </div>
+
+    ${walletChipBalance !== null ? `
+    <div class="wallet-chip" onclick="activeTab='wallet'; document.querySelector('[data-tab=wallet]').click();">
+      💰 ${isAdminOv ? "Company wallet" : "Your wallet"}: ${fN(walletChipBalance)} <span style="opacity:.7;">→ Wallet</span>
+    </div>` : ""}
 
     <!-- Quick Actions -->
     <div class="qa">
@@ -3551,44 +3583,275 @@ async function bvShowBuyerProfile(row) {
     </table>`;
 }
 
-// ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
-async function renderSettings(el) {
-  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
-  const [buyers, company, invites, teamMembers, partnerBizId, confirmedPayments, fundRequests] = await Promise.all([
+// ── TAB: WALLET ───────────────────────────────────────────────────────────────
+
+// Shared by the Wallet tab and the Overview balance chip, so both always
+// agree on the number instead of two separate computations drifting apart.
+// A fund_requests row's lifecycle is pending -> approved -> transferred (or
+// declined). "approved" means an admin signed off on the amount but the
+// buyer hasn't sent it to Meta yet; "transferred" means a real Paystack
+// transfer moved it. Both get reserved out of the spendable balance so a
+// buyer can't request the same confirmed revenue twice.
+const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0, balance: 0 });
+async function fetchWalletBalances() {
+  const [buyers, confirmedPayments, fundRequests] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
-    sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
-    isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
-    isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
-    sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => r.business_id).catch(() => null),
-    // RLS already scopes these to "my own buyer row" for a buyer, or the
-    // whole company for an admin -- one query serves both, client-side sums
-    // below turn raw rows into a per-buyer wallet balance (PostgREST has no
-    // generic aggregate endpoint without a dedicated view/RPC).
+    // RLS scopes this to "my own buyer row" for a buyer, or the whole
+    // company for an admin -- one query serves both, client-side sums below
+    // turn raw rows into a per-buyer wallet balance.
     sbQuery("payments", "select=media_buyer_id,amount_naira&status=eq.confirmed").catch(() => []),
     sbQuery("fund_requests", "select=*&order=requested_at.desc&limit=100").catch(() => []),
   ]);
-  // A fund_requests row's lifecycle is pending -> approved -> transferred
-  // (or declined). "approved" means an admin signed off on the amount but
-  // the buyer hasn't sent it to Meta yet; "transferred" means a real
-  // Paystack transfer moved it. Both get reserved out of the spendable
-  // balance so a buyer can't request the same confirmed revenue twice.
-  const walletBalances = {}; // media_buyer_id -> { confirmed, approved, transferred, balance }
-  const blank = () => ({ confirmed: 0, approved: 0, transferred: 0, balance: 0 });
-  for (const b of buyers || []) walletBalances[b.id] = blank();
+  const walletBalances = {};
+  for (const b of buyers || []) walletBalances[b.id] = walletBlank();
   for (const p of confirmedPayments || []) {
     if (!p.media_buyer_id) continue;
-    walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || blank();
+    walletBalances[p.media_buyer_id] = walletBalances[p.media_buyer_id] || walletBlank();
     walletBalances[p.media_buyer_id].confirmed += Number(p.amount_naira || 0);
   }
   for (const f of fundRequests || []) {
     if (f.status !== "approved" && f.status !== "transferred") continue;
-    walletBalances[f.media_buyer_id] = walletBalances[f.media_buyer_id] || blank();
+    walletBalances[f.media_buyer_id] = walletBalances[f.media_buyer_id] || walletBlank();
     walletBalances[f.media_buyer_id][f.status === "approved" ? "approved" : "transferred"] += Number(f.amount_naira || 0);
   }
   for (const k in walletBalances) {
     const w = walletBalances[k];
     w.balance = w.confirmed - w.approved - w.transferred;
   }
+  return { buyers: buyers || [], fundRequests: fundRequests || [], walletBalances };
+}
+
+async function renderWallet(el) {
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const myId = window.myProfile?.media_buyer_id || null;
+  const blank = walletBlank;
+
+  const { buyers, fundRequests, walletBalances } = await fetchWalletBalances();
+
+  const myWallet = myId ? (walletBalances[myId] || blank()) : blank();
+  const companyTotalBalance = Object.values(walletBalances).reduce((s, w) => s + w.balance, 0);
+  const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
+  const readyToSend = myRequests.filter(f => f.status === "approved");
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Wallet</div></div>
+
+    <div class="wallet-hero">
+      <div class="wallet-hero-lbl">${isAdmin ? "Company wallet balance" : "Your wallet balance"}</div>
+      <div class="wallet-hero-val">${fN(isAdmin ? companyTotalBalance : myWallet.balance)}</div>
+      <div class="wallet-hero-sub">Confirmed customer payments, minus what's already approved or sent to an ad account.</div>
+      <div class="wallet-hero-actions">
+        ${!isAdmin && myId ? `<button type="button" class="btn" onclick="document.getElementById('fundReqForm')?.scrollIntoView({behavior:'smooth'})">+ Request funds</button>` : ""}
+        <button type="button" class="btn" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button>
+      </div>
+    </div>
+
+    <div class="panel" id="adBalanceCheckPanel">
+      <div class="ph"><div class="ph-title">Ad account balance</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Pull the live balance straight from Meta for any linked ad account.</div>
+      ${!accountsList.length ? `<div class="empty"><div class="empty-ico">🔌</div>No ad accounts linked yet.</div>` : `
+      <div class="fg">
+        <div class="field"><label>Ad account</label>
+          <select id="walletAdAcctSelect">
+            ${accountsList.map(a => `<option value="${a.id}">${escH(a.nickname || a.name)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <button type="button" class="btn btn-a" id="walletCheckBalBtn" style="margin-top:8px;padding:4px 10px;font-size:10px;">Check balance</button>
+      <div id="walletBalResult" style="margin-top:10px;"></div>
+      `}
+    </div>
+
+    ${!isAdmin && myId ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Request funds</div></div>
+      <form id="fundReqForm">
+        <div class="fg">
+          <div class="field"><label>Amount to request *</label><input id="fr_amount" type="number" min="1" step="1" required placeholder="e.g. 50000"></div>
+          <div class="field"><label>Note (optional)</label><input id="fr_note" placeholder="what it's for"></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
+        <div id="fundReqMsg"></div>
+      </form>
+    </div>
+
+    ${readyToSend.length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Available to transfer</div></div>
+      ${readyToSend.map(f => `
+      <div style="border-bottom:1px solid var(--border);padding:8px 0;">
+        <div style="font-size:12px;margin-bottom:6px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
+        <div class="fg">
+          <div class="field"><label>Bank</label><select class="metaSendBank" data-id="${f.id}"><option value="">Loading banks…</option></select></div>
+          <div class="field"><label>Account number</label><input type="text" class="metaSendAcctNum" data-id="${f.id}" placeholder="10-digit account number"></div>
+        </div>
+        <button type="button" class="btn btn-a sendToMetaBtn" data-id="${f.id}" style="margin-top:6px;padding:4px 10px;font-size:10px;">Transfer</button>
+        <div class="sendToMetaMsg" data-id="${f.id}" style="margin-top:6px;"></div>
+      </div>`).join("")}
+    </div>` : ""}
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Your requests</div></div>
+      ${!myRequests.length ? `<div class="empty"><div class="empty-ico">💸</div>No requests yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Sent to</th></tr>
+        ${myRequests.map(f => `<tr>
+          <td>${ago(f.requested_at)}</td>
+          <td class="n">${fN(f.amount_naira)}</td>
+          <td class="s">${escH(f.note || "—")}</td>
+          <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span>${f.transfer_error ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">${escH(f.transfer_error)}</div>` : ""}</td>
+          <td class="s">${f.destination_account_name ? `${escH(f.destination_account_name)} (${escH(f.destination_bank_name || "")})` : "—"}</td>
+        </tr>`).join("")}
+      </table></div>`}
+    </div>` : ""}
+
+    ${isAdmin ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Funding requests</div><div class="ph-count">${(fundRequests || []).filter(f => f.status === "pending").length} pending</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving releases that amount to the buyer's wallet as "ready to send" -- they then trigger the transfer themselves. We strictly check the destination account name resolves to Facebook/Meta before any transfer goes through.</div>
+      ${!fundRequests?.length ? `<div class="empty"><div class="empty-ico">💸</div>No funding requests yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th></tr>
+        ${fundRequests.map(f => {
+          const buyer = (buyers || []).find(b => b.id === f.media_buyer_id);
+          return `<tr>
+            <td class="s n">${escH(buyer?.name || "—")}</td>
+            <td>${ago(f.requested_at)}</td>
+            <td class="n">${fN(f.amount_naira)}</td>
+            <td class="s">${escH(f.note || "—")}</td>
+            <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
+            <td>${f.status === "pending" ? `
+              <button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 8px;font-size:10px;">Approve</button>
+              <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;">Decline</button>
+            ` : f.status === "approved" ? `<span style="font-size:10.5px;color:var(--muted);">waiting on buyer to send</span>` : "—"}</td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>
+
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Buyer wallet balances</div></div>
+      ${!buyers?.length ? `<div class="empty"><div class="empty-ico">💰</div>No media buyers yet.</div>` : `
+      <div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Approved, not sent</th><th>Sent to Meta</th><th>Balance</th></tr>
+        ${buyers.map(b => {
+          const w = walletBalances[b.id] || blank();
+          return `<tr>
+            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
+            <td class="n">${fN(w.confirmed)}</td>
+            <td class="n">${fN(w.approved)}</td>
+            <td class="n">${fN(w.transferred)}</td>
+            <td class="n s">${fN(w.balance)}</td>
+          </tr>`;
+        }).join("")}
+      </table></div>`}
+    </div>` : ""}
+  `;
+
+  document.getElementById("walletCheckBalBtn")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const result = document.getElementById("walletBalResult");
+    const adAccountId = document.getElementById("walletAdAcctSelect").value;
+    btn.disabled = true; btn.innerHTML = '<span class="spin" style="width:10px;height:10px;border-width:1px;"></span>';
+    try {
+      const r = await sbFn("check-account-status", { ad_account_id: adAccountId });
+      if (r.error) throw new Error(r.error);
+      result.innerHTML = `
+        <div style="font-size:20px;font-weight:700;color:var(--text);">${escH(r.current_balance)}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">${escH(r.name || "")} -- ${escH(r.status || "")} -- spent all-time: ${escH(r.total_amount_spent_alltime || "—")} -- spend cap: ${escH(r.spend_cap || "—")}</div>
+      `;
+      // check-account-status is a pure live read -- persist it here so the
+      // low-balance cron (which reads ad_accounts.balance_naira) sees a
+      // fresh number too, instead of only ever showing it in this panel.
+      const numericBalance = typeof r.current_balance === "string" ? Number(r.current_balance.replace(/[^\d.]/g, "")) : null;
+      if (numericBalance != null && !Number.isNaN(numericBalance)) {
+        await supabaseClient.from("ad_accounts").update({ balance_naira: numericBalance, balance_updated_at: new Date().toISOString() }).eq("id", adAccountId);
+        await loadAccounts();
+      }
+    } catch (err) {
+      result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+    } finally {
+      btn.disabled = false; btn.textContent = "Check balance";
+    }
+  });
+
+  document.getElementById("fundReqForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = document.getElementById("fundReqMsg");
+    const amount = Number(document.getElementById("fr_amount").value);
+    const note = document.getElementById("fr_note").value.trim();
+    if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter a valid amount.</div>`; return; }
+    const { data: inserted, error } = await supabaseClient.from("fund_requests").insert({
+      company_id: window.myProfile.company_id,
+      media_buyer_id: window.myProfile.media_buyer_id,
+      amount_naira: amount,
+      note: note || null,
+    }).select().single();
+    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; return; }
+    msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
+    sbFn("send-internal-whatsapp", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
+    sbFn("send-internal-email", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
+    renderWallet(el);
+  });
+
+  document.querySelectorAll(".fundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
+    const decision = btn.dataset.decision;
+    if (decision === "declined" && !confirm("Decline this funding request?")) return;
+    btn.disabled = true;
+    const { error } = await supabaseClient.from("fund_requests").update({
+      status: decision,
+      decided_at: new Date().toISOString(),
+      decided_by: sessionData.user.id,
+    }).eq("id", btn.dataset.id);
+    if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
+    sbFn("send-internal-whatsapp", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
+    sbFn("send-internal-email", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
+    renderWallet(el);
+  }));
+
+  // Each approved request gets its own bank dropdown.
+  document.querySelectorAll(".metaSendBank").forEach(sel => {
+    sbFn("paystack-list-banks", null, "GET").then(r => {
+      if (!r.banks?.length) { sel.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
+      sel.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
+    }).catch(() => { sel.innerHTML = `<option value="">Couldn't load banks</option>`; });
+  });
+
+  document.querySelectorAll(".sendToMetaBtn").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.id;
+    const bank_code = document.querySelector(`.metaSendBank[data-id="${id}"]`).value;
+    const account_number = document.querySelector(`.metaSendAcctNum[data-id="${id}"]`).value.trim();
+    const msg = document.querySelector(`.sendToMetaMsg[data-id="${id}"]`);
+    if (!bank_code || !account_number) { msg.innerHTML = `<div class="msg err">❌ Pick a bank and enter the account number.</div>`; return; }
+    if (!confirm("Confirm this transfer?")) return;
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      const r = await sbFn("paystack-transfer-to-meta", { fund_request_id: id, account_number, bank_code });
+      if (r.error) throw new Error(r.error);
+      if (!r.ok) {
+        msg.innerHTML = `<div class="msg err">❌ Could not verify this account. Please check the account number and bank, then try again.</div>`;
+        btn.disabled = false; btn.textContent = "Transfer";
+        return;
+      }
+      bvToast("Transfer sent");
+      renderWallet(el);
+    } catch (err) {
+      msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = "Transfer";
+    }
+  }));
+}
+
+// ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
+async function renderSettings(el) {
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const [buyers, company, invites, teamMembers, partnerBizId] = await Promise.all([
+    sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
+    sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
+    isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
+    isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
+    sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => r.business_id).catch(() => null),
+  ]);
   const oauthToast = window.oauthToast;
   delete window.oauthToast;
 
@@ -3649,54 +3912,6 @@ async function renderSettings(el) {
     </div>
 
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
-      const myId = window.myProfile.media_buyer_id;
-      const myBuyer = (buyers || []).find(b => b.id === myId);
-      const myWallet = walletBalances[myId] || { confirmed: 0, approved: 0, transferred: 0, balance: 0 };
-      const myRequests = (fundRequests || []).filter(f => f.media_buyer_id === myId);
-      const readyToSend = myRequests.filter(f => f.status === "approved");
-      return `
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Your wallet</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Balance available to request and transfer.</div>
-      <div style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:14px;">${fN(myWallet.balance)}</div>
-
-      <form id="fundReqForm">
-        <div class="fg">
-          <div class="field"><label>Amount to request *</label><input id="fr_amount" type="number" min="1" step="1" required placeholder="e.g. 50000"></div>
-          <div class="field"><label>Note (optional)</label><input id="fr_note" placeholder="what it's for"></div>
-        </div>
-        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
-        <div id="fundReqMsg"></div>
-      </form>
-      ${readyToSend.length ? `
-      <div style="margin-top:16px;">
-        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;">Available to transfer</div>
-        ${readyToSend.map(f => `
-        <div style="border-bottom:1px solid var(--border);padding:8px 0;">
-          <div style="font-size:12px;margin-bottom:6px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
-          <div class="fg">
-            <div class="field"><label>Bank</label><select class="metaSendBank" data-id="${f.id}"><option value="">Loading banks…</option></select></div>
-            <div class="field"><label>Account number</label><input type="text" class="metaSendAcctNum" data-id="${f.id}" placeholder="10-digit account number"></div>
-          </div>
-          <button type="button" class="btn btn-a sendToMetaBtn" data-id="${f.id}" style="margin-top:6px;padding:4px 10px;font-size:10px;">Transfer</button>
-          <div class="sendToMetaMsg" data-id="${f.id}" style="margin-top:6px;"></div>
-        </div>`).join("")}
-      </div>` : ""}
-      ${myRequests.length ? `
-      <div class="tbl-wrap" style="margin-top:16px;"><table>
-        <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Sent to</th></tr>
-        ${myRequests.map(f => `<tr>
-          <td>${ago(f.requested_at)}</td>
-          <td class="n">${fN(f.amount_naira)}</td>
-          <td class="s">${escH(f.note || "—")}</td>
-          <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span>${f.transfer_error ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">${escH(f.transfer_error)}</div>` : ""}</td>
-          <td class="s">${f.destination_account_name ? `${escH(f.destination_account_name)} (${escH(f.destination_bank_name || "")})` : "—"}</td>
-        </tr>`).join("")}
-      </table></div>` : ""}
-    </div>`;
-    })()}
-
-    ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
       // Self-service for a buyer who isn't an admin -- they share their own
       // ad account with the platform's Business Manager directly from their
       // own Meta Business Settings, no login on this dashboard at all. They
@@ -3725,47 +3940,6 @@ async function renderSettings(el) {
     })()}
 
     ${!isAdmin ? "" : `
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Funding requests</div><div class="ph-count">${(fundRequests || []).filter(f => f.status === "pending").length} pending</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Approving releases that amount to the buyer's wallet as "ready to send" -- they then trigger the transfer themselves from their wallet. We strictly check the destination account name resolves to Facebook/Meta before any transfer is allowed through, so it can only ever land on their ad account's own billing.</div>
-      ${!fundRequests?.length ? `<div class="empty"><div class="empty-ico">💸</div>No funding requests yet.</div>` : `
-      <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Actions</th></tr>
-        ${fundRequests.map(f => {
-          const buyer = (buyers || []).find(b => b.id === f.media_buyer_id);
-          return `<tr>
-            <td class="s n">${escH(buyer?.name || "—")}</td>
-            <td>${ago(f.requested_at)}</td>
-            <td class="n">${fN(f.amount_naira)}</td>
-            <td class="s">${escH(f.note || "—")}</td>
-            <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
-            <td>${f.status === "pending" ? `
-              <button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 8px;font-size:10px;">Approve</button>
-              <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;">Decline</button>
-            ` : f.status === "approved" ? `<span style="font-size:10.5px;color:var(--muted);">waiting on buyer to send</span>` : "—"}</td>
-          </tr>`;
-        }).join("")}
-      </table></div>`}
-    </div>
-
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Buyer wallet balances</div></div>
-      ${!buyers?.length ? `<div class="empty"><div class="empty-ico">💰</div>Add a buyer below first.</div>` : `
-      <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Confirmed revenue</th><th>Approved, not sent</th><th>Sent to Meta</th><th>Balance</th></tr>
-        ${buyers.map(b => {
-          const w = walletBalances[b.id] || { confirmed: 0, approved: 0, transferred: 0, balance: 0 };
-          return `<tr>
-            <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
-            <td class="n">${fN(w.confirmed)}</td>
-            <td class="n">${fN(w.approved)}</td>
-            <td class="n">${fN(w.transferred)}</td>
-            <td class="n s">${fN(w.balance)}</td>
-          </tr>`;
-        }).join("")}
-      </table></div>`}
-    </div>
-
     <div class="panel">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
@@ -3989,70 +4163,6 @@ window.refreshBalances = async function() {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
     }
   });
-
-  document.getElementById("fundReqForm")?.addEventListener("submit", async e => {
-    e.preventDefault();
-    const msg = document.getElementById("fundReqMsg");
-    const amount = Number(document.getElementById("fr_amount").value);
-    const note = document.getElementById("fr_note").value.trim();
-    if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter a valid amount.</div>`; return; }
-    const { data: inserted, error } = await supabaseClient.from("fund_requests").insert({
-      company_id: company.id,
-      media_buyer_id: window.myProfile.media_buyer_id,
-      amount_naira: amount,
-      note: note || null,
-    }).select().single();
-    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; return; }
-    msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
-    sbFn("send-internal-whatsapp", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
-    renderSettings(el);
-  });
-
-  document.querySelectorAll(".fundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
-    const decision = btn.dataset.decision;
-    if (decision === "declined" && !confirm("Decline this funding request?")) return;
-    btn.disabled = true;
-    const { error } = await supabaseClient.from("fund_requests").update({
-      status: decision,
-      decided_at: new Date().toISOString(),
-      decided_by: sessionData.user.id,
-    }).eq("id", btn.dataset.id);
-    if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
-    sbFn("send-internal-whatsapp", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
-    renderSettings(el);
-  }));
-
-  // Each approved request gets its own bank dropdown.
-  document.querySelectorAll(".metaSendBank").forEach(sel => {
-    sbFn("paystack-list-banks", null, "GET").then(r => {
-      if (!r.banks?.length) { sel.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
-      sel.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
-    }).catch(() => { sel.innerHTML = `<option value="">Couldn't load banks</option>`; });
-  });
-
-  document.querySelectorAll(".sendToMetaBtn").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.id;
-    const bank_code = document.querySelector(`.metaSendBank[data-id="${id}"]`).value;
-    const account_number = document.querySelector(`.metaSendAcctNum[data-id="${id}"]`).value.trim();
-    const msg = document.querySelector(`.sendToMetaMsg[data-id="${id}"]`);
-    if (!bank_code || !account_number) { msg.innerHTML = `<div class="msg err">❌ Pick a bank and enter the account number.</div>`; return; }
-    if (!confirm("Confirm this transfer?")) return;
-    btn.disabled = true; btn.textContent = "Sending…";
-    try {
-      const r = await sbFn("paystack-transfer-to-meta", { fund_request_id: id, account_number, bank_code });
-      if (r.error) throw new Error(r.error);
-      if (!r.ok) {
-        msg.innerHTML = `<div class="msg err">❌ Could not verify this account. Please check the account number and bank, then try again.</div>`;
-        btn.disabled = false; btn.textContent = "Transfer";
-        return;
-      }
-      bvToast("Transfer sent");
-      renderSettings(el);
-    } catch (err) {
-      msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
-      btn.disabled = false; btn.textContent = "Transfer";
-    }
-  }));
 
   document.querySelectorAll(".waRemoveBtn").forEach(btn => btn.addEventListener("click", async () => {
     if (!confirm("Remove this WhatsApp number? Past conversations stay, but new messages on it won't show up anywhere.")) return;
