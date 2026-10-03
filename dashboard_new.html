@@ -923,16 +923,17 @@ async function renderOverview(el) {
     // (RLS already narrows this to a buyer's own ad sets when they're not an
     // owner/admin -- "company-wide" here just means "not account-selector-filtered".)
     sbQuery("daily_metrics", `select=metric_date,spend_naira,orders,clicks,impressions,reach&metric_date=gte.${sevenDaysAgo}`, { allAccounts: true }).catch(() => []),
-    fetchWalletBalances().catch(() => ({ walletBalances: {}, companyWalletBalance: 0 })),
+    fetchWalletBalances().catch(() => ({ walletBalances: {}, fundingWalletBalance: 0 })),
   ]);
   const isAdminOv = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myIdOv = window.myProfile?.media_buyer_id || null;
-  // Admin sees the real spendable company balance; a buyer has no wallet
-  // of their own, so their chip is just "what's approved and waiting on
-  // you to send" -- hidden entirely when there's nothing to act on.
+  // Admin sees the real funding wallet (what's actually available to
+  // approve against); a buyer has no wallet of their own, so their chip
+  // is just "what's approved and waiting on you to send" -- hidden
+  // entirely when there's nothing to act on.
   const myApprovedOv = myIdOv ? (wallet.walletBalances[myIdOv]?.approved ?? 0) : 0;
-  const walletChipLabel = isAdminOv ? "Company wallet" : "Ready to send";
-  const walletChipBalance = isAdminOv ? wallet.companyWalletBalance : (myApprovedOv > 0 ? myApprovedOv : null);
+  const walletChipLabel = isAdminOv ? (wallet.fundingWalletBalance < 0 ? "⚠️ Funding wallet low" : "Funding wallet") : "Ready to send";
+  const walletChipBalance = isAdminOv ? wallet.fundingWalletBalance : (myApprovedOv > 0 ? myApprovedOv : null);
 
   // Aggregate the (possibly many-rows-per-day, one per ad set) rows into one
   // total per calendar day.
@@ -3598,17 +3599,21 @@ async function bvShowBuyerProfile(row) {
 // agree on the number instead of two separate computations drifting apart.
 // A fund_requests row's lifecycle is pending -> approved -> transferred (or
 // declined). "approved" means an admin signed off on the amount but the
-// buyer hasn't sent it to Meta yet; "transferred" means a real Paystack
-// transfer moved it. Both get reserved out of the spendable balance so a
-// buyer can't request the same confirmed revenue twice.
-// A buyer's DVA only ever collects customer payments -- it was never
-// their own spendable "wallet." The real spendable pool is the company's:
-// every buyer's confirmed customer payments, PLUS whatever the admin has
-// deposited directly into the company's own DVA (admin_topup), minus
-// whatever's already approved/sent to an ad account or withdrawn to the
-// admin's own bank. walletBalances below is kept per-buyer for
-// *attribution* only (ROAS, "who generated this") -- it is not a balance
-// any buyer can spend.
+// Two separate wallets, deliberately not merged into one number:
+//   REVENUE WALLET -- confirmed customer payments. Informational/ROAS
+//   attribution only. Real money, but not what funding requests draw
+//   against -- it's sales revenue, not an ad-spend pool the admin has
+//   consciously committed.
+//   FUNDING WALLET -- only what the admin has personally deposited via
+//   their own DVA (admin_topup), minus what's approved/sent/withdrawn.
+//   THIS is the pool a funding request is approved against -- approving
+//   a request the funding wallet can't cover is the bug that produced a
+//   negative balance before; now it's gated in the UI against this
+//   number specifically.
+// A buyer's DVA only ever collects customer payments -- never their own
+// spendable wallet. walletBalances below is per-buyer REVENUE wallet
+// attribution (plus their own approved/transferred activity), never a
+// balance a buyer can spend directly.
 const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0 });
 async function fetchWalletBalances() {
   const [buyers, confirmedPayments, fundRequests, withdrawals] = await Promise.all([
@@ -3640,8 +3645,8 @@ async function fetchWalletBalances() {
   }
   const withdrawnTotal = (withdrawals || []).filter(w => w.status === "sent").reduce((s, w) => s + Number(w.amount_naira || 0), 0);
   const totalRevenue = Object.values(walletBalances).reduce((s, w) => s + w.confirmed, 0);
-  const companyWalletBalance = totalRevenue + companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
-  return { buyers: buyers || [], fundRequests: fundRequests || [], withdrawals: withdrawals || [], walletBalances, companyTopups, approvedTotal, transferredTotal, withdrawnTotal, totalRevenue, companyWalletBalance };
+  const fundingWalletBalance = companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
+  return { buyers: buyers || [], fundRequests: fundRequests || [], withdrawals: withdrawals || [], walletBalances, companyTopups, approvedTotal, transferredTotal, withdrawnTotal, totalRevenue, fundingWalletBalance };
 }
 
 async function renderWallet(el) {
@@ -3649,7 +3654,7 @@ async function renderWallet(el) {
   const myId = window.myProfile?.media_buyer_id || null;
   const blank = walletBlank;
 
-  const [{ buyers, fundRequests, withdrawals, walletBalances, companyTopups, companyWalletBalance }, company] = await Promise.all([
+  const [{ buyers, fundRequests, withdrawals, walletBalances, companyTopups, totalRevenue, fundingWalletBalance }, company] = await Promise.all([
     fetchWalletBalances(),
     sbQuery("companies", "select=id,name,dedicated_account_number,dedicated_account_bank&limit=1").then(r => r?.[0]).catch(() => null),
   ]);
@@ -3695,19 +3700,32 @@ async function renderWallet(el) {
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Wallet</div></div>
 
-    <div class="wallet-hero">
-      <div class="wallet-hero-lbl">${isAdmin ? "Company wallet balance" : "Revenue you've generated"}</div>
-      <div class="wallet-hero-val">${fN(isAdmin ? companyWalletBalance : myRevenue.confirmed)}</div>
-      <div class="wallet-hero-sub">${isAdmin
-        ? "Every buyer's confirmed customer payments, plus whatever you've deposited directly, minus what's already approved/sent or withdrawn. The real money sits in one shared Paystack balance below -- this is a computed ledger of it, not a separate pot."
-        : "This is attribution for your sales, not a balance you can spend. Request funds below -- the admin approves from the company's own wallet, then you send it yourself."}</div>
-      <div class="wallet-hero-actions">
-        ${!isAdmin && myId ? `<button type="button" class="btn" onclick="document.getElementById('fundReqForm')?.scrollIntoView({behavior:'smooth'})">+ Request funds</button>` : ""}
-        ${isAdmin ? `<button type="button" class="btn" onclick="document.getElementById('companyAcctPanel')?.scrollIntoView({behavior:'smooth'})">+ Add funds</button>
-        <button type="button" class="btn" onclick="document.getElementById('adminWithdrawPanel')?.scrollIntoView({behavior:'smooth'})">Withdraw to bank</button>` : ""}
-        <button type="button" class="btn" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button>
+    <div class="g2">
+      <div class="wallet-hero" style="margin-bottom:0;">
+        <div class="wallet-hero-lbl">Revenue wallet${isAdmin ? " (all buyers)" : ""}</div>
+        <div class="wallet-hero-val">${fN(isAdmin ? totalRevenue : myRevenue.confirmed)}</div>
+        <div class="wallet-hero-sub">${isAdmin
+          ? "Every confirmed customer payment, across every buyer. Informational -- this doesn't fund buyer requests by itself; you decide how much of it to move into the funding wallet below."
+          : "Confirmed customer payments on orders you generated. Informational, feeds your ROAS -- not something you can spend directly."}</div>
+      </div>
+
+      <div class="wallet-hero" style="margin-bottom:0;${isAdmin && fundingWalletBalance < 0 ? "outline:2px solid var(--danger);" : ""}">
+        <div class="wallet-hero-lbl">Funding wallet${isAdmin ? "" : " (ready to send)"}</div>
+        <div class="wallet-hero-val" style="${!isAdmin || fundingWalletBalance >= 0 ? "" : "color:var(--danger);"}">${fN(isAdmin ? fundingWalletBalance : myRevenue.approved)}</div>
+        <div class="wallet-hero-sub">${isAdmin
+          ? (fundingWalletBalance < 0
+              ? "⚠️ Low balance -- you've approved more than you've deposited. Top up below before approving anything else."
+              : "What you've personally deposited, minus what's approved/sent/withdrawn. This is the pool funding requests are approved against.")
+          : "Approved by admin, ready for you to send to your ad account."}</div>
+        <div class="wallet-hero-actions">
+          ${!isAdmin && myId ? `<button type="button" class="btn" onclick="document.getElementById('fundReqForm')?.scrollIntoView({behavior:'smooth'})">+ Request funds</button>
+          ${readyToSend.length ? `<button type="button" class="btn" onclick="document.getElementById('readyToSendPanel')?.scrollIntoView({behavior:'smooth'})">Transfer</button>` : ""}` : ""}
+          ${isAdmin ? `<button type="button" class="btn" onclick="document.getElementById('companyAcctPanel')?.scrollIntoView({behavior:'smooth'})">+ Add funds</button>
+          <button type="button" class="btn" onclick="document.getElementById('adminWithdrawPanel')?.scrollIntoView({behavior:'smooth'})">Transfer</button>` : ""}
+        </div>
       </div>
     </div>
+    <div style="margin-bottom:18px;"><button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button></div>
 
     ${isAdmin ? `
     <div class="panel">
@@ -3799,7 +3817,7 @@ async function renderWallet(el) {
     </div>
 
     ${readyToSend.length ? `
-    <div class="panel">
+    <div class="panel" id="readyToSendPanel">
       <div class="ph"><div class="ph-title">Available to transfer</div></div>
       ${readyToSend.map(f => `
       <div style="border-bottom:1px solid var(--border);padding:8px 0;">
@@ -3843,10 +3861,12 @@ async function renderWallet(el) {
             <td class="n">${fN(f.amount_naira)}</td>
             <td class="s">${escH(f.note || "—")}</td>
             <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span></td>
-            <td>${f.status === "pending" ? `
-              <button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 8px;font-size:10px;">Approve</button>
-              <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;">Decline</button>
-            ` : f.status === "approved" ? `<span style="font-size:10.5px;color:var(--muted);">waiting on buyer to send</span>` : "—"}</td>
+            <td>${f.status === "pending" ? (
+              Number(f.amount_naira) > fundingWalletBalance
+                ? `<span style="font-size:10px;color:var(--danger);">⚠️ Funding wallet short by ${fN(Number(f.amount_naira) - fundingWalletBalance)}</span> <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;margin-left:4px;">Decline</button>`
+                : `<button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 8px;font-size:10px;">Approve</button>
+              <button type="button" class="btn btn-g fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 8px;font-size:10px;">Decline</button>`
+            ) : f.status === "approved" ? `<span style="font-size:10.5px;color:var(--muted);">waiting on buyer to send</span>` : "—"}</td>
           </tr>`;
         }).join("")}
       </table></div>`}
@@ -3991,6 +4011,22 @@ async function renderWallet(el) {
   document.querySelectorAll(".fundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
     const decision = btn.dataset.decision;
     if (decision === "declined" && !confirm("Decline this funding request?")) return;
+    if (decision === "approved") {
+      // Re-check against a fresh balance at the moment of the click, not
+      // just the number the page happened to render with -- avoids
+      // approving past the funding wallet if something else changed it
+      // (another admin approving, a new deposit) since this page loaded.
+      const [{ fundingWalletBalance: freshBalance }, freshReq] = await Promise.all([
+        fetchWalletBalances(),
+        supabaseClient.from("fund_requests").select("amount_naira, status").eq("id", btn.dataset.id).maybeSingle().then(r => r.data),
+      ]);
+      if (!freshReq || freshReq.status !== "pending") { alert("This request isn't pending anymore -- refreshing."); renderWallet(el); return; }
+      if (Number(freshReq.amount_naira) > freshBalance) {
+        alert(`Funding wallet balance (${fN(freshBalance)}) can't cover this request (${fN(freshReq.amount_naira)}). Add funds first.`);
+        renderWallet(el);
+        return;
+      }
+    }
     btn.disabled = true;
     const { error } = await supabaseClient.from("fund_requests").update({
       status: decision,
