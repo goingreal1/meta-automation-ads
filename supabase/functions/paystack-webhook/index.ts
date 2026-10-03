@@ -45,6 +45,15 @@ async function notifyPaymentConfirmed(orderId: string) {
   } catch (err) {
     console.error("notifyPaymentConfirmed failed:", err);
   }
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+      body: JSON.stringify({ order_id: orderId, type: "payment_confirmed_admin" }),
+    });
+  } catch (err) {
+    console.error("send-internal-whatsapp (payment_confirmed_admin) failed:", err);
+  }
 }
 
 Deno.serve(async (req: Request) => {

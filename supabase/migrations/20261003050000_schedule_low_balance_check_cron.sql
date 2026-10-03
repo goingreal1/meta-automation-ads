@@ -1,0 +1,18 @@
+-- Checks every active ad account against its low-balance threshold every
+-- 30 minutes, alerting (via send-internal-whatsapp) only when it's both
+-- low AND still running an active campaign. Gated by CRON_SECRET, same
+-- pattern as dial-queued-calls-every-10min -- this file intentionally
+-- doesn't contain the real secret value; the live job was scheduled
+-- directly against the project with it substituted in.
+--
+-- select cron.schedule(
+--   'check-low-ad-balances-every-30min',
+--   '*/30 * * * *',
+--   $$
+--   select net.http_post(
+--     url := 'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/check-low-ad-balances',
+--     headers := jsonb_build_object('Content-Type', 'application/json'),
+--     body := jsonb_build_object('cron_secret', '<CRON_SECRET value, not committed>')
+--   );
+--   $$
+-- );

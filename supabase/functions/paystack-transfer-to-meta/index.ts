@@ -47,6 +47,16 @@ async function paystackFetch(path: string, init: RequestInit = {}) {
   return body;
 }
 
+// Fire-and-forget -- this function's own response to the caller shouldn't
+// wait on a WhatsApp send either way.
+function notifyTransferResult(fundRequestId: string) {
+  fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+    body: JSON.stringify({ type: "transfer_result", fund_request_id: fundRequestId }),
+  }).catch((err) => console.error("send-internal-whatsapp (transfer_result) failed:", err));
+}
+
 async function authedProfile(req: Request): Promise<{ id: string; role: string; media_buyer_id: string | null } | null> {
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -130,6 +140,7 @@ Deno.serve(async (req: Request) => {
         destination_bank_name: bankName,
         destination_account_name: accountName,
       }).eq("id", fr.id);
+      notifyTransferResult(fr.id);
       return json({ error: `Transfer failed: ${transferErr.message}` }, 502);
     }
 
@@ -145,6 +156,7 @@ Deno.serve(async (req: Request) => {
       destination_account_name: accountName,
     }).eq("id", fr.id);
     if (updErr) throw updErr;
+    notifyTransferResult(fr.id);
 
     return json({ ok: true, transfer_code: transfer?.data?.transfer_code, account_name: accountName });
   } catch (err: any) {

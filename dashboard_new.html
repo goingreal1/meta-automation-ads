@@ -566,7 +566,7 @@ async function init() {
   // A brand-new signup lands here before ever visiting setup-company.html
   // (e.g. they bookmarked this page) -- send them there instead of showing
   // a dashboard with nothing in it because every RLS policy denies them.
-  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id").eq("id", session.user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id, whatsapp_number").eq("id", session.user.id).maybeSingle();
   if (!profile?.company_id) {
     window.location.href = "setup-company.html";
     return;
@@ -3598,6 +3598,16 @@ async function renderSettings(el) {
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
 
     <div class="panel">
+      <div class="ph"><div class="ph-title">WhatsApp alerts</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Your number for time-sensitive alerts (low ad balance, payment confirmed, funding request updates, transfer results).</div>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="myWhatsappNumber" value="${escH(window.myProfile?.whatsapp_number || "")}" placeholder="e.g. 2348012345678" style="flex:1;">
+        <button type="button" class="btn btn-g" id="saveWhatsappBtn" style="padding:4px 10px;font-size:10px;">Save</button>
+      </div>
+      <div id="whatsappMsg" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="panel">
       <div class="ph"><div class="ph-title">${escH(company?.name || "Your company")}</div><div class="ph-count">Your role: ${escH(window.myProfile?.role || "—")}</div></div>
       ${!isAdmin ? `<div style="font-size:11.5px;color:var(--muted);">Only an owner/admin can invite team members or manage ad account connections.</div>` : `
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Invite a teammate -- they sign up with this link and land inside your company only, never anyone else's.</div>
@@ -3869,6 +3879,18 @@ window.refreshBalances = async function() {
   }
 }
 
+  document.getElementById("saveWhatsappBtn")?.addEventListener("click", async (e) => {
+    const btn = e.target;
+    const msg = document.getElementById("whatsappMsg");
+    const number = document.getElementById("myWhatsappNumber").value.trim();
+    btn.disabled = true; btn.textContent = "Saving…";
+    const { error } = await supabaseClient.from("profiles").update({ whatsapp_number: number || null }).eq("id", sessionData.user.id);
+    btn.disabled = false; btn.textContent = "Save";
+    if (error) { msg.innerHTML = `<div class="msg err">❌ ${escH(error.message)}</div>`; return; }
+    window.myProfile.whatsapp_number = number || null;
+    msg.innerHTML = `<div class="msg ok">✅ Saved.</div>`;
+  });
+
   // "Media buyers & Meta connections" and "Link New Meta Ad Account" are both
   // admin-only panels -- these forms simply aren't in the DOM for a buyer/
   // delivery_agent, so every handler below is guarded rather than assumed present.
@@ -3974,14 +3996,15 @@ window.refreshBalances = async function() {
     const amount = Number(document.getElementById("fr_amount").value);
     const note = document.getElementById("fr_note").value.trim();
     if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter a valid amount.</div>`; return; }
-    const { error } = await supabaseClient.from("fund_requests").insert({
+    const { data: inserted, error } = await supabaseClient.from("fund_requests").insert({
       company_id: company.id,
       media_buyer_id: window.myProfile.media_buyer_id,
       amount_naira: amount,
       note: note || null,
-    });
+    }).select().single();
     if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; return; }
     msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
+    sbFn("send-internal-whatsapp", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
     renderSettings(el);
   });
 
@@ -3995,6 +4018,7 @@ window.refreshBalances = async function() {
       decided_by: sessionData.user.id,
     }).eq("id", btn.dataset.id);
     if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
+    sbFn("send-internal-whatsapp", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
     renderSettings(el);
   }));
 
