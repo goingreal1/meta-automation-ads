@@ -10,6 +10,15 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // needs their own whatsapp_number set on their profile (Settings) --
 // nothing sends if that's empty.
 //
+// None of these templates are created/approved in Meta's WhatsApp Manager
+// yet, so every send here tries the template first, then falls back to a
+// plain free-form text message with the same content. Free-form only
+// delivers within the 24h window after the recipient's last message to the
+// business number (WhatsApp's rule, not ours) -- so today, before template
+// approval, an alert only reaches someone who has messaged the bot number
+// recently. Once a template is approved, its send will simply start
+// succeeding and the fallback stops being used, with no code change needed.
+//
 //   POST { type, ...params } where type is one of:
 //     "low_balance"            { ad_account_id }
 //     "payment_confirmed_admin" { order_id }
@@ -56,7 +65,18 @@ async function sendTemplate(toPhone: string, templateName: string, bodyParams: s
     }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || `WhatsApp send failed (template ${templateName})`);
+  if (!res.ok) throw new Error(data?.error?.message || `WhatsApp template send failed (${templateName})`);
+  return data;
+}
+
+async function sendText(toPhone: string, body: string) {
+  const res = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to: toPhone, type: "text", text: { body } }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || "WhatsApp text send failed");
   return data;
 }
 
@@ -70,14 +90,23 @@ async function buyerNumber(mediaBuyerId: string): Promise<string | null> {
   return data?.whatsapp_number ?? null;
 }
 
-async function sendToMany(phones: string[], template: string, params: string[]) {
+// Template first (works once approved, required for a first-ever/outside-
+// 24h contact); plain text as the fallback (works right now, but only
+// within the 24h window after the recipient last messaged the bot).
+async function sendToMany(phones: string[], template: string, params: string[], fallbackText: string) {
   const results: Record<string, string> = {};
   for (const phone of phones) {
     try {
       await sendTemplate(phone, template, params);
-      results[phone] = "sent";
-    } catch (err: any) {
-      results[phone] = `error: ${err.message}`;
+      results[phone] = "sent (template)";
+      continue;
+    } catch (templateErr: any) {
+      try {
+        await sendText(phone, fallbackText);
+        results[phone] = "sent (text fallback)";
+      } catch (textErr: any) {
+        results[phone] = `error: template failed (${templateErr.message}); text fallback failed (${textErr.message})`;
+      }
     }
   }
   return results;
@@ -101,7 +130,9 @@ Deno.serve(async (req: Request) => {
       if (!acct) return json({ error: "Ad account not found" }, 404);
       const buyer = acct.media_buyer_id ? await supabase.from("media_buyers").select("name").eq("id", acct.media_buyer_id).maybeSingle().then((r) => r.data) : null;
       const recipients = [...(await adminNumbers(acct.company_id)), ...(acct.media_buyer_id ? [await buyerNumber(acct.media_buyer_id)].filter(Boolean) as string[] : [])];
-      const results = await sendToMany(recipients, TPL_LOW_BALANCE, [buyer?.name || "Your", acct.nickname || acct.name || "account", fmt(acct.balance_naira)]);
+      const acctLabel = acct.nickname || acct.name || "account";
+      const results = await sendToMany(recipients, TPL_LOW_BALANCE, [buyer?.name || "Your", acctLabel, fmt(acct.balance_naira)],
+        `⚠️ ${buyer?.name || "Your"} ad account "${acctLabel}" balance is low: NGN ${fmt(acct.balance_naira)} remaining, with active campaigns still running. Fund it soon to avoid your ads pausing.`);
       return json({ ok: true, results });
     }
 
@@ -109,7 +140,9 @@ Deno.serve(async (req: Request) => {
       const { data: order } = await supabase.from("orders").select("id, customer_name, order_value_naira, company_id, media_buyers(name)").eq("id", body.order_id).maybeSingle();
       if (!order) return json({ error: "Order not found" }, 404);
       const recipients = await adminNumbers(order.company_id);
-      const results = await sendToMany(recipients, TPL_PAYMENT_CONFIRMED_ADMIN, [fmt(order.order_value_naira), order.customer_name || "a customer", (order.media_buyers as any)?.name || "—"]);
+      const buyerName = (order.media_buyers as any)?.name || "—";
+      const results = await sendToMany(recipients, TPL_PAYMENT_CONFIRMED_ADMIN, [fmt(order.order_value_naira), order.customer_name || "a customer", buyerName],
+        `✅ Payment confirmed: NGN ${fmt(order.order_value_naira)} for ${order.customer_name || "a customer"}'s order, generated by ${buyerName}.`);
       return json({ ok: true, results });
     }
 
@@ -117,7 +150,9 @@ Deno.serve(async (req: Request) => {
       const { data: fr } = await supabase.from("fund_requests").select("id, amount_naira, note, company_id, media_buyers(name)").eq("id", body.fund_request_id).maybeSingle();
       if (!fr) return json({ error: "Funding request not found" }, 404);
       const recipients = await adminNumbers(fr.company_id);
-      const results = await sendToMany(recipients, TPL_FUND_REQUEST_SUBMITTED, [(fr.media_buyers as any)?.name || "A buyer", fmt(fr.amount_naira), fr.note || "no note"]);
+      const buyerName = (fr.media_buyers as any)?.name || "A buyer";
+      const results = await sendToMany(recipients, TPL_FUND_REQUEST_SUBMITTED, [buyerName, fmt(fr.amount_naira), fr.note || "no note"],
+        `💸 ${buyerName} requested NGN ${fmt(fr.amount_naira)} in funding. Note: ${fr.note || "(none)"}`);
       return json({ ok: true, results });
     }
 
@@ -126,7 +161,8 @@ Deno.serve(async (req: Request) => {
       if (!fr) return json({ error: "Funding request not found" }, 404);
       const phone = fr.media_buyer_id ? await buyerNumber(fr.media_buyer_id) : null;
       if (!phone) return json({ ok: true, results: {} });
-      const results = await sendToMany([phone], TPL_FUND_REQUEST_DECIDED, [fmt(fr.amount_naira), fr.status]);
+      const results = await sendToMany([phone], TPL_FUND_REQUEST_DECIDED, [fmt(fr.amount_naira), fr.status],
+        `Your funding request for NGN ${fmt(fr.amount_naira)} was ${fr.status}.`);
       return json({ ok: true, results });
     }
 
@@ -137,7 +173,12 @@ Deno.serve(async (req: Request) => {
       const admins = await adminNumbers(fr.company_id);
       const recipients = [...(buyerPhone ? [buyerPhone] : []), ...admins];
       const ok = fr.status === "transferred";
-      const results = await sendToMany(recipients, ok ? TPL_TRANSFER_SENT : TPL_TRANSFER_FAILED, ok ? [fmt(fr.amount_naira)] : [fmt(fr.amount_naira), fr.transfer_error || "unknown error"]);
+      const results = await sendToMany(
+        recipients,
+        ok ? TPL_TRANSFER_SENT : TPL_TRANSFER_FAILED,
+        ok ? [fmt(fr.amount_naira)] : [fmt(fr.amount_naira), fr.transfer_error || "unknown error"],
+        ok ? `✅ Your transfer of NGN ${fmt(fr.amount_naira)} was sent successfully.` : `❌ Your transfer of NGN ${fmt(fr.amount_naira)} failed: ${fr.transfer_error || "unknown error"}. Please try again.`,
+      );
       return json({ ok: true, results });
     }
 
