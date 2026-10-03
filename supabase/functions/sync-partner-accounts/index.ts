@@ -67,19 +67,43 @@ async function fetchClientsById(businessIds: string[]): Promise<Map<string, any>
   return found;
 }
 
+// `client` is the sharing Business Portfolio, not the ad account -- its
+// name is the same for every account that Business shares with us, so
+// using client.name here (the original bug) made every account under one
+// buyer's Business show up with one identical, confusing name. The actual
+// per-account name has to be fetched separately, straight off the ad
+// account itself.
+async function fetchAccountName(accountId: string): Promise<string> {
+  try {
+    const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}?fields=name&access_token=${META_ACCESS_TOKEN}`);
+    const data = await res.json();
+    return data?.name || `act_${accountId}`;
+  } catch {
+    return `act_${accountId}`;
+  }
+}
+
 async function importConfirmed(companyId: string, mediaBuyerId: string, client: any) {
   const confirmed = (client.adaccount_permissions ?? []).filter((a: any) => a.access_status === "CONFIRMED");
   if (!confirmed.length) return 0;
-  const rows = confirmed.map((a: any) => ({
-    company_id: companyId,
-    media_buyer_id: mediaBuyerId,
-    name: client.name,
-    nickname: client.name,
-    meta_ad_account_id: String(a.id).replace(/^act_/, ""),
-    connected_via: "partner",
-    status: "active",
-  }));
-  const { error } = await supabase.from("ad_accounts").upsert(rows, { onConflict: "meta_ad_account_id", ignoreDuplicates: true });
+  const rows = [];
+  for (const a of confirmed) {
+    const metaAdAccountId = String(a.id).replace(/^act_/, "");
+    const accountName = await fetchAccountName(metaAdAccountId);
+    rows.push({
+      company_id: companyId,
+      media_buyer_id: mediaBuyerId,
+      name: accountName,
+      nickname: accountName,
+      meta_ad_account_id: metaAdAccountId,
+      connected_via: "partner",
+      status: "active",
+    });
+  }
+  // Overwrite on conflict (not ignoreDuplicates) so a re-sync self-heals an
+  // account's name if it was imported under the old bug, or if it's
+  // renamed on Meta's side later.
+  const { error } = await supabase.from("ad_accounts").upsert(rows, { onConflict: "meta_ad_account_id" });
   if (error) throw error;
   return confirmed.length;
 }
