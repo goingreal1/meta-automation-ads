@@ -3477,13 +3477,17 @@ const roasFmt  = (rev, sp) => sp > 0 ? (rev / sp).toFixed(2) + "x" : "—";
 const roasCls  = (rev, sp) => sp <= 0 ? "" : rev / sp >= 2 ? "ctr-hot" : rev / sp >= 1 ? "ctr-warm" : "ctr-cold";
 
 // fromDateStr/toDateStr = null means no bound on that side (all-time when both omitted).
-async function fetchBuyerRoas(fromDateStr, toDateStr) {
+async function fetchBuyerRoas(fromDateStr, toDateStr, companyWide = false) {
   const [buyers, rows] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
-    // security-definer RPC, not a direct table/view read -- every company
-    // member sees the full leaderboard even though buyer-role RLS now
-    // restricts the underlying orders table to each buyer's own rows.
-    sbRpc("media_buyer_daily_roas_agg_v2", { from_date: fromDateStr || null, to_date: toDateStr || null }).catch(() => []),
+    // security-definer RPC, not a direct table/view read -- buyer-role RLS
+    // restricts the underlying orders/payments/daily_metrics tables to each
+    // buyer's own rows, so the RPC itself still filters by media_buyer_id
+    // per caller UNLESS company_wide is passed -- that's what the
+    // Leaderboard tab uses to show every buyer ranked against each other;
+    // the Ad Spend & ROAS tab leaves it false so a buyer still only sees
+    // their own numbers there.
+    sbRpc("media_buyer_daily_roas_agg_v2", { from_date: fromDateStr || null, to_date: toDateStr || null, company_wide: companyWide }).catch(() => []),
   ]);
   const agg = new Map();
   for (const r of rows || []) {
@@ -3506,7 +3510,7 @@ let leaderboardRangeDays = 7;
 
 async function renderLeaderboard(el) {
   const since = leaderboardRangeDays ? new Date(Date.now() - (leaderboardRangeDays - 1) * 86400000).toISOString().slice(0, 10) : null;
-  const { list } = await fetchBuyerRoas(since);
+  const { list } = await fetchBuyerRoas(since, null, true);
 
   // Rank named buyers only (an "Unattributed" bucket can't be ranked) --
   // by revenue by default, since that's what the business actually cares about.
