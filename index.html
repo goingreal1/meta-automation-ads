@@ -3,322 +3,410 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quality Herb — Media Buying System</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>Revora — The operating system for performance commerce</title>
+<meta name="description" content="Revora connects ad spend to delivered revenue: Meta Ads automation, AI order confirmation, WhatsApp selling, delivery tracking, and funding in one place.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ── THEME TOKENS ──────────────────────────────────────────────────────────── */
+/* ── THEME TOKENS (matches the Revora dashboard) ─────────────────────────────── */
 [data-theme="dark"] {
   --bg:#09090b; --panel:#111113; --panel2:#18181c;
   --border:#27272d; --borderStrong:#38383f;
   --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
   --accent:#4ec99e; --accentDk:#1a9e75;
   --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
+  --blue:#5a9fff; --blueBg:rgba(90,159,255,.10);
+  --shadow:0 8px 40px rgba(0,0,0,.55);
 }
 
-/* ── RESET ─────────────────────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
 body{
   background:var(--bg);color:var(--text);
-  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;
-  display:flex;justify-content:center;align-items:center;min-height:100vh;
+  font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
 }
-a{color:var(--accent);text-decoration:none;font-weight:500;}
-a:hover{text-decoration:underline;}
+a{color:inherit;text-decoration:none;}
+.mono{font-family:'JetBrains Mono',monospace;}
+img,svg{display:block;max-width:100%;}
+.container{max-width:1160px;margin:0 auto;padding:0 24px;}
 
-/* ── LAYOUT ────────────────────────────────────────────────────────────────── */
-.wrap {
-  width: 100%;
-  max-width: 400px;
-  padding: 20px;
-}
-.box {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 32px 28px;
-  box-shadow: 0 8px 40px rgba(0,0,0,.55);
-}
-.logo {
-  text-align: center;
-  margin-bottom: 24px;
-}
-.logo-title {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.logo-sub {
-  font-size: 12px;
-  color: var(--muted);
-  font-family: 'JetBrains Mono', monospace;
-  margin-top: 4px;
-}
+/* ── BUTTONS ──────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px 20px;border-radius:9px;font-size:14px;font-weight:600;
+  cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap;}
+.btn-primary{background:var(--accent);color:#06120d;}
+.btn-primary:hover{background:var(--accentDk);transform:translateY(-1px);}
+.btn-ghost{background:transparent;color:var(--text);border-color:var(--border);}
+.btn-ghost:hover{border-color:var(--borderStrong);background:var(--panel2);}
+.btn-lg{padding:14px 26px;font-size:15.5px;border-radius:10px;}
 
-/* ── FORMS ─────────────────────────────────────────────────────────────────── */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-.field label {
-  font-size: 12px;
-  color: var(--text2);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-input {
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-family: 'Inter', sans-serif;
-  width: 100%;
-  transition: border-color .14s;
-}
-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
+/* ── NAV ──────────────────────────────────────────────────────────────────── */
+.nav{position:sticky;top:0;z-index:50;background:rgba(9,9,11,.82);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px;}
+.nav-logo{font-size:19px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
+.nav-logo-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);}
+.nav-links{display:flex;align-items:center;gap:28px;font-size:13.5px;color:var(--text2);font-weight:500;}
+.nav-links a:hover{color:var(--text);}
+.nav-actions{display:flex;align-items:center;gap:10px;}
+@media (max-width:760px){ .nav-links{display:none;} }
 
-/* ── BUTTONS ───────────────────────────────────────────────────────────────── */
-.btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .14s;
-  border: 1px solid transparent;
-  font-family: 'Inter', sans-serif;
-}
-.btn-a {
-  background: var(--accentBg);
-  color: var(--accent);
-  border-color: var(--accentBdr);
-}
-.btn-a:hover {
-  background: rgba(78,201,158,.18);
-}
-.btn:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
+/* ── HERO ─────────────────────────────────────────────────────────────────── */
+.hero{padding:96px 0 72px;position:relative;overflow:hidden;}
+.hero::before{content:"";position:absolute;top:-180px;left:50%;transform:translateX(-50%);
+  width:900px;height:500px;background:radial-gradient(ellipse at center, rgba(78,201,158,.14), transparent 70%);
+  pointer-events:none;}
+.hero-inner{position:relative;max-width:780px;margin:0 auto;text-align:center;}
+.eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+  color:var(--accent);background:var(--accentBg);border:1px solid var(--accentBdr);
+  padding:6px 13px;border-radius:99px;margin-bottom:22px;}
+h1{font-size:54px;line-height:1.08;letter-spacing:-.03em;font-weight:800;margin-bottom:20px;}
+h1 .grad{background:linear-gradient(90deg,var(--accent),#7fe0bf);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.hero p{font-size:18px;color:var(--text2);max-width:600px;margin:0 auto 34px;line-height:1.6;}
+.hero-ctas{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;}
+.hero-note{font-size:12.5px;color:var(--muted);}
+@media (max-width:640px){ h1{font-size:36px;} .hero p{font-size:16px;} }
 
-/* ── UTILS ─────────────────────────────────────────────────────────────────── */
-.switch {
-  text-align: center;
-  margin-top: 20px;
-  font-size: 13px;
-  color: var(--text2);
-}
-.msg {
-  font-size: 12px;
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  display: none;
-}
-.msg.err {
-  display: block;
-  background: rgba(224,85,85,.10);
-  color: #e05555;
-  border: 1px solid rgba(224,85,85,.22);
-}
-.msg.ok {
-  display: block;
-  background: var(--accentBg);
-  color: var(--accent);
-  border: 1px solid var(--accentBdr);
-}
+/* ── PIPELINE STRIP ───────────────────────────────────────────────────────── */
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;
+  margin:56px auto 0;max-width:900px;}
+.pipe-step{display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 18px;}
+.pipe-ico{width:46px;height:46px;border-radius:12px;background:var(--panel);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:19px;}
+.pipe-lbl{font-size:12.5px;font-weight:600;color:var(--text2);}
+.pipe-arrow{color:var(--muted);font-size:16px;margin:0 2px;}
+@media (max-width:760px){ .pipe-arrow{display:none;} .pipeline{gap:14px 0;} }
 
-.spin {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: rot .65s linear infinite;
-}
-@keyframes rot { to { transform: rotate(360deg); } }
+/* ── DASHBOARD MOCK ───────────────────────────────────────────────────────── */
+.mock-wrap{max-width:980px;margin:64px auto 0;}
+.mock{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  box-shadow:var(--shadow);overflow:hidden;}
+.mock-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;border-bottom:1px solid var(--border);}
+.mock-dot{width:9px;height:9px;border-radius:50%;background:var(--border);}
+.mock-tabs{display:flex;gap:4px;padding:10px 14px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.mock-tab{font-size:11.5px;font-weight:600;color:var(--muted);padding:6px 12px;border-radius:7px;white-space:nowrap;}
+.mock-tab.active{color:var(--accent);background:var(--accentBg);}
+.mock-body{padding:22px;}
+.mock-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.mock-kc{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px;}
+.mock-kc-lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+.mock-kc-val{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;}
+.mock-kc-val.a{color:var(--accent);}
+.mock-rows{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:4px;}
+.mock-row{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-size:12px;}
+.mock-row+.mock-row{border-top:1px solid var(--border);}
+.mock-row-name{color:var(--text2);}
+.mock-pill{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  padding:2px 8px;border-radius:99px;background:var(--accentBg);color:var(--accent);}
+@media (max-width:640px){ .mock-kpis{grid-template-columns:repeat(2,1fr);} }
+
+/* ── SECTION HEADINGS ─────────────────────────────────────────────────────── */
+.section{padding:88px 0;}
+.section-border{border-top:1px solid var(--border);}
+.section-head{max-width:620px;margin:0 auto 52px;text-align:center;}
+.section-eyebrow{font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:12px;}
+.section-head h2{font-size:34px;font-weight:800;letter-spacing:-.02em;margin-bottom:14px;}
+.section-head p{color:var(--text2);font-size:16px;}
+
+/* ── FEATURE GRID ─────────────────────────────────────────────────────────── */
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+.feat-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px;
+  transition:border-color .15s,transform .15s;}
+.feat-card:hover{border-color:var(--borderStrong);transform:translateY(-2px);}
+.feat-ico{width:40px;height:40px;border-radius:10px;background:var(--accentBg);
+  display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:16px;}
+.feat-card h3{font-size:16px;font-weight:700;margin-bottom:8px;}
+.feat-card p{font-size:13.5px;color:var(--text2);line-height:1.6;}
+@media (max-width:860px){ .feat-grid{grid-template-columns:1fr 1fr;} }
+@media (max-width:600px){ .feat-grid{grid-template-columns:1fr;} }
+
+/* ── MODULES (ads/sales/ops/finance/ai) ──────────────────────────────────── */
+.modules{display:flex;flex-direction:column;gap:14px;}
+.module-row{display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center;
+  background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:28px 30px;}
+.module-tag{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin-bottom:8px;}
+.module-row h3{font-size:20px;font-weight:700;letter-spacing:-.01em;}
+.module-chips{display:flex;flex-wrap:wrap;gap:8px;}
+.module-chip{font-size:12.5px;font-weight:500;color:var(--text2);background:var(--panel2);
+  border:1px solid var(--border);padding:7px 13px;border-radius:99px;}
+@media (max-width:760px){ .module-row{grid-template-columns:1fr;gap:12px;} }
+
+/* ── HOW IT WORKS ─────────────────────────────────────────────────────────── */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
+.step{position:relative;padding-top:8px;}
+.step-num{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--accent);
+  background:var(--accentBg);border:1px solid var(--accentBdr);width:34px;height:34px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
+.step h3{font-size:17px;font-weight:700;margin-bottom:8px;}
+.step p{font-size:13.5px;color:var(--text2);line-height:1.6;}
+@media (max-width:760px){ .steps{grid-template-columns:1fr;gap:32px;} }
+
+/* ── ROLES STRIP ──────────────────────────────────────────────────────────── */
+.roles{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
+.role-card{text-align:center;padding:22px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);}
+.role-ico{font-size:24px;margin-bottom:10px;}
+.role-card h4{font-size:13.5px;font-weight:700;margin-bottom:4px;}
+.role-card p{font-size:11.5px;color:var(--muted);line-height:1.5;}
+@media (max-width:860px){ .roles{grid-template-columns:repeat(3,1fr);} }
+@media (max-width:560px){ .roles{grid-template-columns:repeat(2,1fr);} }
+
+/* ── CTA BAND ─────────────────────────────────────────────────────────────── */
+.cta-band{background:linear-gradient(135deg,var(--panel),var(--panel2));border:1px solid var(--border);
+  border-radius:22px;padding:64px 40px;text-align:center;position:relative;overflow:hidden;}
+.cta-band::before{content:"";position:absolute;top:-120px;right:-80px;width:400px;height:400px;
+  background:radial-gradient(circle,rgba(78,201,158,.16),transparent 70%);}
+.cta-band h2{font-size:32px;font-weight:800;letter-spacing:-.02em;margin-bottom:14px;position:relative;}
+.cta-band p{color:var(--text2);font-size:15.5px;margin-bottom:30px;position:relative;}
+.cta-band .hero-ctas{position:relative;}
+
+/* ── FOOTER ───────────────────────────────────────────────────────────────── */
+footer{border-top:1px solid var(--border);padding:40px 0;}
+.footer-inner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;}
+.footer-logo{font-size:15px;font-weight:800;letter-spacing:-.02em;}
+.footer-copy{font-size:12.5px;color:var(--muted);}
+.footer-links{display:flex;gap:22px;font-size:12.5px;color:var(--text2);}
+.footer-links a:hover{color:var(--text);}
 </style>
 </head>
 <body>
 
-<div class="wrap">
-  <div class="box">
-    <div class="logo">
-      <div class="logo-title">Quality Herb AI</div>
-      <div class="logo-sub">Senior Media Buying Engine</div>
+<!-- NAV -->
+<nav class="nav">
+  <div class="container nav-inner">
+    <a href="#" class="nav-logo"><span class="nav-logo-dot"></span>Revora</a>
+    <div class="nav-links">
+      <a href="#platform">Platform</a>
+      <a href="#modules">Modules</a>
+      <a href="#how">How it works</a>
+      <a href="#roles">Your team</a>
     </div>
-
-    <div id="inviteBanner" style="display:none;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:16px;">
-      You've been invited to join a team. Set a password below to create your account.
-    </div>
-
-    <div id="statusMsg" class="msg"></div>
-
-    <form id="authForm">
-      <div class="field">
-        <label>Email address</label>
-        <input type="email" id="f_email" required placeholder="you@company.com">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input type="password" id="f_pass" required placeholder="••••••••">
-      </div>
-      <div class="field" id="confirmField" style="display:none;">
-        <label>Confirm password</label>
-        <input type="password" id="f_pass2" placeholder="••••••••">
-      </div>
-      <button type="submit" class="btn btn-a" id="authBtn">Log In</button>
-    </form>
-
-    <div class="switch">
-      <span id="switchText">Don't have an account? <a href="#" id="switchMode">Sign up</a></span>
-    </div>
-    <div class="switch" id="forgotWrap" style="margin-top:8px;">
-      <a href="#" id="forgotLink">Forgot password?</a>
+    <div class="nav-actions">
+      <a href="login.html" class="btn btn-ghost">Log in</a>
+      <a href="login.html?mode=signup" class="btn btn-primary">Get started</a>
     </div>
   </div>
-</div>
+</nav>
 
-<!-- SUPABASE CLIENT JS SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-  // Supabase Initialization
-  const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
-  const ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
-  const supaClient = window.supabase.createClient(SUPA_URL, ANON);
+<!-- HERO -->
+<header class="hero">
+  <div class="container hero-inner">
+    <div class="eyebrow">⚡ Built for Meta Ads-driven commerce teams</div>
+    <h1>The operating system for<br><span class="grad">performance commerce.</span></h1>
+    <p>Revora connects your ad spend to the revenue it actually produces — campaigns, AI order confirmation, WhatsApp selling, delivery, and funding, all in one place instead of six disconnected tools.</p>
+    <div class="hero-ctas">
+      <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
+      <a href="login.html" class="btn btn-ghost btn-lg">Log in</a>
+    </div>
+    <div class="hero-note">No credit card required · Set up your company in minutes</div>
 
-  // Form State
-  // A ?invite=<token> in the URL (from an "Invite team member" link) rides
-  // along through every redirect below so setup-company.html still has it
-  // after login/signup, however the person got here. Someone who clicked an
-  // invite link has exactly one sensible action -- create an account -- so
-  // the generic Login/Signup toggle (which defaulted to Log In and said
-  // nothing about an invite) was genuinely confusing here: skip straight to
-  // signup, with no toggle to second-guess, plus a confirm-password field
-  // since this is the one-and-only account-creation moment for them.
-  const inviteToken = new URLSearchParams(window.location.search).get('invite');
-  let isLogin = !inviteToken;
-  const form = document.getElementById('authForm');
-  const authBtn = document.getElementById('authBtn');
-  const switchMode = document.getElementById('switchMode');
-  const statusMsg = document.getElementById('statusMsg');
-  const confirmField = document.getElementById('confirmField');
-  const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
-  // Supabase's own confirmation email (sent automatically on signUp, separate
-  // from our invite email) redirects the browser back here on click -- by
-  // default to a generic Site URL with no idea an invite was in progress.
-  // Passing emailRedirectTo keeps the ?invite= token alive across that hop,
-  // so clicking "confirm your email" lands on the Join flow, not a blank
-  // "Set up your company" screen. Must be an absolute URL, and this exact
-  // origin+path must be allow-listed in Supabase Auth -> URL Configuration
-  // -> Redirect URLs, or Supabase silently ignores it.
-  const absoluteSetupUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + setupUrl;
+    <div class="pipeline">
+      <div class="pipe-step"><div class="pipe-ico">📣</div><div class="pipe-lbl">Ads</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="pipe-ico">🛒</div><div class="pipe-lbl">Orders</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="pipe-ico">📞</div><div class="pipe-lbl">Confirmation</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="pipe-ico">🛵</div><div class="pipe-lbl">Delivery</div></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="pipe-ico">💰</div><div class="pipe-lbl">Revenue</div></div>
+    </div>
 
-  if (inviteToken) {
-    document.getElementById('inviteBanner').style.display = 'block';
-    document.querySelector('.switch').style.display = 'none';
-    document.getElementById('forgotWrap').style.display = 'none';
-    confirmField.style.display = 'block';
-    authBtn.textContent = 'Sign Up';
-  }
+    <div class="mock-wrap">
+      <div class="mock">
+        <div class="mock-bar"><div class="mock-dot"></div><div class="mock-dot"></div><div class="mock-dot"></div></div>
+        <div class="mock-tabs">
+          <div class="mock-tab active">Overview</div>
+          <div class="mock-tab">Campaigns</div>
+          <div class="mock-tab">Orders</div>
+          <div class="mock-tab">Wallet</div>
+          <div class="mock-tab">Leaderboard</div>
+          <div class="mock-tab">Delivery</div>
+        </div>
+        <div class="mock-body">
+          <div class="mock-kpis">
+            <div class="mock-kc"><div class="mock-kc-lbl">Ad spend</div><div class="mock-kc-val">₦482,000</div></div>
+            <div class="mock-kc"><div class="mock-kc-lbl">Orders</div><div class="mock-kc-val">214</div></div>
+            <div class="mock-kc"><div class="mock-kc-lbl">Real ROAS</div><div class="mock-kc-val a">3.4x</div></div>
+            <div class="mock-kc"><div class="mock-kc-lbl">Delivery rate</div><div class="mock-kc-val a">78%</div></div>
+          </div>
+          <div class="mock-rows">
+            <div class="mock-row"><span class="mock-row-name">Lunessa Whatsapp ADSET</span><span class="mock-pill">active</span></div>
+            <div class="mock-row"><span class="mock-row-name">Lunessa AD SET — Women</span><span class="mock-pill">active</span></div>
+            <div class="mock-row"><span class="mock-row-name">Lunessa AD SET — Men</span><span class="mock-pill">active</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
 
-  const absoluteResetUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'reset-password.html';
-  document.getElementById('forgotLink').addEventListener('click', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('f_email').value.trim();
-    if (!email) { statusMsg.textContent = 'Enter your email above first, then click "Forgot password?".'; statusMsg.className = 'msg err'; return; }
-    statusMsg.className = 'msg';
-    try {
-      const { error } = await supaClient.auth.resetPasswordForEmail(email, { redirectTo: absoluteResetUrl });
-      if (error) throw error;
-      statusMsg.textContent = 'If an account exists for that email, a password reset link is on its way.';
-      statusMsg.className = 'msg ok';
-    } catch (err) {
-      statusMsg.textContent = err.message;
-      statusMsg.className = 'msg err';
-    }
-  });
+<!-- PLATFORM / FEATURES -->
+<section class="section section-border" id="platform">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Platform</div>
+      <h2>Everything between a click and cash in hand</h2>
+      <p>Most teams stitch this together from Meta Ads Manager, a spreadsheet, a WhatsApp number, and a bank app. Revora is the one place that actually connects them.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat-card">
+        <div class="feat-ico">📣</div>
+        <h3>Live campaign structure</h3>
+        <p>Every campaign, ad set, and ad synced straight from Meta — real creative, copy, and performance, drilled down the way Ads Manager shows it, not a flattened spreadsheet.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ico">🤖</div>
+        <h3>AI order confirmation</h3>
+        <p>New orders get an automatic confirmation call before anything ships — catching fake numbers and no-shows before a rider is ever dispatched.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ico">💬</div>
+        <h3>WhatsApp selling</h3>
+        <p>A connected WhatsApp number that talks to customers, answers product questions, and takes orders directly inside the chat.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ico">🛵</div>
+        <h3>Delivery &amp; collections</h3>
+        <p>Every rider sees their own assignments and exactly which customers already paid online versus who still owes on delivery — no more guessing or double-collecting.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ico">💰</div>
+        <h3>Real funding wallet</h3>
+        <p>Admins fund a real wallet from their own bank, buyers request what they need for ad spend, and every transfer is tracked back to who approved it.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-ico">📊</div>
+        <h3>Real ROAS, not guesswork</h3>
+        <p>ROAS calculated off confirmed payments — not just orders placed — so scaling decisions are based on cash that actually landed.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-  // Check if already logged in
-  async function checkSession() {
-    const { data: { session } } = await supaClient.auth.getSession();
-    if (session) {
-      window.location.href = setupUrl; // it redirects straight on to the dashboard once a company is confirmed
-    }
-  }
-  checkSession();
+<!-- MODULES -->
+<section class="section section-border" id="modules">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">One system, five jobs</div>
+      <h2>Not just another CRM</h2>
+      <p>Revora is built around how a performance commerce team actually operates — marketing, sales, operations, and finance, reading from the same numbers.</p>
+    </div>
+    <div class="modules">
+      <div class="module-row">
+        <div><div class="module-tag">📣 Marketing</div><h3>Ad spend, under control</h3></div>
+        <div class="module-chips">
+          <span class="module-chip">Campaigns</span><span class="module-chip">Ad sets</span>
+          <span class="module-chip">Creative Vault</span><span class="module-chip">Kill / scale decisions</span>
+          <span class="module-chip">Spend &amp; CPA</span>
+        </div>
+      </div>
+      <div class="module-row">
+        <div><div class="module-tag">🛒 Sales &amp; CRM</div><h3>From lead to delivered order</h3></div>
+        <div class="module-chips">
+          <span class="module-chip">Orders</span><span class="module-chip">Order forms</span>
+          <span class="module-chip">AI call confirmation</span><span class="module-chip">Support queue</span>
+          <span class="module-chip">Conversations</span>
+        </div>
+      </div>
+      <div class="module-row">
+        <div><div class="module-tag">🛵 Operations</div><h3>Media buyers, riders, support</h3></div>
+        <div class="module-chips">
+          <span class="module-chip">Leaderboard</span><span class="module-chip">Delivery assignments</span>
+          <span class="module-chip">Escalation claiming</span><span class="module-chip">Role-based access</span>
+        </div>
+      </div>
+      <div class="module-row">
+        <div><div class="module-tag">💰 Finance</div><h3>Where the money actually is</h3></div>
+        <div class="module-chips">
+          <span class="module-chip">Funding wallet</span><span class="module-chip">Revenue wallet</span>
+          <span class="module-chip">Payment confirmation</span><span class="module-chip">Transaction ledger</span>
+        </div>
+      </div>
+      <div class="module-row">
+        <div><div class="module-tag">🤖 AI</div><h3>The parts that run themselves</h3></div>
+        <div class="module-chips">
+          <span class="module-chip">Order confirmation calls</span><span class="module-chip">WhatsApp sales agent</span>
+          <span class="module-chip">Ad set alerts</span><span class="module-chip">Low-balance warnings</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-  // Toggle Login/Signup
-  function toggleMode(e) {
-    if(e) e.preventDefault();
-    isLogin = !isLogin;
-    authBtn.textContent = isLogin ? "Log In" : "Sign Up";
-    confirmField.style.display = isLogin ? "none" : "block";
-    document.getElementById('switchText').innerHTML = isLogin
-      ? `Don't have an account? <a href="#" id="switchMode">Sign up</a>`
-      : `Already have an account? <a href="#" id="switchMode">Log in</a>`;
+<!-- HOW IT WORKS -->
+<section class="section section-border" id="how">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">How it works</div>
+      <h2>Set up once, running the same day</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <h3>Create your company</h3>
+        <p>Sign up, name your company, and invite your team — media buyers, customer care, delivery agents — each with their own role and view.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <h3>Connect Meta &amp; WhatsApp</h3>
+        <p>Share your ad account with Revora's Business ID and connect a WhatsApp number — no OAuth dance, just Business Manager sharing.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <h3>Watch it run</h3>
+        <p>Orders get confirmed, campaigns get tracked, deliveries get assigned, and revenue gets reconciled — automatically, every day.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-    // re-bind because we replaced the HTML
-    document.getElementById('switchMode').addEventListener('click', toggleMode);
-    statusMsg.className = "msg";
-  }
-  switchMode.addEventListener('click', toggleMode);
+<!-- ROLES -->
+<section class="section section-border" id="roles">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Built for the whole team</div>
+      <h2>Everyone sees what's theirs</h2>
+      <p>No role sees a cluttered dashboard full of tools that aren't their job.</p>
+    </div>
+    <div class="roles">
+      <div class="role-card"><div class="role-ico">👑</div><h4>Owner / Admin</h4><p>Full visibility, funding, approvals</p></div>
+      <div class="role-card"><div class="role-ico">📣</div><h4>Media buyer</h4><p>Their own campaigns &amp; requests</p></div>
+      <div class="role-card"><div class="role-ico">🎧</div><h4>Customer care</h4><p>Escalations &amp; deals closed</p></div>
+      <div class="role-card"><div class="role-ico">🛵</div><h4>Delivery agent</h4><p>Their own assignments &amp; revenue</p></div>
+      <div class="role-card"><div class="role-ico">🏢</div><h4>Your company</h4><p>One source of truth for all of it</p></div>
+    </div>
+  </div>
+</section>
 
-  // Handle Form Submit
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('f_email').value;
-    const password = document.getElementById('f_pass').value;
+<!-- CTA BAND -->
+<section class="section section-border">
+  <div class="container">
+    <div class="cta-band">
+      <h2>Connect your ad spend to real revenue</h2>
+      <p>Set up your company and invite your team in minutes.</p>
+      <div class="hero-ctas">
+        <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
+        <a href="login.html" class="btn btn-ghost btn-lg">Log in</a>
+      </div>
+    </div>
+  </div>
+</section>
 
-    authBtn.disabled = true;
-    authBtn.innerHTML = '<div class="spin"></div> Working...';
-    statusMsg.className = "msg";
+<!-- FOOTER -->
+<footer>
+  <div class="container footer-inner">
+    <div class="footer-logo">Revora</div>
+    <div class="footer-links">
+      <a href="login.html">Log in</a>
+      <a href="login.html?mode=signup">Get started</a>
+    </div>
+    <div class="footer-copy">© <span id="yr"></span> Revora. All rights reserved.</div>
+  </div>
+</footer>
 
-    try {
-      if (isLogin) {
-        // LOGIN FLOW
-        const { data, error } = await supaClient.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        statusMsg.textContent = "Login successful. Redirecting...";
-        statusMsg.className = "msg ok";
-        setTimeout(() => window.location.href = setupUrl, 800);
-      } else {
-        // SIGNUP FLOW
-        const confirmPass = document.getElementById('f_pass2').value;
-        if (password !== confirmPass) throw new Error("Passwords don't match.");
-        const { data, error } = await supaClient.auth.signUp({ email, password, options: { emailRedirectTo: absoluteSetupUrl } });
-        if (error) throw error;
-        if (data.session) {
-          statusMsg.textContent = "Account created. Redirecting...";
-          statusMsg.className = "msg ok";
-          setTimeout(() => window.location.href = setupUrl, 800);
-        } else {
-          statusMsg.textContent = "Check your email for the confirmation link.";
-          statusMsg.className = "msg ok";
-          authBtn.disabled = false;
-          authBtn.textContent = "Sign Up";
-        }
-      }
-    } catch (err) {
-      statusMsg.textContent = err.message;
-      statusMsg.className = "msg err";
-      authBtn.disabled = false;
-      authBtn.textContent = isLogin ? "Log In" : "Sign Up";
-    }
-  });
-</script>
+<script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
 </body>
 </html>

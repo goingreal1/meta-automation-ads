@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in · Revora</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── THEME TOKENS ──────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:#09090b; --panel:#111113; --panel2:#18181c;
+  --border:#27272d; --borderStrong:#38383f;
+  --text:#e8e6e1; --text2:#9a9aa8; --muted:#60606c;
+  --accent:#4ec99e; --accentDk:#1a9e75;
+  --accentBg:rgba(78,201,158,.10); --accentBdr:rgba(78,201,158,.22);
+}
+
+/* ── RESET ─────────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;
+  display:flex;justify-content:center;align-items:center;min-height:100vh;
+}
+a{color:var(--accent);text-decoration:none;font-weight:500;}
+a:hover{text-decoration:underline;}
+
+/* ── LAYOUT ────────────────────────────────────────────────────────────────── */
+.wrap {
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+}
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text2);
+  font-weight: 500;
+  margin-bottom: 18px;
+}
+.back-link:hover { color: var(--text); text-decoration: none; }
+.box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px 28px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.55);
+}
+.logo {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.logo-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.logo-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ── FORMS ─────────────────────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.field label {
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+input {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+  transition: border-color .14s;
+}
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── BUTTONS ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .14s;
+  border: 1px solid transparent;
+  font-family: 'Inter', sans-serif;
+}
+.btn-a {
+  background: var(--accent);
+  color: #06120d;
+  border-color: var(--accent);
+}
+.btn-a:hover {
+  background: var(--accentDk);
+  border-color: var(--accentDk);
+}
+.btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ── UTILS ─────────────────────────────────────────────────────────────────── */
+.switch {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.msg {
+  font-size: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  display: none;
+}
+.msg.err {
+  display: block;
+  background: rgba(224,85,85,.10);
+  color: #e05555;
+  border: 1px solid rgba(224,85,85,.22);
+}
+.msg.ok {
+  display: block;
+  background: var(--accentBg);
+  color: var(--accent);
+  border: 1px solid var(--accentBdr);
+}
+
+.spin {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: rot .65s linear infinite;
+}
+@keyframes rot { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <a href="index.html" class="back-link">← Revora</a>
+  <div class="box">
+    <div class="logo">
+      <div class="logo-title">Revora</div>
+      <div class="logo-sub">Ads to revenue, in one place.</div>
+    </div>
+
+    <div id="inviteBanner" style="display:none;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:16px;">
+      You've been invited to join a team. Set a password below to create your account.
+    </div>
+
+    <div id="statusMsg" class="msg"></div>
+
+    <form id="authForm">
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="f_email" required placeholder="you@company.com">
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="f_pass" required placeholder="••••••••">
+      </div>
+      <div class="field" id="confirmField" style="display:none;">
+        <label>Confirm password</label>
+        <input type="password" id="f_pass2" placeholder="••••••••">
+      </div>
+      <button type="submit" class="btn btn-a" id="authBtn">Log In</button>
+    </form>
+
+    <div class="switch">
+      <span id="switchText">Don't have an account? <a href="#" id="switchMode">Sign up</a></span>
+    </div>
+    <div class="switch" id="forgotWrap" style="margin-top:8px;">
+      <a href="#" id="forgotLink">Forgot password?</a>
+    </div>
+  </div>
+</div>
+
+<!-- SUPABASE CLIENT JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Supabase Initialization
+  const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+  const ANON     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+  const supaClient = window.supabase.createClient(SUPA_URL, ANON);
+
+  // Form State
+  // A ?invite=<token> in the URL (from an "Invite team member" link) rides
+  // along through every redirect below so setup-company.html still has it
+  // after login/signup, however the person got here. Someone who clicked an
+  // invite link has exactly one sensible action -- create an account -- so
+  // the generic Login/Signup toggle (which defaulted to Log In and said
+  // nothing about an invite) was genuinely confusing here: skip straight to
+  // signup, with no toggle to second-guess, plus a confirm-password field
+  // since this is the one-and-only account-creation moment for them.
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+  // The landing page's "Get Started" button links here with ?mode=signup so
+  // it opens straight on account creation instead of Log In (the default a
+  // brand-new visitor would otherwise have to notice and switch away from).
+  const wantsSignup = new URLSearchParams(window.location.search).get('mode') === 'signup';
+  let isLogin = !inviteToken && !wantsSignup;
+  const form = document.getElementById('authForm');
+  const authBtn = document.getElementById('authBtn');
+  const switchMode = document.getElementById('switchMode');
+  const statusMsg = document.getElementById('statusMsg');
+  const confirmField = document.getElementById('confirmField');
+  const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
+  // Supabase's own confirmation email (sent automatically on signUp, separate
+  // from our invite email) redirects the browser back here on click -- by
+  // default to a generic Site URL with no idea an invite was in progress.
+  // Passing emailRedirectTo keeps the ?invite= token alive across that hop,
+  // so clicking "confirm your email" lands on the Join flow, not a blank
+  // "Set up your company" screen. Must be an absolute URL, and this exact
+  // origin+path must be allow-listed in Supabase Auth -> URL Configuration
+  // -> Redirect URLs, or Supabase silently ignores it.
+  const absoluteSetupUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + setupUrl;
+
+  if (inviteToken) {
+    document.getElementById('inviteBanner').style.display = 'block';
+    document.querySelector('.switch').style.display = 'none';
+    document.getElementById('forgotWrap').style.display = 'none';
+    confirmField.style.display = 'block';
+    authBtn.textContent = 'Sign Up';
+  } else if (wantsSignup) {
+    confirmField.style.display = 'block';
+    authBtn.textContent = 'Sign Up';
+    document.getElementById('switchText').innerHTML = `Already have an account? <a href="#" id="switchMode">Log in</a>`;
+    document.getElementById('switchMode').addEventListener('click', toggleMode);
+  }
+
+  const absoluteResetUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'reset-password.html';
+  document.getElementById('forgotLink').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('f_email').value.trim();
+    if (!email) { statusMsg.textContent = 'Enter your email above first, then click "Forgot password?".'; statusMsg.className = 'msg err'; return; }
+    statusMsg.className = 'msg';
+    try {
+      const { error } = await supaClient.auth.resetPasswordForEmail(email, { redirectTo: absoluteResetUrl });
+      if (error) throw error;
+      statusMsg.textContent = 'If an account exists for that email, a password reset link is on its way.';
+      statusMsg.className = 'msg ok';
+    } catch (err) {
+      statusMsg.textContent = err.message;
+      statusMsg.className = 'msg err';
+    }
+  });
+
+  // Check if already logged in
+  async function checkSession() {
+    const { data: { session } } = await supaClient.auth.getSession();
+    if (session) {
+      window.location.href = setupUrl; // it redirects straight on to the dashboard once a company is confirmed
+    }
+  }
+  checkSession();
+
+  // Toggle Login/Signup
+  function toggleMode(e) {
+    if(e) e.preventDefault();
+    isLogin = !isLogin;
+    authBtn.textContent = isLogin ? "Log In" : "Sign Up";
+    confirmField.style.display = isLogin ? "none" : "block";
+    document.getElementById('switchText').innerHTML = isLogin
+      ? `Don't have an account? <a href="#" id="switchMode">Sign up</a>`
+      : `Already have an account? <a href="#" id="switchMode">Log in</a>`;
+
+    // re-bind because we replaced the HTML
+    document.getElementById('switchMode').addEventListener('click', toggleMode);
+    statusMsg.className = "msg";
+  }
+  switchMode.addEventListener('click', toggleMode);
+
+  // Handle Form Submit
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('f_email').value;
+    const password = document.getElementById('f_pass').value;
+
+    authBtn.disabled = true;
+    authBtn.innerHTML = '<div class="spin"></div> Working...';
+    statusMsg.className = "msg";
+
+    try {
+      if (isLogin) {
+        // LOGIN FLOW
+        const { data, error } = await supaClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        statusMsg.textContent = "Login successful. Redirecting...";
+        statusMsg.className = "msg ok";
+        setTimeout(() => window.location.href = setupUrl, 800);
+      } else {
+        // SIGNUP FLOW
+        const confirmPass = document.getElementById('f_pass2').value;
+        if (password !== confirmPass) throw new Error("Passwords don't match.");
+        const { data, error } = await supaClient.auth.signUp({ email, password, options: { emailRedirectTo: absoluteSetupUrl } });
+        if (error) throw error;
+        if (data.session) {
+          statusMsg.textContent = "Account created. Redirecting...";
+          statusMsg.className = "msg ok";
+          setTimeout(() => window.location.href = setupUrl, 800);
+        } else {
+          statusMsg.textContent = "Check your email for the confirmation link.";
+          statusMsg.className = "msg ok";
+          authBtn.disabled = false;
+          authBtn.textContent = "Sign Up";
+        }
+      }
+    } catch (err) {
+      statusMsg.textContent = err.message;
+      statusMsg.className = "msg err";
+      authBtn.disabled = false;
+      authBtn.textContent = isLogin ? "Log In" : "Sign Up";
+    }
+  });
+</script>
+</body>
+</html>

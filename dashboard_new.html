@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quality Herb — Media Buying Command Center</title>
-<meta name="description" content="Semi-autonomous Meta Ads command center for Quality Herb — track orders, creatives, campaigns, and earnings in real time.">
+<title>Revora</title>
+<meta name="description" content="Revora — track orders, creatives, campaigns, deliveries, and earnings in real time.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -464,7 +464,7 @@ textarea{resize:vertical;min-height:76px;}
   <div class="hdr-left">
     <div class="live-dot" id="liveDot"></div>
     <div>
-      <div class="brand">Quality Herb — Command Center</div>
+      <div class="brand" id="hdrBrand">Revora</div>
       <div class="brand-sub" id="lastSync">connecting…</div>
     </div>
   </div>
@@ -583,7 +583,7 @@ const MIN_HRS    = 10;
 async function init() {
   const { data: { session }, error } = await supabaseClient.auth.getSession();
   if (error || !session) {
-    window.location.href = "index.html"; // Not logged in
+    window.location.href = "login.html"; // Not logged in
     return;
   }
   sessionData = session;
@@ -598,6 +598,18 @@ async function init() {
     return;
   }
   window.myProfile = profile;
+
+  // The header used to hardcode one tenant's own company name ("Quality
+  // Herb") for literally every company that ever signed up -- every other
+  // business saw someone else's name in their own dashboard. Pull the
+  // logged-in user's real company name instead; "Revora" (the platform
+  // itself, not any one tenant) stays as the fallback if it's missing.
+  const { data: companyRow } = await supabaseClient.from("companies").select("name").eq("id", profile.company_id).maybeSingle();
+  const hdrBrand = document.getElementById("hdrBrand");
+  if (hdrBrand && companyRow?.name) {
+    hdrBrand.textContent = companyRow.name;
+    document.title = `${companyRow.name} · Revora`;
+  }
 
   // The header otherwise only ever showed the company name -- an invited
   // buyer/admin/customer_care had no visual confirmation anywhere that
@@ -639,7 +651,7 @@ async function init() {
   // Set up Logout listener
   document.getElementById("logoutBtn").addEventListener("click", async () => {
     await supabaseClient.auth.signOut();
-    window.location.href = "index.html";
+    window.location.href = "login.html";
   });
 
   // Load user's ad accounts
