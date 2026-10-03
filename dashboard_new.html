@@ -3644,32 +3644,11 @@ async function renderSettings(el) {
       const myWallet = walletBalances[myId] || { confirmed: 0, approved: 0, transferred: 0, balance: 0 };
       const myRequests = (fundRequests || []).filter(f => f.media_buyer_id === myId);
       const readyToSend = myRequests.filter(f => f.status === "approved");
-      const verified = !!myBuyer?.meta_ads_verified;
       return `
     <div class="panel">
       <div class="ph"><div class="ph-title">Your wallet</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Balance = revenue confirmed as paid into your dedicated account, minus funds already approved or sent to Meta. You never send money to an arbitrary account -- only to your own verified Meta Ads bank account below, and only amounts an admin already approved.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Balance = revenue confirmed as paid into your dedicated account, minus funds already approved or sent to Meta. You never send money to an arbitrary account -- only straight into Meta's own ad billing, and only amounts an admin already approved.</div>
       <div style="font-size:24px;font-weight:700;color:var(--text);margin-bottom:14px;">${fN(myWallet.balance)}</div>
-
-      <div style="background:var(--panel2);border-radius:8px;padding:10px 12px;margin-bottom:14px;">
-        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;">Your Meta Ads top-up account</div>
-        ${verified ? `
-        <div style="font-size:12px;color:var(--text);">✅ ${escH(myBuyer.meta_ads_account_name)} -- ${escH(myBuyer.meta_ads_bank_name)} ${escH(myBuyer.meta_ads_bank_account_number)}</div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Verified as a Facebook/Meta account. <a href="#" id="metaAcctChangeLink" style="color:var(--accent);">Change it</a></div>
-        ` : `
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">Enter the bank account number Meta's Ads Manager gave you for bank-transfer top-ups. We verify the name resolves to Facebook/Meta before saving it -- we won't accept any other account.</div>
-        `}
-        <div id="metaAcctForm" style="${verified ? "display:none;" : ""}margin-top:8px;">
-          <div class="fg">
-            <div class="field"><label>Bank</label>
-              <select id="meta_bank_code"><option value="">Loading banks…</option></select>
-            </div>
-            <div class="field"><label>Account number</label><input id="meta_acct_num" placeholder="10-digit account number" value="${escH(myBuyer?.meta_ads_bank_account_number || "")}"></div>
-          </div>
-          <button type="button" class="btn btn-a" id="metaAcctVerifyBtn" style="margin-top:8px;padding:4px 10px;font-size:10px;">Verify &amp; save</button>
-          <div id="metaAcctMsg" style="margin-top:6px;"></div>
-        </div>
-      </div>
 
       <form id="fundReqForm">
         <div class="fg">
@@ -3682,19 +3661,27 @@ async function renderSettings(el) {
       ${readyToSend.length ? `
       <div style="margin-top:16px;">
         <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px;">Approved -- ready to send to Meta</div>
-        ${readyToSend.map(f => `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-          <div style="font-size:12px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
-          <button type="button" class="btn btn-a sendToMetaBtn" data-id="${f.id}" ${verified ? "" : "disabled title=\"Verify your Meta Ads account above first\""} style="padding:3px 8px;font-size:10px;">Send to Meta Ads</button>
+        <div style="font-size:10.5px;color:var(--muted);margin-bottom:8px;">Meta generates a fresh one-time account number each time you click "Add funds" in Ads Manager, and it expires in about 30 minutes -- so get that number first, then come straight here and send before it expires.</div>
+        ${readyToSend.map(f => `
+        <div style="border-bottom:1px solid var(--border);padding:8px 0;">
+          <div style="font-size:12px;margin-bottom:6px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
+          <div class="fg">
+            <div class="field"><label>Bank</label><select class="metaSendBank" data-id="${f.id}"><option value="">Loading banks…</option></select></div>
+            <div class="field"><label>Today's Meta top-up account number</label><input type="text" class="metaSendAcctNum" data-id="${f.id}" placeholder="from Ads Manager -> Add funds"></div>
+          </div>
+          <button type="button" class="btn btn-a sendToMetaBtn" data-id="${f.id}" style="margin-top:6px;padding:4px 10px;font-size:10px;">Verify &amp; send to Meta Ads</button>
+          <div class="sendToMetaMsg" data-id="${f.id}" style="margin-top:6px;"></div>
         </div>`).join("")}
       </div>` : ""}
       ${myRequests.length ? `
       <div class="tbl-wrap" style="margin-top:16px;"><table>
-        <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th></tr>
+        <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Sent to</th></tr>
         ${myRequests.map(f => `<tr>
           <td>${ago(f.requested_at)}</td>
           <td class="n">${fN(f.amount_naira)}</td>
           <td class="s">${escH(f.note || "—")}</td>
           <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span>${f.transfer_error ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">${escH(f.transfer_error)}</div>` : ""}</td>
+          <td class="s">${f.destination_account_name ? `${escH(f.destination_account_name)} (${escH(f.destination_bank_name || "")})` : "—"}</td>
         </tr>`).join("")}
       </table></div>` : ""}
     </div>`;
@@ -4012,55 +3999,37 @@ window.refreshBalances = async function() {
     renderSettings(el);
   }));
 
-  // Buyer self-service: register (and verify) the Meta Ads bank account
-  // their approved wallet balance will be transferred into.
-  if (document.getElementById("metaAcctForm")) {
-    const bankSelect = document.getElementById("meta_bank_code");
+  // Each approved request gets its own bank dropdown -- Meta's top-up
+  // account number is one-time and expires in ~30 minutes, so there's
+  // nothing to preload beyond the bank list itself.
+  document.querySelectorAll(".metaSendBank").forEach(sel => {
     sbFn("paystack-list-banks", null, "GET").then(r => {
-      if (!r.banks?.length) { bankSelect.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
-      bankSelect.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
-    }).catch(() => { bankSelect.innerHTML = `<option value="">Couldn't load banks</option>`; });
-
-    document.getElementById("metaAcctChangeLink")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      document.getElementById("metaAcctForm").style.display = "block";
-    });
-
-    document.getElementById("metaAcctVerifyBtn")?.addEventListener("click", async (e) => {
-      const btn = e.target;
-      const msg = document.getElementById("metaAcctMsg");
-      const bank_code = document.getElementById("meta_bank_code").value;
-      const account_number = document.getElementById("meta_acct_num").value.trim();
-      if (!bank_code || !account_number) { msg.innerHTML = `<div class="msg err">❌ Pick a bank and enter the account number.</div>`; return; }
-      btn.disabled = true; btn.textContent = "Verifying…";
-      try {
-        const r = await sbFn("paystack-verify-meta-account", { media_buyer_id: window.myProfile.media_buyer_id, account_number, bank_code });
-        if (r.error) throw new Error(r.error);
-        if (!r.verified) {
-          msg.innerHTML = `<div class="msg err">❌ ${escH(r.reason || "Could not verify this account.")} (Resolved name: ${escH(r.account_name || "unknown")})</div>`;
-        } else {
-          msg.innerHTML = `<div class="msg ok">✅ Verified as ${escH(r.account_name)}.</div>`;
-          renderSettings(el);
-        }
-      } catch (err) {
-        msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
-      } finally {
-        btn.disabled = false; btn.textContent = "Verify & save";
-      }
-    });
-  }
+      if (!r.banks?.length) { sel.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
+      sel.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
+    }).catch(() => { sel.innerHTML = `<option value="">Couldn't load banks</option>`; });
+  });
 
   document.querySelectorAll(".sendToMetaBtn").forEach(btn => btn.addEventListener("click", async () => {
-    if (!confirm("Send this amount to your verified Meta Ads account now? This triggers a real transfer.")) return;
-    btn.disabled = true; btn.textContent = "Sending…";
+    const id = btn.dataset.id;
+    const bank_code = document.querySelector(`.metaSendBank[data-id="${id}"]`).value;
+    const account_number = document.querySelector(`.metaSendAcctNum[data-id="${id}"]`).value.trim();
+    const msg = document.querySelector(`.sendToMetaMsg[data-id="${id}"]`);
+    if (!bank_code || !account_number) { msg.innerHTML = `<div class="msg err">❌ Pick a bank and enter today's account number.</div>`; return; }
+    if (!confirm("Send this amount to Meta now? This triggers a real transfer.")) return;
+    btn.disabled = true; btn.textContent = "Verifying & sending…";
     try {
-      const r = await sbFn("paystack-transfer-to-meta", { fund_request_id: btn.dataset.id });
+      const r = await sbFn("paystack-transfer-to-meta", { fund_request_id: id, account_number, bank_code });
       if (r.error) throw new Error(r.error);
+      if (!r.ok) {
+        msg.innerHTML = `<div class="msg err">❌ ${escH(r.reason || "Could not verify this account.")} (Resolved name: ${escH(r.account_name || "unknown")})</div>`;
+        btn.disabled = false; btn.textContent = "Verify & send to Meta Ads";
+        return;
+      }
       bvToast(`Sent to ${r.account_name || "Meta Ads"}`);
       renderSettings(el);
     } catch (err) {
-      alert("Transfer failed: " + err.message);
-      btn.disabled = false; btn.textContent = "Send to Meta Ads";
+      msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = "Verify & send to Meta Ads";
     }
   }));
 
