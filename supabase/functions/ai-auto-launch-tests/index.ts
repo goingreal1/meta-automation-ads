@@ -509,6 +509,24 @@ const VALID_BILLING_EVENTS = ["IMPRESSIONS", "LINK_CLICKS"];
 const VALID_WEBSITE_OPTIMIZATION_GOALS = ["OFFSITE_CONVERSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS"];
 const VALID_DEVICE_PLATFORMS = ["mobile", "desktop"];
 
+// The campaign builder's objective step (website destination only -- a
+// WhatsApp-destination product stays forced to OUTCOME_SALES/CONVERSATIONS
+// exactly as before, same Meta requirement as ever). Each objective has its
+// own correct optimization goal and promoted_object shape -- OUTCOME_SALES
+// is the only one that still offers a real per-ad-set optimization-goal
+// choice (see its use below), since Traffic/Engagement/Awareness each have
+// one sensible goal, not several worth exposing as a dropdown. Leads is
+// deliberately NOT in this map -- it needs a real Meta Lead Ads form, which
+// nothing here creates yet, so the dashboard disables that choice entirely
+// rather than silently launching something broken.
+const OBJECTIVE_CONFIG: Record<string, { optimizationGoal: string; promotedObject: (pixelId: string, pageId: string) => Record<string, any> | null }> = {
+  OUTCOME_SALES: { optimizationGoal: REAL_OPTIMIZATION_GOAL, promotedObject: (pixelId) => ({ pixel_id: pixelId, custom_event_type: "PURCHASE" }) },
+  OUTCOME_TRAFFIC: { optimizationGoal: "LINK_CLICKS", promotedObject: () => null },
+  OUTCOME_ENGAGEMENT: { optimizationGoal: "POST_ENGAGEMENT", promotedObject: (_pixelId, pageId) => ({ page_id: pageId }) },
+  OUTCOME_AWARENESS: { optimizationGoal: "REACH", promotedObject: () => null },
+};
+const VALID_OBJECTIVES = Object.keys(OBJECTIVE_CONFIG);
+
 // Resolves Nigerian state names (as picked in the dashboard's ad-set builder,
 // e.g. "Lagos") to Meta's actual region keys via the geolocation Targeting
 // Search API -- sending human-readable names directly is not a valid Meta
@@ -587,7 +605,7 @@ function buildAdSetPayload(opts: {
   budgetNaira: number;
   budgetType: "abo" | "cbo";
   targeting: Record<string, any>;
-  promotedObject: Record<string, any>;
+  promotedObject: Record<string, any> | null;
   optimizationGoal: string;
   bidStrategy: string;
   bidAmountNaira?: number | null;
@@ -602,10 +620,13 @@ function buildAdSetPayload(opts: {
     bid_strategy: opts.bidStrategy,
     billing_event: opts.billingEvent,
     targeting: opts.targeting,
-    promoted_object: opts.promotedObject,
     status: "PAUSED",
     access_token: META_ACCESS_TOKEN,
   };
+  // Traffic/Awareness objectives need no promoted_object at all -- Meta
+  // rejects the field being present-but-empty, so it's omitted entirely
+  // rather than sent as null.
+  if (opts.promotedObject) payload.promoted_object = opts.promotedObject;
   // LOWEST_COST_WITH_BID_CAP / COST_CAP both require an explicit bid_amount
   // (in kobo, same *100 convention as budget) -- Meta rejects either strategy
   // without one. LOWEST_COST_WITHOUT_CAP (the default) takes none.
@@ -665,23 +686,34 @@ async function launchAdSetGroup(
       console.error(msg);
       return { error: msg };
     }
-    if (destinationType === "website" && (!pixelId || !destinationLink)) {
-      const msg = `Missing pixel_id/landing_page_url for creative ${creative.id} -- check ad_accounts and products rows.`;
+    if (destinationType === "website" && !destinationLink) {
+      const msg = `Missing landing_page_url for creative ${creative.id} -- check the product's Products-tab settings.`;
       console.error(msg);
       return { error: msg };
     }
 
-    // promoted_object depends entirely on the destination: website sales
-    // optimizes for the pixel's Purchase event; WhatsApp sales optimizes for
-    // CONVERSATIONS against the connected WhatsApp number -- per Meta's
-    // Click-to-WhatsApp docs for Sales-objective campaigns. The optimization
-    // goal itself is resolved per ad set below (website allows a real choice;
-    // WhatsApp stays forced to CONVERSATIONS -- that's a Meta requirement for
-    // this destination type, not a preference).
+    // The campaign builder's objective step -- WhatsApp destination stays
+    // forced to OUTCOME_SALES regardless of what's picked (that destination
+    // IS a sales-via-messaging flow in this app, same as always).
+    const campaignObjective = destinationType === "whatsapp"
+      ? "OUTCOME_SALES"
+      : (VALID_OBJECTIVES.includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES");
+    const objectiveDefaults = OBJECTIVE_CONFIG[campaignObjective];
+    if (destinationType === "website" && campaignObjective === "OUTCOME_SALES" && !pixelId) {
+      const msg = `Missing pixel_id for creative ${creative.id} -- check the ad_accounts row (Sales objective needs a connected pixel).`;
+      console.error(msg);
+      return { error: msg };
+    }
+
+    // promoted_object depends on destination + objective: website Sales
+    // optimizes for the pixel's Purchase event; website Traffic/Awareness
+    // need none at all; website Engagement optimizes for the Page's post
+    // engagement; WhatsApp Sales optimizes for CONVERSATIONS against the
+    // connected WhatsApp number -- per Meta's Click-to-WhatsApp docs.
     const promotedObject =
       destinationType === "whatsapp"
         ? { page_id: pageId, whatsapp_phone_number: whatsappNumber }
-        : { pixel_id: pixelId, custom_event_type: "PURCHASE" };
+        : objectiveDefaults.promotedObject(pixelId, pageId);
 
     // Ad sets to create for this creative -- built directly in the dashboard's
     // ad-set builder (one row = one ad set; "Duplicate x N" clones it into more
@@ -711,7 +743,7 @@ async function launchAdSetGroup(
     const totalBudgetNaira = adSetConfigs.reduce((sum: number, c: any) => sum + Number(c.budget_naira || 5000), 0);
     const campaignPayload: Record<string, any> = {
       name: campaignName,
-      objective: "OUTCOME_SALES",
+      objective: campaignObjective,
       // Required by Meta on every campaign since their special-ads-category
       // compliance rollout (housing/employment/credit/social issues) --
       // "NONE" for an ordinary product. Missing this hard-fails campaign
@@ -757,7 +789,7 @@ async function launchAdSetGroup(
         meta_campaign_id: campaignId,
         campaign_name: campaignPayload.name,
         campaign_type: "testing",
-        objective: "OUTCOME_SALES",
+        objective: campaignObjective,
         daily_budget_naira: budgetType === "abo" ? null : totalBudgetNaira,
         status: "paused",
         ad_account_id: creative.ad_account_id,
@@ -847,10 +879,15 @@ async function launchAdSetGroup(
       // Per-ad-set resolution, each falling back to the exact previous fixed
       // behavior when the config row doesn't set it. WhatsApp's optimization
       // goal is never overridable -- CONVERSATIONS is a Meta requirement for
-      // that destination type, not a choice (see promotedObject above).
+      // that destination type, not a choice (see promotedObject above). Only
+      // OUTCOME_SALES offers a real per-ad-set choice (Conversions/Link
+      // clicks/Landing page views) -- Traffic/Engagement/Awareness each have
+      // one objective-correct goal, not several worth exposing.
       const optimizationGoal = destinationType === "whatsapp"
         ? "CONVERSATIONS"
-        : (VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL);
+        : campaignObjective === "OUTCOME_SALES"
+          ? (VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL)
+          : objectiveDefaults.optimizationGoal;
       const bidStrategy = VALID_BID_STRATEGIES.includes(config.bid_strategy) ? config.bid_strategy : REAL_BID_STRATEGY;
       const billingEvent = VALID_BILLING_EVENTS.includes(config.billing_event) ? config.billing_event : "IMPRESSIONS";
 
