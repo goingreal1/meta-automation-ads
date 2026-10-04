@@ -2414,12 +2414,58 @@ async function pullAndRefresh(btnId = "btnPull2", msgId = "campMsg") {
 }
 
 let campaignsStatusFilter = "all"; // all | active | paused
+// Meta Ads Manager's own list view is three flat tabs -- Campaigns / Ad sets /
+// Ads -- each showing every row at that level across every campaign, not a
+// forced drill-down. Row clicks still drill into the detail view (useful,
+// kept), but you no longer have to click into a campaign just to see its ad
+// sets or ads.
+let campaignsFlatLevel = "campaigns"; // campaigns | adsets | ads
+
+function bvSwitchCampaignsFlatLevel(level) {
+  campaignsFlatLevel = level;
+  render();
+}
+
+// Shared header: title, the three flat-level tabs, and the toolbar
+// (status filter + Sync/Pull + the same "+ New Campaign" entry point as
+// Creative Vault). counts is {campaigns, adsets, ads} for the tab badges.
+function bvCampaignsHeader(counts) {
+  const tabs = [
+    { key: "campaigns", label: "Campaigns", count: counts.campaigns },
+    { key: "adsets", label: "Ad sets", count: counts.adsets },
+    { key: "ads", label: "Ads", count: counts.ads },
+  ];
+  return `
+    <div class="sh">
+      <div class="sh-title">Campaigns</div>
+      <div class="sh-actions">
+        <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenCampaignBuilder()">+ Create</button>
+        <select id="campStatusFilter" style="width:auto;padding:5px 9px;font-size:12px;">
+          <option value="all" ${campaignsStatusFilter === "all" ? "selected" : ""}>All</option>
+          <option value="active" ${campaignsStatusFilter === "active" ? "selected" : ""}>Active</option>
+          <option value="paused" ${campaignsStatusFilter === "paused" ? "selected" : ""}>Paused / ended</option>
+        </select>
+        <button class="btn btn-g" id="btnStructSync2">☁️ Sync from Meta</button>
+        <button class="btn btn-b" id="btnPull2">📊 Pull & Refresh</button>
+      </div>
+    </div>
+    <div id="campMsg"></div>
+    <div class="bv-builder-tabs" style="margin-bottom:14px;padding:0;">
+      ${tabs.map(t => `<button type="button" class="bv-tab-btn ${campaignsFlatLevel === t.key ? "active" : ""}" onclick="bvSwitchCampaignsFlatLevel('${t.key}')">${t.label} <span style="color:var(--muted);font-weight:500;">${t.count}</span></button>`).join("")}
+    </div>`;
+}
+
+function bvCampaignsToolbarWire() {
+  document.getElementById("campStatusFilter")?.addEventListener("change", e => { campaignsStatusFilter = e.target.value; render(); });
+  document.getElementById("btnStructSync2")?.addEventListener("click", () => bvTriggerStructureSyncInline("btnStructSync2", "campMsg"));
+  document.getElementById("btnPull2")?.addEventListener("click", () => pullAndRefresh("btnPull2", "campMsg"));
+}
 
 // ── LEVEL 1: every campaign (live, recent, past) ────────────────────────────
 async function renderCampaignsList(el) {
   const [campaigns, adSets, adSetAds] = await Promise.all([
     sbQuery("campaigns", "select=*,ad_accounts(nickname,name)&order=created_at.desc&limit=200"),
-    sbQuery("ad_sets", "select=id,campaign_id,status,budget_naira,meta_raw,daily_metrics(spend_naira,ctr,orders,metric_date)&order=created_at.desc&limit=1000"),
+    sbQuery("ad_sets", "select=*,campaigns(campaign_name),daily_metrics(spend_naira,ctr,orders,impressions,reach,cost_per_order_naira,metric_date)&order=created_at.desc&limit=1000"),
     sbQuery("ad_set_ads", "select=id,ad_set_id&limit=2000"),
   ]);
 
@@ -2429,6 +2475,9 @@ async function renderCampaignsList(el) {
     a.spend_latest = Number(latest?.spend_naira || 0);
     a.ctr_latest = latest?.ctr ?? null;
     a.orders_latest = Number(latest?.orders || 0);
+    a.impressions_latest = Number(latest?.impressions || 0);
+    a.reach_latest = Number(latest?.reach || 0);
+    a.cpa_latest = latest?.cost_per_order_naira ?? null;
     a.lifecycle = bvAdSetLifecycle(a);
     if (!adSetsByCampaign.has(a.campaign_id)) adSetsByCampaign.set(a.campaign_id, []);
     adSetsByCampaign.get(a.campaign_id).push(a);
@@ -2451,36 +2500,18 @@ async function renderCampaignsList(el) {
     return true;
   });
 
-  const totActive = rows.filter(r => r.campaign.status === "active").length;
+  const counts = { campaigns: rows.length, adsets: adSets?.length ?? 0, ads: adSetAds?.length ?? 0 };
 
-  el.innerHTML = `
-    <div class="sh">
-      <div class="sh-title">Campaigns</div>
-      <div class="sh-actions">
-        <select id="campStatusFilter" style="width:auto;padding:5px 9px;font-size:12px;">
-          <option value="all" ${campaignsStatusFilter === "all" ? "selected" : ""}>All</option>
-          <option value="active" ${campaignsStatusFilter === "active" ? "selected" : ""}>Active</option>
-          <option value="paused" ${campaignsStatusFilter === "paused" ? "selected" : ""}>Paused / ended</option>
-        </select>
-        <button class="btn btn-g" id="btnStructSync2">☁️ Sync from Meta</button>
-        <button class="btn btn-b" id="btnPull2">📊 Pull & Refresh</button>
-      </div>
-    </div>
-    <div id="campMsg"></div>
+  if (campaignsFlatLevel === "adsets") return renderAdSetsFlat(el, counts, adSets || []);
+  if (campaignsFlatLevel === "ads") return renderAdsFlat(el, counts);
 
-    <div class="g4">
-      <div class="kc"><div class="kc-lbl">Campaigns</div><div class="kc-val">${rows.length}</div></div>
-      <div class="kc"><div class="kc-lbl">Active</div><div class="kc-val a">${totActive}</div></div>
-      <div class="kc"><div class="kc-lbl">Ad sets</div><div class="kc-val">${adSets?.length ?? 0}</div></div>
-      <div class="kc"><div class="kc-lbl">Ads</div><div class="kc-val">${adSetAds?.length ?? 0}</div></div>
-    </div>
-
+  el.innerHTML = bvCampaignsHeader(counts) + `
     <div class="panel">
       <div class="ph"><div class="ph-title">All campaigns</div><div class="ph-count">${filtered.length} shown</div></div>
       ${!filtered.length
         ? `<div class="empty"><div class="empty-ico">🚀</div>No campaigns yet. Launch one from Creative Vault, or Sync from Meta if you already have live campaigns running there.</div>`
         : `<div class="tbl-wrap"><table>
-          <tr><th>Campaign</th><th>Ad account</th><th>Status</th><th>Ad sets</th><th>Ads</th><th>Budget/day</th><th>Spend</th><th>Orders</th><th>Created</th></tr>
+          <tr><th>Campaign</th><th>Ad account</th><th>Delivery</th><th>Ad sets</th><th>Ads</th><th>Budget/day</th><th>Amount spent</th><th>Results</th><th>Cost per result</th><th>Created</th></tr>
           ${filtered.map(r => `<tr class="bv-clickable-row" onclick="bvOpenCampaign('${r.campaign.id}')">
             <td class="s n" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.campaign.campaign_name)}">${escH(r.campaign.campaign_name)}</td>
             <td class="n" style="color:var(--muted);">${escH(r.campaign.ad_accounts?.nickname || r.campaign.ad_accounts?.name || "—")}</td>
@@ -2490,14 +2521,98 @@ async function renderCampaignsList(el) {
             <td>${fN(r.campaign.daily_budget_naira)}</td>
             <td>${fN(r.spend)}</td>
             <td>${r.orders}</td>
+            <td>${r.orders ? fN(r.spend / r.orders) : "—"}</td>
             <td>${ago(r.campaign.created_at)}</td>
           </tr>`).join("")}
         </table></div>`}
     </div>`;
 
-  document.getElementById("campStatusFilter")?.addEventListener("change", e => { campaignsStatusFilter = e.target.value; render(); });
-  document.getElementById("btnStructSync2")?.addEventListener("click", () => bvTriggerStructureSyncInline("btnStructSync2", "campMsg"));
-  document.getElementById("btnPull2")?.addEventListener("click", () => pullAndRefresh("btnPull2", "campMsg"));
+  bvCampaignsToolbarWire();
+}
+
+// ── Flat tab: every ad set, across every campaign ───────────────────────────
+function renderAdSetsFlat(el, counts, adSets) {
+  const filtered = adSets.filter(a => {
+    if (campaignsStatusFilter === "active") return a.lifecycle.key === "active";
+    if (campaignsStatusFilter === "paused") return a.lifecycle.key !== "active";
+    return true;
+  });
+
+  el.innerHTML = bvCampaignsHeader(counts) + `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">All ad sets</div><div class="ph-count">${filtered.length} shown</div></div>
+      ${!filtered.length
+        ? `<div class="empty"><div class="empty-ico">🎯</div>No ad sets yet.</div>`
+        : `<div class="tbl-wrap"><table>
+          <tr><th>Ad set</th><th>Campaign</th><th>Delivery</th><th>Budget/day</th><th>Amount spent</th><th>Impressions</th><th>Reach</th><th>Results</th><th>Cost per result</th></tr>
+          ${filtered.map(a => `<tr class="bv-clickable-row" onclick="bvOpenAdSet('${a.id}','${a.campaign_id}')">
+            <td class="s n" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(a.adset_name || "")}">${escH(a.adset_name || "—")}</td>
+            <td class="n" style="color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(a.campaigns?.campaign_name || "—")}</td>
+            <td><span class="pill ${a.lifecycle.key}">${a.lifecycle.label}</span></td>
+            <td>${fN(a.budget_naira)}</td>
+            <td>${fN(a.spend_latest)}</td>
+            <td>${a.impressions_latest.toLocaleString()}</td>
+            <td>${a.reach_latest.toLocaleString()}</td>
+            <td>${a.orders_latest}</td>
+            <td>${fN(a.cpa_latest)}</td>
+          </tr>`).join("")}
+        </table></div>`}
+    </div>`;
+
+  bvCampaignsToolbarWire();
+}
+
+// ── Flat tab: every ad, across every ad set/campaign ────────────────────────
+async function renderAdsFlat(el, counts) {
+  el.innerHTML = bvCampaignsHeader(counts) + `<div class="panel"><div class="empty"><div class="empty-ico">🎨</div>Loading ads…</div></div>`;
+  bvCampaignsToolbarWire();
+
+  const adSetAds = await sbQuery(
+    "ad_set_ads",
+    "select=*,ad_sets(adset_name,status,meta_raw,campaign_id,campaigns(campaign_name)),creatives(creative_name,image_url,video_id,headline,cta_type),daily_metrics(spend_naira,ctr,orders,cost_per_order_naira,metric_date)&order=created_at.desc&limit=1000"
+  );
+
+  const rows = (adSetAds || []).map(r => {
+    const latest = (r.daily_metrics || []).sort((x, y) => (x.metric_date < y.metric_date ? 1 : -1))[0];
+    return {
+      ...r,
+      spend_latest: Number(latest?.spend_naira || 0),
+      ctr_latest: latest?.ctr ?? null,
+      orders_latest: Number(latest?.orders || 0),
+      cpa_latest: latest?.cost_per_order_naira ?? null,
+      lifecycle: bvAdSetLifecycle({ status: r.ad_sets?.status, meta_raw: r.ad_sets?.meta_raw }),
+    };
+  });
+
+  const filtered = rows.filter(r => {
+    if (campaignsStatusFilter === "active") return r.lifecycle.key === "active";
+    if (campaignsStatusFilter === "paused") return r.lifecycle.key !== "active";
+    return true;
+  });
+
+  const panel = el.querySelector(".panel");
+  panel.innerHTML = `
+    <div class="ph"><div class="ph-title">All ads</div><div class="ph-count">${filtered.length} shown</div></div>
+    ${!filtered.length
+      ? `<div class="empty"><div class="empty-ico">🎨</div>No ads yet.</div>`
+      : `<div class="tbl-wrap"><table>
+        <tr><th>Ad</th><th>Ad set</th><th>Campaign</th><th>Delivery</th><th>Amount spent</th><th>CTR</th><th>Results</th><th>Cost per result</th></tr>
+        ${filtered.map(r => `<tr class="bv-clickable-row" onclick="bvOpenAdSet('${r.ad_set_id}','${r.ad_sets?.campaign_id || ""}')">
+          <td>
+            <div style="display:flex;align-items:center;gap:8px;">
+              ${r.creatives?.image_url ? `<img src="${r.creatives.image_url}" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0;">` : `<div style="width:28px;height:28px;border-radius:5px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">${r.creatives?.video_id ? "🎬" : "🖼️"}</div>`}
+              <span class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.creatives?.headline || r.creatives?.creative_name || "")}">${escH(r.creatives?.headline || r.creatives?.creative_name || "—")}</span>
+            </div>
+          </td>
+          <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(r.ad_sets?.adset_name || "—")}</td>
+          <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(r.ad_sets?.campaigns?.campaign_name || "—")}</td>
+          <td><span class="pill ${r.lifecycle.key}">${r.lifecycle.label}</span></td>
+          <td>${fN(r.spend_latest)}</td>
+          <td class="${ctrCls(r.ctr_latest)}">${r.ctr_latest != null ? parseFloat(r.ctr_latest).toFixed(2) + "%" : "—"}</td>
+          <td>${r.orders_latest}</td>
+          <td>${fN(r.cpa_latest)}</td>
+        </tr>`).join("")}
+      </table></div>`}`;
 }
 
 // ── LEVEL 2: one campaign's ad sets ─────────────────────────────────────────
