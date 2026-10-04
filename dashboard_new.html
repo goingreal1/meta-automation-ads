@@ -604,6 +604,7 @@ textarea{resize:vertical;min-height:80px;}
     <div class="sidebar-group-lbl">Business</div>
     <div class="tab-btn" data-tab="wallet"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 010-4h14v4"/><path d="M3 5v14a2 2 0 002 2h16v-5"/><path d="M18 12a2 2 0 000 4h4v-4z"/></svg></span><span class="tab-label">Wallet</span></div>
     <div class="tab-btn" data-tab="products"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span class="tab-label">Products</span></div>
+    <div class="tab-btn" data-tab="shop"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 11a2 2 0 0 1-2 1.7H7.5a2 2 0 0 1-2-1.7L4 7z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg></span><span class="tab-label">Shop</span></div>
     <div class="tab-btn" data-tab="conversations"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="tab-label">Conversations</span></div>
     <div class="tab-btn" data-tab="website-leads"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></span><span class="tab-label">Website Leads</span></div>
     <div class="tab-btn" data-tab="approvals"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span><span class="tab-label">Approvals</span> <span class="tab-badge" id="approvalBadge">0</span></div>
@@ -728,8 +729,8 @@ async function init() {
   // it) RLS leaves empty anyway. Hide what's not theirs instead of leaving
   // them to discover that the hard way.
   const HIDDEN_TABS_BY_ROLE = {
-    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "conversations", "website-leads", "approvals", "earnings"],
-    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "approvals", "earnings"],
+    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "conversations", "website-leads", "approvals", "earnings"],
+    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "approvals", "earnings"],
   };
   for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
     document.querySelector(`[data-tab="${tab}"]`)?.style.setProperty("display", "none");
@@ -1073,6 +1074,7 @@ async function render() {
     else if (activeTab === "performance") await renderPerformance(c);
     else if (activeTab === "leaderboard") await renderLeaderboard(c);
     else if (activeTab === "products")  await renderProducts(c);
+    else if (activeTab === "shop")      await renderShop(c);
     else if (activeTab === "orders")    await renderOrders(c);
     else if (activeTab === "calllogs")  await renderCallLogs(c);
     else if (activeTab === "support")   await renderSupportQueue(c);
@@ -2674,6 +2676,229 @@ async function bvOrderLinkModal(productId, productName) {
       btn.textContent = "Select-all — Ctrl/Cmd+C to copy";
     }
   });
+}
+
+// ── TAB: SHOP ─────────────────────────────────────────────────────────────────
+// A Shopify-style view of the same products the Products tab manages, focused
+// on what a Meta ad needs: click a product to set its ad image, primary
+// text/headline/CTA, and which page the ad should send people to. Product
+// basics (price, stock, package tiers) stay edited in the Products tab --
+// this never duplicates that form, just adds the ad-creative layer on top.
+async function renderShop(el) {
+  const prods = await sbQuery("products", "order=created_at.desc");
+  window.bvShopProductsCache = prods || [];
+  const readyCount = (prods || []).filter(p => p.ad_primary_text && p.ad_headline).length;
+
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Shop</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:16px;">${prods?.length ?? 0} products &middot; ${readyCount} with ad copy ready. Click a product to set what its Meta ad says. Price, stock, and package options stay in the <a href="#" onclick="event.preventDefault(); activeTab='products'; document.querySelector('[data-tab=products]').click();" style="color:var(--accent);">Products</a> tab.</div>
+    ${!prods?.length ? `<div class="empty"><div class="empty-ico">🛍️</div>No products yet — add one in the Products tab first.</div>` : `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">
+      ${prods.map(p => {
+        const ready = !!(p.ad_primary_text && p.ad_headline);
+        return `
+        <div onclick="bvOpenShopPanel('${p.id}')" style="background:var(--panel);border:1.5px solid var(--border);border-radius:12px;overflow:hidden;cursor:pointer;transition:border-color .15s;">
+          <div style="height:130px;background:var(--panel2);display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            ${p.product_image_url ? `<img src="${escH(p.product_image_url)}" style="width:100%;height:100%;object-fit:cover;">` : `<span style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.05em;text-transform:uppercase;">No photo</span>`}
+          </div>
+          <div style="padding:12px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">
+              <div style="font-size:13px;font-weight:600;line-height:1.3;">${escH(p.product_name)}</div>
+              <span class="pill ${p.is_active ? "active" : "paused"}" style="flex:none;">${p.is_active ? "active" : "inactive"}</span>
+            </div>
+            <div style="font-size:15px;font-weight:600;color:var(--accent);margin-top:4px;">${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : (escH(p.currency) + " " + p.default_order_value_naira)}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;font-weight:600;color:${ready ? "var(--accent)" : "#9a6a26"};">
+              <span style="width:7px;height:7px;border-radius:50%;background:${ready ? "var(--accent)" : "#c98a3a"};"></span>
+              ${ready ? "Ad ready" : "Needs ad copy"}
+            </div>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`}
+  `;
+}
+
+function bvOpenShopPanel(productId) {
+  const p = (window.bvShopProductsCache || []).find(x => x.id === productId);
+  if (!p) return;
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  const linkTarget = p.ad_link_target || "product";
+  const ctaType = p.ad_cta_type || "SHOP_NOW";
+  const isWhatsapp = p.destination_type === "whatsapp";
+
+  overlay.innerHTML = `
+    <div class="bv-modal" style="max-width:580px;">
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:4px;">
+        <div style="width:44px;height:44px;flex:none;border-radius:8px;background:var(--panel2);border:1px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);">
+          ${p.product_image_url ? `<img src="${escH(p.product_image_url)}" style="width:100%;height:100%;object-fit:cover;">` : "—"}
+        </div>
+        <div>
+          <div class="ph-title" style="margin:0;">${escH(p.product_name)}</div>
+          <div style="font-size:11.5px;color:var(--muted);">${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : (escH(p.currency) + " " + p.default_order_value_naira)} &middot; <a href="#" onclick="event.preventDefault(); bvCloseModal(); activeTab='products'; document.querySelector('[data-tab=products]').click(); setTimeout(() => bvEditProduct('${p.id}'), 200);" style="color:var(--accent);">Edit product details</a></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:7px;margin:16px 0 10px;padding-top:12px;border-top:1px dashed var(--border);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 11l18-7-7 18-3-7-8-4z"/></svg>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Meta Ads creative</div>
+      </div>
+
+      <div class="field">
+        <label>Ad image or video <span style="font-weight:400;color:var(--muted);">(falls back to the product photo above if left blank)</span></label>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:2px;">
+          <div id="shopAdImgPreview" style="width:40px;height:40px;border-radius:7px;background:var(--panel2);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:9px;color:var(--muted);">
+            ${p.ad_image_url ? `<img src="${escH(p.ad_image_url)}" style="width:100%;height:100%;object-fit:cover;">` : "—"}
+          </div>
+          <input type="file" id="shopAdImgFile" accept="image/jpeg,image/png" style="display:none;" onchange="bvUploadShopAdImage(this, '${p.id}')">
+          <button type="button" class="btn btn-g" id="shopAdImgBtn" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('shopAdImgFile').click()">Upload</button>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:12px;">
+        <label style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Primary text</span>
+          <button type="button" class="btn btn-g" id="shopDraftBtn" style="padding:3px 9px;font-size:10.5px;" onclick="bvDraftAdCopy('${p.id}')">✨ Draft with AI</button>
+        </label>
+        <textarea id="shopAdPrimary" rows="3" placeholder="The main caption people see above the image...">${escH(p.ad_primary_text || "")}</textarea>
+      </div>
+
+      <div class="fg" style="margin-top:12px;">
+        <div class="field"><label>Headline</label><input id="shopAdHeadline" placeholder="Short bold line" value="${escH(p.ad_headline || "")}"></div>
+        <div class="field"><label>CTA button</label>
+          <select id="shopAdCta">
+            <option value="SHOP_NOW" ${ctaType === "SHOP_NOW" ? "selected" : ""}>Shop Now</option>
+            <option value="LEARN_MORE" ${ctaType === "LEARN_MORE" ? "selected" : ""}>Learn More</option>
+            <option value="ORDER_NOW" ${ctaType === "ORDER_NOW" ? "selected" : ""}>Order Now</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:12px;">
+        <label>Description <span style="font-weight:400;color:var(--muted);">(link ads only)</span></label>
+        <input id="shopAdDescription" placeholder="Small secondary line under the headline" value="${escH(p.ad_description || "")}">
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <label>Where should this ad send people?</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px;">
+          <div class="shopLinkOpt" data-val="product" onclick="bvSetShopLinkTarget('product')" style="display:flex;align-items:center;gap:10px;border:1.5px solid ${linkTarget === "product" ? "var(--accent)" : "var(--border)"};background:${linkTarget === "product" ? "var(--accentBg)" : "var(--panel)"};border-radius:9px;padding:10px 12px;cursor:pointer;">
+            <div style="width:15px;height:15px;border-radius:50%;border:1.5px solid ${linkTarget === "product" ? "var(--accent)" : "var(--border)"};display:flex;align-items:center;justify-content:center;flex:none;"><span style="width:7px;height:7px;border-radius:50%;background:${linkTarget === "product" ? "var(--accent)" : "transparent"};"></span></div>
+            <div><div style="font-size:12.5px;font-weight:600;">This product's page</div><div style="font-size:11px;color:var(--muted);">order.html for just this product</div></div>
+          </div>
+          <div class="shopLinkOpt" data-val="shop" onclick="bvSetShopLinkTarget('shop')" style="display:flex;align-items:center;gap:10px;border:1.5px solid ${linkTarget === "shop" ? "var(--accent)" : "var(--border)"};background:${linkTarget === "shop" ? "var(--accentBg)" : "var(--panel)"};border-radius:9px;padding:10px 12px;cursor:pointer;">
+            <div style="width:15px;height:15px;border-radius:50%;border:1.5px solid ${linkTarget === "shop" ? "var(--accent)" : "var(--border)"};display:flex;align-items:center;justify-content:center;flex:none;"><span style="width:7px;height:7px;border-radius:50%;background:${linkTarget === "shop" ? "var(--accent)" : "transparent"};"></span></div>
+            <div><div style="font-size:12.5px;font-weight:600;">The full shop</div><div style="font-size:11px;color:var(--muted);">Coming soon — sends them to browse the whole catalogue instead</div></div>
+          </div>
+        </div>
+        <input type="hidden" id="shopAdLinkTarget" value="${linkTarget}">
+      </div>
+
+      ${isWhatsapp ? `
+      <div class="field" style="margin-top:14px;background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:9px;padding:11px 13px;">
+        <label>WhatsApp opening message <span style="font-weight:400;color:var(--muted);">(this product is set to Click-to-WhatsApp in the Products tab)</span></label>
+        <textarea id="shopAdWhatsapp" rows="2" placeholder="Hi! Interested in ${escH(p.product_name)}?">${escH(p.whatsapp_welcome_message || "")}</textarea>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:5px;">Leave blank to use the default "Hi! Interested in ${escH(p.product_name)}?" message. Their reply lands in your Conversations tab.</div>
+      </div>` : ""}
+
+      <button type="button" class="btn btn-a btn-full" style="margin-top:16px;" id="shopSaveBtn" onclick="bvSaveShopCreative('${p.id}')">Save</button>
+      <div id="shopPanelMsg"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function bvSetShopLinkTarget(val) {
+  document.getElementById("shopAdLinkTarget").value = val;
+  document.querySelectorAll(".shopLinkOpt").forEach(elOpt => {
+    const active = elOpt.dataset.val === val;
+    elOpt.style.borderColor = active ? "var(--accent)" : "var(--border)";
+    elOpt.style.background = active ? "var(--accentBg)" : "var(--panel)";
+    const dot = elOpt.querySelector("div > span");
+    const ring = elOpt.querySelector("div");
+    if (ring) ring.style.borderColor = active ? "var(--accent)" : "var(--border)";
+    if (dot) dot.style.background = active ? "var(--accent)" : "transparent";
+  });
+}
+
+async function bvDraftAdCopy(productId) {
+  const btn = document.getElementById("shopDraftBtn");
+  const msg = document.getElementById("shopPanelMsg");
+  btn.disabled = true;
+  btn.textContent = "Drafting…";
+  try {
+    const r = await sbFn("draft-ad-copy", { product_id: productId });
+    if (r.error) throw new Error(r.error);
+    document.getElementById("shopAdPrimary").value = r.primary_text || "";
+    document.getElementById("shopAdHeadline").value = r.headline || "";
+    document.getElementById("shopAdDescription").value = r.description || "";
+    msg.innerHTML = `<div class="msg ok">✨ Drafted — review and edit before saving.</div>`;
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ Draft with AI";
+  }
+}
+
+async function bvUploadShopAdImage(inputEl, productId) {
+  const file = inputEl.files?.[0];
+  if (!file) return;
+  const preview = document.getElementById("shopAdImgPreview");
+  const btn = document.getElementById("shopAdImgBtn");
+  const msg = document.getElementById("shopPanelMsg");
+  btn.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("product_id", productId);
+    fd.append("field", "ad_image_url");
+    const res = await fetch(`${SUPA_URL}/functions/v1/upload-product-image`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
+      body: fd,
+    });
+    const r = await res.json();
+    if (r.error) throw new Error(r.error);
+    preview.innerHTML = `<img src="${r.ad_image_url}" style="width:100%;height:100%;object-fit:cover;">`;
+    const cached = (window.bvShopProductsCache || []).find(p => p.id === productId);
+    if (cached) cached.ad_image_url = r.ad_image_url;
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    inputEl.value = "";
+  }
+}
+
+async function bvSaveShopCreative(productId) {
+  const btn = document.getElementById("shopSaveBtn");
+  const msg = document.getElementById("shopPanelMsg");
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  const fields = {
+    ad_primary_text: document.getElementById("shopAdPrimary").value || null,
+    ad_headline: document.getElementById("shopAdHeadline").value || null,
+    ad_description: document.getElementById("shopAdDescription").value || null,
+    ad_cta_type: document.getElementById("shopAdCta").value,
+    ad_link_target: document.getElementById("shopAdLinkTarget").value,
+  };
+  const waField = document.getElementById("shopAdWhatsapp");
+  if (waField) fields.whatsapp_welcome_message = waField.value || null;
+  try {
+    const { error } = await supabaseClient.from("products").update(fields).eq("id", productId);
+    if (error) throw error;
+    bvCloseModal();
+    bvToast("Saved.");
+    render();
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+    btn.disabled = false;
+    btn.textContent = "Save";
+  }
 }
 
 // ── TAB: ORDERS ───────────────────────────────────────────────────────────────

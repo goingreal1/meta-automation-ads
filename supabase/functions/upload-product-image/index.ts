@@ -33,6 +33,10 @@ Deno.serve(async (req: Request) => {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const productId = formData.get("product_id") as string | null;
+    // Defaults to the product's own photo; the Shop tab's ad-creative image
+    // (falls back to this same photo when left blank) passes "ad_image_url"
+    // instead -- same upload, same bucket, just a different column to save to.
+    const targetField = (formData.get("field") as string | null) === "ad_image_url" ? "ad_image_url" : "product_image_url";
 
     if (!file || !productId) {
       return json({ error: "file and product_id are required." }, 400);
@@ -70,13 +74,13 @@ Deno.serve(async (req: Request) => {
 
     const { error: updateErr } = await supabase
       .from("products")
-      .update({ product_image_url: publicUrl })
+      .update({ [targetField]: publicUrl })
       .eq("id", productId);
     if (updateErr) {
       return json({ error: `Failed to save image URL: ${updateErr.message}` }, 500);
     }
 
-    return json({ success: true, product_image_url: publicUrl });
+    return json({ success: true, [targetField]: publicUrl });
   } catch (err: any) {
     console.error("upload-product-image error:", err);
     return json({ error: err.message }, 500);
