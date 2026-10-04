@@ -2519,7 +2519,9 @@ async function renderOrders(el) {
       <div class="tbl-wrap"><table>
         <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Buyer</th><th>AI call</th><th>Payment</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
         ${orders.map(o => `<tr>
-          <td class="s n">${o.customer_name ?? "—"}</td>
+          <td class="s n">${o.customer_id
+            ? `<a href="javascript:void(0)" onclick="bvShowCustomerModal('${o.customer_id}')" style="color:var(--accent);text-decoration:none;">${escH(o.customer_name ?? "—")}</a>`
+            : escH(o.customer_name ?? "—")}</td>
           <td class="n">${o.customer_phone
             ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${o.customer_phone}</a>`
             : "—"}</td>
@@ -4057,6 +4059,64 @@ async function bvRenderAddFundsModal() {
       btn.disabled = false; btn.textContent = "Create deposit account";
     }
   });
+}
+
+// One customer's full picture across every channel that collects a phone
+// number -- every order's own confirmed-payment history, plus any website
+// lead -- resolved via orders.customer_id / website_leads.customer_id,
+// which a DB trigger now sets automatically off the normalized phone number
+// no matter which form or channel the person came in through.
+async function bvShowCustomerModal(customerId) {
+  if (!customerId) return;
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button><div class="ph-title">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+
+  const [custArr, orders, leadRows] = await Promise.all([
+    sbQuery("conversation_customers", `select=*&id=eq.${customerId}`),
+    sbQuery("orders", `select=id,product_name,order_value_naira,order_status,ordered_at,payments(status,amount_naira,paid_at)&customer_id=eq.${customerId}&order=ordered_at.desc`),
+    sbQuery("website_leads", `select=id,product_name,created_at&customer_id=eq.${customerId}&order=created_at.desc`),
+  ]);
+  const cust = custArr?.[0];
+  for (const o of orders || []) o.payment = (o.payments || [])[0] || null;
+  const delivered = (orders || []).filter(o => o.order_status === "delivered");
+  const deliveredValue = delivered.reduce((s, o) => s + Number(o.order_value_naira || 0), 0);
+  const confirmedRevenue = (orders || [])
+    .filter(o => o.payment?.status === "confirmed")
+    .reduce((s, o) => s + Number(o.payment.amount_naira || 0), 0);
+
+  const modal = document.querySelector("#bvModalOverlay .bv-modal");
+  if (!modal) return;
+  modal.innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:4px;">${escH(cust?.name || "Unknown customer")}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">${escH(cust?.phone || "—")}${cust?.city ? ` · ${escH(cust.city)}` : ""}${cust?.state ? `, ${escH(cust.state)}` : ""}</div>
+    <div class="g4" style="margin-bottom:14px;">
+      <div class="kc"><div class="kc-lbl">Orders</div><div class="kc-val">${orders?.length || 0}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${delivered.length}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered value</div><div class="kc-val a">${fN(deliveredValue)}</div></div>
+      <div class="kc"><div class="kc-lbl">Confirmed paid</div><div class="kc-val a">${fN(confirmedRevenue)}</div></div>
+    </div>
+    <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;">Order history</div>
+    ${!orders?.length ? `<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">No orders yet.</div>` : `
+    <div class="tbl-wrap" style="margin-bottom:12px;"><table>
+      <tr><th>Product</th><th>Value</th><th>Payment</th><th>Status</th><th>When</th></tr>
+      ${orders.map(o => `<tr>
+        <td class="s n">${escH(o.product_name ?? "—")}</td>
+        <td>${fN(o.order_value_naira)}</td>
+        <td>${bvPaymentCell(o)}</td>
+        <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+        <td>${ago(o.ordered_at)}</td>
+      </tr>`).join("")}
+    </table></div>`}
+    ${leadRows?.length ? `
+    <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px;">Also came in as a website lead</div>
+    <div style="font-size:12px;color:var(--muted);">${leadRows.map(l => `${escH(l.product_name ?? "an interest form")} · ${ago(l.created_at)}`).join("<br>")}</div>` : ""}
+  `;
 }
 
 async function bvShowAdminWithdrawModal() {
