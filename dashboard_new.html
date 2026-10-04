@@ -619,20 +619,14 @@ textarea{resize:vertical;min-height:80px;}
   <div class="ch-head">
     <div class="ch-avatar">🤖</div>
     <div>
-      <div class="ch-name">AI Media Buyer</div>
-      <div class="ch-status">Grounded in your live data</div>
+      <div class="ch-name" id="chName">AI Assistant</div>
+      <div class="ch-status" id="chStatus">Grounded in your live data</div>
     </div>
   </div>
   <div class="ch-msgs" id="chMsgs">
-    <div class="ch-msg bot">Hey 👋 I'm trained on senior buyer patterns. I can analyze your CTR, CPA, delivery rate, creative performance, and scaling decisions. What do you want to know?</div>
+    <div class="ch-msg bot" id="chWelcomeMsg">Hey 👋 Ask me anything about your live data. What do you want to know?</div>
   </div>
-  <div class="ch-suggs" id="chSuggs">
-    <button class="ch-sugg" onclick="askChat('Which creative has the best CTR this week?')">Best CTR this week?</button>
-    <button class="ch-sugg" onclick="askChat('Why was the last creative killed?')">Last creative killed?</button>
-    <button class="ch-sugg" onclick="askChat('Should I scale any ad sets right now?')">Scale any ad sets?</button>
-    <button class="ch-sugg" onclick="askChat('What is my delivery rate this month?')">Delivery rate?</button>
-    <button class="ch-sugg" onclick="askChat('Which targeting type is performing best?')">Best targeting?</button>
-  </div>
+  <div class="ch-suggs" id="chSuggs"></div>
   <div class="ch-inp">
     <input type="text" id="chInput" placeholder="Ask about campaigns, creatives…" onkeydown="if(event.key==='Enter')sendChat()">
     <button onclick="sendChat()">→</button>
@@ -699,6 +693,7 @@ async function init() {
     return;
   }
   window.myProfile = profile;
+  renderChatForRole(profile.role);
 
   // The header used to hardcode one tenant's own company name ("Quality
   // Herb") for literally every company that ever signed up -- every other
@@ -5465,6 +5460,72 @@ window.bvAddWhatsappModal = function(mediaBuyerId) {
 };
 
 // ── AI CHAT ───────────────────────────────────────────────────────────────────
+// Suggestion chips and the welcome line are tailored per role so the panel
+// visibly "knows" who's asking -- an owner/admin sees cross-buyer questions,
+// a buyer sees their own campaigns, customer_care sees calls needing them,
+// a delivery agent sees their own deliveries. The ai-chat edge function
+// itself grounds the actual answer in that same role-scoped data.
+const CHAT_PRESETS = {
+  owner: {
+    name: "AI Assistant", status: "Whole company, grounded in live data",
+    welcome: "Hey 👋 I can see every buyer's spend, orders, and ROAS, which ad sets and creatives are actually driving orders, and what's flagged across calls, approvals and deliveries. What do you want to know?",
+    suggs: [
+      ["Which buyer has the best ROAS this week?", "Best buyer this week?"],
+      ["Which ad sets and creatives are bringing the most orders?", "Top ad sets/creatives?"],
+      ["What needs my attention right now?", "What needs attention?"],
+      ["How is the AI call agent performing on new orders?", "AI call agent performance?"],
+    ],
+  },
+  admin: {
+    name: "AI Assistant", status: "Whole company, grounded in live data",
+    welcome: "Hey 👋 I can see every buyer's spend, orders, and ROAS, which ad sets and creatives are actually driving orders, and what's flagged across calls, approvals and deliveries. What do you want to know?",
+    suggs: [
+      ["Which buyer has the best ROAS this week?", "Best buyer this week?"],
+      ["Which ad sets and creatives are bringing the most orders?", "Top ad sets/creatives?"],
+      ["What needs my attention right now?", "What needs attention?"],
+      ["How is the AI call agent performing on new orders?", "AI call agent performance?"],
+    ],
+  },
+  buyer: {
+    name: "AI Media Buyer", status: "Grounded in your live data",
+    welcome: "Hey 👋 I'm trained on senior buyer patterns. I can analyze your CTR, CPA, delivery rate, creative performance, and scaling decisions — and tell you what the AI call agent has done on your new orders. What do you want to know?",
+    suggs: [
+      ["Which of my creatives has the best CTR this week?", "Best CTR this week?"],
+      ["Which ad set is bringing me the most orders?", "Top ad set for orders?"],
+      ["Has the AI agent called my new orders yet?", "Called my new orders?"],
+      ["What's my delivery rate this week?", "Delivery rate?"],
+    ],
+  },
+  customer_care: {
+    name: "AI Assistant", status: "Grounded in your live data",
+    welcome: "Hey 👋 I can see which calls need a human, which orders look like duplicates, and which are stuck after follow-up attempts. What do you want to know?",
+    suggs: [
+      ["Which customers need my attention right now?", "Who needs attention?"],
+      ["Any possible duplicate orders?", "Duplicate orders?"],
+      ["Which orders are stuck after follow-up?", "Stuck orders?"],
+      ["Summarize this week's call outcomes.", "Call outcomes this week?"],
+    ],
+  },
+  delivery_agent: {
+    name: "AI Assistant", status: "Grounded in your live data",
+    welcome: "Hey 👋 I can see your assigned and offered deliveries. What do you want to know?",
+    suggs: [
+      ["What deliveries are waiting for me to accept?", "Waiting for acceptance?"],
+      ["How many active deliveries do I have?", "Active deliveries?"],
+      ["How many have I delivered this week?", "Delivered this week?"],
+    ],
+  },
+};
+function renderChatForRole(role) {
+  const preset = CHAT_PRESETS[role] || CHAT_PRESETS.buyer;
+  document.getElementById("chName").textContent = preset.name;
+  document.getElementById("chStatus").textContent = preset.status;
+  document.getElementById("chWelcomeMsg").textContent = preset.welcome;
+  document.getElementById("chSuggs").innerHTML = preset.suggs
+    .map(([q, label]) => `<button class="ch-sugg" onclick="askChat('${q.replace(/'/g, "\\'")}')">${escH(label)}</button>`)
+    .join("");
+}
+
 let chatOpen = false;
 document.getElementById("chatToggle").innerHTML = icon("chat", 20);
 document.getElementById("chatToggle").addEventListener("click", () => {
