@@ -834,6 +834,20 @@ async function launchAdSetGroup(
         })
         .select("id")
         .single();
+      if (localCreativeErr?.code === "23505") {
+        // Meta deduplicates ad creatives with byte-identical content (same
+        // image/video + same text) -- two "copies" cloned from the same
+        // original (e.g. the builder's "Duplicate this ad") can come back
+        // with the SAME meta_ad_id instead of two distinct ones. That's
+        // real, expected Meta behavior, not a failure -- reuse the local
+        // row already recorded for it instead of aborting the whole batch
+        // over a unique-constraint hit.
+        const { data: existing } = await supabase.from("creatives").select("id").eq("meta_ad_id", adCreativeId).maybeSingle();
+        if (existing) {
+          localCreatives.push({ id: existing.id, metaCreativeId: adCreativeId, fileName: copy.file_name });
+          continue;
+        }
+      }
       if (localCreativeErr || !localCreativeRow) {
         console.error("Failed to record local creative row:", localCreativeErr);
         return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
