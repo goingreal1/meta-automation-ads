@@ -62,11 +62,21 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
   const adId = referral?.source_id || null;
   const ctwaClid = referral?.ctwa_clid || null;
 
+  // .maybeSingle() errors out (not just returns null) if MORE than one row
+  // matches -- and that error was being silently dropped here (only `data`
+  // was destructured), so once two conversations existed for the same
+  // phone+number (see the insert below), every lookup afterward looked like
+  // "not found" and created yet ANOTHER new conversation, forever. Confirmed
+  // live: this is exactly what turned one customer's ongoing chat into 3
+  // separate threads. order+limit(1) makes this tolerant of any duplicates
+  // still in the table (old or new), always continuing the most recent one.
   let { data: conv } = await supabase
     .from("conversations")
     .select("id")
     .eq("phone", from)
     .eq("buyer_whatsapp_number_id", numberRow.id)
+    .order("started_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (!conv) {
@@ -88,11 +98,33 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
       })
       .select("id")
       .single();
-    if (convErr || !newConv) {
+    if (convErr?.code === "23505") {
+      // Two messages from the same customer arrived close enough together
+      // that both webhook deliveries ran this function concurrently, both
+      // saw "no conversation yet" above, and both tried to create one --
+      // the unique constraint on (phone, buyer_whatsapp_number_id) is what
+      // actually closes that race (the lookup above can't, on its own,
+      // between two overlapping requests). Whichever insert loses just
+      // reuses the row the other one created, instead of erroring out.
+      const { data: existing } = await supabase
+        .from("conversations")
+        .select("id")
+        .eq("phone", from)
+        .eq("buyer_whatsapp_number_id", numberRow.id)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!existing) {
+        console.error("Conversation insert hit a conflict but no existing row was found:", convErr);
+        return;
+      }
+      conv = existing;
+    } else if (convErr || !newConv) {
       console.error("Failed to create conversation for inbound WhatsApp message:", convErr);
       return;
+    } else {
+      conv = newConv;
     }
-    conv = newConv;
 
     await supabase.from("conversation_customers").upsert(
       { phone: from, name: whatsappName, company_id: numberRow.company_id },

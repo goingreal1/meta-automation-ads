@@ -4740,7 +4740,11 @@ function bvAvatar(c, size) {
 
 async function renderConversations(el) {
   const [convs, numbers] = await Promise.all([
-    sbQuery("conversations", "select=*,conversation_customers(name,state,city,address)&order=last_message_at.desc&limit=150"),
+    // current_state=MERGED is a tombstone, not a real thread -- left behind
+    // when a conversation that split into duplicates (see
+    // handle-whatsapp-reply's logInboundMessage fix) gets folded back into
+    // one canonical row; its messages have already been moved over.
+    sbQuery("conversations", "select=*,conversation_customers(name,state,city,address)&current_state=neq.MERGED&order=last_message_at.desc&limit=150"),
     sbQuery("buyer_whatsapp_numbers", "select=id,nickname,display_phone_number,media_buyer_id,media_buyers(name)&status=eq.active&order=created_at.asc").catch(() => []),
   ]);
   if (numbers && !numbers.some(n => n.id === bvSelectedNumberId)) bvSelectedNumberId = "";
