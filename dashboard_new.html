@@ -1348,6 +1348,7 @@ async function renderVault(el) {
         <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
         <div class="dz-prev" id="dzPrev"></div>
         <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
+        <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
       </div>
       <form id="uploadForm">
         <div class="fg">
@@ -1413,6 +1414,16 @@ async function renderVault(el) {
           <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvStageAdCopy()">+ Add another ad copy (test multiple creatives in the same ad sets)</button>
           <div id="stagedCopies" style="margin-top:8px;"></div>
         </div>
+        <div class="field" style="margin-top:11px;"><label>Campaign objective <span style="font-weight:400;color:var(--muted);">(determines what Meta optimizes delivery for)</span></label>
+          <select id="f_objective" onchange="bvRenderAdSetRows()">
+            <option value="OUTCOME_SALES">Sales — drive purchases (needs a connected pixel)</option>
+            <option value="OUTCOME_TRAFFIC">Traffic — drive clicks to your link</option>
+            <option value="OUTCOME_ENGAGEMENT">Engagement — likes, comments, shares on the post</option>
+            <option value="OUTCOME_AWARENESS">Awareness — reach as many people as possible</option>
+            <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
+          </select>
+          <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+        </div>
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager — make it recognizable)</span></label>
             <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch">
@@ -1438,7 +1449,7 @@ async function renderVault(el) {
             <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to run until you kill/pause it manually.</div>
           </div>
         </div>
-        <button type="submit" class="btn btn-a btn-full" id="uploadBtn">↑ Upload to Vault</button>
+        <button type="submit" class="btn btn-a btn-full" id="uploadBtn">Review & Launch →</button>
         <div id="uploadMsg"></div>
       </form>
     </div>
@@ -1463,10 +1474,12 @@ async function renderVault(el) {
     </div>`;
 
   window.bvVaultProductsCache = products || [];
+  window.bvVaultAssetsCache = assets || [];
   bvShowProductDestination(document.getElementById("f_product")?.value);
   bvResetAdSetBuilder();
   bvStagedCopies = [];
   bvRenderStagedCopies();
+  bvReuseAsset = null;
 
   // Drag-and-drop
   const dz = document.getElementById("dropZone");
@@ -1480,7 +1493,6 @@ async function renderVault(el) {
 
   document.getElementById("uploadForm").addEventListener("submit", async e => {
     e.preventDefault();
-    const btn = document.getElementById("uploadBtn");
     const msg = document.getElementById("uploadMsg");
 
     // The copy currently filled into the form (if any) is the last copy in
@@ -1488,9 +1500,10 @@ async function renderVault(el) {
     const currentFile = document.getElementById("f_file").files[0];
     const currentPrimary = document.getElementById("f_primary").value.trim();
     const copies = [...bvStagedCopies];
-    if (currentFile && currentPrimary) {
+    if ((currentFile || bvReuseAsset) && currentPrimary) {
       copies.push({
-        file: currentFile,
+        file: currentFile || null,
+        reuse_asset: bvReuseAsset,
         primary_text: currentPrimary,
         headline: document.getElementById("f_headline").value.trim(),
         description: document.getElementById("f_desc").value.trim(),
@@ -1499,12 +1512,86 @@ async function renderVault(el) {
         cta_type: document.getElementById("f_cta").value,
       });
     }
-    if (!copies.length) { msg.innerHTML = `<div class="msg err">Please select or drop a file first.</div>`; return; }
-
-    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Uploading…';
+    if (!copies.length) { msg.innerHTML = `<div class="msg err">Please select or drop a file first (or reuse an existing creative).</div>`; return; }
     msg.innerHTML = "";
+    bvOpenReviewModal(copies);
+  });
+}
 
-    try {
+// ── REVIEW & LAUNCH ──────────────────────────────────────────────────────────
+// A distinct step before anything is created: shows the real line-item count
+// (ad sets x ad copies = total ads) and total daily spend, then asks for an
+// explicit terminal action -- launch immediately, or schedule for later
+// (reusing the existing f_scheduled field as the default time to offer).
+function bvOpenReviewModal(copies) {
+  const selectedProduct = (window.bvVaultProductsCache || []).find(p => p.id === document.getElementById("f_product")?.value);
+  const productLabel = selectedProduct ? selectedProduct.product_name : (document.getElementById("np_name")?.value.trim() || "new product");
+  const destLabel = selectedProduct?.destination_type === "whatsapp" ? "Click-to-WhatsApp" : "Website";
+  const objectiveLabels = {
+    OUTCOME_SALES: "Sales", OUTCOME_TRAFFIC: "Traffic", OUTCOME_ENGAGEMENT: "Engagement", OUTCOME_AWARENESS: "Awareness",
+  };
+  const objective = selectedProduct?.destination_type === "whatsapp" ? "OUTCOME_SALES" : (document.getElementById("f_objective")?.value || "OUTCOME_SALES");
+  const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+  const totalAds = copies.length * bvAdSetRows.length;
+  const existingSchedule = document.getElementById("f_scheduled")?.value || "";
+
+  const overlay = document.createElement("div");
+  overlay.id = "bvReviewModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.innerHTML = `
+    <div class="bv-modal" style="max-width:480px;">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <div class="ph-title" style="margin-bottom:12px;">Review & launch</div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.7;">
+        <div><b>${productLabel}</b> — ${destLabel} · ${objectiveLabels[objective] || objective}</div>
+        <div>${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} × ${copies.length} ad cop${copies.length === 1 ? "y" : "ies"} = <b>${totalAds} ad${totalAds === 1 ? "" : "s"}</b> total</div>
+        <div>₦${totalBudget.toLocaleString()}/day total budget</div>
+      </div>
+      <div class="field" style="margin-top:14px;"><label>Schedule for (optional)</label>
+        <input type="datetime-local" id="reviewScheduled" value="${existingSchedule}">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">Launch Now ignores this. Leave blank and use Launch Now, or pick a time and use Schedule.</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button type="button" class="btn btn-a" style="flex:1;" id="reviewLaunchNowBtn" onclick="bvConfirmLaunch(null)">🚀 Launch now</button>
+        <button type="button" class="btn btn-g" style="flex:1;" id="reviewScheduleBtn" onclick="bvConfirmLaunchScheduled()">🗓 Schedule</button>
+      </div>
+      <div id="reviewMsg" style="margin-top:10px;"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  window.bvPendingCopies = copies;
+}
+
+function bvConfirmLaunchScheduled() {
+  const val = document.getElementById("reviewScheduled").value;
+  if (!val) { document.getElementById("reviewMsg").innerHTML = `<div class="msg err">Pick a date/time to schedule, or use Launch Now.</div>`; return; }
+  bvConfirmLaunch(new Date(val).toISOString());
+}
+
+async function bvConfirmLaunch(scheduledIso) {
+  const nowBtn = document.getElementById("reviewLaunchNowBtn");
+  const schedBtn = document.getElementById("reviewScheduleBtn");
+  nowBtn.disabled = true; schedBtn.disabled = true;
+  nowBtn.innerHTML = '<span class="spin"></span>';
+  const reviewMsg = document.getElementById("reviewMsg");
+  reviewMsg.innerHTML = "";
+  try {
+    await bvExecuteLaunch(window.bvPendingCopies, scheduledIso);
+    document.getElementById("bvReviewModalOverlay")?.remove();
+  } catch (err) {
+    reviewMsg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
+    nowBtn.disabled = false; schedBtn.disabled = false;
+    nowBtn.innerHTML = "🚀 Launch now";
+  }
+}
+
+async function bvExecuteLaunch(copies, scheduledIso) {
+  const btn = document.getElementById("uploadBtn");
+  const msg = document.getElementById("uploadMsg");
+  const dz = document.getElementById("dropZone");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Uploading…';
+  msg.innerHTML = "";
+
+  try {
       // If "+ Add new product…" was chosen, create it now so we have a real product_id before uploading.
       let productId = document.getElementById("f_product").value;
       if (productId === "__new__") {
@@ -1528,6 +1615,32 @@ async function renderVault(el) {
       const launchBatchId = copies.length > 1 ? crypto.randomUUID() : null;
       const assetIds = [];
       for (const copy of copies) {
+        if (copy.reuse_asset) {
+          // Reusing an existing creative's media -- clone the storage
+          // reference (no re-upload of bytes) with this copy's own ad text.
+          const { data: cloned, error: cloneErr } = await supabaseClient.from('creative_assets').insert({
+            file_name: copy.reuse_asset.file_name,
+            storage_path: copy.reuse_asset.storage_path,
+            public_url: copy.reuse_asset.public_url,
+            asset_type: copy.reuse_asset.asset_type,
+            meta_video_id: copy.reuse_asset.meta_video_id ?? null,
+            meta_image_hash: copy.reuse_asset.meta_image_hash ?? null,
+            mechanism: copy.mechanism,
+            format: copy.format,
+            primary_text: copy.primary_text,
+            headline: copy.headline,
+            description: copy.description,
+            cta_type: copy.cta_type,
+            uploaded_by: "dashboard",
+            ad_account_id: activeAccountId,
+            test_status: "untested",
+            uploaded_at: new Date().toISOString(),
+          }).select('id').single();
+          if (cloneErr) throw new Error(`"${copy.reuse_asset.file_name}" (reused): ${cloneErr.message}`);
+          if (cloned?.id) assetIds.push(cloned.id);
+          continue;
+        }
+
         const fd = new FormData();
         fd.append("file", copy.file);
         fd.append("primary_text", copy.primary_text);
@@ -1550,13 +1663,13 @@ async function renderVault(el) {
       }
       if (!assetIds.length) throw new Error("No ad copies uploaded successfully.");
 
-      const scheduledFor = document.getElementById("f_scheduled").value;
       const endDate = document.getElementById("f_end_date").value;
       const sharedFields = {
         ...(productId && productId !== "__new__" ? { product_id: productId } : {}),
         campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
+        campaign_objective: document.getElementById("f_objective").value || "OUTCOME_SALES",
         budget_type: document.getElementById("f_budget_type").value,
-        scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
+        scheduled_for: scheduledIso || null,
         campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
         ...(launchBatchId ? { launch_batch_id: launchBatchId } : {}),
       };
@@ -1591,21 +1704,19 @@ async function renderVault(el) {
       if (adSetErr) throw adSetErr;
 
       const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
-      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${assetIds.length} ad cop${assetIds.length === 1 ? "y" : "ies"} x ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledFor ? "Scheduled for " + new Date(scheduledFor).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
+      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${assetIds.length} ad cop${assetIds.length === 1 ? "y" : "ies"} x ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledIso ? "Scheduled for " + new Date(scheduledIso).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
       document.getElementById("uploadForm").reset();
       document.getElementById("dzPrev").innerHTML = "";
       bvResetAdSetBuilder();
       bvStagedCopies = [];
+      bvReuseAsset = null;
       bvRenderStagedCopies();
       dz.style.borderColor = "";
       dz.style.background = "";
       setTimeout(render, 1200);
-    } catch(err) {
-      msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
-    } finally {
-      btn.disabled = false; btn.innerHTML = "↑ Upload to Vault";
-    }
-  });
+  } finally {
+    btn.disabled = false; btn.innerHTML = "Review & Launch →";
+  }
 }
 
 // ── MULTIPLE AD COPIES PER LAUNCH ────────────────────────────────────────────
@@ -1615,16 +1726,21 @@ async function renderVault(el) {
 // launches all of them together, sharing one product/campaign/ad-set setup
 // (ad_set_configs), each becoming its own real ad inside every ad set.
 let bvStagedCopies = [];
+// Set when the user picks "Reuse a creative" instead of uploading a new file --
+// carries the source creative_assets row whose media (public_url/storage_path)
+// gets cloned into the new row rather than re-uploaded.
+let bvReuseAsset = null;
 
 function bvStageAdCopy() {
   const file = document.getElementById("f_file").files[0];
   const primary_text = document.getElementById("f_primary").value.trim();
-  if (!file || !primary_text) {
-    alert("Add a file and primary text for this copy before staging another.");
+  if ((!file && !bvReuseAsset) || !primary_text) {
+    alert("Add a file (or reuse an existing creative) and primary text for this copy before staging another.");
     return;
   }
   bvStagedCopies.push({
-    file,
+    file: file || null,
+    reuse_asset: bvReuseAsset,
     primary_text,
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -1638,6 +1754,7 @@ function bvStageAdCopy() {
   document.getElementById("f_headline").value = "";
   document.getElementById("f_desc").value = "";
   document.getElementById("dzPrev").innerHTML = "";
+  bvReuseAsset = null;
   bvRenderStagedCopies();
 }
 
@@ -1653,9 +1770,56 @@ function bvRenderStagedCopies() {
   wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} ad cop${bvStagedCopies.length === 1 ? "y" : "ies"} staged — the file/text above will be added as one more copy when you submit.</div>` +
     bvStagedCopies.map((c, i) => `
       <div style="display:flex;justify-content:space-between;align-items:center;border:1px dashed var(--border);border-radius:6px;padding:6px 10px;margin-top:4px;font-size:12px;">
-        <span>Copy ${i + 1}: ${c.file.name}</span>
+        <span>Copy ${i + 1}: ${c.reuse_asset ? `↺ ${c.reuse_asset.file_name} (reused)` : c.file.name}</span>
         <button type="button" onclick="bvRemoveStagedCopy(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>
       </div>`).join("");
+}
+
+// ── REUSE EXISTING CREATIVE (instead of re-uploading) ───────────────────────
+// Ad-level creative picker: choose a creative already uploaded for the
+// selected product instead of re-uploading the same video/image, with the
+// product's link/destination already auto-filled as before.
+function bvOpenReuseCreativeModal() {
+  const productId = document.getElementById("f_product")?.value;
+  const assets = (window.bvVaultAssetsCache || []).filter(a => a.product_id === productId && a.public_url);
+  const overlay = document.createElement("div");
+  overlay.id = "bvReuseModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.innerHTML = `
+    <div class="bv-modal" style="max-width:520px;">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <div class="ph-title" style="margin-bottom:12px;">Reuse an existing creative</div>
+      ${!productId || productId === "__new__"
+        ? `<div style="font-size:12px;color:var(--muted);">Pick a product above first.</div>`
+        : !assets.length
+          ? `<div style="font-size:12px;color:var(--muted);">No creatives uploaded for this product yet.</div>`
+          : assets.map(a => `
+            <div class="bv-clickable-row" onclick="bvPickReuseAsset('${a.id}')" style="display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;cursor:pointer;">
+              ${a.asset_type === "video"
+                ? `<video src="${a.public_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex-shrink:0;"></video>`
+                : `<img src="${a.public_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex-shrink:0;">`}
+              <div style="flex:1;overflow:hidden;">
+                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.file_name}</div>
+                <div style="font-size:11px;color:var(--muted);">${(a.test_status ?? "untested").replace(/_/g," ")}</div>
+              </div>
+            </div>`).join("")}
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function bvPickReuseAsset(assetId) {
+  const asset = (window.bvVaultAssetsCache || []).find(a => a.id === assetId);
+  if (!asset) return;
+  bvReuseAsset = asset;
+  document.getElementById("f_file").value = "";
+  const prev = document.getElementById("dzPrev");
+  prev.innerHTML = `↺ Reusing: ${asset.file_name} <button type="button" onclick="event.stopPropagation(); bvClearReuseAsset();" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px;margin-left:6px;">✕ clear</button>`;
+  document.getElementById("bvReuseModalOverlay")?.remove();
+}
+
+function bvClearReuseAsset() {
+  bvReuseAsset = null;
+  document.getElementById("dzPrev").innerHTML = "";
 }
 
 // ── AD SET BUILDER ───────────────────────────────────────────────────────────
@@ -1692,9 +1856,45 @@ function bvToggleAdSetAdvantage(i, checked) {
   bvRenderAdSetRows();
 }
 
-function bvDuplicateAdSetRow() {
+// ── DUPLICATE AD SET(S) MODAL ────────────────────────────────────────────────
+// Mirrors Meta's own "Duplicate" flow: pick how many copies, and whether the
+// copies keep or drop Advantage+ audience expansion -- a real, visible choice
+// instead of a single blind-click button.
+function bvOpenDuplicateAdSetModal() {
   const last = bvAdSetRows[bvAdSetRows.length - 1];
-  bvAdSetRows.push({ ...last, device_platforms: [...(last.device_platforms || [])], label: `Ad Set ${bvAdSetRows.length + 1}` });
+  const overlay = document.createElement("div");
+  overlay.id = "bvDupModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.innerHTML = `
+    <div class="bv-modal" style="max-width:420px;">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <div class="ph-title" style="margin-bottom:12px;">Duplicate "${last.label}"</div>
+      <div class="field"><label>Number of copies</label>
+        <input type="number" id="dupCount" min="1" max="20" value="1">
+      </div>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:14px;font-size:12px;font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="dupKeepAdvantage" ${last.advantage_audience !== false ? "checked" : ""}>
+        Keep Advantage+ audience expansion on the duplicate(s)
+      </label>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Uncheck to turn off Advantage+ on the duplicated ad set(s) only — "${last.label}" itself is unchanged.</div>
+      <button type="button" class="btn btn-a btn-full" style="margin-top:16px;" onclick="bvConfirmDuplicateAdSets()">Duplicate</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function bvConfirmDuplicateAdSets() {
+  const count = Math.max(1, Math.min(20, Number(document.getElementById("dupCount").value) || 1));
+  const keepAdvantage = document.getElementById("dupKeepAdvantage").checked;
+  const last = bvAdSetRows[bvAdSetRows.length - 1];
+  for (let n = 0; n < count; n++) {
+    bvAdSetRows.push({
+      ...last,
+      device_platforms: [...(last.device_platforms || [])],
+      advantage_audience: keepAdvantage,
+      label: `Ad Set ${bvAdSetRows.length + 1}`,
+    });
+  }
+  document.getElementById("bvDupModalOverlay")?.remove();
   bvRenderAdSetRows();
 }
 
@@ -1714,6 +1914,23 @@ function bvRenderAdSetRows() {
   // override no matter what's picked here (see its own comment on this).
   const selectedProduct = (window.bvVaultProductsCache || []).find(p => p.id === document.getElementById("f_product")?.value);
   const isWhatsappDest = selectedProduct?.destination_type === "whatsapp";
+
+  // WhatsApp ads are always Sales/Conversations under the hood (a real Meta
+  // requirement for Click-to-WhatsApp) no matter what's picked in the
+  // objective select -- lock it visibly instead of letting the user choose
+  // something ai-auto-launch-tests will silently override.
+  const objSelect = document.getElementById("f_objective");
+  const objNote = document.getElementById("f_objectiveNote");
+  if (objSelect) {
+    objSelect.disabled = isWhatsappDest;
+    if (isWhatsappDest) objSelect.value = "OUTCOME_SALES";
+  }
+  if (objNote) {
+    objNote.textContent = isWhatsappDest
+      ? "WhatsApp ads are always Sales/Conversations — Meta requires this for Click-to-WhatsApp."
+      : "";
+  }
+
   wrap.innerHTML = bvAdSetRows.map((row, i) => `
     <div style="border:1px dashed var(--border);border-radius:8px;padding:12px;margin-top:${i === 0 ? 0 : 8}px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -1799,7 +2016,7 @@ function bvRenderAdSetRows() {
     </div>
   `).join("") + `
     <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvDuplicateAdSetRow()">+ Duplicate this ad set</button>
+      <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenDuplicateAdSetModal()">⧉ Duplicate ad set…</button>
       <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
     </div>`;
 }
