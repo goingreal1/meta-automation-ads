@@ -116,6 +116,7 @@ Rules:
 - If you call list_ad_accounts and there's more than one account, list them clearly (name + balance) in your answer so the person can see all of them at once.
 - For performance/KPI questions about a specific ad account (spend, CTR, orders, CPA, impressions, clicks) use get_ad_account_performance, not list_ad_accounts (that one only has balance). If the name is ambiguous it'll tell you the matches it found.
 - query_data is your general-purpose lookup for anything else across the site: orders (search by customer name/phone, filter by status), ad sets, daily performance metrics, creatives, products, the leaderboard (media_buyers), pending approvals, AI call logs (voice_calls), and website leads. Use it instead of saying you don't have something.
+- Sending real money (e.g. "send 5k to 238193057227 Paga") is DIFFERENT from request_funds/approve_fund_request: it is owner/admin only, and you can NEVER send it yourself. Call resolve_bank_account with the account number, bank name, and amount they stated. That ONLY verifies whose account it is -- it never moves money. Once it comes back verified, tell them the account name it resolved to and that you've put up a confirm card for them -- the actual send happens only when they click Confirm and re-enter their password on the dashboard, which you cannot do for them. Never say the money has been sent or is on its way -- you don't know that; only the confirm step knows.
 
 DATA (JSON):
 ${JSON.stringify(data)}`;
@@ -206,10 +207,27 @@ ${JSON.stringify(data)}`;
         },
       },
     },
+    {
+      type: "function", function: {
+        name: "resolve_bank_account",
+        description: "Verify who a bank account belongs to before sending money, exactly like Paystack's own account lookup. This ONLY verifies -- it never moves money. Owner/admin only. After this returns, a confirm-and-send card appears on the dashboard; the person must click it and enter their password for anything to actually be sent.",
+        parameters: {
+          type: "object",
+          properties: {
+            account_number: { type: "string", description: "The destination account number" },
+            bank_name: { type: "string", description: "The bank name, e.g. 'Opay', 'Paga', 'GTBank', 'Access Bank'" },
+            amount_naira: { type: "number", description: "Amount in Naira the person wants to send" },
+            note: { type: "string", description: "Optional note on what this payment is for, e.g. 'Facebook Ads'" },
+          },
+          required: ["account_number", "bank_name", "amount_naira"],
+        },
+      },
+    },
   ];
 
   const messages: any[] = [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: question }];
   let quickReplies: string[] = [];
+  let pendingPayment: unknown = null;
 
   try {
     for (let step = 0; step < 4; step++) {
@@ -237,7 +255,7 @@ ${JSON.stringify(data)}`;
       messages.push(msg);
 
       if (!msg.tool_calls || !msg.tool_calls.length) {
-        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies });
+        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies, pending_payment: pendingPayment });
       }
 
       for (const tc of msg.tool_calls) {
@@ -249,6 +267,9 @@ ${JSON.stringify(data)}`;
         }
         if (tc.function.name === "get_ad_account_performance" && (result as any)?.ambiguous) {
           quickReplies = ((result as any).matches || []).slice(0, 6).map((n: string) => `KPI for ${n}`);
+        }
+        if (tc.function.name === "resolve_bank_account" && (result as any)?.verified) {
+          pendingPayment = result;
         }
         messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
       }
@@ -407,6 +428,43 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
       const { error } = await supabase.from("fund_requests").update({ status: "approved", decided_at: new Date().toISOString(), decided_by: ctx.userId }).eq("id", id);
       if (error) return { error: error.message };
       return { ok: true, approved: { fund_request_id: id, amount: fmtNaira(existing.amount_naira) } };
+    }
+
+    case "resolve_bank_account": {
+      if (ctx.role !== "owner" && ctx.role !== "admin") return { error: "Only an owner/admin can send money this way." };
+      const accountNumber = (args?.account_number || "").toString().trim();
+      const bankNameQuery = (args?.bank_name || "").toString().trim();
+      const amount = Number(args?.amount_naira);
+      if (!accountNumber || !bankNameQuery) return { error: "account_number and bank_name are required." };
+      if (!amount || amount <= 0) return { error: "A valid positive amount_naira is required." };
+      const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+      if (!PAYSTACK_SECRET_KEY) return { error: "Paystack isn't configured yet (PAYSTACK_SECRET_KEY missing)." };
+
+      const bankListRes = await fetch("https://api.paystack.co/bank?country=nigeria", { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      const bankList = await bankListRes.json().catch(() => null);
+      if (!bankListRes.ok || !bankList?.data) return { error: "Could not load the bank list from Paystack." };
+
+      const q = bankNameQuery.toLowerCase();
+      const exact = bankList.data.find((b: any) => b.name.toLowerCase() === q);
+      const matches = exact ? [exact] : bankList.data.filter((b: any) => b.name.toLowerCase().includes(q) || (b.slug || "").toLowerCase().includes(q));
+      if (!matches.length) return { error: `No bank matching "${bankNameQuery}" found.` };
+      if (matches.length > 1) return { ambiguous: true, matches: matches.slice(0, 8).map((b: any) => b.name) };
+      const bank = matches[0];
+
+      const resolveRes = await fetch(`https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bank.code)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      const resolved = await resolveRes.json().catch(() => null);
+      if (!resolveRes.ok || !resolved?.data?.account_name) return { error: resolved?.message || "Could not verify this account. Double-check the account number and bank." };
+
+      return {
+        verified: true,
+        account_number: accountNumber,
+        bank_name: bank.name,
+        bank_code: bank.code,
+        account_name: resolved.data.account_name,
+        amount_naira: amount,
+        amount: fmtNaira(amount),
+        note: args?.note || null,
+      };
     }
 
     default:

@@ -489,6 +489,11 @@ textarea{resize:vertical;min-height:80px;}
 .ch-suggs{padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid var(--border);}
 .ch-sugg{font-size:10px;padding:3px 9px;border-radius:20px;border:1px solid var(--border);color:var(--text2);cursor:pointer;transition:all .13s;background:transparent;}
 .ch-sugg:hover{border-color:var(--accent);color:var(--accent);}
+.ch-pay-card{background:var(--panel);border:1.5px solid var(--accentBdr);border-radius:10px;padding:11px 13px;align-self:stretch;}
+.ch-pay-row{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0;color:var(--text2);}
+.ch-pay-row strong{color:var(--text);font-weight:600;text-align:right;}
+.ch-pay-row.ch-pay-amt{border-top:1px dashed var(--border);margin-top:4px;padding-top:7px;font-size:13px;}
+.ch-pay-row.ch-pay-amt strong{color:var(--accent);font-size:15px;}
 .ch-inp{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--border);}
 .ch-inp input{flex:1;padding:7px 10px;font-size:12px;border-radius:7px;}
 .ch-inp button{padding:7px 11px;border-radius:7px;background:var(--accent);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;}
@@ -5565,6 +5570,82 @@ function appendQuickReplies(replies) {
 // on every call; only the back-and-forth text travels with each request.
 let chatHistory = [];
 
+// The AI can VERIFY a bank account (resolve_bank_account) but can never move
+// money itself -- when it does, the response carries a pending_payment that
+// renders as this card. Nothing is sent until the person clicks Confirm AND
+// re-enters their password; that's a deliberate second gate real money needs
+// beyond the ordinary chat round-trip.
+function appendPendingPaymentCard(payment) {
+  if (!payment?.verified) return;
+  const msgs = document.getElementById("chMsgs");
+  const card = document.createElement("div");
+  card.className = "ch-pay-card";
+  card.innerHTML = `
+    <div class="ch-pay-row"><span>To</span><strong>${escH(payment.account_name)}</strong></div>
+    <div class="ch-pay-row"><span>Bank</span><strong>${escH(payment.bank_name)}</strong></div>
+    <div class="ch-pay-row"><span>Account no.</span><strong>${escH(payment.account_number)}</strong></div>
+    ${payment.note ? `<div class="ch-pay-row"><span>For</span><strong>${escH(payment.note)}</strong></div>` : ""}
+    <div class="ch-pay-row ch-pay-amt"><span>Amount</span><strong>${escH(payment.amount)}</strong></div>
+    <button class="btn btn-a btn-full" style="margin-top:4px;" onclick='bvShowChatPaymentConfirm(${JSON.stringify(payment).replace(/'/g, "&#39;")})'>Confirm &amp; Send</button>
+  `;
+  msgs.appendChild(card);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Second gate: re-enter the account password before the real Paystack
+// transfer fires. Re-authenticating (not just checking a field is non-empty)
+// proves it's really the signed-in person, the same way a banking app does.
+function bvShowChatPaymentConfirm(payment) {
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `
+    <div class="bv-modal">
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="ph-title" style="margin-bottom:10px;">Confirm payment</div>
+      <div class="bv-dl" style="margin-bottom:14px;">
+        <dt>To</dt><dd>${escH(payment.account_name)}</dd>
+        <dt>Bank</dt><dd>${escH(payment.bank_name)} · ${escH(payment.account_number)}</dd>
+        <dt>Amount</dt><dd>${escH(payment.amount)}</dd>
+      </div>
+      <form id="chatPayForm" novalidate>
+        <div class="field"><label>Enter your password to confirm *</label><input id="chatPayPassword" type="password" autocomplete="current-password" placeholder="Your account password"></div>
+        <button type="submit" class="btn btn-a btn-full" id="chatPaySubmitBtn">Send ${escH(payment.amount)}</button>
+        <div id="chatPayMsg"></div>
+      </form>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById("chatPayForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = document.getElementById("chatPaySubmitBtn");
+    const msg = document.getElementById("chatPayMsg");
+    const password = document.getElementById("chatPayPassword").value;
+    if (!password) { msg.innerHTML = `<div class="msg err">❌ Enter your password.</div>`; return; }
+    btn.disabled = true; btn.textContent = "Verifying…";
+    try {
+      const { error: authErr } = await supabaseClient.auth.signInWithPassword({ email: sessionData.user.email, password });
+      if (authErr) throw new Error("Incorrect password.");
+      btn.textContent = "Sending…";
+      const r = await sbFn("paystack-admin-withdraw", {
+        access_token: sessionData.access_token,
+        amount_naira: payment.amount_naira,
+        account_number: payment.account_number,
+        bank_code: payment.bank_code,
+      });
+      if (r.error) throw new Error(r.error);
+      bvCloseModal();
+      bvToast(`Sent ${payment.amount} to ${r.account_name || payment.account_name}`);
+      appendMsg(`✅ Sent ${payment.amount} to ${payment.account_name} (${payment.bank_name}).`, "bot");
+    } catch (err) {
+      msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = `Send ${payment.amount}`;
+    }
+  });
+}
+
 async function askChat(q) {
   document.getElementById("chSuggs").style.display = "none";
   appendMsg(q, "user");
@@ -5576,6 +5657,7 @@ async function askChat(q) {
       chatHistory.push({ role: "user", content: q }, { role: "assistant", content: r.answer });
       if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
       appendQuickReplies(r.quick_replies);
+      appendPendingPaymentCard(r.pending_payment);
     } else {
       thinking.textContent = r?.error ? `Couldn't do that: ${r.error}` : "I couldn't get an answer just now — try again.";
     }
