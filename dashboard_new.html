@@ -2476,6 +2476,93 @@ function bvRenderAdSetRows() {
   bvRenderBuilderSummary();
 }
 
+// ── LAUNCHED AD DETAIL/EDIT MODAL ────────────────────────────────────────────
+// Click any ad (or any "Copy N" under it) in the Campaigns > Ads list to view
+// and edit its copy. Editing here updates only our own `creatives` record --
+// it does NOT push the change to the already-live Meta ad (ad creative text
+// is fixed once an ad is created; Meta has no "edit the text" endpoint for a
+// running ad). Said plainly in the modal so this never reads as more capable
+// than it is -- to actually change what's live, duplicate this ad with new
+// copy in the builder and pause the old one.
+function bvCloseLaunchedAdModal() {
+  document.getElementById("bvLaunchedAdOverlay")?.remove();
+}
+
+async function bvShowLaunchedAdDetail(creativeId) {
+  const overlay = document.createElement("div");
+  overlay.id = "bvLaunchedAdOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseLaunchedAdModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+
+  let rows;
+  try {
+    rows = await sbQuery("creatives", `id=eq.${creativeId}&select=*`);
+  } catch (err) {
+    document.querySelector("#bvLaunchedAdOverlay .bv-modal").innerHTML = `
+      <button class="bv-modal-close" onclick="bvCloseLaunchedAdModal()">✕</button>
+      <div class="msg err">❌ Failed to load: ${err.message}</div>`;
+    return;
+  }
+  const a = rows?.[0];
+  if (!a) {
+    document.querySelector("#bvLaunchedAdOverlay .bv-modal").innerHTML = `<div class="msg err">Ad not found.</div>`;
+    return;
+  }
+
+  document.querySelector("#bvLaunchedAdOverlay .bv-modal").innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseLaunchedAdModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:2px;">${escH(a.creative_name || "Ad")}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;">Meta ad creative ${a.meta_ad_id ? `<span style="font-family:'JetBrains Mono',monospace;">${escH(a.meta_ad_id)}</span>` : "—"} · <span class="pill ${(a.status||"").toLowerCase()}">${escH(a.status || "—")}</span></div>
+
+    <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;">
+      ${a.video_id
+        ? `<div style="width:90px;height:90px;border-radius:8px;border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--panel2);">🎬</div>`
+        : a.image_url ? `<img src="${a.image_url}" style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);flex-shrink:0;">` : ""}
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;">
+        ⚠ Editing below updates <b style="color:var(--text2);">our records only</b> — it does <b style="color:var(--text2);">not</b> change the ad already live on Meta (ad creative text can't be edited after launch). To change what's actually showing, duplicate this ad with new copy in the builder and pause this one.
+      </div>
+    </div>
+
+    <div class="field"><label>Primary text</label><textarea id="ladPrimary" rows="3">${escH(a.primary_text || "")}</textarea></div>
+    <div class="fg" style="margin-top:10px;">
+      <div class="field"><label>Headline</label><input id="ladHeadline" value="${escH(a.headline || "")}"></div>
+      <div class="field"><label>Description</label><input id="ladDesc" value="${escH(a.description || "")}"></div>
+    </div>
+    <div class="field" style="margin-top:10px;"><label>CTA</label>
+      <select id="ladCta">
+        <option value="SHOP_NOW" ${a.cta_type === "SHOP_NOW" ? "selected" : ""}>Shop Now</option>
+        <option value="LEARN_MORE" ${a.cta_type === "LEARN_MORE" ? "selected" : ""}>Learn More</option>
+        <option value="ORDER_NOW" ${a.cta_type === "ORDER_NOW" ? "selected" : ""}>Order Now</option>
+        <option value="WHATSAPP_MESSAGE" ${a.cta_type === "WHATSAPP_MESSAGE" ? "selected" : ""}>Send Message (WhatsApp)</option>
+      </select>
+    </div>
+    <div id="ladMsg" style="margin-top:10px;"></div>
+    <button type="button" class="btn btn-a btn-full" style="margin-top:14px;" onclick="bvSaveLaunchedAdDetail('${creativeId}')">💾 Save (our records only)</button>
+  `;
+}
+
+async function bvSaveLaunchedAdDetail(creativeId) {
+  const msg = document.getElementById("ladMsg");
+  const btn = document.querySelector("#bvLaunchedAdOverlay .btn-a");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const { error } = await supabaseClient.from("creatives").update({
+      primary_text: document.getElementById("ladPrimary").value.trim(),
+      headline: document.getElementById("ladHeadline").value.trim(),
+      description: document.getElementById("ladDesc").value.trim(),
+      cta_type: document.getElementById("ladCta").value,
+    }).eq("id", creativeId);
+    if (error) throw error;
+    msg.innerHTML = `<div class="msg ok">✅ Saved.</div>`;
+    btn.disabled = false; btn.textContent = "💾 Save (our records only)";
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+    btn.disabled = false; btn.textContent = "💾 Save (our records only)";
+  }
+}
+
 // ── CREATIVE DETAIL MODAL ────────────────────────────────────────────────────
 // Click any row in "All creatives" for a quick-open detail view (not a new
 // tab): full ad copy, campaign name/budget type/schedule, and every ad set
@@ -2855,7 +2942,7 @@ async function renderAdsFlat(el, counts) {
 
   const adSetAds = await sbQuery(
     "ad_set_ads",
-    "select=*,ad_sets(adset_name,status,meta_raw,campaign_id,campaigns(campaign_name)),creatives(creative_name,image_url,video_id,headline,cta_type),daily_metrics(spend_naira,ctr,orders,cost_per_order_naira,metric_date)&order=created_at.desc&limit=1000"
+    "select=*,ad_sets(adset_name,status,meta_raw,campaign_id,campaigns(campaign_name)),creatives(creative_name,image_url,video_id,headline,cta_type,launch_batch_id,created_at),daily_metrics(spend_naira,ctr,orders,cost_per_order_naira,metric_date)&order=created_at.desc&limit=1000"
   );
 
   const rows = (adSetAds || []).map(r => {
@@ -2876,29 +2963,87 @@ async function renderAdsFlat(el, counts) {
     return true;
   });
 
+  // Group duplicated ads (same ad set + shared launch_batch_id) under their
+  // original, mirroring Meta's own "Copy 1/2/3 nested under the original"
+  // list instead of a flat list where a duplicate looks unrelated to the ad
+  // it came from. A row with no launch_batch_id (not a duplicate) is its own
+  // group of one, rendered exactly as before.
+  const groupsMap = new Map();
+  for (const r of filtered) {
+    const key = `${r.ad_set_id}:${r.creatives?.launch_batch_id || r.id}`;
+    if (!groupsMap.has(key)) groupsMap.set(key, []);
+    groupsMap.get(key).push(r);
+  }
+  const groups = [...groupsMap.values()].map(g => {
+    g.sort((a, b) => (a.creatives?.created_at || "").localeCompare(b.creatives?.created_at || ""));
+    return g;
+  });
+  // Keep the same newest-first ordering the flat list had, by each group's
+  // most-recently-created row.
+  groups.sort((a, b) => (b[0].created_at || "").localeCompare(a[0].created_at || ""));
+
   const panel = el.querySelector(".panel");
+  const adCell = (r, indent) => `
+    <div style="display:flex;align-items:center;gap:8px;${indent ? "padding-left:22px;" : ""}">
+      ${r.creatives?.image_url ? `<img src="${r.creatives.image_url}" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0;">` : `<div style="width:28px;height:28px;border-radius:5px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">${r.creatives?.video_id ? "🎬" : "🖼️"}</div>`}
+      <a href="javascript:void(0)" onclick="event.stopPropagation(); bvShowLaunchedAdDetail('${r.creative_id}')" class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);text-decoration:none;" title="${escH(r.creatives?.headline || r.creatives?.creative_name || "")}">${escH(r.creatives?.headline || r.creatives?.creative_name || "—")}</a>
+    </div>`;
+
   panel.innerHTML = `
     <div class="ph"><div class="ph-title">All ads</div><div class="ph-count">${filtered.length} shown</div></div>
     ${!filtered.length
       ? `<div class="empty"><div class="empty-ico">🎨</div>No ads yet.</div>`
       : `<div class="tbl-wrap"><table>
         <tr><th>Ad</th><th>Ad set</th><th>Campaign</th><th>Delivery</th><th>Amount spent</th><th>CTR</th><th>Results</th><th>Cost per result</th></tr>
-        ${filtered.map(r => `<tr class="bv-clickable-row" onclick="bvOpenAdSet('${r.ad_set_id}','${r.ad_sets?.campaign_id || ""}')">
-          <td>
-            <div style="display:flex;align-items:center;gap:8px;">
-              ${r.creatives?.image_url ? `<img src="${r.creatives.image_url}" style="width:28px;height:28px;object-fit:cover;border-radius:5px;flex-shrink:0;">` : `<div style="width:28px;height:28px;border-radius:5px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">${r.creatives?.video_id ? "🎬" : "🖼️"}</div>`}
-              <span class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.creatives?.headline || r.creatives?.creative_name || "")}">${escH(r.creatives?.headline || r.creatives?.creative_name || "—")}</span>
-            </div>
-          </td>
-          <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(r.ad_sets?.adset_name || "—")}</td>
-          <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(r.ad_sets?.campaigns?.campaign_name || "—")}</td>
-          <td><span class="pill ${r.lifecycle.key}">${r.lifecycle.label}</span></td>
-          <td>${fN(r.spend_latest)}</td>
-          <td class="${ctrCls(r.ctr_latest)}">${r.ctr_latest != null ? parseFloat(r.ctr_latest).toFixed(2) + "%" : "—"}</td>
-          <td>${r.orders_latest}</td>
-          <td>${fN(r.cpa_latest)}</td>
-        </tr>`).join("")}
+        ${groups.map((g, gi) => {
+          const r = g[0];
+          const groupKey = `bvAdGroup-${gi}`;
+          const rowHtml = (row, isParent) => `<tr class="bv-clickable-row" onclick="bvOpenAdSet('${row.ad_set_id}','${row.ad_sets?.campaign_id || ""}')">
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${isParent && g.length > 1 ? `<a href="javascript:void(0)" onclick="event.stopPropagation(); bvToggleAdGroup('${groupKey}')" id="${groupKey}-arrow" style="color:var(--muted);text-decoration:none;font-size:11px;width:12px;flex-shrink:0;">▸</a>` : (g.length > 1 ? `<span style="width:12px;flex-shrink:0;"></span>` : "")}
+                ${adCell(row, false)}
+              </div>
+            </td>
+            <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(row.ad_sets?.adset_name || "—")}</td>
+            <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(row.ad_sets?.campaigns?.campaign_name || "—")}</td>
+            <td><span class="pill ${row.lifecycle.key}">${row.lifecycle.label}</span></td>
+            <td>${fN(row.spend_latest)}</td>
+            <td class="${ctrCls(row.ctr_latest)}">${row.ctr_latest != null ? parseFloat(row.ctr_latest).toFixed(2) + "%" : "—"}</td>
+            <td>${row.orders_latest}</td>
+            <td>${fN(row.cpa_latest)}</td>
+          </tr>`;
+          const parentRow = rowHtml(r, true).replace(
+            `${adCell(r, false)}`,
+            `${adCell(r, false)}${g.length > 1 ? `<span style="font-size:10px;color:var(--muted);margin-left:4px;">(${g.length} ads)</span>` : ""}`
+          );
+          const childRows = g.slice(1).map((row, i) => `<tr class="${groupKey}-child bv-clickable-row" style="display:none;" onclick="bvOpenAdSet('${row.ad_set_id}','${row.ad_sets?.campaign_id || ""}')">
+            <td>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="width:12px;flex-shrink:0;"></span>
+                ${adCell(row, true)}
+                <span style="font-size:10px;color:var(--muted);">Copy ${i + 1}</span>
+              </div>
+            </td>
+            <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(row.ad_sets?.adset_name || "—")}</td>
+            <td class="n" style="color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(row.ad_sets?.campaigns?.campaign_name || "—")}</td>
+            <td><span class="pill ${row.lifecycle.key}">${row.lifecycle.label}</span></td>
+            <td>${fN(row.spend_latest)}</td>
+            <td class="${ctrCls(row.ctr_latest)}">${row.ctr_latest != null ? parseFloat(row.ctr_latest).toFixed(2) + "%" : "—"}</td>
+            <td>${row.orders_latest}</td>
+            <td>${fN(row.cpa_latest)}</td>
+          </tr>`).join("");
+          return parentRow + childRows;
+        }).join("")}
       </table></div>`}`;
+}
+
+function bvToggleAdGroup(groupKey) {
+  const arrow = document.getElementById(`${groupKey}-arrow`);
+  const children = document.querySelectorAll(`.${groupKey}-child`);
+  const willShow = arrow.textContent.trim() === "▸";
+  arrow.textContent = willShow ? "▾" : "▸";
+  children.forEach(el => { el.style.display = willShow ? "" : "none"; });
 }
 
 // ── LEVEL 2: one campaign's ad sets ─────────────────────────────────────────

@@ -421,10 +421,10 @@ async function createAdWithCTA(
 
 // ─── CREATE ONE AD SET PER AD-SET CONFIG ROW ───────────────────────────────────
 // Ad sets come from ad_set_configs -- direct rows the dashboard's ad-set builder
-// writes (one row per ad set; "Duplicate x N" clones the current row into more
-// rows), with real fields the user set themselves: budget, age, gender,
-// geography. Replaces the earlier targeting_presets checkbox flow ("Wellness
-// Interest" etc), which used abstract named presets the user found confusing.
+// writes (one row per ad set; "Duplicate x N" clones it into more rows), with
+// real fields the user set themselves: budget, age, gender, geography. Replaces
+// the earlier targeting_presets checkbox flow ("Wellness Interest" etc), which
+// used abstract named presets the user found confusing.
 
 // Real settings, refreshed from your most recent actual launch ("New Sales
 // campaign", ad sets 1-5, act_643541631210844) -- ABO, OFFSITE_CONVERSIONS,
@@ -827,6 +827,10 @@ async function launchAdSetGroup(
           meta_ad_id: adCreativeId,
           status: "testing",
           company_id: creative.company_id,
+          // Carries the dashboard's launch_batch_id over from the staging
+          // row so the Ads list can group a duplicated ad's copies under
+          // the original instead of showing them as unrelated flat rows.
+          launch_batch_id: copy.launch_batch_id || null,
         })
         .select("id")
         .single();
