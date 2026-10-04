@@ -255,6 +255,20 @@ a{color:inherit;}
 .bv-modal{background:var(--panel);border:1px solid var(--border);border-radius:14px;max-width:640px;width:100%;padding:24px;position:relative;box-shadow:var(--shadow-md,0 20px 60px rgba(20,19,15,.25));}
 .bv-modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:19px;line-height:1;padding:4px;}
 .bv-modal-close:hover{color:var(--text);}
+
+/* ── CAMPAIGN BUILDER (big modal, tabbed like Meta Ads Manager) ──────────────── */
+.bv-overlay-xl{align-items:center;padding:24px;}
+.bv-modal-xl{max-width:900px;width:100%;height:88vh;max-height:860px;padding:0;display:flex;flex-direction:column;overflow:hidden;}
+.bv-builder-head{padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.bv-builder-tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.bv-tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-size:13px;font-weight:600;padding:12px 6px;margin-right:22px;cursor:pointer;display:flex;align-items:center;gap:7px;}
+.bv-tab-btn .bv-tab-num{width:18px;height:18px;border-radius:50%;background:var(--panel2);color:var(--muted);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.bv-tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+.bv-tab-btn.active .bv-tab-num{background:var(--accent);color:#fff;}
+.bv-builder-body{flex:1;overflow-y:auto;padding:22px 24px;}
+.bv-builder-section{display:none;}
+.bv-builder-section.active{display:block;}
+.bv-builder-foot{padding:14px 24px;border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:14px;}
 .bv-dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13.5px;}
 .bv-dl dt{color:var(--muted);white-space:nowrap;}
 .bv-dl dd{color:var(--text);word-break:break-word;}
@@ -1338,120 +1352,11 @@ async function renderVault(el) {
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Upload new creative</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin:-4px 0 12px;line-height:1.5;">
-        This is <b style="color:var(--text2);">ad content for Meta</b> — the video/image people see in the Facebook/Instagram feed, linked to a product below. It's not the product's own photo; upload that on the <b style="color:var(--text2);">Products</b> tab instead, for what the WhatsApp bot shows customers.
+      <div class="ph"><div class="ph-title">Launch a campaign</div></div>
+      <div style="font-size:12px;color:var(--muted);margin:-4px 0 14px;line-height:1.5;">
+        Build a Campaign → Ad Set → Ad in one guided flow, Meta Ads Manager-style — pick what you're promoting, set targeting and budget, add the creative, then review and launch.
       </div>
-      <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
-        <div class="dz-ico">🎬</div>
-        <div class="dz-txt">Drag & drop your ad video or image here</div>
-        <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
-        <div class="dz-prev" id="dzPrev"></div>
-        <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
-        <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
-      </div>
-      <form id="uploadForm">
-        <div class="fg">
-          <div class="field"><label>Link to product *</label>
-            <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none'; bvShowProductDestination(this.value); bvRenderAdSetRows();">
-              ${pOpts}
-              <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
-            </select>
-            <div id="f_productDestination" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
-          </div>
-        </div>
-        <div class="fg" id="newProductFields" style="margin-top:11px;display:${!products?.length ? "grid" : "none"};border:1px dashed var(--border);border-radius:8px;padding:12px;">
-          <div class="field"><label>New product name *</label><input id="np_name" placeholder="e.g. Quality Herb — Immune Booster"></div>
-          <div class="field"><label>Currency</label>
-            <select id="np_currency">
-              <option value="NGN">NGN — Naira</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="CNY">CNY — Yuan</option>
-              <option value="INR">INR — Rupee</option>
-              <option value="GBP">GBP — Pound</option>
-              <option value="EUR">EUR — Euro</option>
-            </select>
-          </div>
-          <div class="field"><label>Default order value *</label><input id="np_val" type="number" value="19000" min="0"></div>
-          <div class="field"><label>Landing page URL *</label><input id="np_url" placeholder="https://…"></div>
-        </div>
-        <div class="fg" style="margin-top:11px;">
-          <div class="field"><label>Mechanism</label>
-            <select id="f_mechanism">
-              <option value="root_cause">Root cause</option>
-              <option value="why_others_failed">Why others failed</option>
-              <option value="lifestyle_factors">Lifestyle factors</option>
-              <option value="major_symptoms">Major symptoms</option>
-              <option value="why_product_works">Why product works</option>
-            </select>
-          </div>
-          <div class="field"><label>Format</label>
-            <select id="f_format">
-              <option value="customer_review">Customer review</option>
-              <option value="before_after">Before / After</option>
-              <option value="street_interview">Street interview</option>
-              <option value="case_study">Case study</option>
-              <option value="ugly_text">Ugly text ad</option>
-            </select>
-          </div>
-          <div class="field"><label>CTA</label>
-            <select id="f_cta">
-              <option value="SHOP_NOW">Shop Now</option>
-              <option value="LEARN_MORE">Learn More</option>
-              <option value="ORDER_NOW">Order Now</option>
-            </select>
-            <div id="f_ctaNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
-          </div>
-        </div>
-        <div class="field" style="margin-top:11px;"><label>Primary text (ad copy) *</label>
-          <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad…" required></textarea>
-        </div>
-        <div class="fg" style="margin-top:11px;">
-          <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
-          <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
-        </div>
-        <div style="margin-top:11px;">
-          <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvStageAdCopy()">+ Add another ad copy (test multiple creatives in the same ad sets)</button>
-          <div id="stagedCopies" style="margin-top:8px;"></div>
-        </div>
-        <div class="field" style="margin-top:11px;"><label>Campaign objective <span style="font-weight:400;color:var(--muted);">(determines what Meta optimizes delivery for)</span></label>
-          <select id="f_objective" onchange="bvRenderAdSetRows()">
-            <option value="OUTCOME_SALES">Sales — drive purchases (needs a connected pixel)</option>
-            <option value="OUTCOME_TRAFFIC">Traffic — drive clicks to your link</option>
-            <option value="OUTCOME_ENGAGEMENT">Engagement — likes, comments, shares on the post</option>
-            <option value="OUTCOME_AWARENESS">Awareness — reach as many people as possible</option>
-            <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
-          </select>
-          <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
-        </div>
-        <div class="fg" style="margin-top:11px;">
-          <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager — make it recognizable)</span></label>
-            <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch">
-          </div>
-          <div class="field"><label>Budget type</label>
-            <select id="f_budget_type">
-              <option value="abo">ABO — budget set per ad set</option>
-              <option value="cbo">CBO — one total budget, Meta splits it</option>
-            </select>
-          </div>
-        </div>
-        <div class="field" style="margin-top:11px;">
-          <label>Ad sets</label>
-          <div id="adSetRows"></div>
-        </div>
-        <div class="fg" style="margin-top:11px;">
-          <div class="field"><label>Launch date/time (optional)</label>
-            <input id="f_scheduled" type="datetime-local">
-            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to launch in tonight's normal batch.</div>
-          </div>
-          <div class="field"><label>Campaign end date (optional)</label>
-            <input id="f_end_date" type="datetime-local">
-            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to run until you kill/pause it manually.</div>
-          </div>
-        </div>
-        <button type="submit" class="btn btn-a btn-full" id="uploadBtn">Review & Launch →</button>
-        <div id="uploadMsg"></div>
-      </form>
+      <button type="button" class="btn btn-a" style="width:auto;padding:10px 22px;" onclick="bvOpenCampaignBuilder()">+ New Campaign</button>
     </div>
 
     <div class="panel">
@@ -1475,11 +1380,176 @@ async function renderVault(el) {
 
   window.bvVaultProductsCache = products || [];
   window.bvVaultAssetsCache = assets || [];
+  window.bvVaultProductOpts = pOpts;
+}
+
+// ── CAMPAIGN BUILDER (big modal, Meta Ads Manager-style tabs) ───────────────
+// Replaces the old single long scrolling form: a real modal with Campaign /
+// Ad Set / Ad tabs, each its own scrollable pane, product picker pinned at
+// the top since it drives both targeting (destination/objective lock) and
+// the ad's own link/CTA. Same ids/state/logic as before (bvAdSetRows,
+// bvStagedCopies, bvReuseAsset, bvExecuteLaunch etc.) -- this only changes
+// the layout those hook into.
+function bvOpenCampaignBuilder() {
+  const products = window.bvVaultProductsCache || [];
+  const pOpts = window.bvVaultProductOpts || "";
+  const overlay = document.createElement("div");
+  overlay.id = "bvBuilderOverlay";
+  overlay.className = "bv-overlay bv-overlay-xl";
+  overlay.innerHTML = `
+    <div class="bv-modal bv-modal-xl">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <form id="uploadForm" style="display:flex;flex-direction:column;height:100%;min-height:0;">
+
+        <div class="bv-builder-head">
+          <div class="ph-title" style="margin-bottom:10px;">New campaign</div>
+          <div class="fg">
+            <div class="field"><label>What are you promoting? *</label>
+              <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none'; bvShowProductDestination(this.value); bvRenderAdSetRows();">
+                ${pOpts}
+                <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
+              </select>
+              <div id="f_productDestination" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+            </div>
+          </div>
+          <div class="fg" id="newProductFields" style="margin-top:10px;display:${!products?.length ? "grid" : "none"};border:1px dashed var(--border);border-radius:8px;padding:12px;">
+            <div class="field"><label>New product name *</label><input id="np_name" placeholder="e.g. Quality Herb — Immune Booster"></div>
+            <div class="field"><label>Currency</label>
+              <select id="np_currency">
+                <option value="NGN">NGN — Naira</option>
+                <option value="USD">USD — US Dollar</option>
+                <option value="CNY">CNY — Yuan</option>
+                <option value="INR">INR — Rupee</option>
+                <option value="GBP">GBP — Pound</option>
+                <option value="EUR">EUR — Euro</option>
+              </select>
+            </div>
+            <div class="field"><label>Default order value *</label><input id="np_val" type="number" value="19000" min="0"></div>
+            <div class="field"><label>Landing page URL *</label><input id="np_url" placeholder="https://…"></div>
+          </div>
+        </div>
+
+        <div class="bv-builder-tabs">
+          <button type="button" class="bv-tab-btn active" id="bvTabBtn-campaign" onclick="bvSwitchBuilderTab('campaign')"><span class="bv-tab-num">1</span> Campaign</button>
+          <button type="button" class="bv-tab-btn" id="bvTabBtn-adset" onclick="bvSwitchBuilderTab('adset')"><span class="bv-tab-num">2</span> Ad Set</button>
+          <button type="button" class="bv-tab-btn" id="bvTabBtn-ad" onclick="bvSwitchBuilderTab('ad')"><span class="bv-tab-num">3</span> Ad</button>
+        </div>
+
+        <div class="bv-builder-body">
+
+          <div class="bv-builder-section active" id="bvSection-campaign">
+            <div class="field"><label>Campaign objective <span style="font-weight:400;color:var(--muted);">(determines what Meta optimizes delivery for)</span></label>
+              <select id="f_objective" onchange="bvRenderAdSetRows()">
+                <option value="OUTCOME_SALES">Sales — drive purchases (needs a connected pixel)</option>
+                <option value="OUTCOME_TRAFFIC">Traffic — drive clicks to your link</option>
+                <option value="OUTCOME_ENGAGEMENT">Engagement — likes, comments, shares on the post</option>
+                <option value="OUTCOME_AWARENESS">Awareness — reach as many people as possible</option>
+                <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
+              </select>
+              <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+            </div>
+            <div class="fg" style="margin-top:14px;">
+              <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager)</span></label>
+                <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch">
+              </div>
+              <div class="field"><label>Budget type</label>
+                <select id="f_budget_type">
+                  <option value="abo">ABO — budget set per ad set</option>
+                  <option value="cbo">CBO — one total budget, Meta splits it</option>
+                </select>
+              </div>
+            </div>
+            <div class="fg" style="margin-top:14px;">
+              <div class="field"><label>Launch date/time (optional)</label>
+                <input id="f_scheduled" type="datetime-local">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to launch in tonight's normal batch.</div>
+              </div>
+              <div class="field"><label>Campaign end date (optional)</label>
+                <input id="f_end_date" type="datetime-local">
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to run until you kill/pause it manually.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bv-builder-section" id="bvSection-adset">
+            <div class="field"><label>Ad sets <span style="font-weight:400;color:var(--muted);">(budget, targeting, placements, bidding)</span></label>
+              <div id="adSetRows"></div>
+            </div>
+          </div>
+
+          <div class="bv-builder-section" id="bvSection-ad">
+            <div style="font-size:11.5px;color:var(--muted);margin:0 0 12px;line-height:1.5;">
+              This is <b style="color:var(--text2);">ad content for Meta</b> — the video/image people see in the Facebook/Instagram feed. It's not the product's own photo; upload that on the <b style="color:var(--text2);">Products</b> tab instead.
+            </div>
+            <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
+              <div class="dz-ico">🎬</div>
+              <div class="dz-txt">Drag & drop your ad video or image here</div>
+              <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
+              <div class="dz-prev" id="dzPrev"></div>
+              <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
+              <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
+            </div>
+            <div class="fg" style="margin-top:14px;">
+              <div class="field"><label>Mechanism</label>
+                <select id="f_mechanism">
+                  <option value="root_cause">Root cause</option>
+                  <option value="why_others_failed">Why others failed</option>
+                  <option value="lifestyle_factors">Lifestyle factors</option>
+                  <option value="major_symptoms">Major symptoms</option>
+                  <option value="why_product_works">Why product works</option>
+                </select>
+              </div>
+              <div class="field"><label>Format</label>
+                <select id="f_format">
+                  <option value="customer_review">Customer review</option>
+                  <option value="before_after">Before / After</option>
+                  <option value="street_interview">Street interview</option>
+                  <option value="case_study">Case study</option>
+                  <option value="ugly_text">Ugly text ad</option>
+                </select>
+              </div>
+              <div class="field"><label>CTA</label>
+                <select id="f_cta">
+                  <option value="SHOP_NOW">Shop Now</option>
+                  <option value="LEARN_MORE">Learn More</option>
+                  <option value="ORDER_NOW">Order Now</option>
+                </select>
+                <div id="f_ctaNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+              </div>
+            </div>
+            <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
+              <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad…" required></textarea>
+            </div>
+            <div class="fg" style="margin-top:14px;">
+              <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
+              <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
+            </div>
+            <div style="margin-top:14px;">
+              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvStageAdCopy()">+ Add another ad copy (test multiple creatives in the same ad sets)</button>
+              <div id="stagedCopies" style="margin-top:8px;"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="bv-builder-foot">
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-g" style="width:auto;padding:8px 16px;font-size:12.5px;" id="bvTabBackBtn" onclick="bvBuilderTabStep(-1)">← Back</button>
+            <button type="button" class="btn btn-g" style="width:auto;padding:8px 16px;font-size:12.5px;" id="bvTabNextBtn" onclick="bvBuilderTabStep(1)">Next →</button>
+          </div>
+          <button type="submit" class="btn btn-a" style="width:auto;padding:8px 20px;" id="uploadBtn">Review & Launch →</button>
+        </div>
+        <div id="uploadMsg" style="padding:0 24px 14px;"></div>
+      </form>
+    </div>`;
+  document.body.appendChild(overlay);
+
   bvShowProductDestination(document.getElementById("f_product")?.value);
   bvResetAdSetBuilder();
   bvStagedCopies = [];
   bvRenderStagedCopies();
   bvReuseAsset = null;
+  bvSwitchBuilderTab("campaign");
 
   // Drag-and-drop
   const dz = document.getElementById("dropZone");
@@ -1516,6 +1586,27 @@ async function renderVault(el) {
     msg.innerHTML = "";
     bvOpenReviewModal(copies);
   });
+}
+
+const BV_BUILDER_TABS = ["campaign", "adset", "ad"];
+
+function bvSwitchBuilderTab(tab) {
+  BV_BUILDER_TABS.forEach(t => {
+    document.getElementById(`bvSection-${t}`)?.classList.toggle("active", t === tab);
+    document.getElementById(`bvTabBtn-${t}`)?.classList.toggle("active", t === tab);
+  });
+  const i = BV_BUILDER_TABS.indexOf(tab);
+  const backBtn = document.getElementById("bvTabBackBtn");
+  const nextBtn = document.getElementById("bvTabNextBtn");
+  if (backBtn) backBtn.style.visibility = i === 0 ? "hidden" : "visible";
+  if (nextBtn) nextBtn.style.visibility = i === BV_BUILDER_TABS.length - 1 ? "hidden" : "visible";
+  document.querySelector(".bv-builder-body")?.scrollTo(0, 0);
+}
+
+function bvBuilderTabStep(delta) {
+  const current = BV_BUILDER_TABS.find(t => document.getElementById(`bvSection-${t}`)?.classList.contains("active"));
+  const i = Math.max(0, Math.min(BV_BUILDER_TABS.length - 1, BV_BUILDER_TABS.indexOf(current) + delta));
+  bvSwitchBuilderTab(BV_BUILDER_TABS[i]);
 }
 
 // ── REVIEW & LAUNCH ──────────────────────────────────────────────────────────
@@ -1586,10 +1677,7 @@ async function bvConfirmLaunch(scheduledIso) {
 
 async function bvExecuteLaunch(copies, scheduledIso) {
   const btn = document.getElementById("uploadBtn");
-  const msg = document.getElementById("uploadMsg");
-  const dz = document.getElementById("dropZone");
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Uploading…';
-  msg.innerHTML = "";
 
   try {
       // If "+ Add new product…" was chosen, create it now so we have a real product_id before uploading.
@@ -1704,16 +1792,11 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       if (adSetErr) throw adSetErr;
 
       const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
-      msg.innerHTML = `<div class="msg ok">✅ Uploaded! ${assetIds.length} ad cop${assetIds.length === 1 ? "y" : "ies"} x ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledIso ? "Scheduled for " + new Date(scheduledIso).toLocaleString() : "Will be picked up in tonight's test batch."}</div>`;
-      document.getElementById("uploadForm").reset();
-      document.getElementById("dzPrev").innerHTML = "";
-      bvResetAdSetBuilder();
+      bvToast(`Launched! ${assetIds.length} ad cop${assetIds.length === 1 ? "y" : "ies"} x ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledIso ? "Scheduled for " + new Date(scheduledIso).toLocaleString() : "Will be picked up in tonight's test batch."}`);
+      document.getElementById("bvBuilderOverlay")?.remove();
       bvStagedCopies = [];
       bvReuseAsset = null;
-      bvRenderStagedCopies();
-      dz.style.borderColor = "";
-      dz.style.background = "";
-      setTimeout(render, 1200);
+      setTimeout(render, 400);
   } finally {
     btn.disabled = false; btn.innerHTML = "Review & Launch →";
   }
