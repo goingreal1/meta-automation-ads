@@ -1068,6 +1068,15 @@ document.getElementById("sidebarClose").addEventListener("click", closeMobileDra
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
 let activeTab = "overview";
+// Jump to a tab programmatically (e.g. a "Verify in Settings" link inside the
+// campaign builder) -- closes any open modal first since Settings needs to
+// actually be visible.
+function bvGoToTab(tab) {
+  document.getElementById("bvBuilderOverlay")?.remove();
+  activeTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  render();
+}
 document.getElementById("tabsBar").addEventListener("click", e => {
   const t = e.target.closest(".tab-btn");
   if (!t) return;
@@ -2152,43 +2161,29 @@ function bvToggleKebab(id, event) {
 document.addEventListener("click", bvCloseKebabs);
 
 // Fills the read-only Identity/Tracking fields in the Ad tab from the
-// currently active ad account's connected Page/Pixel (set in Settings).
-// bvBuilderIdentityCache holds the live Meta names (and any WhatsApp number
-// connected to the Page) fetched by bvLoadBuilderIdentity -- "loading" while
-// that fetch is in flight, an object once it resolves. Falls back to showing
-// the raw saved ID if the fetch fails or hasn't run.
-let bvBuilderIdentityCache = "loading";
-
-async function bvLoadBuilderIdentity() {
-  bvBuilderIdentityCache = "loading";
-  bvRenderIdentitySection();
-  bvRenderWhatsappPicker();
-  if (!activeAccountId) { bvBuilderIdentityCache = null; bvRenderIdentitySection(); bvRenderWhatsappPicker(); return; }
-  try {
-    const r = await sbFn("verify-ad-account-connection", { ad_account_id: activeAccountId });
-    bvBuilderIdentityCache = r?.error ? null : r;
-  } catch {
-    bvBuilderIdentityCache = null;
-  }
+// currently active ad account's row -- fb_page_name/whatsapp_number/
+// pixel_name are cached there by Settings' "Verify" flow (one real call to
+// Meta, done once), so opening the builder never has to call Meta live and
+// can't fail with "couldn't reach Meta" here. If an account hasn't been
+// verified yet, this just says so and points at Settings instead of
+// retrying a live lookup.
+function bvLoadBuilderIdentity() {
   bvRenderIdentitySection();
   bvRenderWhatsappPicker();
 }
 
-// The Page's own connected WhatsApp number (if any) -- lets someone pick it
-// with one click instead of retyping it, the same way Meta's own ad form
-// offers a dropdown of numbers already linked to the Page/Business.
+// The Page's own connected WhatsApp number (if any was cached on the ad
+// account row by Settings' Verify flow) -- lets someone pick it with one
+// click instead of retyping it, the same way Meta's own ad form offers a
+// dropdown of numbers already linked to the Page/Business.
 function bvRenderWhatsappPicker() {
   const el = document.getElementById("f_whatsappPicker");
   if (!el) return;
   const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
-  const cache = bvBuilderIdentityCache;
-  if (!acc?.fb_page_id || cache === "loading") { el.innerHTML = ""; return; }
-  if (!cache) { el.innerHTML = ""; return; }
-  const page = cache.pages?.find(p => p.id === acc.fb_page_id);
-  if (page?.whatsapp_number) {
-    el.innerHTML = `<button type="button" class="btn btn-g" style="width:auto;padding:5px 10px;font-size:11.5px;" onclick="document.getElementById('f_whatsapp_number').value='${escH(page.whatsapp_number)}'; bvRenderIdentitySection(); bvRenderBuilderSummary();">✓ Use ${escH(page.whatsapp_number)} <span style="color:var(--muted);">— connected to ${escH(page.name)}</span></button>`;
+  if (acc?.whatsapp_number) {
+    el.innerHTML = `<button type="button" class="btn btn-g" style="width:auto;padding:5px 10px;font-size:11.5px;" onclick="document.getElementById('f_whatsapp_number').value='${escH(acc.whatsapp_number)}'; bvRenderIdentitySection(); bvRenderBuilderSummary();">✓ Use ${escH(acc.whatsapp_number)} <span style="color:var(--muted);">— connected to ${escH(acc.fb_page_name || "this Page")}</span></button>`;
   } else {
-    el.innerHTML = `<div style="font-size:11px;color:var(--muted);">No WhatsApp number found on the connected Page — type it in manually, or connect one under Meta Business Settings → WhatsApp Accounts.</div>`;
+    el.innerHTML = `<div style="font-size:11px;color:var(--muted);">No WhatsApp number saved for this ad account yet — type it in manually, or verify the connection in Settings → Pixel & Page Connections to save it for next time.</div>`;
   }
 }
 
@@ -2196,29 +2191,22 @@ function bvRenderIdentitySection() {
   const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
   const idEl = document.getElementById("f_identityValue");
   const pxEl = document.getElementById("f_pixelValue");
-  const cache = bvBuilderIdentityCache;
   if (idEl) {
     if (!acc?.fb_page_id) {
       idEl.innerHTML = `<span style="color:var(--danger);">⚠ No Facebook Page connected to this ad account — set it in Settings → Pixel & Page Connections before launching.</span>`;
-    } else if (cache === "loading") {
-      idEl.innerHTML = `Checking with Meta…`;
     } else {
-      const page = cache?.pages?.find(p => p.id === acc.fb_page_id);
-      idEl.innerHTML = page
-        ? `✓ ${escH(page.name)} <span style="color:var(--muted);">(${escH(page.id)})</span>`
-        : `${escH(acc.fb_page_id)} <span style="color:var(--muted);">(name unavailable${cache ? " — not found on this ad account" : " — couldn't reach Meta"})</span>`;
+      idEl.innerHTML = acc.fb_page_name
+        ? `✓ ${escH(acc.fb_page_name)} <span style="color:var(--muted);">(${escH(acc.fb_page_id)})</span>`
+        : `${escH(acc.fb_page_id)} <span style="color:var(--muted);">— not yet verified. <a href="javascript:void(0)" onclick="bvGoToTab('settings')" style="color:var(--accent);">Verify in Settings</a> to see its name and save its WhatsApp number.</span>`;
     }
   }
   if (pxEl) {
     if (!acc?.meta_pixel_id) {
       pxEl.innerHTML = `<span style="color:var(--muted);">No pixel connected — Sales-objective ads need one (Settings → Pixel & Page Connections).</span>`;
-    } else if (cache === "loading") {
-      pxEl.innerHTML = `Checking with Meta…`;
     } else {
-      const pixel = cache?.pixels?.find(p => p.id === acc.meta_pixel_id);
-      pxEl.innerHTML = pixel
-        ? `✓ ${escH(pixel.name)} <span style="color:var(--muted);">(${escH(pixel.id)})</span>`
-        : `${escH(acc.meta_pixel_id)} <span style="color:var(--muted);">(name unavailable)</span>`;
+      pxEl.innerHTML = acc.pixel_name
+        ? `✓ ${escH(acc.pixel_name)} <span style="color:var(--muted);">(${escH(acc.meta_pixel_id)})</span>`
+        : `${escH(acc.meta_pixel_id)} <span style="color:var(--muted);">— not yet verified.</span>`;
     }
   }
 
@@ -2228,11 +2216,10 @@ function bvRenderIdentitySection() {
   if (waField) waField.style.display = isWhatsapp ? "" : "none";
   if (waEl && isWhatsapp) {
     const num = document.getElementById("f_whatsapp_number")?.value.trim();
-    const page = cache && typeof cache === "object" ? cache.pages?.find(p => p.id === acc?.fb_page_id) : null;
     if (num) {
       waEl.innerHTML = `✓ ${escH(num)}`;
-    } else if (page?.whatsapp_number) {
-      waEl.innerHTML = `<button type="button" class="btn btn-g" style="width:auto;padding:5px 10px;font-size:11.5px;" onclick="document.getElementById('f_whatsapp_number').value='${escH(page.whatsapp_number)}'; bvRenderIdentitySection(); bvRenderBuilderSummary();">✓ Use ${escH(page.whatsapp_number)}</button>`;
+    } else if (acc?.whatsapp_number) {
+      waEl.innerHTML = `<button type="button" class="btn btn-g" style="width:auto;padding:5px 10px;font-size:11.5px;" onclick="document.getElementById('f_whatsapp_number').value='${escH(acc.whatsapp_number)}'; bvRenderIdentitySection(); bvRenderBuilderSummary();">✓ Use ${escH(acc.whatsapp_number)}</button>`;
     } else {
       waEl.innerHTML = `<span style="color:var(--muted);">Not set — enter it in the Destination section above.</span>`;
     }
@@ -6219,12 +6206,21 @@ async function renderSettings(el) {
       </div>
       ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">📡</div>No ad accounts linked yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Facebook Page</th><th>Pixel / Dataset</th><th></th></tr>
+        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Facebook Page</th><th>WhatsApp number</th><th>Pixel / Dataset</th><th></th></tr>
         ${accountsList.map(a => `<tr id="connRow-${a.id}">
           <td class="s n">${escH(a.nickname || a.name || "")}</td>
           <td>${escH(a.meta_ad_account_id || "")}</td>
-          <td id="pageCell-${a.id}">${a.fb_page_id ? `<span style="font-family:monospace;font-size:11.5px;">${escH(a.fb_page_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>` : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
-          <td id="pixelCell-${a.id}">${a.meta_pixel_id ? `<span style="font-family:monospace;font-size:11.5px;">${escH(a.meta_pixel_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>` : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
+          <td id="pageCell-${a.id}">${a.fb_page_id
+            ? (a.fb_page_name
+                ? `✓ ${escH(a.fb_page_name)} <span style="color:var(--muted);font-size:10.5px;">(${escH(a.fb_page_id)})</span>`
+                : `<span style="font-family:monospace;font-size:11.5px;">${escH(a.fb_page_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>`)
+            : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
+          <td id="waCell-${a.id}">${a.whatsapp_number ? `✓ ${escH(a.whatsapp_number)}` : `<span style="color:var(--muted);font-size:11.5px;">none saved</span>`}</td>
+          <td id="pixelCell-${a.id}">${a.meta_pixel_id
+            ? (a.pixel_name
+                ? `✓ ${escH(a.pixel_name)} <span style="color:var(--muted);font-size:10.5px;">(${escH(a.meta_pixel_id)})</span>`
+                : `<span style="font-family:monospace;font-size:11.5px;">${escH(a.meta_pixel_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>`)
+            : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
           <td><button type="button" class="btn btn-g connVerifyBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;white-space:nowrap;">🔄 Verify</button></td>
         </tr>`).join("")}
       </table></div>`}
@@ -6255,6 +6251,12 @@ window.refreshBalances = async function() {
 // account's own /promote_pages and /adspixels) which pages/pixels it can
 // really use, then swaps the cell's static text for a <select> of only those
 // confirmed options -- so what's saved is guaranteed connected, not guessed.
+// Keyed by ad_account id -- the last live verify-ad-account-connection
+// response for that account, so bvSaveAdAccountConnection can pull the
+// Page's real name/WhatsApp number and the pixel's real name to cache onto
+// the row, without a second round trip to Meta.
+window.bvVerifyResultCache = window.bvVerifyResultCache || {};
+
 async function bvVerifyAdAccountConnection(accountId) {
   const btn = document.querySelector(`.connVerifyBtn[data-aid="${accountId}"]`);
   const pageCell = document.getElementById(`pageCell-${accountId}`);
@@ -6263,6 +6265,7 @@ async function bvVerifyAdAccountConnection(accountId) {
   try {
     const r = await sbFn("verify-ad-account-connection", { ad_account_id: accountId });
     if (r.error) throw new Error(r.error);
+    window.bvVerifyResultCache[accountId] = r;
 
     const pageOptsHtml = (val) => {
       let opts = r.pages.map(p => `<option value="${escH(p.id)}" ${val === p.id ? "selected" : ""}>${escH(p.name)} (${escH(p.id)})</option>`).join("");
@@ -6300,7 +6303,21 @@ async function bvSaveAdAccountConnection(accountId) {
   const pixelVal = document.getElementById(`pixelSel-${accountId}`)?.value || null;
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   try {
-    const { error } = await supabaseClient.from("ad_accounts").update({ fb_page_id: pageVal, meta_pixel_id: pixelVal }).eq("id", accountId);
+    // Cache the Page's real name + connected WhatsApp number (and the
+    // pixel's name) from the last verify response, so the campaign builder
+    // can read them straight off this row instead of calling Meta live
+    // every time it opens.
+    const cached = window.bvVerifyResultCache[accountId];
+    const page = cached?.pages?.find(p => p.id === pageVal);
+    const pixel = cached?.pixels?.find(p => p.id === pixelVal);
+    const { error } = await supabaseClient.from("ad_accounts").update({
+      fb_page_id: pageVal,
+      meta_pixel_id: pixelVal,
+      fb_page_name: page?.name || null,
+      whatsapp_number: page?.whatsapp_number || null,
+      pixel_name: pixel?.name || null,
+      connection_verified_at: new Date().toISOString(),
+    }).eq("id", accountId);
     if (error) throw error;
     await loadAccounts();
     renderSettings(document.getElementById("mainContent"));
@@ -6384,14 +6401,15 @@ async function bvSaveAdAccountConnection(accountId) {
       // check for an existing match (either format) before inserting at all.
       const rawId = document.getElementById("a_meta_id").value.trim();
       const normalizedId = rawId.replace(/^act_/, "");
-      const existing = accountsList.find(a => (a.meta_ad_account_id || "").replace(/^act_/, "") === normalizedId);
+      const existing = accountsList.find(a => (a.meta_ad_account_id || "").trim().replace(/^act_/, "") === normalizedId);
+      const fbPageId = document.getElementById("a_fb_id").value.trim();
 
       let accountId;
       if (existing) {
         const { error } = await supabaseClient.from('ad_accounts').update({
           name: acctName,
           nickname: acctName,
-          fb_page_id: document.getElementById("a_fb_id").value,
+          fb_page_id: fbPageId,
           status: 'active',
         }).eq('id', existing.id);
         if (error) throw error;
@@ -6404,7 +6422,7 @@ async function bvSaveAdAccountConnection(accountId) {
           name: acctName,
           nickname: acctName,
           meta_ad_account_id: normalizedId,
-          fb_page_id: document.getElementById("a_fb_id").value,
+          fb_page_id: fbPageId,
           status: 'active'
         }).select();
         if (error) throw error;

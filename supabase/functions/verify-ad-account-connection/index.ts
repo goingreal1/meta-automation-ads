@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
     const { data: accountRow } = await supabase.from("ad_accounts").select("*").eq("id", body.ad_account_id).maybeSingle();
     if (!accountRow) return json({ error: `No ad_accounts row found for id ${body.ad_account_id}` }, 404);
 
-    const metaAdAccountId = String(accountRow.meta_ad_account_id).replace(/^act_/, "");
+    const metaAdAccountId = String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "");
 
     const [pagesRes, pixelsRes] = await Promise.all([
       fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/promote_pages?fields=id,name&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()),
