@@ -6545,7 +6545,15 @@ async function bvSaveAdAccountConnection(accountId) {
       // differently, looked like a fresh add). Always store it normalized, and
       // check for an existing match (either format) before inserting at all.
       const rawId = document.getElementById("a_meta_id").value.trim();
-      const normalizedId = rawId.replace(/^act_/, "");
+      // Meta's own Business Settings page shows ad account IDs as e.g.
+      // "ID: 643541631210844" -- pasting that straight in (confirmed this
+      // actually happened live) left the literal "ID: " text baked into
+      // meta_ad_account_id, silently breaking every Graph API call built
+      // from it (act_ID: 643541631210844 isn't a real endpoint). The id is
+      // always purely numeric, so strip everything else instead of just
+      // the "act_" prefix.
+      const digitsOnly = rawId.replace(/^act_/, "").match(/\d+/)?.[0] || "";
+      const normalizedId = digitsOnly || rawId.replace(/^act_/, "");
       const existing = accountsList.find(a => (a.meta_ad_account_id || "").trim().replace(/^act_/, "") === normalizedId);
       const fbPageId = document.getElementById("a_fb_id").value.trim();
 

@@ -626,7 +626,11 @@ async function launchAdSetGroup(
 ): Promise<{ campaign_id: string; ad_sets: { meta_id: string; db_id: string; label: string; budgetNaira: number }[] } | { error: string }> {
   const creative = creativeGroup[0];
   try {
-    const accountId = (creative.ad_accounts?.meta_ad_account_id || "").replace("act_", "");
+    // Same "ID: 123..." Meta-label-left-in-the-field issue as
+    // verify-ad-account-connection -- pull just the digits, don't trust
+    // whatever got pasted into the field.
+    const rawAccountId = creative.ad_accounts?.meta_ad_account_id || "";
+    const accountId = rawAccountId.replace("act_", "").match(/\d+/)?.[0] || rawAccountId.replace("act_", "");
     const pixelId = creative.ad_accounts?.meta_pixel_id || Deno.env.get("META_PIXEL_ID") || "";
     const pageId = creative.ad_accounts?.fb_page_id || "";
     const igUserId = creative.ad_accounts?.ig_user_id || null;

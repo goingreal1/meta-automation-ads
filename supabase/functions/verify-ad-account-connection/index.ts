@@ -43,7 +43,13 @@ Deno.serve(async (req: Request) => {
     const { data: accountRow } = await supabase.from("ad_accounts").select("*").eq("id", body.ad_account_id).maybeSingle();
     if (!accountRow) return json({ error: `No ad_accounts row found for id ${body.ad_account_id}` }, 404);
 
-    const metaAdAccountId = String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "");
+    // meta_ad_account_id is always purely numeric -- a row saved with Meta's
+    // own "ID: 123..." label still attached (confirmed this happened live,
+    // from pasting straight off Meta's Business Settings page) silently
+    // turned every Graph URL below into a dead endpoint. Pull just the
+    // digits out instead of trusting whatever got stored.
+    const metaAdAccountId = String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "").match(/\d+/)?.[0]
+      || String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "");
 
     const [pagesRes, pixelsRes] = await Promise.all([
       fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/promote_pages?fields=id,name&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()),
