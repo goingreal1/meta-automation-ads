@@ -24,6 +24,101 @@ async function sendWhatsApp(to: string, body: string) {
   });
 }
 
+// Any inbound message that isn't an APPROVE/REJECT admin command -- a real
+// customer reply, most often the very first message after tapping "Send
+// Message" on a Click-to-WhatsApp ad -- lands here instead of being dropped.
+// Finds (or starts) the conversation in the same `conversations`/`messages`
+// tables the dashboard's Conversations tab reads from, so a reply shows up
+// there without any extra wiring on that side.
+async function logInboundMessage(supabase: any, change: any, message: any) {
+  const phoneNumberId = change?.value?.metadata?.phone_number_id;
+  if (!phoneNumberId) {
+    console.warn("Inbound WhatsApp message has no metadata.phone_number_id -- can't attribute it, dropping.");
+    return;
+  }
+
+  // Which tenant this number belongs to -- set up once in Settings ->
+  // WhatsApp Numbers (manage-whatsapp-numbers). A message on a number nobody
+  // has connected yet has nowhere to go.
+  const { data: numberRow } = await supabase
+    .from("buyer_whatsapp_numbers")
+    .select("id, company_id, media_buyer_id")
+    .eq("phone_number_id", phoneNumberId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (!numberRow) {
+    console.warn(`No active buyer_whatsapp_numbers row for phone_number_id ${phoneNumberId} -- message not attributed, dropped.`);
+    return;
+  }
+
+  const from = message.from;
+  const whatsappName = change?.value?.contacts?.[0]?.profile?.name || null;
+
+  // Click-to-WhatsApp ads attach a `referral` block to the first message in a
+  // conversation -- source_id is the real Meta ad id, ctwa_clid is the click
+  // id Meta uses to tie this conversation back to exactly which ad produced
+  // it (both columns already exist on `conversations` for this).
+  const referral = message.referral;
+  const adId = referral?.source_id || null;
+  const ctwaClid = referral?.ctwa_clid || null;
+
+  let { data: conv } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("phone", from)
+    .eq("buyer_whatsapp_number_id", numberRow.id)
+    .maybeSingle();
+
+  if (!conv) {
+    const { data: newConv, error: convErr } = await supabase
+      .from("conversations")
+      .insert({
+        phone: from,
+        current_state: "NEW",
+        source: adId ? "ad" : "organic",
+        ad_id: adId,
+        ctwa_clid: ctwaClid,
+        started_at: new Date().toISOString(),
+        last_message_at: new Date().toISOString(),
+        whatsapp_name: whatsappName,
+        unread_count: 0,
+        company_id: numberRow.company_id,
+        buyer_whatsapp_number_id: numberRow.id,
+        media_buyer_id: numberRow.media_buyer_id,
+      })
+      .select("id")
+      .single();
+    if (convErr || !newConv) {
+      console.error("Failed to create conversation for inbound WhatsApp message:", convErr);
+      return;
+    }
+    conv = newConv;
+
+    await supabase.from("conversation_customers").upsert(
+      { phone: from, name: whatsappName, company_id: numberRow.company_id },
+      { onConflict: "phone" }
+    );
+  }
+
+  const type = message.type;
+  let content = "";
+  if (type === "text") content = message.text?.body ?? "";
+  else if (type === "button") content = message.button?.text ?? "";
+  else if (type === "interactive") content = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || "";
+  else content = message[type]?.caption ?? "";
+
+  const { error: msgErr } = await supabase.from("messages").insert({
+    conversation_id: conv.id,
+    direction: "inbound",
+    message_type: type,
+    content,
+    metadata: message,
+    wa_message_id: message.id || null,
+    company_id: numberRow.company_id,
+  });
+  if (msgErr) console.error("Failed to insert inbound WhatsApp message:", msgErr);
+}
+
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
 
@@ -46,18 +141,22 @@ Deno.serve(async (req: Request) => {
     const change = entry?.changes?.[0];
     const message = change?.value?.messages?.[0];
 
-    if (!message || message.type !== "text") {
+    if (!message) {
       return new Response("ok", { status: 200 });
     }
 
     const from = message.from; // sender's WhatsApp number
-    const text = (message.text?.body ?? "").trim();
+    const text = message.type === "text" ? (message.text?.body ?? "").trim() : "";
 
     const approveMatch = text.match(/^APPROVE\s+([a-f0-9-]+)/i);
     const rejectMatch = text.match(/^REJECT\s+([a-f0-9-]+)/i);
 
     if (!approveMatch && !rejectMatch) {
-      return new Response("ok", { status: 200 }); // not a command, ignore (lets free chat pass through elsewhere)
+      // Not an admin command -- a real customer message (text, image, button
+      // tap, etc). Log it into conversations/messages so it shows up in the
+      // dashboard's Conversations tab.
+      await logInboundMessage(supabase, change, message).catch((err) => console.error("logInboundMessage error:", err));
+      return new Response("ok", { status: 200 });
     }
 
     const approvalId = (approveMatch ?? rejectMatch)![1];
