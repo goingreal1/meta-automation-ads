@@ -1284,31 +1284,44 @@ async function triggerSync() {
   }
 }
 
-// Shows which destination this creative's ads will actually launch to -- inherited
-// entirely from the selected product's own destination_type (set on the Products
-// tab), not chosen here. Meta requires this: click-to-WhatsApp ads carry no landing
-// page at all (opens a chat with the number below instead), while website ads need
-// a landing page + pixel and carry no WhatsApp number.
-function bvShowProductDestination(productId) {
-  const el = document.getElementById("f_productDestination");
+// Destination (WhatsApp vs Website) is now a direct, explicit choice in the
+// builder -- it no longer requires or inherits from a linked product. Toggles
+// which field (WhatsApp number / landing URL) is shown and asked for, and
+// whether the CTA select applies (Meta forces its own "Send Message" CTA on
+// WhatsApp ads, so that field is irrelevant there).
+function bvOnDestinationChange() {
+  const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+  document.getElementById("f_whatsappNumberField").style.display = isWhatsapp ? "" : "none";
+  document.getElementById("f_landingUrlField").style.display = isWhatsapp ? "none" : "";
   const ctaSelect = document.getElementById("f_cta");
   const ctaNote = document.getElementById("f_ctaNote");
-  if (!el) return;
+  if (ctaSelect) ctaSelect.disabled = isWhatsapp;
+  if (ctaNote) ctaNote.innerHTML = isWhatsapp ? `Ignored for WhatsApp ads — Meta uses its own "Send Message" button automatically.` : "";
+  bvRenderAdSetRows();
+}
+
+// Linking a product is now optional (for Shop checkout + Purchase-pixel
+// tracking only) -- picking one prefills the destination fields above from
+// its own settings, but never clobbers something already typed in, and the
+// destination radio itself always stays the source of truth for launching.
+function bvOnProductChange() {
+  const productId = document.getElementById("f_product")?.value;
+  const el = document.getElementById("f_productDestination");
   const p = (window.bvVaultProductsCache || []).find(x => x.id === productId);
-  if (!p) { el.textContent = ""; if (ctaNote) ctaNote.textContent = ""; if (ctaSelect) ctaSelect.disabled = false; return; }
+  if (!p) { if (el) el.textContent = ""; return; }
+
   if (p.destination_type === "whatsapp") {
-    el.innerHTML = p.whatsapp_number
-      ? `Ads for this product open a WhatsApp chat (${p.whatsapp_number}) — no landing page used.`
-      : `⚠️ This product is set to WhatsApp destination but has no WhatsApp number set on the Products tab.`;
-    if (ctaSelect) ctaSelect.disabled = true;
-    if (ctaNote) ctaNote.innerHTML = `Ignored for WhatsApp ads — Meta uses its own "Send Message" button automatically.`;
+    document.querySelector('input[name="f_destination"][value="whatsapp"]').checked = true;
+    const numField = document.getElementById("f_whatsapp_number");
+    if (!numField.value.trim() && p.whatsapp_number) numField.value = p.whatsapp_number;
+    if (el) el.innerHTML = `Prefilled from this product's WhatsApp number — still editable above.`;
   } else {
-    el.innerHTML = p.landing_page_url
-      ? `Ads for this product click through to the landing page: ${p.landing_page_url}`
-      : `⚠️ This product is set to Website destination but has no landing page URL set on the Products tab.`;
-    if (ctaSelect) ctaSelect.disabled = false;
-    if (ctaNote) ctaNote.textContent = "";
+    document.querySelector('input[name="f_destination"][value="website"]').checked = true;
+    const urlField = document.getElementById("f_landing_url");
+    if (!urlField.value.trim() && p.landing_page_url) urlField.value = p.landing_page_url;
+    if (el) el.innerHTML = `Prefilled from this product's landing page — still editable above.`;
   }
+  bvOnDestinationChange();
   bvPrefillFromShopDefaults(p);
 }
 
@@ -1403,29 +1416,26 @@ function bvOpenCampaignBuilder() {
 
         <div class="bv-builder-head">
           <div class="ph-title" style="margin-bottom:10px;">New campaign</div>
-          <div class="fg">
-            <div class="field"><label>What are you promoting? *</label>
-              <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none'; bvShowProductDestination(this.value); bvRenderAdSetRows();">
-                ${pOpts}
-                <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
-              </select>
-              <div id="f_productDestination" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+          <div class="field"><label>Destination *</label>
+            <div style="display:flex;gap:18px;margin-top:4px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
+                <input type="radio" name="f_destination" value="whatsapp" checked onchange="bvOnDestinationChange()"> WhatsApp — opens a chat
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
+                <input type="radio" name="f_destination" value="website" onchange="bvOnDestinationChange()"> Website — clicks through to a link
+              </label>
             </div>
           </div>
-          <div class="fg" id="newProductFields" style="margin-top:10px;display:${!products?.length ? "grid" : "none"};border:1px dashed var(--border);border-radius:8px;padding:12px;">
-            <div class="field"><label>New product name *</label><input id="np_name" placeholder="e.g. Quality Herb — Immune Booster"></div>
-            <div class="field"><label>Currency</label>
-              <select id="np_currency">
-                <option value="NGN">NGN — Naira</option>
-                <option value="USD">USD — US Dollar</option>
-                <option value="CNY">CNY — Yuan</option>
-                <option value="INR">INR — Rupee</option>
-                <option value="GBP">GBP — Pound</option>
-                <option value="EUR">EUR — Euro</option>
-              </select>
-            </div>
-            <div class="field"><label>Default order value *</label><input id="np_val" type="number" value="19000" min="0"></div>
-            <div class="field"><label>Landing page URL *</label><input id="np_url" placeholder="https://…"></div>
+          <div class="fg" style="margin-top:10px;">
+            <div class="field" id="f_whatsappNumberField"><label>WhatsApp number *</label><input id="f_whatsapp_number" placeholder="e.g. 2348012345678"></div>
+            <div class="field" id="f_landingUrlField" style="display:none;"><label>Landing page URL *</label><input id="f_landing_url" placeholder="https://…"></div>
+          </div>
+          <div class="field" style="margin-top:10px;"><label>Link to a product <span style="font-weight:400;color:var(--muted);">(optional — for Shop checkout + Purchase pixel tracking)</span></label>
+            <select id="f_product" onchange="bvOnProductChange()">
+              <option value="">— none (standalone campaign) —</option>
+              ${pOpts}
+            </select>
+            <div id="f_productDestination" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
           </div>
         </div>
 
@@ -1544,7 +1554,7 @@ function bvOpenCampaignBuilder() {
     </div>`;
   document.body.appendChild(overlay);
 
-  bvShowProductDestination(document.getElementById("f_product")?.value);
+  bvOnDestinationChange();
   bvResetAdSetBuilder();
   bvStagedCopies = [];
   bvRenderStagedCopies();
@@ -1615,13 +1625,17 @@ function bvBuilderTabStep(delta) {
 // explicit terminal action -- launch immediately, or schedule for later
 // (reusing the existing f_scheduled field as the default time to offer).
 function bvOpenReviewModal(copies) {
+  const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
   const selectedProduct = (window.bvVaultProductsCache || []).find(p => p.id === document.getElementById("f_product")?.value);
-  const productLabel = selectedProduct ? selectedProduct.product_name : (document.getElementById("np_name")?.value.trim() || "new product");
-  const destLabel = selectedProduct?.destination_type === "whatsapp" ? "Click-to-WhatsApp" : "Website";
+  const campaignLabel = document.getElementById("f_campaign_name")?.value.trim()
+    || selectedProduct?.product_name
+    || (isWhatsapp ? document.getElementById("f_whatsapp_number")?.value.trim() : document.getElementById("f_landing_url")?.value.trim())
+    || "this campaign";
+  const destLabel = isWhatsapp ? "Click-to-WhatsApp" : "Website";
   const objectiveLabels = {
     OUTCOME_SALES: "Sales", OUTCOME_TRAFFIC: "Traffic", OUTCOME_ENGAGEMENT: "Engagement", OUTCOME_AWARENESS: "Awareness",
   };
-  const objective = selectedProduct?.destination_type === "whatsapp" ? "OUTCOME_SALES" : (document.getElementById("f_objective")?.value || "OUTCOME_SALES");
+  const objective = isWhatsapp ? "OUTCOME_SALES" : (document.getElementById("f_objective")?.value || "OUTCOME_SALES");
   const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
   const totalAds = copies.length * bvAdSetRows.length;
   const existingSchedule = document.getElementById("f_scheduled")?.value || "";
@@ -1634,7 +1648,7 @@ function bvOpenReviewModal(copies) {
       <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
       <div class="ph-title" style="margin-bottom:12px;">Review & launch</div>
       <div style="border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.7;">
-        <div><b>${productLabel}</b> — ${destLabel} · ${objectiveLabels[objective] || objective}</div>
+        <div><b>${escH(campaignLabel)}</b> — ${destLabel} · ${objectiveLabels[objective] || objective}</div>
         <div>${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} × ${copies.length} ad cop${copies.length === 1 ? "y" : "ies"} = <b>${totalAds} ad${totalAds === 1 ? "" : "s"}</b> total</div>
         <div>₦${totalBudget.toLocaleString()}/day total budget</div>
       </div>
@@ -1680,22 +1694,14 @@ async function bvExecuteLaunch(copies, scheduledIso) {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Uploading…';
 
   try {
-      // If "+ Add new product…" was chosen, create it now so we have a real product_id before uploading.
-      let productId = document.getElementById("f_product").value;
-      if (productId === "__new__") {
-        const name = document.getElementById("np_name").value.trim();
-        const url = document.getElementById("np_url").value.trim();
-        if (!name || !url) throw new Error("New product needs a name and landing page URL.");
-        const { data: newProduct, error: prodErr } = await supabaseClient.from('products').insert({
-          product_name: name,
-          landing_page_url: url,
-          default_order_value_naira: Number(document.getElementById("np_val").value) || 19000,
-          currency: document.getElementById("np_currency").value,
-          ad_account_id: activeAccountId,
-        }).select('id').single();
-        if (prodErr) throw prodErr;
-        productId = newProduct.id;
-      }
+      // Linking a product is optional now -- the destination (WhatsApp number
+      // or landing page URL) is set directly below, independent of any product.
+      const productId = document.getElementById("f_product").value || null;
+      const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+      const whatsappNumber = document.getElementById("f_whatsapp_number").value.trim();
+      const landingUrl = document.getElementById("f_landing_url").value.trim();
+      if (isWhatsapp && !whatsappNumber) throw new Error("Enter a WhatsApp number to launch to.");
+      if (!isWhatsapp && !landingUrl) throw new Error("Enter a landing page URL to launch to.");
 
       // Multiple ad copies in one launch get grouped by a shared batch id so
       // ai-auto-launch-tests treats them as one campaign with N ads per ad set
@@ -1753,9 +1759,12 @@ async function bvExecuteLaunch(copies, scheduledIso) {
 
       const endDate = document.getElementById("f_end_date").value;
       const sharedFields = {
-        ...(productId && productId !== "__new__" ? { product_id: productId } : {}),
+        ...(productId ? { product_id: productId } : {}),
+        destination_type: isWhatsapp ? "whatsapp" : "website",
+        whatsapp_number: isWhatsapp ? whatsappNumber : null,
+        landing_page_url: isWhatsapp ? null : landingUrl,
         campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
-        campaign_objective: document.getElementById("f_objective").value || "OUTCOME_SALES",
+        campaign_objective: isWhatsapp ? "OUTCOME_SALES" : (document.getElementById("f_objective").value || "OUTCOME_SALES"),
         budget_type: document.getElementById("f_budget_type").value,
         scheduled_for: scheduledIso || null,
         campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
@@ -1791,8 +1800,14 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       );
       if (adSetErr) throw adSetErr;
 
-      const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
-      bvToast(`Launched! ${assetIds.length} ad cop${assetIds.length === 1 ? "y" : "ies"} x ${bvAdSetRows.length} ad set(s), ₦${totalBudget.toLocaleString()}/day total. ${scheduledIso ? "Scheduled for " + new Date(scheduledIso).toLocaleString() : "Will be picked up in tonight's test batch."}`);
+      // This is the actual launch -- everything above only staged rows in the
+      // database. Nothing exists on Meta, and nothing shows in the Campaigns
+      // tab, until this call creates the real campaign/ad sets/ads.
+      const launchRes = await sbFn("ai-auto-launch-tests", { creative_ids: assetIds });
+      if (launchRes.error) throw new Error(launchRes.error);
+
+      const scheduleNote = scheduledIso ? ` Scheduled to start ${new Date(scheduledIso).toLocaleString()}.` : "";
+      bvToast((launchRes.message || "Launched.") + scheduleNote);
       document.getElementById("bvBuilderOverlay")?.remove();
       bvStagedCopies = [];
       bvReuseAsset = null;
@@ -1863,8 +1878,12 @@ function bvRenderStagedCopies() {
 // selected product instead of re-uploading the same video/image, with the
 // product's link/destination already auto-filled as before.
 function bvOpenReuseCreativeModal() {
+  // A product link is optional now -- when one's picked, scope the list to
+  // its creatives (most relevant); otherwise show every uploaded creative,
+  // since there's no product to narrow by.
   const productId = document.getElementById("f_product")?.value;
-  const assets = (window.bvVaultAssetsCache || []).filter(a => a.product_id === productId && a.public_url);
+  const allAssets = (window.bvVaultAssetsCache || []).filter(a => a.public_url);
+  const assets = productId ? allAssets.filter(a => a.product_id === productId) : allAssets;
   const overlay = document.createElement("div");
   overlay.id = "bvReuseModalOverlay";
   overlay.className = "bv-overlay";
@@ -1872,10 +1891,8 @@ function bvOpenReuseCreativeModal() {
     <div class="bv-modal" style="max-width:520px;">
       <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
       <div class="ph-title" style="margin-bottom:12px;">Reuse an existing creative</div>
-      ${!productId || productId === "__new__"
-        ? `<div style="font-size:12px;color:var(--muted);">Pick a product above first.</div>`
-        : !assets.length
-          ? `<div style="font-size:12px;color:var(--muted);">No creatives uploaded for this product yet.</div>`
+      ${!assets.length
+          ? `<div style="font-size:12px;color:var(--muted);">No creatives uploaded yet.</div>`
           : assets.map(a => `
             <div class="bv-clickable-row" onclick="bvPickReuseAsset('${a.id}')" style="display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;cursor:pointer;">
               ${a.asset_type === "video"
@@ -1995,8 +2012,7 @@ function bvRenderAdSetRows() {
   // ads are always optimized for CONVERSATIONS -- Meta requires that for
   // Click-to-WhatsApp under Sales, not something ai-auto-launch-tests can
   // override no matter what's picked here (see its own comment on this).
-  const selectedProduct = (window.bvVaultProductsCache || []).find(p => p.id === document.getElementById("f_product")?.value);
-  const isWhatsappDest = selectedProduct?.destination_type === "whatsapp";
+  const isWhatsappDest = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
 
   // WhatsApp ads are always Sales/Conversations under the hood (a real Meta
   // requirement for Click-to-WhatsApp) no matter what's picked in the

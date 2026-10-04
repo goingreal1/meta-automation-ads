@@ -630,11 +630,17 @@ async function launchAdSetGroup(
     const pixelId = creative.ad_accounts?.meta_pixel_id || Deno.env.get("META_PIXEL_ID") || "";
     const pageId = creative.ad_accounts?.fb_page_id || "";
     const igUserId = creative.ad_accounts?.ig_user_id || null;
-    const destinationType: "website" | "whatsapp" = creative.products?.destination_type === "whatsapp" ? "whatsapp" : "website";
-    const whatsappNumber = creative.products?.whatsapp_number || "";
-    const destinationLink = creative.products?.landing_page_url || "";
+    // The campaign builder no longer requires a linked product -- these three
+    // fields can be set directly on the creative/campaign now. A linked
+    // product's own fields are still the fallback, so an older product-linked
+    // row (or one where only the product side was filled in) launches exactly
+    // as it did before this existed.
+    const destinationType: "website" | "whatsapp" =
+      (creative.destination_type || creative.products?.destination_type) === "whatsapp" ? "whatsapp" : "website";
+    const whatsappNumber = creative.whatsapp_number || creative.products?.whatsapp_number || "";
+    const destinationLink = creative.landing_page_url || creative.products?.landing_page_url || "";
     const ctaType = creative.cta_type || "SHOP_NOW";
-    const productName = creative.products?.product_name || "this product";
+    const productName = creative.campaign_name?.trim() || creative.products?.product_name || "this business";
     const budgetType: "abo" | "cbo" = creative.budget_type === "cbo" ? "cbo" : "abo";
     // Real column the dashboard's upload form actually writes to is
     // scheduled_for (creative_assets.launch_at exists too but is unused/orphaned).
@@ -647,12 +653,12 @@ async function launchAdSetGroup(
       return { error: msg };
     }
     if (destinationType === "whatsapp" && !whatsappNumber) {
-      const msg = `Product "${productName}" is set to WhatsApp destination but has no whatsapp_number.`;
+      const msg = `Creative ${creative.id} is set to WhatsApp destination but has no WhatsApp number (set directly on the campaign, or on its linked product).`;
       console.error(msg);
       return { error: msg };
     }
     if (destinationType === "website" && !destinationLink) {
-      const msg = `Missing landing_page_url for creative ${creative.id} -- check the product's Products-tab settings.`;
+      const msg = `Missing a landing page URL for creative ${creative.id} (set directly on the campaign, or on its linked product).`;
       console.error(msg);
       return { error: msg };
     }
@@ -983,31 +989,56 @@ Deno.serve(async (req: Request) => {
     // product) bypasses the auto_post_enabled gate -- that toggle controls
     // whether a product's creatives launch automatically in an unattended
     // batch run, not whether a human can manually publish them right now.
+    // creative_ids (the campaign builder's own Launch/Schedule button) targets
+    // the exact rows it just wrote, independent of any product at all -- the
+    // campaign builder no longer requires linking one.
     let requestedProductId: string | null = null;
+    let requestedCreativeIds: string[] | null = null;
     try {
       const body = await req.json();
       requestedProductId = body?.product_id || null;
+      requestedCreativeIds = Array.isArray(body?.creative_ids) && body.creative_ids.length ? body.creative_ids : null;
     } catch {
       // No/invalid JSON body -- treat as a plain batch run.
     }
 
-    // 1. Get up to 5 pending creatives (or every pending creative for one
-    // product, if requested). Real column is test_status (not the nonexistent
-    // "status" this used to filter on -- that silently matched zero rows every
-    // single run, regardless of anything uploaded). !inner on products so the
-    // auto_post_enabled filter actually applies in the batch (no product_id) case.
-    let pendingQuery = supabase
-      .from("creative_assets")
-      .select(
-        "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
-      )
-      .eq("test_status", "untested")
-      .order("uploaded_at", { ascending: true });
-
-    if (requestedProductId) {
-      pendingQuery = pendingQuery.eq("product_id", requestedProductId).limit(20);
+    // 1. Get the pending creatives for this request. Real column is
+    // test_status (not the nonexistent "status" this used to filter on --
+    // that silently matched zero rows every single run, regardless of
+    // anything uploaded). The product-less creative_ids/product_id paths use
+    // a plain left join (a creative may have no product_id at all now); only
+    // the unattended batch path needs !inner, since it filters on the joined
+    // auto_post_enabled column.
+    let pendingQuery;
+    if (requestedCreativeIds) {
+      pendingQuery = supabase
+        .from("creative_assets")
+        .select(
+          "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
+        )
+        .eq("test_status", "untested")
+        .in("id", requestedCreativeIds)
+        .order("uploaded_at", { ascending: true });
+    } else if (requestedProductId) {
+      pendingQuery = supabase
+        .from("creative_assets")
+        .select(
+          "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
+        )
+        .eq("test_status", "untested")
+        .eq("product_id", requestedProductId)
+        .order("uploaded_at", { ascending: true })
+        .limit(20);
     } else {
-      pendingQuery = pendingQuery.eq("products.auto_post_enabled", true).limit(5);
+      pendingQuery = supabase
+        .from("creative_assets")
+        .select(
+          "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
+        )
+        .eq("test_status", "untested")
+        .eq("products.auto_post_enabled", true)
+        .order("uploaded_at", { ascending: true })
+        .limit(5);
     }
 
     const { data: pendingCreatives, error: pendingErr } = await pendingQuery;
@@ -1072,7 +1103,7 @@ Deno.serve(async (req: Request) => {
       const copyNames = group.map((c) => c.file_name).join(", ");
       launchedGroups.push(group);
       launchPlans.push({
-        creative_name: `${copyNames} (${anchor.products?.product_name})`,
+        creative_name: anchor.products?.product_name ? `${copyNames} (${anchor.products.product_name})` : copyNames,
         campaign_id: result.campaign_id,
       });
     }
