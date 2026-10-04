@@ -243,48 +243,6 @@ function matchSegment(
   return null;
 }
 
-// ─── WHATSAPP HELPER ──────────────────────────────────────────────────────────
-
-async function sendWhatsAppApproval(message: string): Promise<boolean> {
-  const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "";
-  const WHATSAPP_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
-  const ALERT_TO_NUMBER = Deno.env.get("ALERT_TO_NUMBER") ?? "";
-
-  if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID || !ALERT_TO_NUMBER) {
-    console.log("⚠️ WhatsApp not configured, skipping approval message");
-    return false;
-  }
-
-  try {
-    const resp = await fetch(
-      `${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: ALERT_TO_NUMBER,
-          type: "text",
-          text: { body: message },
-        }),
-      }
-    );
-    if (!resp.ok) {
-      console.error(`WhatsApp failed: ${resp.status}`);
-      return false;
-    }
-    console.log("✅ WhatsApp approval request sent");
-    return true;
-  } catch (err) {
-    console.error("WhatsApp error:", err);
-    return false;
-  }
-}
-
 // ─── UPLOAD CREATIVE TO META + CREATE THE AD CREATIVE ──────────────────────────
 // This is the piece that was entirely missing before: nothing ever pushed the
 // uploaded video/image to Meta or created a real ad-creative object, so
@@ -439,7 +397,11 @@ async function createAdWithCTA(
     const adPayload = {
       adset_id: adsetId,
       creative: { creative_id: creativeId },
-      status: "PAUSED", // stays paused until the campaign/ad set is approved
+      // Goes live immediately -- no WhatsApp/dashboard approval gate anymore.
+      // A future-dated launch still creates this now; the ad set's own
+      // start_time (see buildAdSetPayload) is what actually holds delivery
+      // until then, a native Meta behavior, not something this app enforces.
+      status: "ACTIVE",
       name: adName,
       access_token: META_ACCESS_TOKEN,
     };
@@ -620,7 +582,10 @@ function buildAdSetPayload(opts: {
     bid_strategy: opts.bidStrategy,
     billing_event: opts.billingEvent,
     targeting: opts.targeting,
-    status: "PAUSED",
+    // Goes live immediately; start_time (below, when set) is what actually
+    // delays real delivery for a scheduled launch -- Meta won't spend on an
+    // ACTIVE ad set before its own start_time arrives.
+    status: "ACTIVE",
     access_token: META_ACCESS_TOKEN,
   };
   // Traffic/Awareness objectives need no promoted_object at all -- Meta
@@ -749,9 +714,10 @@ async function launchAdSetGroup(
       // "NONE" for an ordinary product. Missing this hard-fails campaign
       // creation with error #100, unrelated to anything else in this payload.
       special_ad_categories: ["NONE"],
-      // Created PAUSED -- stays paused until a human approves via WhatsApp
-      // (handle-whatsapp-reply flips this + its ad sets to ACTIVE on approval).
-      status: "PAUSED",
+      // Goes live immediately -- no approval gate. A scheduled launch is
+      // still created ACTIVE now; its ad set's start_time (native Meta
+      // scheduling) is what holds real delivery until that time.
+      status: "ACTIVE",
       access_token: META_ACCESS_TOKEN,
     };
     if (budgetType === "cbo") {
@@ -791,7 +757,9 @@ async function launchAdSetGroup(
         campaign_type: "testing",
         objective: campaignObjective,
         daily_budget_naira: budgetType === "abo" ? null : totalBudgetNaira,
-        status: "paused",
+        // Mirrors the real Meta object's status -- goes live immediately now
+        // that nothing flips this from "paused" to "active" on approval anymore.
+        status: "active",
         ad_account_id: creative.ad_account_id,
         // Every row below (campaigns/creatives/ad_sets/ad_set_ads) must carry
         // company_id -- every read anywhere in the dashboard filters by
@@ -935,7 +903,9 @@ async function launchAdSetGroup(
           targeting_type: config.geo_type === "states" ? "narrow" : "broad",
           budget_naira: budgetType === "abo" ? Number(config.budget_naira || 5000) : null,
           ad_account_id: creative.ad_account_id,
-          status: "paused",
+          // Mirrors the real Meta ad set's status -- same reasoning as the
+          // campaigns-row status above.
+          status: "active",
           age_min: config.age_min,
           age_max: config.age_max,
           genders: targeting.genders,
@@ -1074,16 +1044,17 @@ Deno.serve(async (req: Request) => {
       groups.get(key)!.push(c);
     }
 
-    // 2. Launch each batch's configured ad sets
+    // 2. Launch each batch's configured ad sets. No approval gate: every
+    // campaign/ad set/ad is created ACTIVE (see launchAdSetGroup) and goes
+    // live immediately -- a scheduled launch instead relies on its ad set's
+    // own start_time (native Meta scheduling) to hold real delivery, not a
+    // PAUSED-until-approved state. (handle-whatsapp-reply/process-approval
+    // and the pending_approvals table stay in place for other approval types
+    // -- scale_winner, pause_ad, kill_ad -- just not used for a fresh launch.)
     const launchPlans: any[] = [];
     let totalAdSetsCreated = 0;
     let totalBudgetNaira = 0;
 
-    // Every campaign/ad set is created PAUSED (see launchAdSetGroup) -- nothing
-    // spends until a real APPROVE reply flips it ACTIVE via handle-whatsapp-reply.
-    // One `pending_approvals` row per batch/campaign (that table -- not the
-    // nonexistent `launch_approvals` -- is what both the dashboard's Approvals tab
-    // and handle-whatsapp-reply actually read).
     const launchErrors: string[] = [];
     const launchedGroups: any[][] = [];
     for (const group of groups.values()) {
@@ -1094,39 +1065,15 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
-      const adSetMetaIds = result.ad_sets.map((a) => a.meta_id);
       totalAdSetsCreated += result.ad_sets.length;
       const adSetBudget = result.ad_sets.reduce((sum, a) => sum + a.budgetNaira, 0);
       totalBudgetNaira += adSetBudget;
 
       const copyNames = group.map((c) => c.file_name).join(", ");
-      const { data: approvalRow, error: approvalErr } = await supabase
-        .from("pending_approvals")
-        .insert({
-          approval_type: "launch_test",
-          creative_asset_id: anchor.id,
-          ad_account_id: anchor.ad_account_id,
-          proposed_action: {
-            meta_campaign_id: result.campaign_id,
-            ad_set_ids: adSetMetaIds,
-            creative_asset_ids: group.map((c) => c.id),
-          },
-          reason: `AI auto-launch: "${copyNames}" (${anchor.products?.product_name}) -- ${group.length} ad cop${group.length === 1 ? "y" : "ies"} x ${result.ad_sets.length} ad set(s) [${result.ad_sets.map((a) => a.label).join(", ")}], ₦${adSetBudget.toLocaleString()} total test budget.`,
-          status: "pending",
-        })
-        .select("id")
-        .single();
-
-      if (approvalErr || !approvalRow) {
-        console.error(`Failed to record approval for batch "${copyNames}":`, approvalErr);
-        continue;
-      }
-
       launchedGroups.push(group);
       launchPlans.push({
         creative_name: `${copyNames} (${anchor.products?.product_name})`,
         campaign_id: result.campaign_id,
-        approval_id: approvalRow.id,
       });
     }
 
@@ -1137,30 +1084,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 3. Send WhatsApp approval request -- real APPROVE/REJECT <id> commands that
-    // handle-whatsapp-reply actually parses, one line per creative so each can be
-    // approved/rejected independently.
     const totalBudget = totalBudgetNaira;
-    const approvalMessage = `
-🚀 *AI AUTO-LAUNCH READY*
 
-${launchPlans.length} creative(s) tested across ${totalAdSetsCreated} ad set(s), ₦${totalBudget.toLocaleString()} total if all approved. Created PAUSED -- nothing spends until approved.
-
-${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n  REJECT ${p.approval_id}`).join("\n\n")}
-
-(You can also manage from Meta Ads Manager anytime)
-    `.trim();
-
-    await sendWhatsAppApproval(approvalMessage);
-
-    // 4. Mark every successfully-launched copy as awaiting approval (real
-    // column is test_status) -- only rows in a group that actually launched,
-    // not ones that failed and stayed untested for a retry.
+    // 3. Mark every successfully-launched copy as live (real column is
+    // test_status) -- only rows in a group that actually launched, not ones
+    // that failed and stayed untested for a retry.
     for (const group of launchedGroups) {
       for (const c of group) {
         await supabase
           .from("creative_assets")
-          .update({ test_status: "awaiting_approval" })
+          .update({ test_status: "testing" })
           .eq("id", c.id);
       }
     }
@@ -1168,11 +1101,15 @@ ${launchPlans.map((p) => `• *${p.creative_name}*\n  APPROVE ${p.approval_id}\n
     return new Response(
       JSON.stringify({
         success: true,
-        status: "approval_requested",
+        status: "live",
         creatives: launchPlans.length,
         ad_sets: totalAdSetsCreated,
         budget_naira: totalBudget,
-        message: `✅ WhatsApp approval message sent. Reply APPROVE <id> or REJECT <id> per creative.`,
+        campaign_ids: launchPlans.map((p) => p.campaign_id),
+        message: launchErrors.length
+          ? `✅ Launched ${launchPlans.length} creative(s), but ${launchErrors.length} failed.`
+          : `✅ Launched ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s), ₦${totalBudget.toLocaleString()}/day total.`,
+        errors: launchErrors.length ? launchErrors : undefined,
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
     );

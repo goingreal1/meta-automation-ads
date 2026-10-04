@@ -5713,39 +5713,25 @@ async function renderSettings(el) {
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Pixel &amp; Tracking</div><div class="ph-count">${accountsList.length} accounts</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">The Meta Pixel / Dataset ID each ad account's Purchase events are sent to. Running one pixel across several accounts? Use the same ID in each row below -- nothing else to configure. This list shows every account regardless of which one you're currently viewing.</div>
+      <div class="ph"><div class="ph-title">Pixel &amp; Page Connections</div><div class="ph-count">${accountsList.length} accounts</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">
+        The Facebook Page and Meta Pixel each ad account launches ads as/tracks Purchases through. Typing the wrong ID here fails silently until launch -- <b style="color:var(--text2);">Verify</b> asks Meta directly which pages/pixels this ad account can actually use, so you pick from confirmed options instead of guessing.
+      </div>
       ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">📡</div>No ad accounts linked yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Pixel / Dataset ID</th><th></th></tr>
-        ${accountsList.map(a => `<tr>
+        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Facebook Page</th><th>Pixel / Dataset</th><th></th></tr>
+        ${accountsList.map(a => `<tr id="connRow-${a.id}">
           <td class="s n">${escH(a.nickname || a.name || "")}</td>
           <td>${escH(a.meta_ad_account_id || "")}</td>
-          <td><input type="text" class="pixelInput" id="pixel-${a.id}" value="${escH(a.meta_pixel_id || "")}" placeholder="e.g. 1364082442600221" style="width:100%;"></td>
-          <td><button type="button" class="btn btn-g pixelSaveBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">Save</button></td>
+          <td id="pageCell-${a.id}">${a.fb_page_id ? `<span style="font-family:monospace;font-size:11.5px;">${escH(a.fb_page_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>` : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
+          <td id="pixelCell-${a.id}">${a.meta_pixel_id ? `<span style="font-family:monospace;font-size:11.5px;">${escH(a.meta_pixel_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>` : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
+          <td><button type="button" class="btn btn-g connVerifyBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;white-space:nowrap;">🔄 Verify</button></td>
         </tr>`).join("")}
       </table></div>`}
     </div>` : ""}`;
 
-  document.querySelectorAll(".pixelSaveBtn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const aid = btn.dataset.aid;
-      const input = document.getElementById(`pixel-${aid}`);
-      const value = input.value.trim();
-      btn.disabled = true;
-      btn.textContent = "Saving…";
-      try {
-        const { error } = await supabaseClient.from("ad_accounts").update({ meta_pixel_id: value || null }).eq("id", aid);
-        if (error) throw error;
-        btn.textContent = "Saved";
-        await loadAccounts();
-        setTimeout(() => { btn.disabled = false; btn.textContent = "Save"; }, 1200);
-      } catch (e) {
-        btn.disabled = false;
-        btn.textContent = "Save";
-        alert("Couldn't save pixel ID: " + e.message);
-      }
-    });
+  document.querySelectorAll(".connVerifyBtn").forEach(btn => {
+    btn.addEventListener("click", () => bvVerifyAdAccountConnection(btn.dataset.aid));
   });
 
 window.refreshBalances = async function() {
@@ -5759,6 +5745,68 @@ window.refreshBalances = async function() {
     if (activeTab === "settings") renderSettings(document.getElementById("mainContent"));
   } catch (err) {
     alert("Error refreshing balances: " + err.message);
+  }
+}
+
+// ── VERIFY PAGE/PIXEL ACTUALLY BELONG TO THIS AD ACCOUNT ────────────────────
+// Typing a Page or Pixel ID that isn't really reachable from this ad account
+// fails silently until an actual launch, with an opaque Meta error. This asks
+// Meta directly (via verify-ad-account-connection, which calls the ad
+// account's own /promote_pages and /adspixels) which pages/pixels it can
+// really use, then swaps the cell's static text for a <select> of only those
+// confirmed options -- so what's saved is guaranteed connected, not guessed.
+async function bvVerifyAdAccountConnection(accountId) {
+  const btn = document.querySelector(`.connVerifyBtn[data-aid="${accountId}"]`);
+  const pageCell = document.getElementById(`pageCell-${accountId}`);
+  const pixelCell = document.getElementById(`pixelCell-${accountId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin" style="width:10px;height:10px;border-width:1px;"></span>'; }
+  try {
+    const r = await sbFn("verify-ad-account-connection", { ad_account_id: accountId });
+    if (r.error) throw new Error(r.error);
+
+    const pageOptsHtml = (val) => {
+      let opts = r.pages.map(p => `<option value="${escH(p.id)}" ${val === p.id ? "selected" : ""}>${escH(p.name)} (${escH(p.id)})</option>`).join("");
+      if (val && !r.pages.some(p => p.id === val)) {
+        opts += `<option value="${escH(val)}" selected>⚠ ${escH(val)} (not found on this ad account)</option>`;
+      }
+      return `<option value="">— none —</option>` + opts;
+    };
+    const pixelOptsHtml = (val) => {
+      let opts = r.pixels.map(p => `<option value="${escH(p.id)}" ${val === p.id ? "selected" : ""}>${escH(p.name)} (${escH(p.id)})</option>`).join("");
+      if (val && !r.pixels.some(p => p.id === val)) {
+        opts += `<option value="${escH(val)}" selected>⚠ ${escH(val)} (not found on this ad account)</option>`;
+      }
+      return `<option value="">— none —</option>` + opts;
+    };
+
+    pageCell.innerHTML = `<select id="pageSel-${accountId}" style="width:100%;font-size:11.5px;">${pageOptsHtml(r.current_fb_page_id)}</select>`;
+    pixelCell.innerHTML = `<select id="pixelSel-${accountId}" style="width:100%;font-size:11.5px;">${pixelOptsHtml(r.current_pixel_id)}</select>`;
+
+    if (btn) {
+      btn.disabled = false;
+      btn.className = "btn btn-a connVerifyBtn";
+      btn.textContent = "💾 Save";
+      btn.onclick = () => bvSaveAdAccountConnection(accountId);
+    }
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = "🔄 Verify"; }
+    alert("Couldn't verify this ad account's pages/pixels: " + err.message);
+  }
+}
+
+async function bvSaveAdAccountConnection(accountId) {
+  const btn = document.querySelector(`.connVerifyBtn[data-aid="${accountId}"]`);
+  const pageVal = document.getElementById(`pageSel-${accountId}`)?.value || null;
+  const pixelVal = document.getElementById(`pixelSel-${accountId}`)?.value || null;
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    const { error } = await supabaseClient.from("ad_accounts").update({ fb_page_id: pageVal, meta_pixel_id: pixelVal }).eq("id", accountId);
+    if (error) throw error;
+    await loadAccounts();
+    renderSettings(document.getElementById("mainContent"));
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = "💾 Save"; }
+    alert("Couldn't save: " + err.message);
   }
 }
 
