@@ -290,6 +290,9 @@ a{color:inherit;}
 .bv-kebab-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;font-size:12px;background:none;border:none;cursor:pointer;color:var(--text);}
 .bv-kebab-dropdown button:hover{background:var(--panel2);}
 .bv-kebab-dropdown button.danger{color:var(--danger);}
+.bv-section-card{border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px;background:var(--panel);box-shadow:0 1px 4px rgba(20,19,15,.05);}
+.bv-section-card-title{font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px;}
+.bv-section-card-title .bv-ico{font-size:14px;}
 .bv-dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13.5px;}
 .bv-dl dt{color:var(--muted);white-space:nowrap;}
 .bv-dl dd{color:var(--text);word-break:break-word;}
@@ -1320,6 +1323,7 @@ function bvOnDestinationChange() {
   if (ctaNote) ctaNote.innerHTML = isWhatsapp ? `Ignored for WhatsApp ads — Meta uses its own "Send Message" button automatically.` : "";
   bvRenderAdSetRows();
   bvRenderBuilderSummary();
+  bvRenderWhatsappPicker();
 }
 
 // Linking a product is now optional (for Shop checkout + Purchase-pixel
@@ -1496,7 +1500,9 @@ function bvOpenCampaignBuilder(presetObjective) {
             </div>
           </div>
           <div class="fg" style="margin-top:10px;">
-            <div class="field" id="f_whatsappNumberField"><label>WhatsApp number *</label><input id="f_whatsapp_number" placeholder="e.g. 2348012345678"></div>
+            <div class="field" id="f_whatsappNumberField"><label>WhatsApp number *</label><input id="f_whatsapp_number" placeholder="e.g. 2348012345678" oninput="bvRenderIdentitySection(); bvRenderBuilderSummary();">
+              <div id="f_whatsappPicker" style="margin-top:6px;"></div>
+            </div>
             <div class="field" id="f_landingUrlField" style="display:none;"><label>Landing page URL *</label><input id="f_landing_url" placeholder="https://…"></div>
           </div>
           <div class="field" style="margin-top:10px;"><label>Link to a product <span style="font-weight:400;color:var(--muted);">(optional — for Shop checkout + Purchase pixel tracking)</span></label>
@@ -1518,43 +1524,47 @@ function bvOpenCampaignBuilder(presetObjective) {
           <div class="bv-builder-body">
 
           <div class="bv-builder-section active" id="bvSection-campaign">
-            <div class="field"><label>Campaign objective <span style="font-weight:400;color:var(--muted);">(determines what Meta optimizes delivery for)</span></label>
-              <select id="f_objective" onchange="bvRenderAdSetRows()">
-                <option value="OUTCOME_SALES" ${presetObjective === "OUTCOME_SALES" ? "selected" : ""}>Sales — drive purchases (needs a connected pixel)</option>
-                <option value="OUTCOME_TRAFFIC" ${presetObjective === "OUTCOME_TRAFFIC" ? "selected" : ""}>Traffic — drive clicks to your link</option>
-                <option value="OUTCOME_ENGAGEMENT" ${presetObjective === "OUTCOME_ENGAGEMENT" ? "selected" : ""}>Engagement — likes, comments, shares on the post</option>
-                <option value="OUTCOME_AWARENESS" ${presetObjective === "OUTCOME_AWARENESS" ? "selected" : ""}>Awareness — reach as many people as possible</option>
-                <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
-              </select>
-              <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
-            </div>
-            <div class="fg" style="margin-top:14px;">
+            <div class="bv-section-card">
+              <div class="bv-section-card-title"><span class="bv-ico">🎯</span> Campaign details</div>
               <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager)</span></label>
                 <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch" oninput="bvRenderBuilderSummary()">
               </div>
+              <div class="field" style="margin-top:14px;"><label>Campaign objective <span style="font-weight:400;color:var(--muted);">(determines what Meta optimizes delivery for)</span></label>
+                <select id="f_objective" onchange="bvRenderAdSetRows()">
+                  <option value="OUTCOME_SALES" ${presetObjective === "OUTCOME_SALES" ? "selected" : ""}>Sales — drive purchases (needs a connected pixel)</option>
+                  <option value="OUTCOME_TRAFFIC" ${presetObjective === "OUTCOME_TRAFFIC" ? "selected" : ""}>Traffic — drive clicks to your link</option>
+                  <option value="OUTCOME_ENGAGEMENT" ${presetObjective === "OUTCOME_ENGAGEMENT" ? "selected" : ""}>Engagement — likes, comments, shares on the post</option>
+                  <option value="OUTCOME_AWARENESS" ${presetObjective === "OUTCOME_AWARENESS" ? "selected" : ""}>Awareness — reach as many people as possible</option>
+                  <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
+                </select>
+                <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+              </div>
+            </div>
+
+            <div class="bv-section-card">
+              <div class="bv-section-card-title"><span class="bv-ico">💰</span> Budget & schedule</div>
               <div class="field"><label>Budget type</label>
                 <select id="f_budget_type" onchange="bvRenderBuilderSummary()">
                   <option value="abo">ABO — budget set per ad set</option>
                   <option value="cbo">CBO — one total budget, Meta splits it</option>
                 </select>
               </div>
-            </div>
-            <div class="fg" style="margin-top:14px;">
-              <div class="field"><label>Launch date/time (optional)</label>
-                <input id="f_scheduled" type="datetime-local">
-                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to launch in tonight's normal batch.</div>
-              </div>
-              <div class="field"><label>Campaign end date (optional)</label>
-                <input id="f_end_date" type="datetime-local">
-                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to run until you kill/pause it manually.</div>
+              <div class="fg" style="margin-top:14px;">
+                <div class="field"><label>Launch date/time (optional)</label>
+                  <input id="f_scheduled" type="datetime-local">
+                  <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to launch in tonight's normal batch.</div>
+                </div>
+                <div class="field"><label>Campaign end date (optional)</label>
+                  <input id="f_end_date" type="datetime-local">
+                  <div style="font-size:11px;color:var(--muted);margin-top:4px;">Leave blank to run until you kill/pause it manually.</div>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="bv-builder-section" id="bvSection-adset">
-            <div class="field"><label>Ad sets <span style="font-weight:400;color:var(--muted);">(budget, targeting, placements, bidding)</span></label>
-              <div id="adSetRows"></div>
-            </div>
+            <div style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Each ad set below is its own glass card — budget, audience, placements and bidding all together.</div>
+            <div id="adSetRows"></div>
           </div>
 
           <div class="bv-builder-section" id="bvSection-ad">
@@ -1562,71 +1572,83 @@ function bvOpenCampaignBuilder(presetObjective) {
               This is <b style="color:var(--text2);">ad content for Meta</b> — the video/image people see in the Facebook/Instagram feed. It's not the product's own photo; upload that on the <b style="color:var(--text2);">Products</b> tab instead.
             </div>
 
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin-bottom:8px;">Identity</div>
-            <div class="field"><label>Facebook Page <span style="font-weight:400;color:var(--muted);">(this ad posts as)</span></label>
-              <div id="f_identityValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
-            </div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Instagram uses the same connected Page's profile automatically.</div>
-
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:16px 0 8px;">Ad creative</div>
-            <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
-              <div class="dz-ico">🎬</div>
-              <div class="dz-txt">Drag & drop your ad video or image here</div>
-              <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
-              <div class="dz-prev" id="dzPrev"></div>
-              <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
-              <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
-            </div>
-            <div class="fg" style="margin-top:14px;">
-              <div class="field"><label>Mechanism</label>
-                <select id="f_mechanism">
-                  <option value="root_cause">Root cause</option>
-                  <option value="why_others_failed">Why others failed</option>
-                  <option value="lifestyle_factors">Lifestyle factors</option>
-                  <option value="major_symptoms">Major symptoms</option>
-                  <option value="why_product_works">Why product works</option>
-                </select>
+            <div class="bv-section-card">
+              <div class="bv-section-card-title"><span class="bv-ico">👤</span> Identity</div>
+              <div class="field"><label>Facebook Page <span style="font-weight:400;color:var(--muted);">(this ad posts as)</span></label>
+                <div id="f_identityValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Instagram uses the same connected Page's profile automatically.</div>
               </div>
-              <div class="field"><label>Format</label>
-                <select id="f_format">
-                  <option value="customer_review">Customer review</option>
-                  <option value="before_after">Before / After</option>
-                  <option value="street_interview">Street interview</option>
-                  <option value="case_study">Case study</option>
-                  <option value="ugly_text">Ugly text ad</option>
-                </select>
+              <div class="field" id="f_identityWhatsappField" style="margin-top:14px;"><label>WhatsApp number</label>
+                <div id="f_identityWhatsappValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
               </div>
-              <div class="field"><label>CTA</label>
-                <select id="f_cta">
-                  <option value="SHOP_NOW">Shop Now</option>
-                  <option value="LEARN_MORE">Learn More</option>
-                  <option value="ORDER_NOW">Order Now</option>
-                </select>
-                <div id="f_ctaNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
-              </div>
-            </div>
-            <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
-              <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
-            </div>
-            <div class="fg" style="margin-top:14px;">
-              <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
-              <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
             </div>
 
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:16px 0 8px;">Tracking</div>
-            <div class="field"><label>Pixel <span style="font-weight:400;color:var(--muted);">(conversion events for this ad account)</span></label>
-              <div id="f_pixelValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
-            </div>
-
-            <div style="margin-top:16px;position:relative;display:inline-block;">
-              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvToggleKebab('bvAdActionsMenu', event)">⋯ Actions for this ad</button>
-              <div id="bvAdActionsMenu" class="bv-kebab-dropdown" style="display:none;">
-                <button type="button" onclick="bvCloseKebabs(); bvStageAdCopy()">+ Add another ad copy</button>
-                <button type="button" onclick="bvCloseKebabs(); bvOpenDuplicateAdModal()">⧉ Duplicate…</button>
-                <button type="button" onclick="bvCloseKebabs(); bvQuickDuplicateAd()">⧉ Quickly duplicate</button>
+            <div class="bv-section-card">
+              <div class="bv-section-card-title"><span class="bv-ico">🎬</span> Ad creative</div>
+              <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
+                <div class="dz-ico">🎬</div>
+                <div class="dz-txt">Drag & drop your ad video or image here</div>
+                <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
+                <div class="dz-prev" id="dzPrev"></div>
+                <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
+                <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
+              </div>
+              <div class="fg" style="margin-top:14px;">
+                <div class="field"><label>Mechanism</label>
+                  <select id="f_mechanism">
+                    <option value="root_cause">Root cause</option>
+                    <option value="why_others_failed">Why others failed</option>
+                    <option value="lifestyle_factors">Lifestyle factors</option>
+                    <option value="major_symptoms">Major symptoms</option>
+                    <option value="why_product_works">Why product works</option>
+                  </select>
+                </div>
+                <div class="field"><label>Format</label>
+                  <select id="f_format">
+                    <option value="customer_review">Customer review</option>
+                    <option value="before_after">Before / After</option>
+                    <option value="street_interview">Street interview</option>
+                    <option value="case_study">Case study</option>
+                    <option value="ugly_text">Ugly text ad</option>
+                  </select>
+                </div>
+                <div class="field"><label>CTA</label>
+                  <select id="f_cta">
+                    <option value="SHOP_NOW">Shop Now</option>
+                    <option value="LEARN_MORE">Learn More</option>
+                    <option value="ORDER_NOW">Order Now</option>
+                  </select>
+                  <div id="f_ctaNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+                </div>
               </div>
             </div>
-            <div id="stagedCopies" style="margin-top:8px;"></div>
+
+            <div class="bv-section-card">
+              <div class="bv-section-card-title"><span class="bv-ico">✏️</span> Ad copy</div>
+              <div class="field"><label>Primary text (ad copy) *</label>
+                <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
+              </div>
+              <div class="fg" style="margin-top:14px;">
+                <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
+                <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
+              </div>
+              <div style="margin-top:14px;position:relative;display:inline-block;">
+                <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvToggleKebab('bvAdActionsMenu', event)">⋯ Actions for this ad</button>
+                <div id="bvAdActionsMenu" class="bv-kebab-dropdown" style="display:none;">
+                  <button type="button" onclick="bvCloseKebabs(); bvStageAdCopy()">+ Add another ad copy</button>
+                  <button type="button" onclick="bvCloseKebabs(); bvOpenDuplicateAdModal()">⧉ Duplicate…</button>
+                  <button type="button" onclick="bvCloseKebabs(); bvQuickDuplicateAd()">⧉ Quickly duplicate</button>
+                </div>
+              </div>
+              <div id="stagedCopies" style="margin-top:8px;"></div>
+            </div>
+
+            <div class="bv-section-card">
+              <div class="bv-section-card-title"><span class="bv-ico">🎯</span> Tracking</div>
+              <div class="field"><label>Pixel <span style="font-weight:400;color:var(--muted);">(conversion events for this ad account)</span></label>
+                <div id="f_pixelValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
+              </div>
+            </div>
           </div>
 
           </div>
@@ -1651,7 +1673,7 @@ function bvOpenCampaignBuilder(presetObjective) {
   bvStagedCopies = [];
   bvRenderStagedCopies();
   bvReuseAsset = null;
-  bvRenderIdentitySection();
+  bvLoadBuilderIdentity();
   bvRenderBuilderSummary();
   bvSwitchBuilderTab("campaign");
 
@@ -2131,19 +2153,89 @@ document.addEventListener("click", bvCloseKebabs);
 
 // Fills the read-only Identity/Tracking fields in the Ad tab from the
 // currently active ad account's connected Page/Pixel (set in Settings).
+// bvBuilderIdentityCache holds the live Meta names (and any WhatsApp number
+// connected to the Page) fetched by bvLoadBuilderIdentity -- "loading" while
+// that fetch is in flight, an object once it resolves. Falls back to showing
+// the raw saved ID if the fetch fails or hasn't run.
+let bvBuilderIdentityCache = "loading";
+
+async function bvLoadBuilderIdentity() {
+  bvBuilderIdentityCache = "loading";
+  bvRenderIdentitySection();
+  bvRenderWhatsappPicker();
+  if (!activeAccountId) { bvBuilderIdentityCache = null; bvRenderIdentitySection(); bvRenderWhatsappPicker(); return; }
+  try {
+    const r = await sbFn("verify-ad-account-connection", { ad_account_id: activeAccountId });
+    bvBuilderIdentityCache = r?.error ? null : r;
+  } catch {
+    bvBuilderIdentityCache = null;
+  }
+  bvRenderIdentitySection();
+  bvRenderWhatsappPicker();
+}
+
+// The Page's own connected WhatsApp number (if any) -- lets someone pick it
+// with one click instead of retyping it, the same way Meta's own ad form
+// offers a dropdown of numbers already linked to the Page/Business.
+function bvRenderWhatsappPicker() {
+  const el = document.getElementById("f_whatsappPicker");
+  if (!el) return;
+  const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
+  const cache = bvBuilderIdentityCache;
+  if (!acc?.fb_page_id || cache === "loading") { el.innerHTML = ""; return; }
+  if (!cache) { el.innerHTML = ""; return; }
+  const page = cache.pages?.find(p => p.id === acc.fb_page_id);
+  if (page?.whatsapp_number) {
+    el.innerHTML = `<button type="button" class="btn btn-g" style="width:auto;padding:5px 10px;font-size:11.5px;" onclick="document.getElementById('f_whatsapp_number').value='${escH(page.whatsapp_number)}'; bvRenderIdentitySection(); bvRenderBuilderSummary();">✓ Use ${escH(page.whatsapp_number)} <span style="color:var(--muted);">— connected to ${escH(page.name)}</span></button>`;
+  } else {
+    el.innerHTML = `<div style="font-size:11px;color:var(--muted);">No WhatsApp number found on the connected Page — type it in manually, or connect one under Meta Business Settings → WhatsApp Accounts.</div>`;
+  }
+}
+
 function bvRenderIdentitySection() {
   const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
   const idEl = document.getElementById("f_identityValue");
   const pxEl = document.getElementById("f_pixelValue");
+  const cache = bvBuilderIdentityCache;
   if (idEl) {
-    idEl.innerHTML = acc?.fb_page_id
-      ? `✓ ${escH(acc.fb_page_id)}`
-      : `<span style="color:var(--danger);">⚠ No Facebook Page connected to this ad account — set it in Settings → Pixel & Page Connections before launching.</span>`;
+    if (!acc?.fb_page_id) {
+      idEl.innerHTML = `<span style="color:var(--danger);">⚠ No Facebook Page connected to this ad account — set it in Settings → Pixel & Page Connections before launching.</span>`;
+    } else if (cache === "loading") {
+      idEl.innerHTML = `Checking with Meta…`;
+    } else {
+      const page = cache?.pages?.find(p => p.id === acc.fb_page_id);
+      idEl.innerHTML = page
+        ? `✓ ${escH(page.name)} <span style="color:var(--muted);">(${escH(page.id)})</span>`
+        : `${escH(acc.fb_page_id)} <span style="color:var(--muted);">(name unavailable${cache ? " — not found on this ad account" : " — couldn't reach Meta"})</span>`;
+    }
   }
   if (pxEl) {
-    pxEl.innerHTML = acc?.meta_pixel_id
-      ? `✓ ${escH(acc.meta_pixel_id)}`
-      : `<span style="color:var(--muted);">No pixel connected — Sales-objective ads need one (Settings → Pixel & Page Connections).</span>`;
+    if (!acc?.meta_pixel_id) {
+      pxEl.innerHTML = `<span style="color:var(--muted);">No pixel connected — Sales-objective ads need one (Settings → Pixel & Page Connections).</span>`;
+    } else if (cache === "loading") {
+      pxEl.innerHTML = `Checking with Meta…`;
+    } else {
+      const pixel = cache?.pixels?.find(p => p.id === acc.meta_pixel_id);
+      pxEl.innerHTML = pixel
+        ? `✓ ${escH(pixel.name)} <span style="color:var(--muted);">(${escH(pixel.id)})</span>`
+        : `${escH(acc.meta_pixel_id)} <span style="color:var(--muted);">(name unavailable)</span>`;
+    }
+  }
+
+  const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+  const waField = document.getElementById("f_identityWhatsappField");
+  const waEl = document.getElementById("f_identityWhatsappValue");
+  if (waField) waField.style.display = isWhatsapp ? "" : "none";
+  if (waEl && isWhatsapp) {
+    const num = document.getElementById("f_whatsapp_number")?.value.trim();
+    const page = cache && typeof cache === "object" ? cache.pages?.find(p => p.id === acc?.fb_page_id) : null;
+    if (num) {
+      waEl.innerHTML = `✓ ${escH(num)}`;
+    } else if (page?.whatsapp_number) {
+      waEl.innerHTML = `<button type="button" class="btn btn-g" style="width:auto;padding:5px 10px;font-size:11.5px;" onclick="document.getElementById('f_whatsapp_number').value='${escH(page.whatsapp_number)}'; bvRenderIdentitySection(); bvRenderBuilderSummary();">✓ Use ${escH(page.whatsapp_number)}</button>`;
+    } else {
+      waEl.innerHTML = `<span style="color:var(--muted);">Not set — enter it in the Destination section above.</span>`;
+    }
   }
 }
 
@@ -2305,10 +2397,10 @@ function bvRenderAdSetRows() {
   }
 
   wrap.innerHTML = bvAdSetRows.map((row, i) => `
-    <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:${i === 0 ? 0 : 12}px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <strong style="font-size:13px;">${row.label}${i === 0 ? " (original)" : " (copy)"}</strong>
-        ${i > 0 ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>` : ""}
+    <div class="bv-section-card">
+      <div class="bv-section-card-title" style="justify-content:space-between;margin-bottom:10px;">
+        <span><span class="bv-ico">▦</span> ${row.label}${i === 0 ? " (original)" : " (copy)"}</span>
+        ${i > 0 ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;font-weight:400;">✕ Remove</button>` : ""}
       </div>
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin-bottom:8px;">Budget</div>

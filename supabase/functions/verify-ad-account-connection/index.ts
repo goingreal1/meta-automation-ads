@@ -56,9 +56,25 @@ Deno.serve(async (req: Request) => {
     const pages = (pagesRes.data || []).map((p: any) => ({ id: p.id, name: p.name }));
     const pixels = (pixelsRes.data || []).map((p: any) => ({ id: p.id, name: p.name }));
 
+    // Each Page can have a WhatsApp number connected to it (Page Settings ->
+    // WhatsApp), which is what populates the dropdown on Meta's own ad form.
+    // Reading it back needs the Page's own `whatsapp_number` field -- try it
+    // per page so the dashboard can offer the same pick-from-a-list UX
+    // instead of free-typing the number. A page with none connected (or a
+    // permission this token doesn't have) just comes back without one; that
+    // isn't a failure for the rest of the pages.
+    const pagesWithWhatsapp = await Promise.all(pages.map(async (p: any) => {
+      try {
+        const r = await fetch(`${META_GRAPH_BASE}/${p.id}?fields=whatsapp_number&access_token=${META_ACCESS_TOKEN}`).then(r => r.json());
+        return { ...p, whatsapp_number: r.whatsapp_number || null };
+      } catch {
+        return { ...p, whatsapp_number: null };
+      }
+    }));
+
     return json({
       success: true,
-      pages,
+      pages: pagesWithWhatsapp,
       pixels,
       current_fb_page_id: accountRow.fb_page_id || null,
       current_pixel_id: accountRow.meta_pixel_id || null,
