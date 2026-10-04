@@ -63,6 +63,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);
 .qty-btn:hover{background:var(--panelHi);border-color:var(--borderStrong);}
 .qty-btn:active{transform:scale(.96);}
 .qty-val{width:48px;text-align:center;font-weight:700;font-size:17px;font-family:'Manrope',Inter,sans-serif;}
+.tier-grid{display:flex;flex-direction:column;gap:9px;}
+.tier-card{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel2);border:1.5px solid var(--border);border-radius:12px;padding:13px 14px;cursor:pointer;transition:border-color .15s ease,background .15s ease;position:relative;}
+.tier-card:hover{border-color:var(--borderStrong);}
+.tier-card.selected{border-color:var(--accent);background:var(--accentBg);}
+.tier-card .tc-label{font-weight:700;font-size:14.5px;}
+.tier-card .tc-badge{display:inline-block;font-size:10px;font-weight:700;color:var(--accentDk);background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:20px;padding:2px 8px;margin-left:7px;letter-spacing:.01em;}
+.tier-card .tc-price{font-family:'Manrope',Inter,sans-serif;font-weight:800;font-size:16px;color:var(--text);white-space:nowrap;}
 .total-row{display:flex;justify-content:space-between;align-items:baseline;padding:16px 2px;border-top:1px dashed var(--border);margin-top:8px;}
 .total-row span:first-child{font-size:13.5px;color:var(--text2);font-weight:600;}
 .total-row span:last-child{font-family:'Manrope',Inter,sans-serif;font-size:20px;font-weight:800;color:var(--text);}
@@ -141,6 +148,7 @@ const fbclid = qp("fbclid");
 
 let product = null;
 let qty = 1;
+let selectedTierId = null;
 
 async function loadProduct() {
   if (!productId) {
@@ -171,13 +179,20 @@ function initPixel(pixelId) {
 
 function renderForm() {
   const stateOptions = NIGERIA_STATES.map(s => `<option>${s}</option>`).join("");
+  const hasTiers = Array.isArray(product.tiers) && product.tiers.length > 0;
+  if (hasTiers && !selectedTierId) {
+    // Default to the tier already flagged best-value if there is one, else the first.
+    selectedTierId = (product.tiers.find(t => t.badge) || product.tiers[0]).id;
+  }
+
   document.getElementById("page").innerHTML = `
     <div class="brandbar">Secure Checkout</div>
     <div class="card">
       ${product.product_image_url ? `<img class="prod-photo" src="${esc(product.product_image_url)}" alt="">` : ""}
       <h1>${esc(product.product_name)}</h1>
-      <div class="price" id="priceDisplay">${fmt(product.default_order_value_naira, product.currency)}</div>
-      <div class="muted">per unit</div>
+      ${!hasTiers ? `
+        <div class="price" id="priceDisplay">${fmt(product.default_order_value_naira, product.currency)}</div>
+        <div class="muted">per unit</div>` : ""}
       ${product.description ? `<div class="desc">${esc(product.description)}</div>` : ""}
       ${product.benefits ? `<div class="desc">${esc(product.benefits)}</div>` : ""}
       ${(product.safety_notes || product.nafdac_reg_no) ? `<div class="safety">${product.safety_notes ? esc(product.safety_notes) : ""}${product.nafdac_reg_no ? ` NAFDAC Reg. No. ${esc(product.nafdac_reg_no)}.` : ""} This is a food supplement, not a substitute for medicine prescribed by a doctor.</div>` : ""}
@@ -185,6 +200,17 @@ function renderForm() {
 
     <form id="orderForm" class="card">
       <div id="formMsg" class="msg"></div>
+      ${hasTiers ? `
+      <div class="field">
+        <label>Choose your package</label>
+        <div class="tier-grid" id="tierGrid">
+          ${product.tiers.map(t => `
+            <div class="tier-card${t.id === selectedTierId ? " selected" : ""}" data-tier="${esc(t.id)}">
+              <div><span class="tc-label">${esc(t.label)}</span>${t.badge ? `<span class="tc-badge">${esc(t.badge)}</span>` : ""}</div>
+              <div class="tc-price">${fmt(t.price_naira, product.currency)}</div>
+            </div>`).join("")}
+        </div>
+      </div>` : `
       <div class="field">
         <label>Quantity</label>
         <div class="qty-row">
@@ -192,7 +218,7 @@ function renderForm() {
           <div class="qty-val" id="qtyVal">1</div>
           <button type="button" class="qty-btn" id="qtyPlus">+</button>
         </div>
-      </div>
+      </div>`}
       <div class="field"><label>Full name *</label><input id="f_name" required placeholder="Your full name"></div>
       <div class="field"><label>Phone number *</label><input id="f_phone" type="tel" required placeholder="080..."></div>
       <div class="field"><label>Delivery address *</label><input id="f_address" required placeholder="House number, street"></div>
@@ -206,22 +232,35 @@ function renderForm() {
           <option value="Bank transfer">Bank transfer</option>
         </select>
       </div>
-      <div class="total-row"><span>Order total</span><span id="totalDisplay">${fmt(product.default_order_value_naira, product.currency)}</span></div>
+      <div class="total-row"><span>Order total</span><span id="totalDisplay">${fmt(hasTiers ? currentTierPrice() : product.default_order_value_naira, product.currency)}</span></div>
       <button type="submit" id="submitBtn">Complete Order</button>
       <div class="secure">🔒 Your details are kept private &middot; a team member will call to confirm</div>
     </form>
   `;
 
-  const qtyVal = document.getElementById("qtyVal");
-  const updateTotals = () => {
-    const total = (product.default_order_value_naira || 0) * qty;
-    document.getElementById("totalDisplay").textContent = fmt(total, product.currency);
-    qtyVal.textContent = qty;
-  };
-  document.getElementById("qtyMinus").addEventListener("click", () => { if (qty > 1) { qty--; updateTotals(); } });
-  document.getElementById("qtyPlus").addEventListener("click", () => { if (qty < 20) { qty++; updateTotals(); } });
+  if (hasTiers) {
+    document.querySelectorAll(".tier-card").forEach(card => card.addEventListener("click", () => {
+      selectedTierId = card.dataset.tier;
+      document.querySelectorAll(".tier-card").forEach(c => c.classList.toggle("selected", c.dataset.tier === selectedTierId));
+      document.getElementById("totalDisplay").textContent = fmt(currentTierPrice(), product.currency);
+    }));
+  } else {
+    const qtyVal = document.getElementById("qtyVal");
+    const updateTotals = () => {
+      const total = (product.default_order_value_naira || 0) * qty;
+      document.getElementById("totalDisplay").textContent = fmt(total, product.currency);
+      qtyVal.textContent = qty;
+    };
+    document.getElementById("qtyMinus").addEventListener("click", () => { if (qty > 1) { qty--; updateTotals(); } });
+    document.getElementById("qtyPlus").addEventListener("click", () => { if (qty < 20) { qty++; updateTotals(); } });
+  }
 
   document.getElementById("orderForm").addEventListener("submit", onSubmit);
+}
+
+function currentTierPrice() {
+  const t = (product.tiers || []).find(t => t.id === selectedTierId);
+  return t ? t.price_naira : product.default_order_value_naira;
 }
 
 async function onSubmit(e) {
@@ -238,8 +277,11 @@ async function onSubmit(e) {
   const payment = document.getElementById("f_payment").value;
   if (!name || !phone || !address || !city || !state) return;
 
+  const hasTiers = Array.isArray(product.tiers) && product.tiers.length > 0;
+  const selectedTier = hasTiers ? (product.tiers.find(t => t.id === selectedTierId) || product.tiers[0]) : null;
   const eventId = uuid();
-  const value = (product.default_order_value_naira || 0) * qty;
+  const orderQty = selectedTier ? selectedTier.quantity : qty;
+  const value = selectedTier ? selectedTier.price_naira : (product.default_order_value_naira || 0) * qty;
 
   const payload = {
     event_id: eventId,
@@ -251,8 +293,9 @@ async function onSubmit(e) {
     customer_country: "NG",
     payment_method: payment,
     product_id: productId,
-    product_name: product.product_name,
-    quantity: qty,
+    tier_id: selectedTier ? selectedTier.id : undefined,
+    product_name: selectedTier ? `${product.product_name} (${selectedTier.label})` : product.product_name,
+    quantity: orderQty,
     order_value_naira: value,
     currency: product.currency || "NGN",
     ad_set_id: asid || null,

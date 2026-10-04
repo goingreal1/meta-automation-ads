@@ -32,16 +32,27 @@ Deno.serve(async (req: Request) => {
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return json({ error: "?id=<product_id> is required" }, 400);
 
-  const { data: product, error } = await supabase
-    .from("products")
-    .select(`
-      id, product_name, currency, default_order_value_naira, is_active,
-      description, benefits, safety_notes, nafdac_reg_no, product_image_url,
-      destination_type, whatsapp_number,
-      ad_accounts(meta_pixel_id)
-    `)
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data: product, error }, { data: tiers }] = await Promise.all([
+    supabase
+      .from("products")
+      .select(`
+        id, product_name, currency, default_order_value_naira, is_active,
+        description, benefits, safety_notes, nafdac_reg_no, product_image_url,
+        destination_type, whatsapp_number,
+        ad_accounts(meta_pixel_id)
+      `)
+      .eq("id", id)
+      .maybeSingle(),
+    // Package options (e.g. "1 piece" / "3-piece bundle" / "5-piece bundle"),
+    // if the buyer set any up -- order.html shows these as selectable cards
+    // instead of a plain quantity stepper when the list isn't empty.
+    supabase
+      .from("product_tiers")
+      .select("id, label, quantity, price_naira, badge")
+      .eq("product_id", id)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true }),
+  ]);
 
   if (error) return json({ error: "Lookup failed" }, 500);
   if (!product || !product.is_active) return json({ error: "Product not found" }, 404);
@@ -59,5 +70,6 @@ Deno.serve(async (req: Request) => {
     destination_type: product.destination_type,
     whatsapp_number: product.whatsapp_number,
     meta_pixel_id: (product as any).ad_accounts?.meta_pixel_id ?? null,
+    tiers: tiers ?? [],
   });
 });

@@ -2192,6 +2192,12 @@ async function renderProducts(el) {
           </div>
         </details>
 
+        <div class="field" style="margin-top:14px;">
+          <label>Package options <span style="font-weight:400;color:var(--muted);">(optional — let customers pick between bundle sizes on the order form instead of a plain quantity count, e.g. "1 piece" / "3-piece bundle")</span></label>
+          <div id="tiersList"></div>
+          <div id="tiersHint" style="font-size:10.5px;color:var(--muted);margin-top:4px;">Save the package first, then come back to add package options.</div>
+        </div>
+
         <button type="submit" class="btn btn-a btn-full" id="prodSubmitBtn" style="margin-top:14px;">+ Add package</button>
         <div id="prodMsg"></div>
       </form>
@@ -2334,6 +2340,50 @@ function bvEditProduct(id) {
     ? `<img src="${p.product_image_url}" style="width:100%;height:100%;object-fit:cover;">`
     : "No image";
   document.getElementById("prodForm").scrollIntoView({ behavior: "smooth", block: "start" });
+  bvRenderTiersEditor(p.id);
+}
+
+async function bvRenderTiersEditor(productId) {
+  document.getElementById("tiersHint").style.display = "none";
+  const tiers = await sbQuery("product_tiers", `select=*&product_id=eq.${productId}&order=sort_order.asc`).catch(() => []);
+  const list = document.getElementById("tiersList");
+  list.innerHTML = `
+    ${!tiers?.length ? `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">No package options yet — the order form will show a plain quantity picker.</div>` : `
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+      ${tiers.map(t => `
+        <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;">
+          <div style="flex:1;"><b>${escH(t.label)}</b> — ${t.quantity} pc${t.quantity > 1 ? "s" : ""} — ${fN(t.price_naira)}${t.badge ? ` <span class="pill">${escH(t.badge)}</span>` : ""}</div>
+          <button type="button" class="btn btn-g tierDeleteBtn" data-tid="${t.id}" style="padding:3px 8px;font-size:10px;color:var(--danger);">Remove</button>
+        </div>`).join("")}
+    </div>`}
+    <div class="fg">
+      <div class="field"><label style="font-size:10.5px;">Label</label><input id="t_label" placeholder="e.g. 3-piece bundle" style="font-size:12px;padding:8px 10px;"></div>
+      <div class="field"><label style="font-size:10.5px;">Pieces</label><input id="t_qty" type="number" min="1" value="1" style="font-size:12px;padding:8px 10px;"></div>
+    </div>
+    <div class="fg" style="margin-top:7px;">
+      <div class="field"><label style="font-size:10.5px;">Price</label><input id="t_price" type="number" min="0" placeholder="e.g. 40000" style="font-size:12px;padding:8px 10px;"></div>
+      <div class="field"><label style="font-size:10.5px;">Badge (optional)</label><input id="t_badge" placeholder="e.g. Best value" style="font-size:12px;padding:8px 10px;"></div>
+    </div>
+    <button type="button" class="btn btn-g" id="tierAddBtn" style="margin-top:7px;padding:6px 12px;font-size:11px;">+ Add package option</button>
+  `;
+
+  list.querySelectorAll(".tierDeleteBtn").forEach(btn => btn.addEventListener("click", async () => {
+    await supabaseClient.from("product_tiers").delete().eq("id", btn.dataset.tid);
+    bvRenderTiersEditor(productId);
+  }));
+
+  document.getElementById("tierAddBtn").addEventListener("click", async () => {
+    const label = document.getElementById("t_label").value.trim();
+    const quantity = Number(document.getElementById("t_qty").value) || 1;
+    const price_naira = Number(document.getElementById("t_price").value);
+    const badge = document.getElementById("t_badge").value.trim() || null;
+    if (!label || !price_naira) { bvToast("Label and price are required."); return; }
+    const { error } = await supabaseClient.from("product_tiers").insert({
+      product_id: productId, company_id: window.myProfile.company_id, label, quantity, price_naira, badge, sort_order: (tiers?.length ?? 0),
+    });
+    if (error) { bvToast(`Couldn't add it: ${error.message}`); return; }
+    bvRenderTiersEditor(productId);
+  });
 }
 
 function bvCancelProductEdit() {
@@ -2346,6 +2396,8 @@ function bvCancelProductEdit() {
   document.getElementById("prodCancelEdit").style.display = "none";
   document.getElementById("prodImgHint").textContent = "Save the package first, then come back to upload its photo.";
   document.getElementById("prodImgPreview").innerHTML = "—";
+  document.getElementById("tiersList").innerHTML = "";
+  document.getElementById("tiersHint").style.display = "";
 }
 
 // Creates the real campaign/ad sets/ads on Meta for this product's pending

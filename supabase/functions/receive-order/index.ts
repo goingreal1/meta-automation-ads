@@ -43,18 +43,19 @@ Deno.serve(async (req: Request) => {
     const phone = payload.phone || payload.customer_phone;
     const event_id = payload.event_id;
     const product_name = payload.product_name;
-    const quantity = payload.quantity ? parseInt(payload.quantity) : 1;
+    let quantity = payload.quantity ? parseInt(payload.quantity) : 1;
     const customer_name = payload.customer_name || payload.first_name + " " + (payload.last_name || "");
     const customer_address = payload.customer_address || payload.address;
     const customer_city = payload.customer_city as string | undefined;
     const customer_state = payload.customer_state as string | undefined;
     const customer_country = (payload.customer_country as string | undefined) || "NG";
     const payment_method = payload.payment_method as string | undefined;
-    const order_value_naira = payload.order_value_naira ? parseFloat(payload.order_value_naira) : 19000 * quantity;
+    let order_value_naira = payload.order_value_naira ? parseFloat(payload.order_value_naira) : 19000 * quantity;
     const currency = (payload.currency as string | undefined)?.toUpperCase() || "NGN";
     const ad_set_id = payload.ad_set_id;
     const creative_id = payload.creative_id;
     const product_id = payload.product_id as string | undefined;
+    const tier_id = payload.tier_id as string | undefined;
     // Meta click/browser IDs for CAPI match quality — fbc can also be reconstructed from a bare fbclid
     const fbp = payload.fbp as string | undefined;
     const fbc = (payload.fbc as string | undefined) ??
@@ -108,6 +109,25 @@ Deno.serve(async (req: Request) => {
     }
     if (!companyId) {
       console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
+    }
+
+    // A package-tier order (order.html's selectable cards -- "1 piece" /
+    // "3-piece bundle" etc.) carries tier_id instead of a client-computed
+    // price: the real quantity/price come from this lookup, never from
+    // whatever order_value_naira the browser happened to send, so a
+    // tampered request can't check out at an arbitrary price.
+    if (tier_id && product_id) {
+      const { data: tierRow } = await supabase
+        .from('product_tiers')
+        .select('quantity, price_naira')
+        .eq('id', tier_id)
+        .eq('product_id', product_id)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (tierRow) {
+        quantity = tierRow.quantity;
+        order_value_naira = Number(tierRow.price_naira);
+      }
     }
 
     // CAPI pixel/token: resolved per ad_account, same as the browser pixel,
