@@ -150,6 +150,12 @@ Deno.serve(async (req: Request) => {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
           body: JSON.stringify({ order_id: call.order_id, type: "payment_request" }),
         }).catch((err) => console.error("send-payment-whatsapp failed:", err));
+        // Offers this order to a rider right away instead of waiting for the
+        // next cron sweep -- same fire-and-forget pattern as the line above.
+        fetch(`${SUPABASE_URL}/functions/v1/auto-assign-delivery`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        }).catch((err) => console.error("auto-assign-delivery failed:", err));
       }
     }
 

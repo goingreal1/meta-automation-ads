@@ -2810,7 +2810,7 @@ async function renderRiders(el) {
   const isDeliveryAgent = window.myProfile?.role === "delivery_agent";
   const [agents, orders] = await Promise.all([
     sbQuery("delivery_agents", "select=*&order=name.asc"),
-    sbQuery("orders", `select=delivery_agent_id,order_status,order_value_naira,customer_name,customer_phone,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc`),
+    sbQuery("orders", `select=id,delivery_agent_id,order_status,assignment_status,assignment_offered_at,order_value_naira,customer_name,customer_phone,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc`),
   ]);
   for (const o of orders || []) o.payment = (o.payments || [])[0] || null;
 
@@ -2868,13 +2868,16 @@ async function renderRiders(el) {
       <div class="ph"><div class="ph-title">Recent assignments</div></div>
       ${!orders?.length ? `<div class="empty"><div class="empty-ico">📦</div>No orders assigned yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>City</th><th>Agent</th><th>Payment</th><th>Status</th><th>Assigned</th></tr>
+        <tr><th>Customer</th><th>City</th><th>Agent</th><th>Payment</th><th>Status</th><th>Assignment</th><th>Assigned</th></tr>
         ${orders.slice(0, 40).map(o => `<tr>
           <td class="s n">${escH(o.customer_name ?? "—")}</td>
           <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
           <td class="n">${escH(byAgent.get(o.delivery_agent_id)?.agent.name ?? "—")}</td>
           <td>${bvPaymentCell(o)}</td>
           <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+          <td>${o.assignment_status === "offered" ? `<span class="pill" style="background:#fff4e0;color:#a66b00;">⏳ Awaiting rider</span>`
+              : o.assignment_status === "accepted" ? `<span class="pill">✅ Accepted</span>`
+              : `<span style="color:var(--muted);">—</span>`}</td>
           <td>${ago(o.ordered_at)}</td>
         </tr>`).join("")}
       </table></div>`}
@@ -2885,9 +2888,11 @@ async function renderRiders(el) {
 // delivered, and what that's worth -- no other agent's data in sight.
 function renderMyDeliveries(el, orders, agents) {
   const myAgent = agents.find(a => a.id === window.myProfile?.delivery_agent_id);
-  const delivered = orders.filter(o => o.order_status === "delivered");
+  const offered = orders.filter(o => o.assignment_status === "offered");
+  const active = orders.filter(o => o.assignment_status !== "offered");
+  const delivered = active.filter(o => o.order_status === "delivered");
   const totalRevenue = delivered.reduce((s, o) => s + Number(o.order_value_naira || 0), 0);
-  const rate = orders.length ? (delivered.length / orders.length * 100).toFixed(1) : "0";
+  const rate = active.length ? (delivered.length / active.length * 100).toFixed(1) : "0";
 
   const now = new Date();
   const thisMonthDelivered = delivered.filter(o => o.delivered_at && new Date(o.delivered_at).getMonth() === now.getMonth() && new Date(o.delivered_at).getFullYear() === now.getFullYear());
@@ -2896,8 +2901,24 @@ function renderMyDeliveries(el, orders, agents) {
   el.innerHTML = `
     <div class="sh"><div class="sh-title">My Deliveries</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
 
+    ${offered.length ? `
+    <div class="panel" style="border:1.5px solid var(--accent);margin-bottom:16px;">
+      <div class="ph"><div class="ph-title">🔔 New assignment${offered.length > 1 ? "s" : ""}</div><div class="ph-count">${offered.length} waiting on you</div></div>
+      ${offered.map(o => `
+        <div style="padding:12px 0;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;">
+          <div>
+            <div style="font-weight:600;font-size:13px;">${escH(o.customer_name ?? "—")} -- ${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</div>
+            <div style="font-size:12px;color:var(--muted);">${fN(o.order_value_naira)} · offered ${ago(o.assignment_offered_at)}</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-g assignAccept" data-oid="${o.id}">Accept</button>
+            <button class="btn btn-g assignDecline" data-oid="${o.id}" style="color:var(--danger);">Decline</button>
+          </div>
+        </div>`).join("")}
+    </div>` : ""}
+
     <div class="g4">
-      <div class="kc"><div class="kc-lbl">Assigned to you</div><div class="kc-val">${orders.length}</div></div>
+      <div class="kc"><div class="kc-lbl">Assigned to you</div><div class="kc-val">${active.length}</div></div>
       <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${delivered.length}</div></div>
       <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rate >= 70 ? "a" : "w"}">${rate}%</div></div>
       <div class="kc"><div class="kc-lbl">Revenue delivered</div><div class="kc-val a">${fN(totalRevenue)}</div><div class="kc-sub">all time</div></div>
@@ -2910,10 +2931,10 @@ function renderMyDeliveries(el, orders, agents) {
 
     <div class="panel">
       <div class="ph"><div class="ph-title">Your assignments</div></div>
-      ${!orders.length ? `<div class="empty"><div class="empty-ico">📦</div>Nothing assigned to you yet.</div>` : `
+      ${!active.length ? `<div class="empty"><div class="empty-ico">📦</div>Nothing assigned to you yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Customer</th><th>Phone</th><th>City</th><th>Value</th><th>Payment</th><th>Status</th><th>Assigned</th></tr>
-        ${orders.map(o => `<tr>
+        ${active.map(o => `<tr>
           <td class="s n">${escH(o.customer_name ?? "—")}</td>
           <td class="n">${o.customer_phone
             ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${escH(o.customer_phone)}</a>`
@@ -2926,6 +2947,28 @@ function renderMyDeliveries(el, orders, agents) {
         </tr>`).join("")}
       </table></div>`}
     </div>`;
+
+  el.querySelectorAll(".assignAccept").forEach(btn => btn.addEventListener("click", () => bvRespondAssignment(btn.dataset.oid, "accepted")));
+  el.querySelectorAll(".assignDecline").forEach(btn => btn.addEventListener("click", () => bvRespondAssignment(btn.dataset.oid, "declined")));
+}
+
+// A rider accepting/declining their own offered assignment. Race-safe the
+// same way the support-queue claim button is: the .eq("assignment_status",
+// "offered") guard means a second click (or the cron sweep expiring it at
+// the same moment) can't double-apply this.
+async function bvRespondAssignment(orderId, outcome) {
+  const myAgentId = window.myProfile?.delivery_agent_id;
+  if (outcome === "accepted") {
+    await supabaseClient.from("orders").update({ assignment_status: "accepted" })
+      .eq("id", orderId).eq("assignment_status", "offered");
+  } else {
+    await supabaseClient.from("orders").update({ delivery_agent_id: null, assignment_status: null })
+      .eq("id", orderId).eq("assignment_status", "offered");
+  }
+  await supabaseClient.from("assignment_offers")
+    .update({ outcome, responded_at: new Date().toISOString() })
+    .eq("order_id", orderId).eq("delivery_agent_id", myAgentId).eq("outcome", "offered");
+  render();
 }
 
 // ── TAB: ORDER FORMS ──────────────────────────────────────────────────────────
