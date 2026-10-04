@@ -265,10 +265,21 @@ a{color:inherit;}
 .bv-tab-btn .bv-tab-num{width:18px;height:18px;border-radius:50%;background:var(--panel2);color:var(--muted);font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .bv-tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
 .bv-tab-btn.active .bv-tab-num{background:var(--accent);color:#fff;}
-.bv-builder-body{flex:1;overflow-y:auto;padding:22px 24px;}
+.bv-builder-shell{flex:1;min-height:0;display:flex;overflow:hidden;}
+.bv-builder-sidebar{width:170px;flex-shrink:0;border-right:1px solid var(--border);padding:14px 10px;overflow-y:auto;}
+.bv-tree-item{font-size:12.5px;color:var(--muted);padding:9px 10px;border-radius:7px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bv-tree-item.child{margin-left:16px;font-size:12px;}
+.bv-tree-item:hover{background:var(--panel2);}
+.bv-tree-item.active{background:var(--accentBg);color:var(--accent);font-weight:600;}
+.bv-builder-body{flex:1;overflow-y:auto;padding:22px 24px;min-width:0;}
 .bv-builder-section{display:none;}
 .bv-builder-section.active{display:block;}
 .bv-builder-foot{padding:14px 24px;border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:14px;}
+.bv-objective-opt{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px;cursor:pointer;}
+.bv-objective-opt:hover{border-color:var(--accent);}
+.bv-objective-opt.disabled{opacity:.5;cursor:not-allowed;}
+.bv-objective-opt input{margin:0;flex-shrink:0;}
+.bv-objective-ico{font-size:20px;flex-shrink:0;}
 .bv-dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13.5px;}
 .bv-dl dt{color:var(--muted);white-space:nowrap;}
 .bv-dl dd{color:var(--text);word-break:break-word;}
@@ -1369,7 +1380,7 @@ async function renderVault(el) {
       <div style="font-size:12px;color:var(--muted);margin:-4px 0 14px;line-height:1.5;">
         Build a Campaign → Ad Set → Ad in one guided flow, Meta Ads Manager-style — pick what you're promoting, set targeting and budget, add the creative, then review and launch.
       </div>
-      <button type="button" class="btn btn-a" style="width:auto;padding:10px 22px;" onclick="bvOpenCampaignBuilder()">+ New Campaign</button>
+      <button type="button" class="btn btn-a" style="width:auto;padding:10px 22px;" onclick="bvOpenObjectiveGateModal()">+ New Campaign</button>
     </div>
 
     <div class="panel">
@@ -1403,7 +1414,54 @@ async function renderVault(el) {
 // the ad's own link/CTA. Same ids/state/logic as before (bvAdSetRows,
 // bvStagedCopies, bvReuseAsset, bvExecuteLaunch etc.) -- this only changes
 // the layout those hook into.
-function bvOpenCampaignBuilder() {
+// Objective-first gate (mirrors Meta's own "Create new campaign" picker) --
+// shown before the builder itself. Picking a non-Sales objective also
+// defaults the destination radio to Website, since WhatsApp always forces
+// Sales/Conversations (a real Meta requirement) and would otherwise silently
+// override whatever was just picked here.
+const OBJECTIVE_GATE_OPTIONS = [
+  { value: "OUTCOME_AWARENESS", icon: "📣", label: "Awareness", desc: "Reach as many people as possible" },
+  { value: "OUTCOME_TRAFFIC", icon: "👆", label: "Traffic", desc: "Drive clicks to your link" },
+  { value: "OUTCOME_ENGAGEMENT", icon: "💬", label: "Engagement", desc: "Likes, comments, shares on the post" },
+  { value: "OUTCOME_LEADS", icon: "🎯", label: "Leads", disabled: true, desc: "Coming soon — needs a Meta lead form, not built yet" },
+  { value: "OUTCOME_SALES", icon: "🛒", label: "Sales", desc: "Drive purchases — also what WhatsApp ads always use" },
+];
+
+function bvOpenObjectiveGateModal() {
+  const overlay = document.createElement("div");
+  overlay.id = "bvObjectiveGateOverlay";
+  overlay.className = "bv-overlay";
+  overlay.innerHTML = `
+    <div class="bv-modal" style="max-width:480px;">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <div class="ph-title" style="margin-bottom:4px;">Create new campaign</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:16px;">Choose a campaign objective — the business goal you want Meta to optimize delivery for.</div>
+      <div>
+        ${OBJECTIVE_GATE_OPTIONS.map(o => `
+          <label class="bv-objective-opt${o.disabled ? " disabled" : ""}">
+            <input type="radio" name="gateObjective" value="${o.value}" ${o.disabled ? "disabled" : ""} onchange="document.getElementById('gateContinueBtn').disabled = false;">
+            <span class="bv-objective-ico">${o.icon}</span>
+            <span>
+              <div style="font-weight:600;font-size:13px;">${o.label}</div>
+              <div style="font-size:11px;color:var(--muted);">${o.desc}</div>
+            </span>
+          </label>`).join("")}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button type="button" class="btn btn-g" style="flex:1;" onclick="this.closest('.bv-overlay').remove()">Cancel</button>
+        <button type="button" class="btn btn-a" style="flex:1;" id="gateContinueBtn" disabled onclick="bvConfirmObjectiveGate()">Continue</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function bvConfirmObjectiveGate() {
+  const val = document.querySelector('input[name="gateObjective"]:checked')?.value;
+  document.getElementById("bvObjectiveGateOverlay")?.remove();
+  bvOpenCampaignBuilder(val);
+}
+
+function bvOpenCampaignBuilder(presetObjective) {
   const products = window.bvVaultProductsCache || [];
   const pOpts = window.bvVaultProductOpts || "";
   const overlay = document.createElement("div");
@@ -1419,10 +1477,10 @@ function bvOpenCampaignBuilder() {
           <div class="field"><label>Destination *</label>
             <div style="display:flex;gap:18px;margin-top:4px;">
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
-                <input type="radio" name="f_destination" value="whatsapp" checked onchange="bvOnDestinationChange()"> WhatsApp — opens a chat
+                <input type="radio" name="f_destination" value="whatsapp" ${!presetObjective || presetObjective === "OUTCOME_SALES" ? "checked" : ""} onchange="bvOnDestinationChange()"> WhatsApp — opens a chat
               </label>
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
-                <input type="radio" name="f_destination" value="website" onchange="bvOnDestinationChange()"> Website — clicks through to a link
+                <input type="radio" name="f_destination" value="website" ${presetObjective && presetObjective !== "OUTCOME_SALES" ? "checked" : ""} onchange="bvOnDestinationChange()"> Website — clicks through to a link
               </label>
             </div>
           </div>
@@ -1439,21 +1497,22 @@ function bvOpenCampaignBuilder() {
           </div>
         </div>
 
-        <div class="bv-builder-tabs">
-          <button type="button" class="bv-tab-btn active" id="bvTabBtn-campaign" onclick="bvSwitchBuilderTab('campaign')"><span class="bv-tab-num">1</span> Campaign</button>
-          <button type="button" class="bv-tab-btn" id="bvTabBtn-adset" onclick="bvSwitchBuilderTab('adset')"><span class="bv-tab-num">2</span> Ad Set</button>
-          <button type="button" class="bv-tab-btn" id="bvTabBtn-ad" onclick="bvSwitchBuilderTab('ad')"><span class="bv-tab-num">3</span> Ad</button>
-        </div>
+        <div class="bv-builder-shell">
+          <div class="bv-builder-sidebar">
+            <div class="bv-tree-item active" id="bvTabBtn-campaign" onclick="bvSwitchBuilderTab('campaign')">📁 Campaign</div>
+            <div class="bv-tree-item child" id="bvTabBtn-adset" onclick="bvSwitchBuilderTab('adset')">▦ Ad set</div>
+            <div class="bv-tree-item child" id="bvTabBtn-ad" onclick="bvSwitchBuilderTab('ad')">🖼 Ad</div>
+          </div>
 
-        <div class="bv-builder-body">
+          <div class="bv-builder-body">
 
           <div class="bv-builder-section active" id="bvSection-campaign">
             <div class="field"><label>Campaign objective <span style="font-weight:400;color:var(--muted);">(determines what Meta optimizes delivery for)</span></label>
               <select id="f_objective" onchange="bvRenderAdSetRows()">
-                <option value="OUTCOME_SALES">Sales — drive purchases (needs a connected pixel)</option>
-                <option value="OUTCOME_TRAFFIC">Traffic — drive clicks to your link</option>
-                <option value="OUTCOME_ENGAGEMENT">Engagement — likes, comments, shares on the post</option>
-                <option value="OUTCOME_AWARENESS">Awareness — reach as many people as possible</option>
+                <option value="OUTCOME_SALES" ${presetObjective === "OUTCOME_SALES" ? "selected" : ""}>Sales — drive purchases (needs a connected pixel)</option>
+                <option value="OUTCOME_TRAFFIC" ${presetObjective === "OUTCOME_TRAFFIC" ? "selected" : ""}>Traffic — drive clicks to your link</option>
+                <option value="OUTCOME_ENGAGEMENT" ${presetObjective === "OUTCOME_ENGAGEMENT" ? "selected" : ""}>Engagement — likes, comments, shares on the post</option>
+                <option value="OUTCOME_AWARENESS" ${presetObjective === "OUTCOME_AWARENESS" ? "selected" : ""}>Awareness — reach as many people as possible</option>
                 <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
               </select>
               <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
@@ -1541,6 +1600,7 @@ function bvOpenCampaignBuilder() {
             <div id="stagedCopies" style="margin-top:8px;"></div>
           </div>
 
+          </div>
         </div>
 
         <div class="bv-builder-foot">
@@ -2439,7 +2499,7 @@ function bvCampaignsHeader(counts) {
     <div class="sh">
       <div class="sh-title">Campaigns</div>
       <div class="sh-actions">
-        <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenCampaignBuilder()">+ Create</button>
+        <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenObjectiveGateModal()">+ Create</button>
         <select id="campStatusFilter" style="width:auto;padding:5px 9px;font-size:12px;">
           <option value="all" ${campaignsStatusFilter === "all" ? "selected" : ""}>All</option>
           <option value="active" ${campaignsStatusFilter === "active" ? "selected" : ""}>Active</option>
