@@ -2161,13 +2161,19 @@ function bvRenderAdSetRows() {
   }
 
   wrap.innerHTML = bvAdSetRows.map((row, i) => `
-    <div style="border:1px dashed var(--border);border-radius:8px;padding:12px;margin-top:${i === 0 ? 0 : 8}px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <strong style="font-size:12px;">${row.label}${i === 0 ? " (original)" : " (copy)"}</strong>
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:${i === 0 ? 0 : 12}px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <strong style="font-size:13px;">${row.label}${i === 0 ? " (original)" : " (copy)"}</strong>
         ${i > 0 ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>` : ""}
       </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin-bottom:8px;">Budget</div>
       <div class="fg">
         <div class="field"><label>Daily budget (₦)</label><input type="number" min="100" step="100" value="${row.budget_naira}" onchange="bvUpdateAdSetRow(${i}, 'budget_naira', this.value)"></div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Audience</div>
+      <div class="fg">
         <div class="field"><label>Gender</label>
           <select onchange="bvUpdateAdSetRow(${i}, 'gender', this.value)">
             <option value="all" ${row.gender === "all" ? "selected" : ""}>All</option>
@@ -2175,73 +2181,69 @@ function bvRenderAdSetRows() {
             <option value="female" ${row.gender === "female" ? "selected" : ""}>Female only</option>
           </select>
         </div>
-      </div>
-      <div class="fg" style="margin-top:8px;">
         <div class="field"><label>Age min</label><input type="number" min="13" max="65" value="${row.age_min}" onchange="bvUpdateAdSetRow(${i}, 'age_min', this.value)"></div>
         <div class="field"><label>Age max</label><input type="number" min="13" max="65" value="${row.age_max}" onchange="bvUpdateAdSetRow(${i}, 'age_max', this.value)"></div>
       </div>
-      <div class="field" style="margin-top:8px;"><label>Geography</label>
+      <div class="field" style="margin-top:8px;"><label>Location</label>
         <select onchange="bvUpdateAdSetRow(${i}, 'geo_type', this.value)">
           <option value="nationwide" ${row.geo_type === "nationwide" ? "selected" : ""}>Nationwide (Nigeria)</option>
           <option value="states" ${row.geo_type === "states" ? "selected" : ""}>Specific states</option>
         </select>
         ${row.geo_type === "states" ? `<input style="margin-top:6px;" placeholder="Lagos, Ogun, Abuja..." value="${row.states || ""}" onchange="bvUpdateAdSetRow(${i}, 'states', this.value)">` : ""}
       </div>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;font-weight:400;cursor:pointer;">
+        <input type="checkbox" ${row.advantage_audience !== false ? "checked" : ""} onchange="bvToggleAdSetAdvantage(${i}, this.checked)">
+        Let Meta expand this audience automatically (Advantage+)
+      </label>
 
-      <details style="margin-top:10px;">
-        <summary style="cursor:pointer;font-size:11px;color:var(--text2);font-weight:600;">Advanced: placements, bidding, optimization</summary>
-        <div style="margin-top:10px;">
-          <div class="field"><label>Placements</label>
-            <select onchange="bvUpdateAdSetRow(${i}, 'placement_preset', this.value)">
-              <option value="" ${!row.placement_preset ? "selected" : ""}>Automatic (recommended — broadest reach)</option>
-              <option value="feed_only" ${row.placement_preset === "feed_only" ? "selected" : ""}>Feed only (Facebook + Instagram feed)</option>
-              <option value="feed_stories_reels" ${row.placement_preset === "feed_stories_reels" ? "selected" : ""}>Feed + Stories + Reels</option>
-            </select>
-          </div>
-          <div class="field" style="margin-top:8px;"><label>Devices</label>
-            <div style="display:flex;gap:14px;margin-top:4px;">
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
-                <input type="checkbox" ${!row.device_platforms?.length || row.device_platforms.includes("mobile") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'mobile', this.checked)"> Mobile
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
-                <input type="checkbox" ${row.device_platforms?.includes("desktop") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'desktop', this.checked)"> Desktop
-              </label>
-            </div>
-          </div>
-          <div class="fg" style="margin-top:8px;">
-            <div class="field"><label>Bid strategy</label>
-              <select onchange="bvUpdateAdSetRow(${i}, 'bid_strategy', this.value)">
-                <option value="LOWEST_COST_WITHOUT_CAP" ${row.bid_strategy === "LOWEST_COST_WITHOUT_CAP" ? "selected" : ""}>Lowest cost (no cap) — recommended</option>
-                <option value="LOWEST_COST_WITH_BID_CAP" ${row.bid_strategy === "LOWEST_COST_WITH_BID_CAP" ? "selected" : ""}>Lowest cost with bid cap</option>
-                <option value="COST_CAP" ${row.bid_strategy === "COST_CAP" ? "selected" : ""}>Cost cap</option>
-              </select>
-            </div>
-            <div class="field"><label>Billing event</label>
-              <select onchange="bvUpdateAdSetRow(${i}, 'billing_event', this.value)">
-                <option value="IMPRESSIONS" ${row.billing_event === "IMPRESSIONS" ? "selected" : ""}>Impressions</option>
-                <option value="LINK_CLICKS" ${row.billing_event === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
-              </select>
-            </div>
-          </div>
-          ${row.bid_strategy && row.bid_strategy !== "LOWEST_COST_WITHOUT_CAP" ? `
-          <div class="field" style="margin-top:8px;"><label>Bid amount (₦) <span style="font-weight:400;color:var(--muted);">(max you'll pay per optimization event)</span></label>
-            <input type="number" min="1" step="1" value="${row.bid_amount_naira || ""}" placeholder="e.g. 500" onchange="bvUpdateAdSetRow(${i}, 'bid_amount_naira', this.value)">
-          </div>` : ""}
-          <div class="field" style="margin-top:8px;"><label>Optimization goal</label>
-            ${isWhatsappDest
-              ? `<input value="Conversations (fixed for WhatsApp ads)" disabled style="color:var(--muted);">`
-              : `<select onchange="bvUpdateAdSetRow(${i}, 'optimization_goal', this.value)">
-                  <option value="OFFSITE_CONVERSIONS" ${row.optimization_goal === "OFFSITE_CONVERSIONS" || !row.optimization_goal ? "selected" : ""}>Conversions (recommended)</option>
-                  <option value="LINK_CLICKS" ${row.optimization_goal === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
-                  <option value="LANDING_PAGE_VIEWS" ${row.optimization_goal === "LANDING_PAGE_VIEWS" ? "selected" : ""}>Landing page views</option>
-                </select>`}
-          </div>
-          <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;font-weight:400;cursor:pointer;">
-            <input type="checkbox" ${row.advantage_audience !== false ? "checked" : ""} onchange="bvToggleAdSetAdvantage(${i}, this.checked)">
-            Let Meta expand this audience automatically (Advantage+)
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Placements</div>
+      <div class="field"><label>Where your ad shows</label>
+        <select onchange="bvUpdateAdSetRow(${i}, 'placement_preset', this.value)">
+          <option value="" ${!row.placement_preset ? "selected" : ""}>Advantage+ placements (recommended — broadest reach)</option>
+          <option value="feed_only" ${row.placement_preset === "feed_only" ? "selected" : ""}>Feed only (Facebook + Instagram feed)</option>
+          <option value="feed_stories_reels" ${row.placement_preset === "feed_stories_reels" ? "selected" : ""}>Feed + Stories + Reels</option>
+        </select>
+      </div>
+      <div class="field" style="margin-top:8px;"><label>Devices</label>
+        <div style="display:flex;gap:14px;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
+            <input type="checkbox" ${!row.device_platforms?.length || row.device_platforms.includes("mobile") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'mobile', this.checked)"> Mobile
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
+            <input type="checkbox" ${row.device_platforms?.includes("desktop") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'desktop', this.checked)"> Desktop
           </label>
         </div>
-      </details>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Optimization & bidding</div>
+      <div class="field"><label>Optimization goal <span style="font-weight:400;color:var(--muted);">(what Meta tries to get you the most of)</span></label>
+        ${isWhatsappDest
+          ? `<input value="Conversations (fixed for WhatsApp ads)" disabled style="color:var(--muted);">`
+          : `<select onchange="bvUpdateAdSetRow(${i}, 'optimization_goal', this.value)">
+              <option value="OFFSITE_CONVERSIONS" ${row.optimization_goal === "OFFSITE_CONVERSIONS" || !row.optimization_goal ? "selected" : ""}>Conversions (recommended)</option>
+              <option value="LINK_CLICKS" ${row.optimization_goal === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
+              <option value="LANDING_PAGE_VIEWS" ${row.optimization_goal === "LANDING_PAGE_VIEWS" ? "selected" : ""}>Landing page views</option>
+            </select>`}
+      </div>
+      <div class="fg" style="margin-top:8px;">
+        <div class="field"><label>Bid strategy</label>
+          <select onchange="bvUpdateAdSetRow(${i}, 'bid_strategy', this.value)">
+            <option value="LOWEST_COST_WITHOUT_CAP" ${row.bid_strategy === "LOWEST_COST_WITHOUT_CAP" ? "selected" : ""}>Lowest cost (no cap) — recommended</option>
+            <option value="LOWEST_COST_WITH_BID_CAP" ${row.bid_strategy === "LOWEST_COST_WITH_BID_CAP" ? "selected" : ""}>Lowest cost with bid cap</option>
+            <option value="COST_CAP" ${row.bid_strategy === "COST_CAP" ? "selected" : ""}>Cost cap</option>
+          </select>
+        </div>
+        <div class="field"><label>Billing event</label>
+          <select onchange="bvUpdateAdSetRow(${i}, 'billing_event', this.value)">
+            <option value="IMPRESSIONS" ${row.billing_event === "IMPRESSIONS" ? "selected" : ""}>Impressions</option>
+            <option value="LINK_CLICKS" ${row.billing_event === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
+          </select>
+        </div>
+      </div>
+      ${row.bid_strategy && row.bid_strategy !== "LOWEST_COST_WITHOUT_CAP" ? `
+      <div class="field" style="margin-top:8px;"><label>Bid amount (₦) <span style="font-weight:400;color:var(--muted);">(max you'll pay per optimization event)</span></label>
+        <input type="number" min="1" step="1" value="${row.bid_amount_naira || ""}" placeholder="e.g. 500" onchange="bvUpdateAdSetRow(${i}, 'bid_amount_naira', this.value)">
+      </div>` : ""}
     </div>
   `).join("") + `
     <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
