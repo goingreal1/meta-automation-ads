@@ -2548,7 +2548,7 @@ async function renderOrders(el) {
           <td class="n">${o.media_buyers ? `${escH(o.media_buyers.code)}` : `<span style="color:var(--muted);">—</span>`}</td>
           <td>${bvOrderCallCell(o)}</td>
           <td>${bvPaymentCell(o)}</td>
-          <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span>${o.possible_duplicate ? ` <span class="pill returned" title="Same customer, same address, within the last hour">⚠️ Possible dup</span>` : ""}</td>
+          <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span>${o.possible_duplicate ? ` <span class="pill returned" title="Same customer, same address, within the last hour">⚠️ Possible dup</span>` : ""} <a href="javascript:void(0)" onclick="bvShowOrderHistoryModal('${o.id}')" title="Change history" style="color:var(--muted);text-decoration:none;">🕘</a></td>
           <td>${ago(o.ordered_at)}</td>
           <td>
             <select data-oid="${o.id}" class="oSel" style="padding:3px 7px;font-size:11px;width:auto;">
@@ -4166,6 +4166,49 @@ async function bvRenderAddFundsModal() {
 // lead -- resolved via orders.customer_id / website_leads.customer_id,
 // which a DB trigger now sets automatically off the normalized phone number
 // no matter which form or channel the person came in through.
+const BV_EVENT_FIELD_LABELS = {
+  order_status: "Status",
+  delivery_agent_id: "Delivery agent",
+  assignment_status: "Rider assignment",
+  media_buyer_id: "Media buyer",
+};
+
+// "Who changed this to cancelled, and from what" previously had no answer --
+// every status/reassignment change just overwrote the row. order_events is
+// an append-only log a trigger writes automatically on orders; this is just
+// reading it back. changed_by is null for an automated change (the rider
+// auto-assignment sweep, the AI call webhook) rather than a person.
+async function bvShowOrderHistoryModal(orderId) {
+  if (!orderId) return;
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button><div class="ph-title">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+
+  const events = await sbQuery("order_events",
+    `select=field_name,old_value,new_value,changed_by,created_at,profiles(display_name)&order_id=eq.${orderId}&order=created_at.desc`
+  ).catch(() => []);
+
+  const modal = document.querySelector("#bvModalOverlay .bv-modal");
+  if (!modal) return;
+  modal.innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:4px;">Change history</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Every status change and reassignment recorded on this order.</div>
+    ${!events?.length ? `<div style="font-size:12px;color:var(--muted);">No changes recorded yet.</div>` : `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${events.map(ev => `
+        <div style="border-left:2px solid var(--border);padding-left:10px;">
+          <div style="font-size:12.5px;"><b>${escH(BV_EVENT_FIELD_LABELS[ev.field_name] ?? ev.field_name)}</b>: ${escH(ev.old_value ?? "—")} → ${escH(ev.new_value ?? "—")}</div>
+          <div style="font-size:11px;color:var(--muted);">${ev.profiles?.display_name ? escH(ev.profiles.display_name) : "Automated"} · ${ago(ev.created_at)}</div>
+        </div>`).join("")}
+    </div>`}
+  `;
+}
+
 async function bvShowCustomerModal(customerId) {
   if (!customerId) return;
   bvCloseModal();
