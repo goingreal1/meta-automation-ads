@@ -103,7 +103,11 @@ ${JSON.stringify(data)}`;
       method: "POST",
       headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        // This OpenAI project's key doesn't have access to the -mini/-nano
+        // tiers (confirmed live: gpt-4o-mini/gpt-4.1-mini/gpt-4.1-nano/o4-mini
+        // all 403 "does not have access to model") -- only gpt-4o and
+        // gpt-3.5-turbo work on this account. Using gpt-4o for quality.
+        model: "gpt-4o",
         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: question }],
         temperature: 0.3,
         max_tokens: 600,
