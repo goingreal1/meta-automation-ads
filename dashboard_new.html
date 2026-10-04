@@ -257,8 +257,14 @@ a{color:inherit;}
 .bv-modal-close:hover{color:var(--text);}
 
 /* ── CAMPAIGN BUILDER (big modal, tabbed like Meta Ads Manager) ──────────────── */
-.bv-overlay-xl{align-items:center;padding:24px;}
-.bv-modal-xl{max-width:900px;width:100%;height:88vh;max-height:860px;padding:0;display:flex;flex-direction:column;overflow:hidden;}
+.bv-overlay-xl{align-items:center;padding:20px;}
+.bv-modal-xl{max-width:1480px;width:100%;height:94vh;max-height:1100px;padding:0;display:flex;flex-direction:column;overflow:hidden;}
+.bv-builder-summary{width:260px;flex-shrink:0;border-left:1px solid var(--border);padding:20px 18px;overflow-y:auto;}
+.bv-builder-summary-card{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;}
+.bv-builder-summary-title{font-size:12.5px;font-weight:700;margin-bottom:8px;}
+.bv-builder-summary dt{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:8px;}
+.bv-builder-summary dt:first-child{margin-top:0;}
+.bv-builder-summary dd{font-size:12.5px;color:var(--text);margin:2px 0 0;}
 .bv-builder-head{padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .bv-builder-tabs{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .bv-tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-size:13px;font-weight:600;padding:12px 6px;margin-right:22px;cursor:pointer;display:flex;align-items:center;gap:7px;}
@@ -1313,6 +1319,7 @@ function bvOnDestinationChange() {
   if (ctaSelect) ctaSelect.disabled = isWhatsapp;
   if (ctaNote) ctaNote.innerHTML = isWhatsapp ? `Ignored for WhatsApp ads — Meta uses its own "Send Message" button automatically.` : "";
   bvRenderAdSetRows();
+  bvRenderBuilderSummary();
 }
 
 // Linking a product is now optional (for Shop checkout + Purchase-pixel
@@ -1523,10 +1530,10 @@ function bvOpenCampaignBuilder(presetObjective) {
             </div>
             <div class="fg" style="margin-top:14px;">
               <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager)</span></label>
-                <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch">
+                <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch" oninput="bvRenderBuilderSummary()">
               </div>
               <div class="field"><label>Budget type</label>
-                <select id="f_budget_type">
+                <select id="f_budget_type" onchange="bvRenderBuilderSummary()">
                   <option value="abo">ABO — budget set per ad set</option>
                   <option value="cbo">CBO — one total budget, Meta splits it</option>
                 </select>
@@ -1599,7 +1606,7 @@ function bvOpenCampaignBuilder(presetObjective) {
               </div>
             </div>
             <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
-              <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)"></textarea>
+              <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
             </div>
             <div class="fg" style="margin-top:14px;">
               <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
@@ -1623,6 +1630,8 @@ function bvOpenCampaignBuilder(presetObjective) {
           </div>
 
           </div>
+
+          <div class="bv-builder-summary" id="bvBuilderSummary"></div>
         </div>
 
         <div class="bv-builder-foot">
@@ -1643,6 +1652,7 @@ function bvOpenCampaignBuilder(presetObjective) {
   bvRenderStagedCopies();
   bvReuseAsset = null;
   bvRenderIdentitySection();
+  bvRenderBuilderSummary();
   bvSwitchBuilderTab("campaign");
 
   // Drag-and-drop
@@ -1695,6 +1705,7 @@ function bvSwitchBuilderTab(tab) {
   if (backBtn) backBtn.style.visibility = i === 0 ? "hidden" : "visible";
   if (nextBtn) nextBtn.style.visibility = i === BV_BUILDER_TABS.length - 1 ? "hidden" : "visible";
   document.querySelector(".bv-builder-body")?.scrollTo(0, 0);
+  bvRenderBuilderSummary();
 }
 
 function bvBuilderTabStep(delta) {
@@ -1960,6 +1971,7 @@ function bvUpdateStagedCopy(i, key, value) {
 function bvRenderStagedCopies() {
   const wrap = document.getElementById("stagedCopies");
   if (!wrap) return;
+  bvRenderBuilderSummary();
   if (!bvStagedCopies.length) { wrap.innerHTML = ""; return; }
   wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} more ad${bvStagedCopies.length === 1 ? "" : "s"} staged below (plus whatever's filled in above) — each is its own real ad when you launch. Edit any of them here, or leave as-is.</div>` +
     bvStagedCopies.map((c, i) => `
@@ -2063,6 +2075,47 @@ function bvQuickDuplicateAd() {
 // ── KEBAB (⋯) ACTION MENUS ───────────────────────────────────────────────────
 // Small dropdowns mirroring Meta's own "⋯" menu on a campaign/ad-set/ad row
 // (Duplicate / Quickly duplicate / Delete). Only one open at a time.
+// Right-hand live summary panel, mirroring the "Campaign score" panel on
+// Meta's own campaign-creation screen -- a running snapshot of what's about
+// to launch, visible no matter which tab (Campaign/Ad set/Ad) is open.
+function bvRenderBuilderSummary() {
+  const el = document.getElementById("bvBuilderSummary");
+  if (!el) return;
+  const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+  const objSelect = document.getElementById("f_objective");
+  const objLabel = objSelect?.options[objSelect.selectedIndex]?.text?.split(" — ")[0] || "—";
+  const campaignName = document.getElementById("f_campaign_name")?.value.trim() || "(untitled campaign)";
+  const budgetType = document.getElementById("f_budget_type")?.value === "cbo" ? "CBO" : "ABO";
+  const adSetCount = bvAdSetRows.length;
+  const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+  const currentFile = document.getElementById("f_file")?.files?.[0];
+  const currentPrimary = document.getElementById("f_primary")?.value.trim();
+  const adCount = bvStagedCopies.length + ((currentFile || bvReuseAsset) && currentPrimary ? 1 : 0);
+  const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
+
+  el.innerHTML = `
+    <div class="bv-builder-summary-card">
+      <div class="bv-builder-summary-title">Campaign score</div>
+      <div style="font-size:11.5px;color:var(--muted);line-height:1.5;">
+        ${acc?.fb_page_id ? "✓ Page connected" : "⚠ No Page connected"}<br>
+        ${!isWhatsapp || acc?.meta_pixel_id ? "" : "⚠ No pixel connected<br>"}
+        ${adSetCount ? "✓" : "⚠"} ${adSetCount} ad set${adSetCount === 1 ? "" : "s"} configured<br>
+        ${adCount ? "✓" : "⚠"} ${adCount} ad${adCount === 1 ? "" : "s"} staged
+      </div>
+    </div>
+    <div class="bv-builder-summary-card">
+      <div class="bv-builder-summary-title">${escH(campaignName)}</div>
+      <dl>
+        <dt>Objective</dt><dd>${escH(objLabel)}</dd>
+        <dt>Destination</dt><dd>${isWhatsapp ? "WhatsApp" : "Website"}</dd>
+        <dt>Budget type</dt><dd>${budgetType}</dd>
+        <dt>Ad sets</dt><dd>${adSetCount}</dd>
+        <dt>Ads</dt><dd>${adCount}</dd>
+        <dt>Total daily budget</dt><dd>₦${totalBudget.toLocaleString()}</dd>
+      </dl>
+    </div>`;
+}
+
 function bvCloseKebabs() {
   document.querySelectorAll(".bv-kebab-dropdown").forEach(el => el.style.display = "none");
 }
@@ -2341,6 +2394,7 @@ function bvRenderAdSetRows() {
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenDuplicateAdSetModal()">⧉ Duplicate ad set…</button>
       <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
     </div>`;
+  bvRenderBuilderSummary();
 }
 
 // ── CREATIVE DETAIL MODAL ────────────────────────────────────────────────────
@@ -2467,7 +2521,7 @@ async function bvShowCreativeDetail(creativeId) {
   `;
 }
 
-function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); }
+function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); bvRenderBuilderSummary(); }
 function setFile(file) {
   const dz   = document.getElementById("dropZone");
   const prev = document.getElementById("dzPrev");
