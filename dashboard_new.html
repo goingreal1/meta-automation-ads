@@ -74,7 +74,8 @@ a{color:inherit;}
 .live-dot.off{background:var(--danger);animation:none;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.45;transform:scale(.8);}}
 .brand{font-family:'Fraunces',Georgia,serif;font-size:19px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;}
-.brand-sub{font-size:11px;color:var(--muted);margin-top:1px;}
+.brand-sub{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;}
+.hdr-brand-wrap{min-width:0;overflow:hidden;}
 .hdr-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
 
 .acct-selector{
@@ -95,6 +96,23 @@ a{color:inherit;}
   transition:all .18s;color:var(--text2);
 }
 .theme-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ── MOBILE HEADER MENU (hidden on desktop; see @media block below) ──────── */
+.hdr-menu-btn{
+  display:none;width:34px;height:34px;border-radius:50%;background:var(--panel2);
+  border:1.5px solid var(--border);color:var(--text2);cursor:pointer;
+  align-items:center;justify-content:center;flex-shrink:0;
+}
+.hdr-menu-panel{
+  display:none;position:absolute;top:58px;right:14px;z-index:300;
+  background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--shadow);padding:16px;min-width:230px;
+}
+.hdr-menu-panel.open{display:flex;flex-direction:column;gap:9px;}
+.hdr-menu-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:4px;}
+.hdr-menu-lbl:first-child{margin-top:0;}
+.hdr-menu-row{display:flex;gap:8px;margin-top:6px;}
+.hdr-menu-panel .acct-selector{max-width:none;width:100%;}
 
 /* ── BADGE ─────────────────────────────────────────────────────────────────── */
 .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.01em;}
@@ -138,29 +156,50 @@ a{color:inherit;}
   font-weight:700;vertical-align:middle;
 }
 
-/* Mobile: sidebar collapses to a horizontal scroll strip under the header,
-   same as the old tabs-bar, since a fixed side column doesn't fit narrow screens. */
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(20,19,15,.45);z-index:399;}
+.sidebar-close{
+  display:none;position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:50%;
+  background:var(--panel2);border:1px solid var(--border);color:var(--text2);cursor:pointer;
+  align-items:center;justify-content:center;
+}
+
+/* Mobile: a horizontal scroll-strip of 16 tabs under the header ate the
+   whole screen and still clipped labels, so below 760px the sidebar becomes
+   an off-canvas drawer instead -- closed by default, opened by the same
+   hamburger button that collapses it on desktop. The acct-selector/user
+   info/logout/theme controls move into one avatar-triggered menu so the
+   header itself stays to a single, uncrowded row. */
 @media (max-width: 760px) {
   .app-shell{flex-direction:column;}
+  .hdr{padding:12px 14px;gap:8px;}
+  .hdr-right{display:none;}
+  .hdr-menu-btn{display:flex;}
+  .brand{font-size:16.5px;}
+  .brand-sub{font-size:10px;}
+
   .sidebar,.sidebar.collapsed{
-    width:100%;height:auto;position:sticky;top:62px;flex-direction:row;
-    display:flex;overflow-x:auto;overflow-y:hidden;padding:9px 12px;gap:5px;
-    border-right:none;border-bottom:1px solid var(--border);
+    position:fixed;top:0;left:0;width:82vw;max-width:310px;height:100vh;height:100dvh;
+    transform:translateX(-100%);transition:transform .22s ease;z-index:400;
+    padding:76px 14px 20px;box-shadow:var(--shadow);border-right:1px solid var(--border);
   }
-  .sidebar-group-lbl{display:none;}
-  .tab-btn{flex-shrink:0;}
-  .sidebar.collapsed .tab-btn .tab-label{display:inline;}
-  .sidebar-toggle{display:none;}
+  .sidebar.mobile-open{transform:translateX(0);}
+  .sidebar-close{display:flex;}
+  .sidebar-backdrop.open{display:block;}
+  .sidebar.collapsed .sidebar-group-lbl{opacity:1;height:auto;padding:16px 10px 7px;}
+  .sidebar.collapsed .tab-btn{justify-content:flex-start;padding:10px 11px;}
+  .sidebar.collapsed .tab-btn .tab-label,.sidebar.collapsed .tab-badge{display:inline;}
+  .sidebar.collapsed .tab-badge{display:inline-block;}
 }
 
 /* ── CONTENT ───────────────────────────────────────────────────────────────── */
 .content{flex:1;min-width:0;max-width:1440px;margin:0 auto;padding:26px 30px 90px;}
 
 /* ── METRIC CARDS ──────────────────────────────────────────────────────────── */
-.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px;}
-@media(max-width:860px){.g4{grid-template-columns:repeat(2,1fr);}}
-@media(max-width:480px){.g4{grid-template-columns:1fr 1fr;}.g2{grid-template-columns:1fr;}}
+.g4 > *, .g2 > *{min-width:0;}
+@media(max-width:860px){.g4{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:480px){.g4{grid-template-columns:repeat(2,minmax(0,1fr));}.g2{grid-template-columns:minmax(0,1fr);}}
 
 .kc{
   background:var(--panel);border:1px solid var(--border);border-radius:12px;
@@ -468,10 +507,30 @@ textarea{resize:vertical;min-height:80px;}
 @keyframes bv-toast-out{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(10px);}}
 
 /* ── MOBILE ────────────────────────────────────────────────────────────────── */
+@media(max-width:760px){
+  /* .app-shell switches to flex-direction:column here, which turns .content's
+     "margin:0 auto" (a main-axis centering trick on desktop's row layout)
+     into a CROSS-axis auto margin instead -- that makes a flex item
+     shrink-to-fit its content's max-content width rather than stretch to
+     fill the container, which is what was pushing the whole page into
+     horizontal scroll. Plain block margin/width on mobile instead. */
+  .content{padding:18px 16px 90px;margin:0;max-width:none;width:100%;}
+  .sh{flex-direction:column;align-items:flex-start;gap:10px;}
+  .sh-title{font-size:21px;}
+  .g4,.g2{gap:10px;margin-bottom:18px;}
+  .kc{padding:14px 15px;}
+  .kc-val{font-size:23px;}
+  .panel{padding:16px;}
+  /* The Pull Meta Metrics / Sync / Refresh action row used to stack full-width
+     and eat half the screen -- let it scroll horizontally like a chip row. */
+  .qa{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
+  .qa .btn{flex-shrink:0;}
+  .wallet-hero{padding:20px;}
+  .wallet-hero-val{font-size:30px;}
+}
 @media(max-width:620px){
   .chat-panel{width:calc(100vw - 32px);right:16px;}
-  .hdr-right{flex-wrap:wrap;}
-  .sh{flex-direction:column;align-items:flex-start;}
+  .chat-toggle{bottom:18px;right:18px;}
 }
 </style>
 </head>
@@ -482,11 +541,11 @@ textarea{resize:vertical;min-height:80px;}
 <!-- HEADER -->
 <div class="hdr">
   <div class="hdr-left">
-    <button class="sidebar-toggle" id="sidebarToggle" title="Collapse sidebar">
+    <button class="sidebar-toggle" id="sidebarToggle" title="Toggle menu">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
     <div class="live-dot" id="liveDot"></div>
-    <div>
+    <div class="hdr-brand-wrap">
       <div class="brand" id="hdrBrand">Revora</div>
       <div class="brand-sub" id="lastSync">connecting…</div>
     </div>
@@ -499,11 +558,30 @@ textarea{resize:vertical;min-height:80px;}
     <button class="logout-btn" id="logoutBtn">Log out</button>
     <button class="theme-btn" id="themeBtn" title="Toggle theme"></button>
   </div>
+  <!-- Mobile-only: the four controls above get crowded on a phone header, so
+       below 760px they move into this dropdown behind a single avatar button. -->
+  <button class="hdr-menu-btn" id="hdrMenuBtn" title="Account menu">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+  </button>
+  <div class="hdr-menu-panel" id="hdrMenuPanel">
+    <div class="hdr-menu-lbl">Ad account</div>
+    <select class="acct-selector" id="acctSelectorMobile" title="Switch Ad Account"><option value="">Loading accounts...</option></select>
+    <div class="hdr-menu-lbl">Signed in as</div>
+    <div class="hdr-user" id="hdrUserMobile" style="color:var(--text2);line-height:1.4;"></div>
+    <div class="hdr-menu-row">
+      <button class="btn btn-g" id="themeBtnMobile" style="flex:1;justify-content:center;">Toggle theme</button>
+      <button class="btn btn-d" id="logoutBtnMobile" style="flex:1;justify-content:center;">Log out</button>
+    </div>
+  </div>
 </div>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
 <div class="app-shell">
   <!-- SIDEBAR -->
   <div class="sidebar" id="tabsBar">
+    <button class="sidebar-close" id="sidebarClose" title="Close menu">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
     <div class="sidebar-group-lbl">Overview</div>
     <div class="tab-btn active" data-tab="overview"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></span><span class="tab-label">Overview</span></div>
     <div class="tab-btn" data-tab="orders"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg></span><span class="tab-label">Orders</span> <span class="tab-badge" id="callFlagBadge" style="display:none">0</span></div>
@@ -637,12 +715,12 @@ async function init() {
   // The header otherwise only ever showed the company name -- an invited
   // buyer/admin/customer_care had no visual confirmation anywhere that
   // they're signed in as themselves, not some shared company login.
+  const roleLabel = ({ owner: "Owner", admin: "Admin", buyer: "Media Buyer", customer_care: "Customer Care", delivery_agent: "Delivery Agent" })[profile.role] || profile.role;
+  const hdrUserHtml = `<div style="font-weight:600;color:var(--text);">${escH(profile.display_name || session.user.email || "")}</div><div>${escH(roleLabel)}</div>`;
   const hdrUser = document.getElementById("hdrUser");
-  if (hdrUser) {
-    const roleLabel = ({ owner: "Owner", admin: "Admin", buyer: "Media Buyer", customer_care: "Customer Care", delivery_agent: "Delivery Agent" })[profile.role] || profile.role;
-    hdrUser.innerHTML = `<div style="font-weight:600;color:var(--text);">${escH(profile.display_name || session.user.email || "")}</div><div>${escH(roleLabel)}</div>`;
-    hdrUser.style.display = "block";
-  }
+  if (hdrUser) { hdrUser.innerHTML = hdrUserHtml; hdrUser.style.display = "block"; }
+  const hdrUserMobile = document.getElementById("hdrUserMobile");
+  if (hdrUserMobile) hdrUserMobile.innerHTML = hdrUserHtml;
 
   // Every tab used to render for every role -- fine for owner/admin/buyer,
   // but customer_care and delivery_agent got a sidebar full of links to
@@ -671,11 +749,10 @@ async function init() {
     history.replaceState(null, "", window.location.pathname);
   }
 
-  // Set up Logout listener
-  document.getElementById("logoutBtn").addEventListener("click", async () => {
-    await supabaseClient.auth.signOut();
-    window.location.href = "login.html";
-  });
+  // Set up Logout listener (desktop button + its mobile-menu duplicate)
+  const doLogout = async () => { await supabaseClient.auth.signOut(); window.location.href = "login.html"; };
+  document.getElementById("logoutBtn").addEventListener("click", doLogout);
+  document.getElementById("logoutBtnMobile").addEventListener("click", doLogout);
 
   // Load user's ad accounts
   await loadAccounts();
@@ -790,10 +867,12 @@ async function loadAccounts() {
     const data = await sbQuery("ad_accounts", "order=created_at.desc");
     accountsList = data || [];
     
-    const sel = document.getElementById("acctSelector");
-    
+    // The mobile header menu duplicates this selector (crowding the header
+    // on a phone otherwise) -- keep both in sync from one source of truth.
+    const sels = [document.getElementById("acctSelector"), document.getElementById("acctSelectorMobile")].filter(Boolean);
+
     if (accountsList.length === 0) {
-      sel.innerHTML = `<option value="">No Ad Accounts</option>`;
+      sels.forEach(sel => sel.innerHTML = `<option value="">No Ad Accounts</option>`);
       activeAccountId = null;
       dot.classList.add("off");
       return;
@@ -804,10 +883,11 @@ async function loadAccounts() {
       activeAccountId = accountsList[0].id;
     }
 
-    sel.innerHTML = accountsList.map(a => 
+    const optsHtml = accountsList.map(a =>
       `<option value="${a.id}" ${a.id === activeAccountId ? "selected" : ""}>${a.name}</option>`
     ).join("");
-    
+    sels.forEach(sel => sel.innerHTML = optsHtml);
+
     dot.classList.remove("off");
   } catch(err) {
     console.error("Failed to load accounts:", err);
@@ -815,10 +895,15 @@ async function loadAccounts() {
   }
 }
 
-document.getElementById("acctSelector").addEventListener("change", (e) => {
+function onAcctSelectorChange(e) {
   activeAccountId = e.target.value;
+  // Keep the other (desktop/mobile) selector showing the same account.
+  [document.getElementById("acctSelector"), document.getElementById("acctSelectorMobile")]
+    .filter(sel => sel && sel !== e.target).forEach(sel => sel.value = activeAccountId);
   render(); // Re-render everything for the new account context
-});
+}
+document.getElementById("acctSelector").addEventListener("change", onAcctSelectorChange);
+document.getElementById("acctSelectorMobile").addEventListener("change", onAcctSelectorChange);
 
 async function loadApprovalCount() {
   try {
@@ -901,19 +986,46 @@ function setTheme(t) {
 }
 setTheme(theme);
 document.getElementById("themeBtn").addEventListener("click", () => setTheme(theme === "dark" ? "light" : "dark"));
+document.getElementById("themeBtnMobile").addEventListener("click", () => setTheme(theme === "dark" ? "light" : "dark"));
 
-// ── SIDEBAR COLLAPSE ──────────────────────────────────────────────────────────
+// ── MOBILE HEADER MENU (account switcher + profile + logout, tucked behind
+// one avatar button below 760px instead of crowding the header row) ─────────
+const hdrMenuPanel = document.getElementById("hdrMenuPanel");
+document.getElementById("hdrMenuBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  hdrMenuPanel.classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  if (hdrMenuPanel.classList.contains("open") && !hdrMenuPanel.contains(e.target)) hdrMenuPanel.classList.remove("open");
+});
+
+// ── SIDEBAR COLLAPSE (desktop: shrinks to an icon rail) / DRAWER (mobile:
+// off-canvas panel, since a horizontal scroll-strip of 16 tabs under the
+// header ate the whole screen and still cut off labels) ─────────────────────
 const sidebarEl = document.getElementById("tabsBar");
+const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+const mobileMq = window.matchMedia("(max-width: 760px)");
 let sidebarCollapsed = localStorage.getItem("qh_sidebar_collapsed") === "1";
 function applySidebarState() {
   sidebarEl.classList.toggle("collapsed", sidebarCollapsed);
 }
 applySidebarState();
+function closeMobileDrawer() {
+  sidebarEl.classList.remove("mobile-open");
+  sidebarBackdrop.classList.remove("open");
+}
 document.getElementById("sidebarToggle").addEventListener("click", () => {
-  sidebarCollapsed = !sidebarCollapsed;
-  localStorage.setItem("qh_sidebar_collapsed", sidebarCollapsed ? "1" : "0");
-  applySidebarState();
+  if (mobileMq.matches) {
+    sidebarEl.classList.toggle("mobile-open");
+    sidebarBackdrop.classList.toggle("open", sidebarEl.classList.contains("mobile-open"));
+  } else {
+    sidebarCollapsed = !sidebarCollapsed;
+    localStorage.setItem("qh_sidebar_collapsed", sidebarCollapsed ? "1" : "0");
+    applySidebarState();
+  }
 });
+sidebarBackdrop.addEventListener("click", closeMobileDrawer);
+document.getElementById("sidebarClose").addEventListener("click", closeMobileDrawer);
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
 let activeTab = "overview";
@@ -926,6 +1038,7 @@ document.getElementById("tabsBar").addEventListener("click", e => {
   // the breadcrumb buttons inside the tab itself should preserve a detail view.
   if (activeTab === "campaigns") campaignsView = { level: "list", campaignId: null, adSetId: null };
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === t));
+  if (mobileMq.matches) closeMobileDrawer();
   render();
 });
 
