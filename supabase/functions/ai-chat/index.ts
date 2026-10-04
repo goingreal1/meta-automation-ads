@@ -117,7 +117,7 @@ Rules:
 - For performance/KPI questions about a specific ad account (spend, CTR, orders, CPA, impressions, clicks) use get_ad_account_performance, not list_ad_accounts (that one only has balance). If the name is ambiguous it'll tell you the matches it found.
 - query_data is your general-purpose lookup for anything else across the site: orders (search by customer name/phone, filter by status), ad sets, daily performance metrics, creatives, products, the leaderboard (media_buyers), pending approvals, AI call logs (voice_calls), and website leads. Use it instead of saying you don't have something.
 - Sending real money (e.g. "send 5k to 238193057227 Paga") is DIFFERENT from request_funds/approve_fund_request: it is owner/admin only, and you can NEVER send it yourself. Call resolve_bank_account with the account number, bank name, and amount they stated. That ONLY verifies whose account it is -- it never moves money. Once it comes back verified, tell them the account name it resolved to and that you've put up a confirm card for them -- the actual send happens only when they click Confirm and re-enter their password on the dashboard, which you cannot do for them. Never say the money has been sent or is on its way -- you don't know that; only the confirm step knows.
-- A buyer sending money is narrower: resolve_meta_transfer_account only works for a buyer sending their OWN already-approved fund request into their Meta/Facebook Ads billing account. It automatically finds their approved request (no need to ask the amount -- that's fixed by the approval, not something they choose) and rejects the account outright if it doesn't resolve to a Facebook/Meta name. Same as resolve_bank_account, it only verifies -- the real send still needs their Confirm-and-password step on the dashboard.
+- A buyer sending money is narrower: resolve_meta_transfer_account only works for a buyer sending their OWN already-approved fund request into their Meta/Facebook Ads billing account. It automatically finds their approved request and rejects the account outright if it doesn't resolve to a Facebook/Meta name. If they have more than one approved request it comes back ambiguous with a list -- ask which one, then call it again passing amount_naira set to the exact amount they picked so it can tell them apart (it can't be identified by date alone). Same as resolve_bank_account, it only verifies -- the real send still needs their Confirm-and-password step on the dashboard.
 
 DATA (JSON):
 ${JSON.stringify(data)}`;
@@ -233,6 +233,7 @@ ${JSON.stringify(data)}`;
           properties: {
             account_number: { type: "string", description: "The destination account number (today's one-time Meta Ads top-up account from Ads Manager)" },
             bank_name: { type: "string", description: "The bank name, e.g. 'Zenith Bank', 'GTBank'" },
+            amount_naira: { type: "number", description: "Only needed if the buyer has more than one approved fund request: the amount (in Naira) of the specific approved request they picked, e.g. from a disambiguation list you showed them." },
           },
           required: ["account_number", "bank_name"],
         },
@@ -498,10 +499,16 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
         .eq("status", "approved").is("paystack_transfer_code", null)
         .order("requested_at", { ascending: true });
       if (!approved || !approved.length) return { error: "You have no approved fund requests ready to transfer. Request funds first and wait for admin approval." };
+
+      let fr = approved[0];
       if (approved.length > 1) {
-        return { ambiguous: true, matches: approved.map(f => `${fmtNaira(f.amount_naira)} request from ${new Date(f.requested_at).toLocaleDateString()}`) };
+        const pickedAmount = args?.amount_naira != null ? Number(args.amount_naira) : null;
+        const picked = pickedAmount != null ? approved.find(f => Number(f.amount_naira) === pickedAmount) : null;
+        if (!picked) {
+          return { ambiguous: true, matches: approved.map(f => `${fmtNaira(f.amount_naira)} request from ${new Date(f.requested_at).toLocaleDateString()}`) };
+        }
+        fr = picked;
       }
-      const fr = approved[0];
 
       const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
       if (!PAYSTACK_SECRET_KEY) return { error: "Paystack isn't configured yet (PAYSTACK_SECRET_KEY missing)." };
