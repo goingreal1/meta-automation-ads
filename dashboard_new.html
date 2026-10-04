@@ -2530,7 +2530,7 @@ async function renderOrders(el) {
           <td class="n">${o.media_buyers ? `${escH(o.media_buyers.code)}` : `<span style="color:var(--muted);">—</span>`}</td>
           <td>${bvOrderCallCell(o)}</td>
           <td>${bvPaymentCell(o)}</td>
-          <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span></td>
+          <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span>${o.possible_duplicate ? ` <span class="pill returned" title="Same customer, same address, within the last hour">⚠️ Possible dup</span>` : ""}</td>
           <td>${ago(o.ordered_at)}</td>
           <td>
             <select data-oid="${o.id}" class="oSel" style="padding:3px 7px;font-size:11px;width:auto;">
