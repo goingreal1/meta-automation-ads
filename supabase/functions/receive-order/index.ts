@@ -42,7 +42,7 @@ Deno.serve(async (req: Request) => {
     const email = payload.email || payload.customer_email;
     const phone = payload.phone || payload.customer_phone;
     const event_id = payload.event_id;
-    const product_name = payload.product_name;
+    let product_name = payload.product_name;
     let quantity = payload.quantity ? parseInt(payload.quantity) : 1;
     const customer_name = payload.customer_name || payload.first_name + " " + (payload.last_name || "");
     const customer_address = payload.customer_address || payload.address;
@@ -65,6 +65,64 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Missing event_id" }), { status: 400 });
     }
 
+    // Insert into Supabase -- declared early because cart resolution below needs it too.
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Cart checkout (shop.html): payload.items = [{ product_id, quantity, tier_id? }, ...].
+    // Everything below this block (CAPI, ad-set/buyer attribution, the orders
+    // upsert) stays product_id/product_name/quantity/order_value_naira-shaped
+    // exactly as a single-product order.html checkout already is -- a cart
+    // just resolves those as AGGREGATES across its lines instead of taking
+    // them straight from the payload, then separately records each line in
+    // order_items once the parent order exists. A single-product checkout
+    // (no items[]) never touches any of this -- cartLines stays null and
+    // every variable below keeps coming from payload exactly as before.
+    type CartLine = { product_id: string; product_name: string; quantity: number; unit_price_naira: number; line_total_naira: number; tier_id: string | null; company_id: string | null; ad_account_id: string | null };
+    let cartLines: CartLine[] | null = null;
+    const rawItems = Array.isArray(payload.items) ? payload.items : null;
+    if (rawItems && rawItems.length) {
+      const productIds = [...new Set(rawItems.map((it: any) => it?.product_id).filter(Boolean))];
+      const tierIds = [...new Set(rawItems.map((it: any) => it?.tier_id).filter(Boolean))];
+      const [{ data: productRows }, { data: tierRows }] = await Promise.all([
+        productIds.length
+          ? supabase.from('products').select('id, product_name, company_id, ad_account_id, default_order_value_naira').in('id', productIds)
+          : Promise.resolve({ data: [] as any[] }),
+        tierIds.length
+          ? supabase.from('product_tiers').select('id, product_id, quantity, price_naira').in('id', tierIds).eq('is_active', true)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const productById = new Map((productRows || []).map((p: any) => [p.id, p]));
+      const tierById = new Map((tierRows || []).map((t: any) => [t.id, t]));
+
+      const resolved: CartLine[] = [];
+      for (const it of rawItems) {
+        const product = it?.product_id ? productById.get(it.product_id) : null;
+        if (!product) { console.error(`receive-order: cart item with unknown product_id ${it?.product_id} dropped`); continue; }
+        // Same tamper-proof rule as the single-product path below: a tier's
+        // price/quantity always wins over anything the browser computed.
+        const tier = it?.tier_id && tierById.get(it.tier_id)?.product_id === product.id ? tierById.get(it.tier_id) : null;
+        const qty = tier ? tier.quantity : Math.max(1, parseInt(it?.quantity) || 1);
+        const lineTotal = tier ? Number(tier.price_naira) : Number(product.default_order_value_naira || 0) * qty;
+        resolved.push({
+          product_id: product.id, product_name: product.product_name, quantity: qty,
+          unit_price_naira: qty ? lineTotal / qty : lineTotal, line_total_naira: lineTotal,
+          tier_id: tier ? tier.id : null, company_id: product.company_id ?? null, ad_account_id: product.ad_account_id ?? null,
+        });
+      }
+      // A cart can only ever belong to one company -- every product on a
+      // shop page already does (it's rendered from one company's catalogue),
+      // so a line that resolves to a different company is a bad/tampered
+      // request, dropped rather than mixing attribution across tenants.
+      const primaryCompanyId = resolved[0]?.company_id ?? null;
+      cartLines = resolved.filter(l => l.company_id === primaryCompanyId);
+      if (cartLines.length !== resolved.length) {
+        console.error(`receive-order: cart had items from more than one company for event_id ${event_id} -- dropped the mismatched ones`);
+      }
+      if (!cartLines.length) {
+        return new Response(JSON.stringify({ error: "No valid cart items" }), { status: 400 });
+      }
+    }
+
     const hashedEmail = await hashData(email);
     const hashedPhone = await hashData(phone);
     const firstName = payload.first_name || (payload.customer_name ? payload.customer_name.split(' ')[0] : undefined);
@@ -72,8 +130,22 @@ Deno.serve(async (req: Request) => {
     const hashedFn = await hashData(firstName);
     const hashedLn = await hashData(lastName);
 
-    // Insert into Supabase
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // A cart's aggregates override whatever the single-product fields above
+    // parsed from payload -- product_name/quantity/order_value_naira/product_id
+    // from here on mean "this order, as a whole" either way, cart or not.
+    if (cartLines) {
+      quantity = cartLines.reduce((s, l) => s + l.quantity, 0);
+      order_value_naira = cartLines.reduce((s, l) => s + l.line_total_naira, 0);
+      product_name = cartLines.length === 1
+        ? cartLines[0].product_name
+        : `${cartLines[0].product_name} + ${cartLines.length - 1} more item${cartLines.length > 2 ? "s" : ""}`;
+    }
+    // A single-line cart still points orders.product_id at that one product
+    // (stock tracking, duplicate detection etc. keep working exactly as a
+    // plain order.html order); a true multi-product cart leaves it null --
+    // order_items (written after the order itself exists, below) is the
+    // place that finds each product in a mixed cart.
+    const finalProductId = cartLines ? (cartLines.length === 1 ? cartLines[0].product_id : null) : (product_id || null);
 
     // Which company this order belongs to, in a shared multi-tenant platform
     // (see CRM_FULL_ARCHITECTURE_PLAN.md Phase 1). order.html always sends
@@ -94,7 +166,13 @@ Deno.serve(async (req: Request) => {
     // pixel event share one event_id for Meta's dedup, so they MUST fire to
     // the same pixel or that dedup (and match quality) breaks.
     let resolvedAdAccountId: string | null = null;
-    if (product_id) {
+    if (cartLines) {
+      // Every line was already confirmed to share one company above; its
+      // first product's ad account is the one CAPI fires to for this order,
+      // same principle as the single-product path (one order, one pixel).
+      companyId = cartLines[0].company_id;
+      resolvedAdAccountId = cartLines[0].ad_account_id;
+    } else if (product_id) {
       const { data: productRow } = await supabase.from('products').select('company_id, ad_account_id').eq('id', product_id).maybeSingle();
       companyId = productRow?.company_id ?? null;
       resolvedAdAccountId = productRow?.ad_account_id ?? null;
@@ -115,8 +193,9 @@ Deno.serve(async (req: Request) => {
     // "3-piece bundle" etc.) carries tier_id instead of a client-computed
     // price: the real quantity/price come from this lookup, never from
     // whatever order_value_naira the browser happened to send, so a
-    // tampered request can't check out at an arbitrary price.
-    if (tier_id && product_id) {
+    // tampered request can't check out at an arbitrary price. (A cart
+    // already resolved its own per-line tiers the same tamper-proof way above.)
+    if (!cartLines && tier_id && product_id) {
       const { data: tierRow } = await supabase
         .from('product_tiers')
         .select('quantity, price_naira')
@@ -272,7 +351,9 @@ Deno.serve(async (req: Request) => {
       // Was resolved above (to look up company_id/ad_account_id) but never
       // actually stored on the order -- confirmed real gap, the thing stock
       // tracking's delivered-decrement trigger needs to know which product.
-      product_id: product_id || null,
+      // Null for a true multi-product cart -- order_items (below) is where
+      // each of ITS products lives; the stock trigger walks that table too.
+      product_id: finalProductId,
       event_id,
       customer_email: email,
       customer_phone: phone,
@@ -298,6 +379,27 @@ Deno.serve(async (req: Request) => {
 
     if (dbError) {
       throw new Error(`Database error: ${dbError.message}`);
+    }
+
+    // Record each cart line. Deleted-then-reinserted rather than upserted --
+    // the parent order itself is upserted on event_id (a checkout retry),
+    // and a retry's cart could differ (quantity changed, item removed) from
+    // whatever a half-finished first attempt already wrote.
+    if (cartLines && orderRow?.id) {
+      await supabase.from('order_items').delete().eq('order_id', orderRow.id);
+      const { error: itemsError } = await supabase.from('order_items').insert(
+        cartLines.map(l => ({
+          order_id: orderRow.id,
+          company_id: companyId,
+          product_id: l.product_id,
+          product_name: l.product_name,
+          quantity: l.quantity,
+          unit_price_naira: l.unit_price_naira,
+          line_total_naira: l.line_total_naira,
+          tier_id: l.tier_id,
+        }))
+      );
+      if (itemsError) console.error(`receive-order: failed to save order_items for ${orderRow.id}:`, itemsError.message);
     }
 
     // Kick off the AI confirmation call. place-order-call dedupes per order
