@@ -114,6 +114,8 @@ Rules:
 - For an action tool (request_funds, approve_fund_request): if the user already gave you what's needed (e.g. "request 50000 for TikTok ads"), just call it — don't ask for confirmation first, the same way clicking the button on the dashboard doesn't ask twice. Only ask a clarifying question if something required is actually missing (e.g. no amount given).
 - request_funds only works for a buyer; approve_fund_request and list_pending_fund_requests only work for an owner/admin. If the signed-in person's role doesn't allow it, say so plainly instead of calling the tool.
 - If you call list_ad_accounts and there's more than one account, list them clearly (name + balance) in your answer so the person can see all of them at once.
+- For performance/KPI questions about a specific ad account (spend, CTR, orders, CPA, impressions, clicks) use get_ad_account_performance, not list_ad_accounts (that one only has balance). If the name is ambiguous it'll tell you the matches it found.
+- query_data is your general-purpose lookup for anything else across the site: orders (search by customer name/phone, filter by status), ad sets, daily performance metrics, creatives, products, the leaderboard (media_buyers), pending approvals, AI call logs (voice_calls), and website leads. Use it instead of saying you don't have something.
 
 DATA (JSON):
 ${JSON.stringify(data)}`;
@@ -122,8 +124,47 @@ ${JSON.stringify(data)}`;
     {
       type: "function", function: {
         name: "list_ad_accounts",
-        description: "List Meta ad accounts (with their cached balance) visible to this user. Use for any question about ad account balance, status, or which accounts exist.",
+        description: "List Meta ad accounts (with their cached balance) visible to this user. Use for balance/status questions. For spend/CTR/orders/CPA use get_ad_account_performance instead.",
         parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "get_ad_account_performance",
+        description: "Get real KPIs for one ad account by name: total spend, orders, CTR, clicks, impressions, cost per order, plus a per-ad-set breakdown. Use this for any 'how is X account performing' / 'KPI' / 'metrics' question.",
+        parameters: {
+          type: "object",
+          properties: {
+            ad_account_name: { type: "string", description: "The ad account's name or nickname (partial match is fine, e.g. 'Femi tec' or 'BEYCEE')" },
+            days: { type: "number", description: "How many days back to look. Defaults to 7." },
+          },
+          required: ["ad_account_name"],
+        },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "query_data",
+        description: "General-purpose lookup across the company's live data. Use for anything not covered by a more specific tool: find an order by customer name/phone, list orders by status, look up ad sets, creatives, products, pending approvals, AI call logs, website leads, or the buyer leaderboard.",
+        parameters: {
+          type: "object",
+          properties: {
+            table: {
+              type: "string",
+              enum: ["orders", "ad_sets", "daily_metrics", "creative_assets", "products", "media_buyers", "pending_approvals", "voice_calls", "website_leads"],
+              description: "Which table to query.",
+            },
+            search: { type: "string", description: "Free-text search (e.g. a customer name, phone number, or ad set name) -- matched against that table's main name/identifier field." },
+            filters: {
+              type: "object",
+              description: "Exact-match filters as {column: value} or {column: [value1,value2]} for 'one of these'. Only columns relevant to the chosen table are honored.",
+              additionalProperties: true,
+            },
+            days: { type: "number", description: "Only return rows from the last N days (uses each table's own date column). Omit for no date filter." },
+            limit: { type: "number", description: "Max rows to return, default 20, max 50." },
+          },
+          required: ["table"],
+        },
       },
     },
     {
@@ -206,6 +247,9 @@ ${JSON.stringify(data)}`;
         if (tc.function.name === "list_ad_accounts" && Array.isArray(result) && result.length > 1) {
           quickReplies = result.slice(0, 6).map((a: any) => `What's the balance on ${a.name}?`);
         }
+        if (tc.function.name === "get_ad_account_performance" && (result as any)?.ambiguous) {
+          quickReplies = ((result as any).matches || []).slice(0, 6).map((n: string) => `KPI for ${n}`);
+        }
         messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
       }
     }
@@ -231,6 +275,65 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
         balance: fmtNaira(a.balance_naira), balance_last_updated: a.balance_updated_at,
         low_balance_threshold: a.low_balance_threshold_naira != null ? fmtNaira(a.low_balance_threshold_naira) : null,
       }));
+    }
+
+    case "get_ad_account_performance": {
+      const nameQuery = (args?.ad_account_name || "").toString().trim();
+      if (!nameQuery) return { error: "ad_account_name is required." };
+      const days = Math.min(Math.max(Number(args?.days) || 7, 1), 90);
+
+      let acctQ = supabase.from("ad_accounts").select("id, name, nickname").eq("company_id", ctx.companyId)
+        .or(`name.ilike.%${nameQuery}%,nickname.ilike.%${nameQuery}%`);
+      if (ctx.role === "buyer") acctQ = acctQ.eq("media_buyer_id", ctx.mediaBuyerId);
+      const { data: accounts, error: acctErr } = await acctQ.limit(10);
+      if (acctErr) return { error: acctErr.message };
+      if (!accounts || accounts.length === 0) return { error: `No ad account matching "${nameQuery}" found.` };
+      if (accounts.length > 1) {
+        return { ambiguous: true, matches: accounts.map(a => a.name || a.nickname || a.id) };
+      }
+      const account = accounts[0];
+
+      const { data: adSets } = await supabase.from("ad_sets").select("id, adset_name, status").eq("ad_account_id", account.id).eq("company_id", ctx.companyId);
+      const adSetIds = (adSets || []).map(a => a.id);
+      if (!adSetIds.length) return { ad_account: account.name || account.nickname, note: "This ad account has no ad sets yet, so there's no performance data." };
+
+      const sinceIso = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const { data: metrics, error: metErr } = await supabase.from("daily_metrics")
+        .select("ad_set_id, spend_naira, impressions, clicks, ctr, orders, cost_per_order_naira, metric_date")
+        .in("ad_set_id", adSetIds).gte("metric_date", sinceIso);
+      if (metErr) return { error: metErr.message };
+
+      const adSetNameById = new Map((adSets || []).map(a => [a.id, a.adset_name]));
+      const perAdSet = new Map<string, { spend: number; orders: number; impressions: number; clicks: number }>();
+      let totalSpend = 0, totalOrders = 0, totalImpressions = 0, totalClicks = 0;
+      for (const m of metrics || []) {
+        totalSpend += Number(m.spend_naira || 0);
+        totalOrders += Number(m.orders || 0);
+        totalImpressions += Number(m.impressions || 0);
+        totalClicks += Number(m.clicks || 0);
+        const p = perAdSet.get(m.ad_set_id) || { spend: 0, orders: 0, impressions: 0, clicks: 0 };
+        p.spend += Number(m.spend_naira || 0); p.orders += Number(m.orders || 0);
+        p.impressions += Number(m.impressions || 0); p.clicks += Number(m.clicks || 0);
+        perAdSet.set(m.ad_set_id, p);
+      }
+      return {
+        ad_account: account.name || account.nickname,
+        period_days: days,
+        spend: fmtNaira(totalSpend),
+        orders: totalOrders,
+        cost_per_order: totalOrders ? fmtNaira(totalSpend / totalOrders) : "n/a",
+        ctr_pct: totalImpressions ? ((totalClicks / totalImpressions) * 100).toFixed(2) : "0.00",
+        impressions: totalImpressions,
+        clicks: totalClicks,
+        per_ad_set: [...perAdSet.entries()].map(([id, p]) => ({
+          ad_set: adSetNameById.get(id) || id, status: (adSets || []).find(a => a.id === id)?.status,
+          spend: fmtNaira(p.spend), orders: p.orders, cost_per_order: p.orders ? fmtNaira(p.spend / p.orders) : "n/a",
+        })),
+      };
+    }
+
+    case "query_data": {
+      return await runQueryData(args, ctx);
     }
 
     case "get_wallet_balance": {
@@ -309,6 +412,134 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
     default:
       return { error: "Unknown tool: " + name };
   }
+}
+
+// ── query_data: one generic, safe lookup tool covering most of the rest of
+// the site (orders, ad sets, metrics, creatives, products, leaderboard,
+// approvals, call logs, website leads). Every table is allow-listed by
+// name, selectable columns, filterable columns and which roles may see it
+// at all -- mirroring what that role already sees in the dashboard's own
+// tabs (HIDDEN_TABS_BY_ROLE in dashboard_new.html). company_id is always
+// forced server-side; a buyer additionally gets forced to their own rows
+// where the table has an owner column, regardless of what's asked. ───────
+
+type TableConfig = {
+  columns: string[];
+  allowedRoles: string[];
+  buyerCol?: string;
+  deliveryCol?: string;
+  dateCol?: string;
+  filterable: string[];
+  searchCols?: string[];
+};
+
+const TABLE_CONFIGS: Record<string, TableConfig> = {
+  orders: {
+    columns: ["id", "customer_name", "customer_phone", "customer_city", "customer_state", "product_name", "quantity", "order_value_naira", "order_status", "payment_method", "media_buyer_id", "delivery_agent_id", "assignment_status", "possible_duplicate", "followup_attempts", "ordered_at", "delivered_at"],
+    allowedRoles: ["owner", "admin", "buyer", "customer_care", "delivery_agent"],
+    buyerCol: "media_buyer_id", deliveryCol: "delivery_agent_id", dateCol: "ordered_at",
+    filterable: ["order_status", "media_buyer_id", "delivery_agent_id", "possible_duplicate", "assignment_status"],
+    searchCols: ["customer_name", "customer_phone"],
+  },
+  ad_sets: {
+    columns: ["id", "adset_name", "campaign_id", "creative_id", "status", "media_buyer_id", "ad_account_id", "budget_naira", "targeting_type", "created_at"],
+    allowedRoles: ["owner", "admin", "buyer"],
+    buyerCol: "media_buyer_id", dateCol: "created_at",
+    filterable: ["status", "media_buyer_id", "ad_account_id", "campaign_id"],
+    searchCols: ["adset_name"],
+  },
+  daily_metrics: {
+    columns: ["ad_set_id", "metric_date", "spend_naira", "impressions", "clicks", "ctr", "cpc_naira", "cpm_naira", "orders", "cost_per_order_naira", "frequency"],
+    allowedRoles: ["owner", "admin", "buyer"],
+    dateCol: "metric_date",
+    filterable: ["ad_set_id"],
+  },
+  creative_assets: {
+    columns: ["id", "headline", "file_name", "asset_type", "test_status", "campaign_name", "product_id", "uploaded_at"],
+    allowedRoles: ["owner", "admin", "buyer"],
+    dateCol: "uploaded_at",
+    filterable: ["test_status", "product_id"],
+    searchCols: ["headline", "file_name", "campaign_name"],
+  },
+  products: {
+    columns: ["id", "product_name", "default_order_value_naira", "currency", "is_active", "stock_on_hand", "low_stock_threshold", "destination_type"],
+    allowedRoles: ["owner", "admin", "buyer", "customer_care"],
+    filterable: ["is_active"],
+    searchCols: ["product_name"],
+  },
+  media_buyers: {
+    columns: ["id", "name", "code", "active"],
+    allowedRoles: ["owner", "admin", "buyer"],
+    filterable: ["active"],
+    searchCols: ["name"],
+  },
+  pending_approvals: {
+    columns: ["id", "approval_type", "reason", "status", "requested_at", "responded_at"],
+    allowedRoles: ["owner", "admin", "buyer"],
+    dateCol: "requested_at",
+    filterable: ["status", "approval_type"],
+  },
+  voice_calls: {
+    columns: ["id", "order_id", "status", "summary", "needs_human", "duration_secs", "created_at"],
+    allowedRoles: ["owner", "admin", "customer_care"],
+    dateCol: "created_at",
+    filterable: ["status", "needs_human"],
+  },
+  website_leads: {
+    columns: ["id", "name", "phone", "product_name", "city", "state", "package", "status", "created_at"],
+    allowedRoles: ["owner", "admin", "customer_care"],
+    dateCol: "created_at",
+    filterable: ["status"],
+    searchCols: ["name", "phone"],
+  },
+};
+
+async function runQueryData(args: any, ctx: Ctx): Promise<unknown> {
+  const table = (args?.table || "").toString();
+  const cfg = TABLE_CONFIGS[table];
+  if (!cfg) return { error: `Unknown table "${table}". Allowed: ${Object.keys(TABLE_CONFIGS).join(", ")}` };
+  if (!cfg.allowedRoles.includes(ctx.role)) return { error: `Your role (${ctx.role}) isn't allowed to query ${table}.` };
+
+  let q = supabase.from(table).select(cfg.columns.join(", ")).eq("company_id", ctx.companyId);
+
+  if (ctx.role === "buyer" && cfg.buyerCol) q = q.eq(cfg.buyerCol, ctx.mediaBuyerId);
+  if (ctx.role === "delivery_agent") {
+    if (table !== "orders" || !cfg.deliveryCol) return { error: "As a delivery agent you can only query your own orders." };
+    q = q.eq(cfg.deliveryCol, ctx.deliveryAgentId);
+  }
+
+  // daily_metrics has no owning-buyer column of its own -- scope a buyer to
+  // metrics on just their own ad sets instead.
+  if (table === "daily_metrics" && ctx.role === "buyer") {
+    const { data: myAdSets } = await supabase.from("ad_sets").select("id").eq("company_id", ctx.companyId).eq("media_buyer_id", ctx.mediaBuyerId);
+    const ids = (myAdSets || []).map(a => a.id);
+    if (!ids.length) return [];
+    q = q.in("ad_set_id", ids);
+  }
+
+  const filters = args?.filters && typeof args.filters === "object" ? args.filters : {};
+  for (const [col, val] of Object.entries(filters)) {
+    if (!cfg.filterable.includes(col)) continue;
+    q = Array.isArray(val) ? q.in(col, val) : q.eq(col, val as any);
+  }
+
+  if (args?.search && cfg.searchCols?.length) {
+    const term = String(args.search).trim();
+    if (term) q = q.or(cfg.searchCols.map(c => `${c}.ilike.%${term}%`).join(","));
+  }
+
+  if (args?.days && cfg.dateCol) {
+    const sinceDate = new Date(Date.now() - Math.min(Number(args.days) || 7, 365) * 24 * 3600 * 1000).toISOString();
+    q = q.gte(cfg.dateCol, cfg.dateCol === "metric_date" ? sinceDate.slice(0, 10) : sinceDate);
+  }
+
+  const limit = Math.min(Math.max(Number(args?.limit) || 20, 1), 50);
+  q = q.limit(limit);
+  if (cfg.dateCol) q = q.order(cfg.dateCol, { ascending: false });
+
+  const { data, error } = await q;
+  if (error) return { error: error.message };
+  return data;
 }
 
 // ── Role-scoped upfront context builders ──────────────────────────────────
