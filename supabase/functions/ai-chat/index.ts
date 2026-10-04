@@ -117,6 +117,7 @@ Rules:
 - For performance/KPI questions about a specific ad account (spend, CTR, orders, CPA, impressions, clicks) use get_ad_account_performance, not list_ad_accounts (that one only has balance). If the name is ambiguous it'll tell you the matches it found.
 - query_data is your general-purpose lookup for anything else across the site: orders (search by customer name/phone, filter by status), ad sets, daily performance metrics, creatives, products, the leaderboard (media_buyers), pending approvals, AI call logs (voice_calls), and website leads. Use it instead of saying you don't have something.
 - Sending real money (e.g. "send 5k to 238193057227 Paga") is DIFFERENT from request_funds/approve_fund_request: it is owner/admin only, and you can NEVER send it yourself. Call resolve_bank_account with the account number, bank name, and amount they stated. That ONLY verifies whose account it is -- it never moves money. Once it comes back verified, tell them the account name it resolved to and that you've put up a confirm card for them -- the actual send happens only when they click Confirm and re-enter their password on the dashboard, which you cannot do for them. Never say the money has been sent or is on its way -- you don't know that; only the confirm step knows.
+- A buyer sending money is narrower: resolve_meta_transfer_account only works for a buyer sending their OWN already-approved fund request into their Meta/Facebook Ads billing account. It automatically finds their approved request (no need to ask the amount -- that's fixed by the approval, not something they choose) and rejects the account outright if it doesn't resolve to a Facebook/Meta name. Same as resolve_bank_account, it only verifies -- the real send still needs their Confirm-and-password step on the dashboard.
 
 DATA (JSON):
 ${JSON.stringify(data)}`;
@@ -223,6 +224,20 @@ ${JSON.stringify(data)}`;
         },
       },
     },
+    {
+      type: "function", function: {
+        name: "resolve_meta_transfer_account",
+        description: "For a buyer only: verify a destination account before sending THEIR OWN already-approved fund request balance into Meta/Facebook Ads billing. Finds their approved request automatically (the amount is fixed by that approval, never chosen here) and the account is rejected unless it resolves to a Facebook/Meta name. This ONLY verifies -- it never moves money.",
+        parameters: {
+          type: "object",
+          properties: {
+            account_number: { type: "string", description: "The destination account number (today's one-time Meta Ads top-up account from Ads Manager)" },
+            bank_name: { type: "string", description: "The bank name, e.g. 'Zenith Bank', 'GTBank'" },
+          },
+          required: ["account_number", "bank_name"],
+        },
+      },
+    },
   ];
 
   const messages: any[] = [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: question }];
@@ -270,6 +285,10 @@ ${JSON.stringify(data)}`;
         }
         if (tc.function.name === "resolve_bank_account" && (result as any)?.verified) {
           pendingPayment = result;
+        }
+        if (tc.function.name === "resolve_meta_transfer_account") {
+          if ((result as any)?.verified) pendingPayment = result;
+          if ((result as any)?.ambiguous) quickReplies = ((result as any).matches || []).slice(0, 6).map((m: string) => `Use ${m}`);
         }
         messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
       }
@@ -464,6 +483,60 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
         amount_naira: amount,
         amount: fmtNaira(amount),
         note: args?.note || null,
+      };
+    }
+
+    case "resolve_meta_transfer_account": {
+      if (ctx.role !== "buyer" || !ctx.mediaBuyerId) return { error: "This is only for media buyers sending their own approved funds." };
+      const accountNumber = (args?.account_number || "").toString().trim();
+      const bankNameQuery = (args?.bank_name || "").toString().trim();
+      if (!accountNumber || !bankNameQuery) return { error: "account_number and bank_name are required." };
+
+      const { data: approved } = await supabase.from("fund_requests")
+        .select("id, amount_naira, note, requested_at")
+        .eq("company_id", ctx.companyId).eq("media_buyer_id", ctx.mediaBuyerId)
+        .eq("status", "approved").is("paystack_transfer_code", null)
+        .order("requested_at", { ascending: true });
+      if (!approved || !approved.length) return { error: "You have no approved fund requests ready to transfer. Request funds first and wait for admin approval." };
+      if (approved.length > 1) {
+        return { ambiguous: true, matches: approved.map(f => `${fmtNaira(f.amount_naira)} request from ${new Date(f.requested_at).toLocaleDateString()}`) };
+      }
+      const fr = approved[0];
+
+      const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+      if (!PAYSTACK_SECRET_KEY) return { error: "Paystack isn't configured yet (PAYSTACK_SECRET_KEY missing)." };
+
+      const bankListRes = await fetch("https://api.paystack.co/bank?country=nigeria", { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      const bankList = await bankListRes.json().catch(() => null);
+      if (!bankListRes.ok || !bankList?.data) return { error: "Could not load the bank list from Paystack." };
+
+      const q = bankNameQuery.toLowerCase();
+      const exact = bankList.data.find((b: any) => b.name.toLowerCase() === q);
+      const matches = exact ? [exact] : bankList.data.filter((b: any) => b.name.toLowerCase().includes(q) || (b.slug || "").toLowerCase().includes(q));
+      if (!matches.length) return { error: `No bank matching "${bankNameQuery}" found.` };
+      if (matches.length > 1) return { ambiguous: true, matches: matches.slice(0, 8).map((b: any) => b.name) };
+      const bank = matches[0];
+
+      const resolveRes = await fetch(`https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bank.code)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      const resolved = await resolveRes.json().catch(() => null);
+      if (!resolveRes.ok || !resolved?.data?.account_name) return { error: resolved?.message || "Could not verify this account. Double-check the account number and bank." };
+      const accountName = resolved.data.account_name;
+
+      if (!/facebook|meta/i.test(accountName)) {
+        return { error: `This account resolved to "${accountName}", which isn't a Facebook/Meta account. Only transfers into your Meta Ads billing account are allowed -- double-check you copied today's top-up account number from Ads Manager, not an old one.` };
+      }
+
+      return {
+        verified: true,
+        kind: "meta_transfer",
+        fund_request_id: fr.id,
+        account_number: accountNumber,
+        bank_name: bank.name,
+        bank_code: bank.code,
+        account_name: accountName,
+        amount_naira: fr.amount_naira,
+        amount: fmtNaira(fr.amount_naira),
+        note: "Meta/Facebook Ads billing top-up",
       };
     }
 

@@ -5629,13 +5629,21 @@ function bvShowChatPaymentConfirm(payment) {
       const { error: authErr } = await supabaseClient.auth.signInWithPassword({ email: sessionData.user.email, password });
       if (authErr) throw new Error("Incorrect password.");
       btn.textContent = "Sending…";
-      const r = await sbFn("paystack-admin-withdraw", {
-        access_token: sessionData.access_token,
-        amount_naira: payment.amount_naira,
-        account_number: payment.account_number,
-        bank_code: payment.bank_code,
-      });
+      const r = payment.kind === "meta_transfer"
+        ? await sbFn("paystack-transfer-to-meta", {
+            access_token: sessionData.access_token,
+            fund_request_id: payment.fund_request_id,
+            account_number: payment.account_number,
+            bank_code: payment.bank_code,
+          })
+        : await sbFn("paystack-admin-withdraw", {
+            access_token: sessionData.access_token,
+            amount_naira: payment.amount_naira,
+            account_number: payment.account_number,
+            bank_code: payment.bank_code,
+          });
       if (r.error) throw new Error(r.error);
+      if (r.verified === false) throw new Error(r.reason || "Could not verify this account.");
       bvCloseModal();
       bvToast(`Sent ${payment.amount} to ${r.account_name || payment.account_name}`);
       appendMsg(`✅ Sent ${payment.amount} to ${payment.account_name} (${payment.bank_name}).`, "bot");
