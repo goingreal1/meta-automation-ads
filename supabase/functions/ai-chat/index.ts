@@ -1,22 +1,23 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Powers the "AI Assistant" chat panel in dashboard_new.html. Every question
-// is grounded in the caller's OWN real data -- never invented -- and the
-// slice of data handed to the model depends on who's asking:
-//   owner/admin      -> whole company: every buyer's spend/orders/ROAS, which
-//                        ad sets & creatives are actually driving orders,
-//                        flags needing attention (approvals, duplicates, stuck orders).
-//   buyer            -> only their own campaigns/ad sets/creatives and orders,
-//                        plus what the AI call agent has done on their new orders.
-//   customer_care    -> calls that need a human, possible-duplicate orders,
-//                        stuck orders -- the support queue's own priorities.
-//   delivery_agent   -> their own assigned/offered deliveries.
+// Powers the "AI Assistant" chat panel in dashboard_new.html.
 //
-// RLS on these tables is company-wide (every role in a company can read every
-// row), so the buyer/customer_care/delivery_agent scoping below is done
-// explicitly in these queries -- RLS alone would leak cross-buyer data into
-// a buyer's own answers.
+// Two layers of grounding:
+//  1. An upfront role-scoped DATA snapshot (buildXContext below) so common
+//     questions ("which creative is winning?") answer in one round trip.
+//  2. Real OpenAI function calling (TOOLS below) so the model can look up
+//     anything NOT in that snapshot -- ad account balances, wallet balance,
+//     pending fund requests -- and even take real actions (request funds,
+//     approve a request), the same as clicking the matching button in the
+//     dashboard itself. It can call several tools in a loop before answering.
+//
+// RLS on these tables is company-wide (everyone in a company can read every
+// row), and this function uses the SERVICE ROLE key for its own queries
+// (so it can act on the user's behalf), so every single query below filters
+// explicitly by company_id -- and by media_buyer_id for a buyer -- rather
+// than relying on RLS. Action tools additionally re-check the caller's role
+// before doing anything, regardless of what the model asks for.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -36,6 +37,8 @@ function json(obj: unknown, status = 200) {
 function fmtNaira(n: number) {
   return "₦" + Math.round(n || 0).toLocaleString("en-NG");
 }
+
+type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliveryAgentId: string | null; userId: string; displayName: string };
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -59,6 +62,12 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { /* no body */ }
   const question = (body?.question || "").toString().trim();
   if (!question) return json({ error: "A question is required" }, 400);
+  // Short rolling history from the frontend (role/content pairs only) so a
+  // follow-up like "yes, 50000" after the assistant asks "how much?" still
+  // makes sense. Capped and sanitized -- never trust shape from the client.
+  const history: { role: string; content: string }[] = Array.isArray(body?.history)
+    ? body.history.filter((m: any) => (m?.role === "user" || m?.role === "assistant") && typeof m?.content === "string").slice(-12)
+    : [];
 
   if (!OPENAI_API_KEY) {
     return json({
@@ -66,19 +75,21 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const companyId = profile.company_id as string;
-  const role = profile.role as string;
-  const sinceIso = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const ctx: Ctx = {
+    companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id,
+    deliveryAgentId: profile.delivery_agent_id, userId: user.id, displayName: profile.display_name || "",
+  };
 
-  const { data: companyRow } = await supabase.from("companies").select("name").eq("id", companyId).maybeSingle();
+  const { data: companyRow } = await supabase.from("companies").select("name").eq("id", ctx.companyId).maybeSingle();
   const companyName = companyRow?.name || "the company";
 
   let data: Record<string, unknown>;
+  const sinceIso = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
   try {
-    if (role === "owner" || role === "admin") data = await buildAdminContext(companyId, sinceIso);
-    else if (role === "buyer") data = await buildBuyerContext(companyId, profile.media_buyer_id, sinceIso);
-    else if (role === "customer_care") data = await buildCareContext(companyId, sinceIso);
-    else if (role === "delivery_agent") data = await buildDeliveryContext(companyId, profile.delivery_agent_id, sinceIso);
+    if (ctx.role === "owner" || ctx.role === "admin") data = await buildAdminContext(ctx.companyId, sinceIso);
+    else if (ctx.role === "buyer") data = await buildBuyerContext(ctx.companyId, ctx.mediaBuyerId, sinceIso);
+    else if (ctx.role === "customer_care") data = await buildCareContext(ctx.companyId, sinceIso);
+    else if (ctx.role === "delivery_agent") data = await buildDeliveryContext(ctx.companyId, ctx.deliveryAgentId, sinceIso);
     else data = { note: "No specific data view defined for this role yet." };
   } catch (e) {
     return json({ error: "Couldn't pull your data: " + (e as Error).message }, 500);
@@ -90,39 +101,217 @@ Deno.serve(async (req: Request) => {
   };
 
   const systemPrompt = `You are the AI assistant built into ${companyName}'s operations dashboard (a media-buying + order/delivery CRM for Nigerian e-commerce).
-You are answering ${profile.display_name || "a team member"}, who is ${roleLabel[role] || role} at this company.
-Answer ONLY using the JSON data provided below — it is a real, live snapshot of their data (last 7 days unless noted). Never invent numbers, names, or outcomes that aren't in it.
-If the data needed to answer isn't in the JSON, say so plainly and suggest what to check (e.g. "pull the latest metrics from Meta first") instead of guessing.
-Be concise and direct — short paragraphs or bullet points, not a wall of text. Use ₦ for money. This person is busy and wants the answer, not a lecture.
+You are talking to ${ctx.displayName || "a team member"}, who is ${roleLabel[ctx.role] || ctx.role} at this company.
+
+You have two sources of truth:
+1. A DATA snapshot below (last 7 days unless noted) for common questions.
+2. Tools you can call for anything not already in that snapshot, or to take a real action (request funds, approve a fund request). Prefer calling a tool over saying you don't have data — you very likely can look it up. Only say you can't help if a tool call genuinely comes back empty or errors.
+
+Rules:
+- Never invent numbers, names, balances or outcomes. Only state what the DATA or a tool result actually returned.
+- Money is in Naira — use ₦.
+- Be concise and direct: short paragraphs or bullet points, not a wall of text. This person is busy.
+- For an action tool (request_funds, approve_fund_request): if the user already gave you what's needed (e.g. "request 50000 for TikTok ads"), just call it — don't ask for confirmation first, the same way clicking the button on the dashboard doesn't ask twice. Only ask a clarifying question if something required is actually missing (e.g. no amount given).
+- request_funds only works for a buyer; approve_fund_request and list_pending_fund_requests only work for an owner/admin. If the signed-in person's role doesn't allow it, say so plainly instead of calling the tool.
+- If you call list_ad_accounts and there's more than one account, list them clearly (name + balance) in your answer so the person can see all of them at once.
 
 DATA (JSON):
 ${JSON.stringify(data)}`;
 
+  const TOOLS = [
+    {
+      type: "function", function: {
+        name: "list_ad_accounts",
+        description: "List Meta ad accounts (with their cached balance) visible to this user. Use for any question about ad account balance, status, or which accounts exist.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "get_wallet_balance",
+        description: "Get the funding wallet balance: company-wide breakdown for an owner/admin, or just the signed-in buyer's own balance for a buyer.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "request_funds",
+        description: "Submit a fund request for the signed-in buyer, exactly like clicking 'Request funds' on the Wallet tab. Buyer role only.",
+        parameters: {
+          type: "object",
+          properties: {
+            amount_naira: { type: "number", description: "Amount in Naira to request" },
+            note: { type: "string", description: "Optional note on what it's for" },
+          },
+          required: ["amount_naira"],
+        },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "list_pending_fund_requests",
+        description: "List fund requests awaiting approval, with buyer name and amount. Owner/admin only.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "approve_fund_request",
+        description: "Approve a pending fund request by id, exactly like clicking 'Approve' on the Wallet tab. Owner/admin only.",
+        parameters: {
+          type: "object",
+          properties: { fund_request_id: { type: "string", description: "The fund request's id, from list_pending_fund_requests" } },
+          required: ["fund_request_id"],
+        },
+      },
+    },
+  ];
+
+  const messages: any[] = [{ role: "system", content: systemPrompt }, ...history, { role: "user", content: question }];
+  let quickReplies: string[] = [];
+
   try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        // This OpenAI project's key doesn't have access to the -mini/-nano
-        // tiers (confirmed live: gpt-4o-mini/gpt-4.1-mini/gpt-4.1-nano/o4-mini
-        // all 403 "does not have access to model") -- only gpt-4o and
-        // gpt-3.5-turbo work on this account. Using gpt-4o for quality.
-        model: "gpt-4o",
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: question }],
-        temperature: 0.3,
-        max_tokens: 600,
-      }),
-    });
-    const out = await r.json();
-    if (!r.ok) return json({ error: out?.error?.message || "AI request failed" }, 502);
-    const answer = out?.choices?.[0]?.message?.content?.trim();
-    return json({ answer: answer || "I couldn't generate a response from your data just now — try again." });
+    for (let step = 0; step < 4; step++) {
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // This OpenAI project's key doesn't have access to the -mini/-nano
+          // tiers (confirmed live: gpt-4o-mini/gpt-4.1-mini/gpt-4.1-nano/o4-mini
+          // all 403 "does not have access to model") -- only gpt-4o and
+          // gpt-3.5-turbo work on this account. Using gpt-4o for quality + tool use.
+          model: "gpt-4o",
+          messages,
+          tools: TOOLS,
+          tool_choice: "auto",
+          temperature: 0.3,
+          max_tokens: 600,
+        }),
+      });
+      const out = await r.json();
+      if (!r.ok) return json({ error: out?.error?.message || "AI request failed" }, 502);
+
+      const msg = out?.choices?.[0]?.message;
+      if (!msg) return json({ error: "AI returned no response" }, 502);
+      messages.push(msg);
+
+      if (!msg.tool_calls || !msg.tool_calls.length) {
+        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies });
+      }
+
+      for (const tc of msg.tool_calls) {
+        let args: any = {};
+        try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* malformed args */ }
+        const result = await runTool(tc.function.name, args, ctx);
+        if (tc.function.name === "list_ad_accounts" && Array.isArray(result) && result.length > 1) {
+          quickReplies = result.slice(0, 6).map((a: any) => `What's the balance on ${a.name}?`);
+        }
+        messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
+      }
+    }
+    return json({ error: "That took too many steps to work out — try asking in a simpler way." }, 502);
   } catch (e) {
     return json({ error: "AI request failed: " + (e as Error).message }, 502);
   }
 });
 
-// ── Role-scoped context builders ──────────────────────────────────────────
+// ── Tool execution -- the same actions the dashboard's own buttons take ───
+
+async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
+  switch (name) {
+    case "list_ad_accounts": {
+      let q = supabase.from("ad_accounts")
+        .select("id, name, nickname, status, balance_naira, balance_updated_at, low_balance_threshold_naira, media_buyer_id")
+        .eq("company_id", ctx.companyId);
+      if (ctx.role === "buyer") q = q.eq("media_buyer_id", ctx.mediaBuyerId);
+      const { data, error } = await q;
+      if (error) return { error: error.message };
+      return (data || []).map(a => ({
+        id: a.id, name: a.name || a.nickname || a.id, status: a.status,
+        balance: fmtNaira(a.balance_naira), balance_last_updated: a.balance_updated_at,
+        low_balance_threshold: a.low_balance_threshold_naira != null ? fmtNaira(a.low_balance_threshold_naira) : null,
+      }));
+    }
+
+    case "get_wallet_balance": {
+      const [{ data: buyers }, { data: payments }, { data: fundRequests }, { data: withdrawals }] = await Promise.all([
+        supabase.from("media_buyers").select("id, name").eq("company_id", ctx.companyId),
+        supabase.from("payments").select("media_buyer_id, amount_naira, source").eq("company_id", ctx.companyId).eq("status", "confirmed"),
+        supabase.from("fund_requests").select("media_buyer_id, amount_naira, status").eq("company_id", ctx.companyId),
+        supabase.from("admin_withdrawals").select("amount_naira, status").eq("company_id", ctx.companyId),
+      ]);
+      const per: Record<string, { confirmed: number; approved: number; transferred: number }> = {};
+      for (const b of buyers || []) per[b.id] = { confirmed: 0, approved: 0, transferred: 0 };
+      let companyTopups = 0;
+      for (const p of payments || []) {
+        if (p.media_buyer_id) { per[p.media_buyer_id] = per[p.media_buyer_id] || { confirmed: 0, approved: 0, transferred: 0 }; per[p.media_buyer_id].confirmed += Number(p.amount_naira || 0); }
+        else if (p.source === "admin_topup") companyTopups += Number(p.amount_naira || 0);
+      }
+      let approvedTotal = 0, transferredTotal = 0;
+      for (const f of fundRequests || []) {
+        if (f.status !== "approved" && f.status !== "transferred") continue;
+        per[f.media_buyer_id] = per[f.media_buyer_id] || { confirmed: 0, approved: 0, transferred: 0 };
+        if (f.status === "approved") { per[f.media_buyer_id].approved += Number(f.amount_naira || 0); approvedTotal += Number(f.amount_naira || 0); }
+        else { per[f.media_buyer_id].transferred += Number(f.amount_naira || 0); transferredTotal += Number(f.amount_naira || 0); }
+      }
+      const withdrawnTotal = (withdrawals || []).filter(w => w.status === "sent").reduce((s, w) => s + Number(w.amount_naira || 0), 0);
+      const fundingWalletBalance = companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
+
+      if (ctx.role === "buyer") {
+        const mine = ctx.mediaBuyerId ? per[ctx.mediaBuyerId] || { confirmed: 0, approved: 0, transferred: 0 } : { confirmed: 0, approved: 0, transferred: 0 };
+        return { your_confirmed_revenue: fmtNaira(mine.confirmed), your_approved_not_yet_sent: fmtNaira(mine.approved), your_transferred_to_ad_account: fmtNaira(mine.transferred) };
+      }
+      return {
+        company_funding_wallet_balance: fmtNaira(fundingWalletBalance),
+        company_total_topups: fmtNaira(companyTopups),
+        approved_awaiting_transfer: fmtNaira(approvedTotal),
+        already_transferred_to_ad_accounts: fmtNaira(transferredTotal),
+        withdrawn_by_admin: fmtNaira(withdrawnTotal),
+        per_buyer: (buyers || []).map(b => ({ name: b.name, confirmed_revenue: fmtNaira(per[b.id]?.confirmed || 0), approved_not_yet_sent: fmtNaira(per[b.id]?.approved || 0) })),
+      };
+    }
+
+    case "request_funds": {
+      if (ctx.role !== "buyer" || !ctx.mediaBuyerId) return { error: "Only a media buyer can request funds. This account isn't a buyer." };
+      const amount = Number(args?.amount_naira);
+      if (!amount || amount <= 0) return { error: "A valid positive amount_naira is required." };
+      const { data: inserted, error } = await supabase.from("fund_requests").insert({
+        company_id: ctx.companyId, media_buyer_id: ctx.mediaBuyerId, amount_naira: amount, note: args?.note || null,
+      }).select().single();
+      if (error) return { error: "Could not submit request: " + error.message };
+      // Same notifications the dashboard's own "Request funds" button fires -- fire-and-forget.
+      fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ type: "fund_request_submitted", fund_request_id: inserted.id }) }).catch(() => {});
+      fetch(`${SUPABASE_URL}/functions/v1/send-internal-email`, { method: "POST", headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ type: "fund_request_submitted", fund_request_id: inserted.id }) }).catch(() => {});
+      return { ok: true, submitted: { id: inserted.id, amount: fmtNaira(amount), note: args?.note || null, status: "pending" } };
+    }
+
+    case "list_pending_fund_requests": {
+      if (ctx.role !== "owner" && ctx.role !== "admin") return { error: "Only an owner/admin can see pending fund requests." };
+      const { data: requests, error } = await supabase.from("fund_requests").select("id, media_buyer_id, amount_naira, note, requested_at").eq("company_id", ctx.companyId).eq("status", "pending").order("requested_at", { ascending: true });
+      if (error) return { error: error.message };
+      const { data: buyers } = await supabase.from("media_buyers").select("id, name").eq("company_id", ctx.companyId);
+      const nameById = new Map((buyers || []).map(b => [b.id, b.name]));
+      return (requests || []).map(r => ({ fund_request_id: r.id, buyer: nameById.get(r.media_buyer_id) || "Unknown", amount: fmtNaira(r.amount_naira), note: r.note, requested_at: r.requested_at }));
+    }
+
+    case "approve_fund_request": {
+      if (ctx.role !== "owner" && ctx.role !== "admin") return { error: "Only an owner/admin can approve fund requests." };
+      const id = args?.fund_request_id;
+      if (!id) return { error: "fund_request_id is required." };
+      const { data: existing } = await supabase.from("fund_requests").select("id, company_id, status, amount_naira, media_buyer_id").eq("id", id).maybeSingle();
+      if (!existing || existing.company_id !== ctx.companyId) return { error: "Fund request not found." };
+      if (existing.status !== "pending") return { error: `This request is already "${existing.status}", not pending.` };
+      const { error } = await supabase.from("fund_requests").update({ status: "approved", decided_at: new Date().toISOString(), decided_by: ctx.userId }).eq("id", id);
+      if (error) return { error: error.message };
+      return { ok: true, approved: { fund_request_id: id, amount: fmtNaira(existing.amount_naira) } };
+    }
+
+    default:
+      return { error: "Unknown tool: " + name };
+  }
+}
+
+// ── Role-scoped upfront context builders ──────────────────────────────────
 
 async function buildAdminContext(companyId: string, sinceIso: string) {
   const [{ data: buyers }, { data: adSets }, { data: metrics }, { data: orders }, { data: calls }, { data: approvals }, { data: creatives }] = await Promise.all([
@@ -138,7 +327,6 @@ async function buildAdminContext(companyId: string, sinceIso: string) {
   const adSetById = new Map((adSets || []).map(a => [a.id, a]));
   const creativeById = new Map((creatives || []).map(c => [c.id, c]));
 
-  // Per-buyer rollup: spend (via their ad sets), orders, delivered, value.
   const buyerStats = new Map<string, { name: string; code: string; spend: number; orders: number; delivered: number; value: number }>();
   for (const b of buyers || []) buyerStats.set(b.id, { name: b.name, code: b.code, spend: 0, orders: 0, delivered: 0, value: 0 });
   for (const m of metrics || []) {
@@ -154,7 +342,6 @@ async function buildAdminContext(companyId: string, sinceIso: string) {
     }
   }
 
-  // Which ad sets / creatives actually bring orders.
   const ordersByAdSet = new Map<string, number>();
   const ordersByCreative = new Map<string, number>();
   for (const o of orders || []) {
@@ -211,7 +398,6 @@ async function buildBuyerContext(companyId: string, mediaBuyerId: string | null,
   const topAdSets = [...ordersByAdSet.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
     .map(([id, n]) => ({ ad_set: adSetById.get(id)?.adset_name || id, orders: n, creative: creativeById.get(adSetById.get(id)?.creative_id)?.headline || null }));
 
-  // What the AI call agent has actually done on this buyer's new orders.
   const orderIds = (orders || []).map(o => o.id);
   const { data: calls } = orderIds.length
     ? await supabase.from("voice_calls").select("order_id, status").in("order_id", orderIds).gte("created_at", sinceIso).limit(1000)

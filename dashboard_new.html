@@ -483,7 +483,7 @@ textarea{resize:vertical;min-height:80px;}
 .ch-name{font-size:12px;font-weight:600;}
 .ch-status{font-size:10px;color:var(--muted);}
 .ch-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}
-.ch-msg{max-width:88%;padding:8px 11px;border-radius:9px;font-size:12px;line-height:1.5;}
+.ch-msg{max-width:88%;padding:8px 11px;border-radius:9px;font-size:12px;line-height:1.5;white-space:pre-wrap;}
 .ch-msg.bot{background:var(--panel2);color:var(--text);align-self:flex-start;}
 .ch-msg.user{background:var(--accentBg);color:var(--accent);border:1px solid var(--accentBdr);align-self:flex-end;}
 .ch-suggs{padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid var(--border);}
@@ -5545,15 +5545,42 @@ function appendMsg(text, role) {
   return d;
 }
 
+// The assistant can respond with "quick replies" -- e.g. after it looks up
+// several ad accounts, one chip per account so picking one is a tap instead
+// of typing the name back. Reuses the ch-sugg chip style.
+function appendQuickReplies(replies) {
+  if (!replies?.length) return;
+  const msgs = document.getElementById("chMsgs");
+  const wrap = document.createElement("div");
+  wrap.className = "ch-suggs";
+  wrap.style.cssText = "border-top:none;padding:4px 0 0;";
+  wrap.innerHTML = replies.map(r => `<button class="ch-sugg" onclick="askChat('${r.replace(/'/g, "\\'")}')">${escH(r)}</button>`).join("");
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Rolling conversation memory (this page view only) so a short follow-up --
+// "yes, 50000" after the assistant asks "how much?" -- still has context.
+// The ai-chat function re-derives everything else (role, live data) fresh
+// on every call; only the back-and-forth text travels with each request.
+let chatHistory = [];
+
 async function askChat(q) {
   document.getElementById("chSuggs").style.display = "none";
   appendMsg(q, "user");
-  const thinking = appendMsg("Analyzing your data…", "bot");
+  const thinking = appendMsg("Thinking…", "bot");
   try {
-    const r = await sbFn("ai-chat", { question: q, context: "media_buying_dashboard" });
-    thinking.textContent = r?.answer ?? r?.message ?? "I don't have enough live data to answer that right now. Pull the latest metrics from Meta first, then ask again.";
+    const r = await sbFn("ai-chat", { question: q, history: chatHistory });
+    if (r?.answer) {
+      thinking.textContent = r.answer;
+      chatHistory.push({ role: "user", content: q }, { role: "assistant", content: r.answer });
+      if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+      appendQuickReplies(r.quick_replies);
+    } else {
+      thinking.textContent = r?.error ? `Couldn't do that: ${r.error}` : "I couldn't get an answer just now — try again.";
+    }
   } catch {
-    thinking.textContent = "Connection error. Try pulling metrics first, then ask again.";
+    thinking.textContent = "Connection error. Try again in a moment.";
   }
 }
 
