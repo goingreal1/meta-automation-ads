@@ -249,6 +249,10 @@ Deno.serve(async (req: Request) => {
 
     const { data: orderRow, error: dbError } = await supabase.from('orders').upsert({
       company_id: companyId,
+      // Was resolved above (to look up company_id/ad_account_id) but never
+      // actually stored on the order -- confirmed real gap, the thing stock
+      // tracking's delivered-decrement trigger needs to know which product.
+      product_id: product_id || null,
       event_id,
       customer_email: email,
       customer_phone: phone,

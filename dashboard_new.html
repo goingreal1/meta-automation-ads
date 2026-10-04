@@ -2131,6 +2131,10 @@ async function renderProducts(el) {
           <div class="field"><label>Price *</label><input id="p_val" type="number" value="19000" min="0"></div>
         </div>
         <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Stock on hand <span style="font-weight:400;color:var(--muted);">(leave blank if you're not tracking inventory for this product)</span></label><input id="p_stock" type="number" min="0" step="1" placeholder="untracked"></div>
+          <div class="field"><label>Low-stock alert at</label><input id="p_stock_threshold" type="number" min="0" step="1" value="10"></div>
+        </div>
+        <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Currency</label>
             <select id="p_currency">
               <option value="NGN">NGN — Naira</option>
@@ -2198,7 +2202,7 @@ async function renderProducts(el) {
       <div id="publishMsg"></div>
       ${!prods?.length ? `<div class="empty"><div class="empty-ico">📦</div>No products yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Photo</th><th>Name</th><th>Creatives</th><th>Landing URL</th><th>Order form</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th><th></th></tr>
+        <tr><th>Photo</th><th>Name</th><th>Stock</th><th>Creatives</th><th>Landing URL</th><th>Order form</th><th>Currency</th><th>Order value</th><th>Status</th><th>Auto-Post</th><th></th></tr>
         ${prods.map(p => {
           const pc = creativesByProduct[p.id] || [];
           const thumbs = pc.slice(0, 4).map(c => c.asset_type === "video"
@@ -2210,6 +2214,13 @@ async function renderProducts(el) {
             ? `<img src="${p.product_image_url}" title="Product photo" style="width:32px;height:32px;border-radius:6px;object-fit:cover;border:1px solid var(--border);">`
             : `<div style="width:32px;height:32px;border-radius:6px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted);">—</div>`}</td>
           <td class="s n">${p.product_name}</td>
+          <td class="n">${p.stock_on_hand === null || p.stock_on_hand === undefined
+            ? `<span style="color:var(--muted);">untracked</span>`
+            : p.stock_on_hand <= 0
+              ? `<span class="pill returned">⚠️ Out of stock</span>`
+              : p.stock_on_hand <= (p.low_stock_threshold ?? 10)
+                ? `<span class="pill returned" title="At or below the ${p.low_stock_threshold ?? 10}-unit alert threshold">⚠️ ${p.stock_on_hand} left</span>`
+                : `${p.stock_on_hand}`}</td>
           <td><div style="display:flex;gap:4px;align-items:center;">${thumbs || '<span style="color:var(--muted);font-size:11px;">none yet</span>'}${pc.length > 4 ? `<span style="font-size:11px;color:var(--muted);">+${pc.length - 4}</span>` : ""}</div></td>
           <td class="n" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
             ${p.landing_page_url ? `<a href="${p.landing_page_url}" target="_blank" style="color:var(--accent);text-decoration:none;">${p.landing_page_url}</a>` : `<span style="color:var(--muted);">${p.destination_type === "whatsapp" ? "WhatsApp: " + (p.whatsapp_number || "—") : "—"}</span>`}
@@ -2243,6 +2254,8 @@ async function renderProducts(el) {
     const editingId = document.getElementById("p_id").value;
     const fields = {
       product_name: document.getElementById("p_name").value,
+      stock_on_hand: document.getElementById("p_stock").value === "" ? null : Number(document.getElementById("p_stock").value),
+      low_stock_threshold: Number(document.getElementById("p_stock_threshold").value) || 10,
       landing_page_url: document.getElementById("p_url").value || null,
       default_order_value_naira: Number(document.getElementById("p_val").value) || 19000,
       currency: document.getElementById("p_currency").value,
@@ -2300,6 +2313,8 @@ function bvEditProduct(id) {
   if (!p) return;
   document.getElementById("p_id").value = p.id;
   document.getElementById("p_name").value = p.product_name || "";
+  document.getElementById("p_stock").value = p.stock_on_hand ?? "";
+  document.getElementById("p_stock_threshold").value = p.low_stock_threshold ?? 10;
   document.getElementById("p_currency").value = p.currency || "NGN";
   document.getElementById("p_val").value = p.default_order_value_naira || 19000;
   document.getElementById("p_url").value = p.landing_page_url || "";
