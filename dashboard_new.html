@@ -1528,16 +1528,17 @@ function bvOpenCampaignBuilder() {
               </div>
             </div>
             <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
-              <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad…" required></textarea>
+              <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)"></textarea>
             </div>
             <div class="fg" style="margin-top:14px;">
               <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
               <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
             </div>
-            <div style="margin-top:14px;">
-              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvStageAdCopy()">+ Add another ad copy (test multiple creatives in the same ad sets)</button>
-              <div id="stagedCopies" style="margin-top:8px;"></div>
+            <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvStageAdCopy()">+ Add another ad copy</button>
+              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenDuplicateAdModal()">⧉ Duplicate this ad…</button>
             </div>
+            <div id="stagedCopies" style="margin-top:8px;"></div>
           </div>
 
         </div>
@@ -1861,16 +1862,85 @@ function bvRemoveStagedCopy(i) {
   bvRenderStagedCopies();
 }
 
+// Updates a staged copy's text field in place without re-rendering the list
+// (a full re-render would blow away the textarea/input the person is
+// actively typing in and drop focus).
+function bvUpdateStagedCopy(i, key, value) {
+  bvStagedCopies[i][key] = value;
+}
+
 function bvRenderStagedCopies() {
   const wrap = document.getElementById("stagedCopies");
   if (!wrap) return;
   if (!bvStagedCopies.length) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} ad cop${bvStagedCopies.length === 1 ? "y" : "ies"} staged — the file/text above will be added as one more copy when you submit.</div>` +
+  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} more ad${bvStagedCopies.length === 1 ? "" : "s"} staged below (plus whatever's filled in above) — each is its own real ad when you launch. Edit any of them here, or leave as-is.</div>` +
     bvStagedCopies.map((c, i) => `
-      <div style="display:flex;justify-content:space-between;align-items:center;border:1px dashed var(--border);border-radius:6px;padding:6px 10px;margin-top:4px;font-size:12px;">
-        <span>Copy ${i + 1}: ${c.reuse_asset ? `↺ ${c.reuse_asset.file_name} (reused)` : c.file.name}</span>
-        <button type="button" onclick="bvRemoveStagedCopy(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>
+      <div style="border:1px dashed var(--border);border-radius:8px;padding:10px;margin-top:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:11px;color:var(--muted);">${c.reuse_asset ? `↺ ${escH(c.reuse_asset.file_name)} (reused)` : escH(c.file?.name || "")}</span>
+          <button type="button" onclick="bvRemoveStagedCopy(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕ Remove</button>
+        </div>
+        <textarea rows="2" placeholder="Primary text" style="width:100%;font-size:12px;" oninput="bvUpdateStagedCopy(${i}, 'primary_text', this.value)">${escH(c.primary_text || "")}</textarea>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <input placeholder="Headline" value="${escH(c.headline || "")}" style="flex:1;font-size:12px;" oninput="bvUpdateStagedCopy(${i}, 'headline', this.value)">
+          <input placeholder="Description" value="${escH(c.description || "")}" style="flex:1;font-size:12px;" oninput="bvUpdateStagedCopy(${i}, 'description', this.value)">
+        </div>
       </div>`).join("");
+}
+
+// ── DUPLICATE THIS AD ────────────────────────────────────────────────────────
+// For a "1 campaign / 1 ad set / N ads" structure: clones the ad currently
+// filled in (creative + primary text) into N total staged ads, each still
+// individually editable in the staged list above (or launch them identical).
+function bvOpenDuplicateAdModal() {
+  const file = document.getElementById("f_file").files[0];
+  const primary = document.getElementById("f_primary").value.trim();
+  if ((!file && !bvReuseAsset) || !primary) {
+    alert("Fill in this ad's creative and primary text first — duplicates are cloned from it.");
+    return;
+  }
+  const overlay = document.createElement("div");
+  overlay.id = "bvDupAdModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.innerHTML = `
+    <div class="bv-modal" style="max-width:420px;">
+      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <div class="ph-title" style="margin-bottom:12px;">Duplicate this ad</div>
+      <div class="field"><label>Number of total ads (including this one)</label>
+        <input type="number" id="dupAdCount" min="1" max="20" value="5">
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">Each duplicate carries this ad's creative and primary text — edit any of them afterward in the staged list, or launch them as-is.</div>
+      <button type="button" class="btn btn-a btn-full" style="margin-top:16px;" onclick="bvConfirmDuplicateAd()">Duplicate</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function bvConfirmDuplicateAd() {
+  const count = Math.max(1, Math.min(20, Number(document.getElementById("dupAdCount").value) || 1));
+  const file = document.getElementById("f_file").files[0];
+  const base = {
+    file: file || null,
+    reuse_asset: bvReuseAsset,
+    primary_text: document.getElementById("f_primary").value.trim(),
+    headline: document.getElementById("f_headline").value.trim(),
+    description: document.getElementById("f_desc").value.trim(),
+    mechanism: document.getElementById("f_mechanism").value,
+    format: document.getElementById("f_format").value,
+    cta_type: document.getElementById("f_cta").value,
+  };
+  for (let n = 0; n < count; n++) {
+    bvStagedCopies.push({ ...base });
+  }
+  // Clear the form -- all copies (including the one just filled in) now live
+  // in the staged list below, each individually editable there.
+  document.getElementById("f_file").value = "";
+  document.getElementById("f_primary").value = "";
+  document.getElementById("f_headline").value = "";
+  document.getElementById("f_desc").value = "";
+  document.getElementById("dzPrev").innerHTML = "";
+  bvReuseAsset = null;
+  document.getElementById("bvDupAdModalOverlay")?.remove();
+  bvRenderStagedCopies();
 }
 
 // ── REUSE EXISTING CREATIVE (instead of re-uploading) ───────────────────────
