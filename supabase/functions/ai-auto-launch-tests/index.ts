@@ -493,6 +493,22 @@ const REAL_WHATSAPP_PLACEMENTS = {
 };
 const GENDER_MAP: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
 
+// Ad-set settings that used to be fixed constants, now real per-ad-set
+// choices from the dashboard's builder (ad_set_configs.placement_preset /
+// device_platforms / bid_strategy / billing_event / optimization_goal /
+// advantage_audience). Every one of these is nullable -- a row written
+// before this feature shipped has nulls everywhere, and every fallback
+// below reproduces EXACTLY the old hardcoded behavior, so an existing
+// config keeps launching identically unless someone explicitly changes it.
+const PLACEMENT_PRESETS: Record<string, { facebook_positions: string[]; instagram_positions: string[] }> = {
+  feed_only: { facebook_positions: ["feed"], instagram_positions: ["stream"] },
+  feed_stories_reels: { facebook_positions: ["feed", "facebook_reels"], instagram_positions: ["stream", "reels", "story"] },
+};
+const VALID_BID_STRATEGIES = ["LOWEST_COST_WITHOUT_CAP", "LOWEST_COST_WITH_BID_CAP", "COST_CAP"];
+const VALID_BILLING_EVENTS = ["IMPRESSIONS", "LINK_CLICKS"];
+const VALID_WEBSITE_OPTIMIZATION_GOALS = ["OFFSITE_CONVERSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS"];
+const VALID_DEVICE_PLATFORMS = ["mobile", "desktop"];
+
 // Resolves Nigerian state names (as picked in the dashboard's ad-set builder,
 // e.g. "Lagos") to Meta's actual region keys via the geolocation Targeting
 // Search API -- sending human-readable names directly is not a valid Meta
@@ -524,17 +540,28 @@ async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: stri
 // one ad set, "Duplicate x N" clones it) -- real, direct fields the user set
 // themselves (budget, age, gender, geography), not an abstract named preset.
 async function buildTargetingFromConfig(config: any, destinationType: "website" | "whatsapp"): Promise<Record<string, any>> {
-  const placements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS : REAL_PLACEMENTS;
+  const basePlacements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS : REAL_PLACEMENTS;
+  // "automatic"/null (the default) keeps the exact existing broad preset;
+  // any other value swaps in a narrower, user-chosen preset instead. Publisher
+  // platforms and device platforms are deliberately NOT swapped by the preset
+  // (those are independent choices, device especially), only the positions.
+  const positionOverride = config.placement_preset ? PLACEMENT_PRESETS[config.placement_preset] : null;
+  const devicePlatforms = Array.isArray(config.device_platforms) && config.device_platforms.length
+    ? config.device_platforms.filter((d: string) => VALID_DEVICE_PLATFORMS.includes(d))
+    : basePlacements.device_platforms;
   const genders = GENDER_MAP[config.gender ?? "all"] ?? [1, 2];
+  // Advantage+ audience expansion defaults ON (existing behavior) -- only a
+  // row that explicitly set advantage_audience=false turns it off.
+  const advantageOn = config.advantage_audience !== false;
   const targeting: Record<string, any> = {
     genders,
     age_min: config.age_min ?? 25,
     age_max: config.age_max ?? 65,
-    targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: 1 } },
-    publisher_platforms: placements.publisher_platforms,
-    facebook_positions: placements.facebook_positions,
-    instagram_positions: placements.instagram_positions,
-    device_platforms: placements.device_platforms,
+    ...(advantageOn ? { targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: 1 } } } : { targeting_automation: { advantage_audience: 0 } }),
+    publisher_platforms: basePlacements.publisher_platforms,
+    facebook_positions: positionOverride?.facebook_positions ?? basePlacements.facebook_positions,
+    instagram_positions: positionOverride?.instagram_positions ?? basePlacements.instagram_positions,
+    device_platforms: devicePlatforms.length ? devicePlatforms : basePlacements.device_platforms,
   };
 
   if (config.geo_type === "states" && config.states?.length) {
@@ -562,6 +589,9 @@ function buildAdSetPayload(opts: {
   targeting: Record<string, any>;
   promotedObject: Record<string, any>;
   optimizationGoal: string;
+  bidStrategy: string;
+  bidAmountNaira?: number | null;
+  billingEvent: string;
   destinationType: "website" | "whatsapp";
   startTime?: string | null;
   endTime?: string | null;
@@ -569,13 +599,19 @@ function buildAdSetPayload(opts: {
   const payload: Record<string, any> = {
     name: opts.name,
     optimization_goal: opts.optimizationGoal,
-    bid_strategy: REAL_BID_STRATEGY,
-    billing_event: "IMPRESSIONS",
+    bid_strategy: opts.bidStrategy,
+    billing_event: opts.billingEvent,
     targeting: opts.targeting,
     promoted_object: opts.promotedObject,
     status: "PAUSED",
     access_token: META_ACCESS_TOKEN,
   };
+  // LOWEST_COST_WITH_BID_CAP / COST_CAP both require an explicit bid_amount
+  // (in kobo, same *100 convention as budget) -- Meta rejects either strategy
+  // without one. LOWEST_COST_WITHOUT_CAP (the default) takes none.
+  if (opts.bidStrategy !== "LOWEST_COST_WITHOUT_CAP" && opts.bidAmountNaira) {
+    payload.bid_amount = Math.round(opts.bidAmountNaira * 100);
+  }
   // Required alongside CONVERSATIONS optimization for Click-to-WhatsApp ad
   // sets under OUTCOME_SALES -- without it Meta rejects the optimization_goal
   // itself with "Performance goal isn't available", confirmed via live testing.
@@ -635,11 +671,13 @@ async function launchAdSetGroup(
       return { error: msg };
     }
 
-    // Optimization goal + promoted_object depend entirely on the destination:
-    // website sales optimizes for the pixel's Purchase event; WhatsApp sales
-    // optimizes for CONVERSATIONS against the connected WhatsApp number --
-    // per Meta's Click-to-WhatsApp docs for Sales-objective campaigns.
-    const optimizationGoal = destinationType === "whatsapp" ? "CONVERSATIONS" : REAL_OPTIMIZATION_GOAL;
+    // promoted_object depends entirely on the destination: website sales
+    // optimizes for the pixel's Purchase event; WhatsApp sales optimizes for
+    // CONVERSATIONS against the connected WhatsApp number -- per Meta's
+    // Click-to-WhatsApp docs for Sales-objective campaigns. The optimization
+    // goal itself is resolved per ad set below (website allows a real choice;
+    // WhatsApp stays forced to CONVERSATIONS -- that's a Meta requirement for
+    // this destination type, not a preference).
     const promotedObject =
       destinationType === "whatsapp"
         ? { page_id: pageId, whatsapp_phone_number: whatsappNumber }
@@ -686,7 +724,9 @@ async function launchAdSetGroup(
     };
     if (budgetType === "cbo") {
       campaignPayload.daily_budget = Math.round(totalBudgetNaira * 100);
-      campaignPayload.bid_strategy = REAL_BID_STRATEGY;
+      // CBO's bid strategy lives on the campaign, shared by every ad set under
+      // it -- takes the first ad set's choice (or the default if unset/mixed).
+      campaignPayload.bid_strategy = VALID_BID_STRATEGIES.includes(adSetConfigs[0]?.bid_strategy) ? adSetConfigs[0].bid_strategy : REAL_BID_STRATEGY;
     } else {
       // Meta now requires this explicitly for ABO campaigns: whether ad sets
       // can share up to 20% of budget with each other for overall performance.
@@ -804,6 +844,16 @@ async function launchAdSetGroup(
       const targeting = await buildTargetingFromConfig(config, destinationType);
       const label = config.label;
 
+      // Per-ad-set resolution, each falling back to the exact previous fixed
+      // behavior when the config row doesn't set it. WhatsApp's optimization
+      // goal is never overridable -- CONVERSATIONS is a Meta requirement for
+      // that destination type, not a choice (see promotedObject above).
+      const optimizationGoal = destinationType === "whatsapp"
+        ? "CONVERSATIONS"
+        : (VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL);
+      const bidStrategy = VALID_BID_STRATEGIES.includes(config.bid_strategy) ? config.bid_strategy : REAL_BID_STRATEGY;
+      const billingEvent = VALID_BILLING_EVENTS.includes(config.billing_event) ? config.billing_event : "IMPRESSIONS";
+
       // Posting to /{campaignId}/adsets directly is rejected by this app/API
       // combo with a misleading "object does not exist" error (code 100,
       // subcode 33) even though the campaign is fully readable right after
@@ -822,6 +872,9 @@ async function launchAdSetGroup(
             targeting,
             promotedObject,
             optimizationGoal,
+            bidStrategy,
+            bidAmountNaira: config.bid_amount_naira ? Number(config.bid_amount_naira) : null,
+            billingEvent,
             destinationType,
             startTime,
             endTime,
@@ -852,7 +905,7 @@ async function launchAdSetGroup(
           states: config.states,
           countries: ["NG"],
           optimization_goal: optimizationGoal,
-          bid_strategy: REAL_BID_STRATEGY,
+          bid_strategy: bidStrategy,
           company_id: creative.company_id,
           // Buyer-role RLS on ad_sets requires media_buyer_id to match the
           // viewer's own profile (owner/admin bypass it) -- without this, the

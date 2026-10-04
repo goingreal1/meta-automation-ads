@@ -1295,13 +1295,30 @@ function bvShowProductDestination(productId) {
     if (ctaSelect) ctaSelect.disabled = false;
     if (ctaNote) ctaNote.textContent = "";
   }
+  bvPrefillFromShopDefaults(p);
+}
+
+// The Shop tab's ad defaults (primary text/headline/description/CTA set
+// there, per product) seed a brand-new upload here instead of starting
+// blank -- only fields the person hasn't already typed something into,
+// so picking a different product never clobbers copy they're mid-writing.
+function bvPrefillFromShopDefaults(p) {
+  const primaryEl = document.getElementById("f_primary");
+  const headlineEl = document.getElementById("f_headline");
+  const descEl = document.getElementById("f_desc");
+  const ctaEl = document.getElementById("f_cta");
+  if (!primaryEl) return;
+  if (!primaryEl.value && p.ad_primary_text) primaryEl.value = p.ad_primary_text;
+  if (headlineEl && !headlineEl.value && p.ad_headline) headlineEl.value = p.ad_headline;
+  if (descEl && !descEl.value && p.ad_description) descEl.value = p.ad_description;
+  if (ctaEl && !ctaEl.disabled && p.ad_cta_type) ctaEl.value = p.ad_cta_type;
 }
 
 // ── TAB: CREATIVE VAULT ───────────────────────────────────────────────────────
 async function renderVault(el) {
   const [assets, products] = await Promise.all([
     sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100"),
-    sbQuery("products", "is_active=eq.true&select=id,product_name,destination_type,landing_page_url,whatsapp_number"),
+    sbQuery("products", "is_active=eq.true&select=id,product_name,destination_type,landing_page_url,whatsapp_number,ad_primary_text,ad_headline,ad_description,ad_cta_type"),
   ]);
 
   const pOpts  = (products||[]).map(p => `<option value="${p.id}">${p.product_name}</option>`).join("");
@@ -1335,7 +1352,7 @@ async function renderVault(el) {
       <form id="uploadForm">
         <div class="fg">
           <div class="field"><label>Link to product *</label>
-            <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none'; bvShowProductDestination(this.value);">
+            <select id="f_product" onchange="document.getElementById('newProductFields').style.display = this.value === '__new__' ? 'grid' : 'none'; bvShowProductDestination(this.value); bvRenderAdSetRows();">
               ${pOpts}
               <option value="__new__" ${!products?.length ? "selected" : ""}>+ Add new product…</option>
             </select>
@@ -1562,6 +1579,13 @@ async function renderVault(el) {
             ? row.states.split(',').map(s => s.trim()).filter(Boolean)
             : null,
           sort_order: i,
+          placement_preset: row.placement_preset || null,
+          device_platforms: row.device_platforms?.length ? row.device_platforms : null,
+          bid_strategy: row.bid_strategy || null,
+          bid_amount_naira: row.bid_strategy && row.bid_strategy !== 'LOWEST_COST_WITHOUT_CAP' && row.bid_amount_naira ? Number(row.bid_amount_naira) : null,
+          billing_event: row.billing_event || null,
+          optimization_goal: row.optimization_goal || null,
+          advantage_audience: row.advantage_audience !== false,
         }))
       );
       if (adSetErr) throw adSetErr;
@@ -1642,7 +1666,11 @@ function bvRenderStagedCopies() {
 let bvAdSetRows = [];
 
 function bvResetAdSetBuilder() {
-  bvAdSetRows = [{ label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: "" }];
+  bvAdSetRows = [{
+    label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: "",
+    placement_preset: "", device_platforms: [], bid_strategy: "LOWEST_COST_WITHOUT_CAP", bid_amount_naira: "",
+    billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true,
+  }];
   bvRenderAdSetRows();
 }
 
@@ -1651,9 +1679,22 @@ function bvUpdateAdSetRow(i, key, value) {
   bvRenderAdSetRows();
 }
 
+function bvToggleAdSetDevice(i, device, checked) {
+  const row = bvAdSetRows[i];
+  const set = new Set(row.device_platforms || []);
+  if (checked) set.add(device); else set.delete(device);
+  row.device_platforms = [...set];
+  bvRenderAdSetRows();
+}
+
+function bvToggleAdSetAdvantage(i, checked) {
+  bvAdSetRows[i].advantage_audience = checked;
+  bvRenderAdSetRows();
+}
+
 function bvDuplicateAdSetRow() {
   const last = bvAdSetRows[bvAdSetRows.length - 1];
-  bvAdSetRows.push({ ...last, label: `Ad Set ${bvAdSetRows.length + 1}` });
+  bvAdSetRows.push({ ...last, device_platforms: [...(last.device_platforms || [])], label: `Ad Set ${bvAdSetRows.length + 1}` });
   bvRenderAdSetRows();
 }
 
@@ -1667,6 +1708,12 @@ function bvRenderAdSetRows() {
   const wrap = document.getElementById("adSetRows");
   if (!wrap) return;
   const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+  // Optimization goal is a real choice for a website-destination ad; WhatsApp
+  // ads are always optimized for CONVERSATIONS -- Meta requires that for
+  // Click-to-WhatsApp under Sales, not something ai-auto-launch-tests can
+  // override no matter what's picked here (see its own comment on this).
+  const selectedProduct = (window.bvVaultProductsCache || []).find(p => p.id === document.getElementById("f_product")?.value);
+  const isWhatsappDest = selectedProduct?.destination_type === "whatsapp";
   wrap.innerHTML = bvAdSetRows.map((row, i) => `
     <div style="border:1px dashed var(--border);border-radius:8px;padding:12px;margin-top:${i === 0 ? 0 : 8}px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -1694,6 +1741,61 @@ function bvRenderAdSetRows() {
         </select>
         ${row.geo_type === "states" ? `<input style="margin-top:6px;" placeholder="Lagos, Ogun, Abuja..." value="${row.states || ""}" onchange="bvUpdateAdSetRow(${i}, 'states', this.value)">` : ""}
       </div>
+
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-size:11px;color:var(--text2);font-weight:600;">Advanced: placements, bidding, optimization</summary>
+        <div style="margin-top:10px;">
+          <div class="field"><label>Placements</label>
+            <select onchange="bvUpdateAdSetRow(${i}, 'placement_preset', this.value)">
+              <option value="" ${!row.placement_preset ? "selected" : ""}>Automatic (recommended — broadest reach)</option>
+              <option value="feed_only" ${row.placement_preset === "feed_only" ? "selected" : ""}>Feed only (Facebook + Instagram feed)</option>
+              <option value="feed_stories_reels" ${row.placement_preset === "feed_stories_reels" ? "selected" : ""}>Feed + Stories + Reels</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:8px;"><label>Devices</label>
+            <div style="display:flex;gap:14px;margin-top:4px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
+                <input type="checkbox" ${!row.device_platforms?.length || row.device_platforms.includes("mobile") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'mobile', this.checked)"> Mobile
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
+                <input type="checkbox" ${row.device_platforms?.includes("desktop") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'desktop', this.checked)"> Desktop
+              </label>
+            </div>
+          </div>
+          <div class="fg" style="margin-top:8px;">
+            <div class="field"><label>Bid strategy</label>
+              <select onchange="bvUpdateAdSetRow(${i}, 'bid_strategy', this.value)">
+                <option value="LOWEST_COST_WITHOUT_CAP" ${row.bid_strategy === "LOWEST_COST_WITHOUT_CAP" ? "selected" : ""}>Lowest cost (no cap) — recommended</option>
+                <option value="LOWEST_COST_WITH_BID_CAP" ${row.bid_strategy === "LOWEST_COST_WITH_BID_CAP" ? "selected" : ""}>Lowest cost with bid cap</option>
+                <option value="COST_CAP" ${row.bid_strategy === "COST_CAP" ? "selected" : ""}>Cost cap</option>
+              </select>
+            </div>
+            <div class="field"><label>Billing event</label>
+              <select onchange="bvUpdateAdSetRow(${i}, 'billing_event', this.value)">
+                <option value="IMPRESSIONS" ${row.billing_event === "IMPRESSIONS" ? "selected" : ""}>Impressions</option>
+                <option value="LINK_CLICKS" ${row.billing_event === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
+              </select>
+            </div>
+          </div>
+          ${row.bid_strategy && row.bid_strategy !== "LOWEST_COST_WITHOUT_CAP" ? `
+          <div class="field" style="margin-top:8px;"><label>Bid amount (₦) <span style="font-weight:400;color:var(--muted);">(max you'll pay per optimization event)</span></label>
+            <input type="number" min="1" step="1" value="${row.bid_amount_naira || ""}" placeholder="e.g. 500" onchange="bvUpdateAdSetRow(${i}, 'bid_amount_naira', this.value)">
+          </div>` : ""}
+          <div class="field" style="margin-top:8px;"><label>Optimization goal</label>
+            ${isWhatsappDest
+              ? `<input value="Conversations (fixed for WhatsApp ads)" disabled style="color:var(--muted);">`
+              : `<select onchange="bvUpdateAdSetRow(${i}, 'optimization_goal', this.value)">
+                  <option value="OFFSITE_CONVERSIONS" ${row.optimization_goal === "OFFSITE_CONVERSIONS" || !row.optimization_goal ? "selected" : ""}>Conversions (recommended)</option>
+                  <option value="LINK_CLICKS" ${row.optimization_goal === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
+                  <option value="LANDING_PAGE_VIEWS" ${row.optimization_goal === "LANDING_PAGE_VIEWS" ? "selected" : ""}>Landing page views</option>
+                </select>`}
+          </div>
+          <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;font-weight:400;cursor:pointer;">
+            <input type="checkbox" ${row.advantage_audience !== false ? "checked" : ""} onchange="bvToggleAdSetAdvantage(${i}, this.checked)">
+            Let Meta expand this audience automatically (Advantage+)
+          </label>
+        </div>
+      </details>
     </div>
   `).join("") + `
     <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -2741,6 +2843,12 @@ function bvOpenShopPanel(productId) {
           <div class="ph-title" style="margin:0;">${escH(p.product_name)}</div>
           <div style="font-size:11.5px;color:var(--muted);">${p.currency === "NGN" || !p.currency ? fN(p.default_order_value_naira) : (escH(p.currency) + " " + p.default_order_value_naira)} &middot; <a href="#" onclick="event.preventDefault(); bvCloseModal(); activeTab='products'; document.querySelector('[data-tab=products]').click(); setTimeout(() => bvEditProduct('${p.id}'), 200);" style="color:var(--accent);">Edit product details</a></div>
         </div>
+      </div>
+
+      <div style="font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:10px;">
+        ${isWhatsapp
+          ? (p.whatsapp_number ? `Ads click through to WhatsApp: <b style="color:var(--text2);">${escH(p.whatsapp_number)}</b>` : `⚠️ WhatsApp destination, but no number set — add one in <a href="#" onclick="event.preventDefault(); bvCloseModal(); activeTab='products'; document.querySelector('[data-tab=products]').click(); setTimeout(() => bvEditProduct('${p.id}'), 200);" style="color:var(--accent);">Products</a>.`)
+          : (p.landing_page_url ? `Ads click through to: <b style="color:var(--text2);">${escH(p.landing_page_url)}</b>` : `⚠️ Website destination, but no landing page URL set — add one in <a href="#" onclick="event.preventDefault(); bvCloseModal(); activeTab='products'; document.querySelector('[data-tab=products]').click(); setTimeout(() => bvEditProduct('${p.id}'), 200);" style="color:var(--accent);">Products</a>.`)}
       </div>
 
       <div style="display:flex;align-items:center;gap:7px;margin:16px 0 10px;padding-top:12px;border-top:1px dashed var(--border);">
@@ -4263,33 +4371,64 @@ async function renderApprovals(el) {
   const pend = (rows||[]).filter(a => a.status === "pending").length;
   const appr = (rows||[]).filter(a => a.status === "approved").length;
   const rej  = (rows||[]).filter(a => a.status === "rejected").length;
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Approvals</div></div>
 
     <div class="g4">
-      <div class="kc"><div class="kc-lbl">Pending</div><div class="kc-val ${pend?"w":""}">${pend}</div><div class="kc-sub">${pend ? "⚠ reply on WhatsApp" : "all clear ✓"}</div></div>
+      <div class="kc"><div class="kc-lbl">Pending</div><div class="kc-val ${pend?"w":""}">${pend}</div><div class="kc-sub">${pend ? (isAdmin ? "⚠ act below, or on WhatsApp" : "⚠ waiting on an owner/admin") : "all clear ✓"}</div></div>
       <div class="kc"><div class="kc-lbl">Approved</div><div class="kc-val a">${appr}</div></div>
       <div class="kc"><div class="kc-lbl">Rejected</div><div class="kc-val d">${rej}</div></div>
       <div class="kc"><div class="kc-lbl">Total logged</div><div class="kc-val">${rows?.length ?? 0}</div></div>
     </div>
 
-    ${pend > 0 ? `<div class="msg info" style="margin-bottom:14px;">⚠ You have ${pend} pending approval${pend>1?"s":""}. Reply <b>APPROVE &lt;id&gt;</b> or <b>REJECT &lt;id&gt;</b> on WhatsApp to act on them.</div>` : ""}
+    ${pend > 0 ? `<div class="msg info" style="margin-bottom:14px;">⚠ ${pend} pending approval${pend>1?"s":""} below${isAdmin ? ` — click Approve/Reject, or reply <b>APPROVE &lt;id&gt;</b>/<b>REJECT &lt;id&gt;</b> on WhatsApp if you'd rather` : `, waiting on an owner/admin to act`}.</div>` : ""}
+    <div id="approvalActionMsg"></div>
 
     <div class="panel">
       <div class="ph"><div class="ph-title">Approval log</div><div class="ph-count">${rows?.length ?? 0} total</div></div>
       ${!rows?.length ? `<div class="empty"><div class="empty-ico">✅</div>No approval requests yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Type</th><th>Reason / Summary</th><th>Status</th><th>Requested</th><th>ID</th></tr>
+        <tr><th>Type</th><th>Reason / Summary</th><th>Status</th><th>Requested</th><th>ID</th>${isAdmin ? "<th></th>" : ""}</tr>
         ${rows.map(a => `<tr>
           <td class="s n">${(a.approval_type ?? "—").replace(/_/g," ")}</td>
           <td class="n" style="max-width:260px;color:var(--text2);">${a.reason ?? a.summary ?? "—"}</td>
           <td><span class="pill ${a.status === "approved" ? "approved" : a.status === "rejected" ? "rejected" : "pending"}">${a.status ?? "pending"}</span></td>
           <td>${ago(a.requested_at)}</td>
           <td style="font-size:10px;color:var(--muted);">${(a.id ?? "").slice(0,8)}</td>
+          ${isAdmin ? `<td style="display:flex;gap:6px;">
+            ${a.status === "pending" ? `
+              <button type="button" class="btn btn-a" id="appr-approve-${a.id}" style="padding:4px 10px;font-size:10px;" onclick="bvProcessApproval('${a.id}','approve')">Approve</button>
+              <button type="button" class="btn btn-g" id="appr-reject-${a.id}" style="padding:4px 10px;font-size:10px;color:var(--danger);" onclick="bvProcessApproval('${a.id}','reject')">Reject</button>
+            ` : ""}
+          </td>` : ""}
         </tr>`).join("")}
       </table></div>`}
     </div>`;
+}
+
+// Mirrors exactly what replying APPROVE/REJECT <id> on WhatsApp does (same
+// process-approval function, same Meta calls) -- for an owner/admin with no
+// WhatsApp number configured, or who'd simply rather click a button.
+async function bvProcessApproval(approvalId, action) {
+  const approveBtn = document.getElementById(`appr-approve-${approvalId}`);
+  const rejectBtn = document.getElementById(`appr-reject-${approvalId}`);
+  const msg = document.getElementById("approvalActionMsg");
+  [approveBtn, rejectBtn].forEach(b => { if (b) b.disabled = true; });
+  const actingBtn = action === "approve" ? approveBtn : rejectBtn;
+  if (actingBtn) actingBtn.textContent = action === "approve" ? "Approving…" : "Rejecting…";
+  try {
+    const r = await sbFn("process-approval", { approval_id: approvalId, action });
+    if (r.error) throw new Error(r.error);
+    bvToast(action === "approve" ? "Approved — live on Meta now." : "Rejected.");
+    render();
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+    [approveBtn, rejectBtn].forEach(b => { if (b) b.disabled = false; });
+    if (approveBtn) approveBtn.textContent = "Approve";
+    if (rejectBtn) rejectBtn.textContent = "Reject";
+  }
 }
 
 // ── TAB: EARNINGS ─────────────────────────────────────────────────────────────
