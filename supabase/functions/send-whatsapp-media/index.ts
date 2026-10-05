@@ -5,14 +5,15 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // customer from the dashboard's Conversations tab. Uploads to the same
 // creative-vault Storage bucket upload-creative already uses, then sends the
 // resulting public URL to WhatsApp by link (no separate WhatsApp media-upload
-// step needed). Uses the same BEOLIV_WHATSAPP_* secrets as send-whatsapp-message
-// -- see that function's header comment for why NOT the generic WHATSAPP_* ones.
+// step needed). Resolves the sending number per-conversation (conversations ->
+// buyer_whatsapp_numbers), same as send-whatsapp-message, falling back to the
+// generic WHATSAPP_* secrets only for legacy conversations with no number row.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const WHATSAPP_TOKEN = Deno.env.get("BEOLIV_WHATSAPP_ACCESS_TOKEN") ?? "";
-const WHATSAPP_PHONE_ID = Deno.env.get("BEOLIV_WHATSAPP_PHONE_NUMBER_ID") ?? "";
-const META_GRAPH_BASE = "https://graph.facebook.com/v18.0";
+const WHATSAPP_TOKEN_FALLBACK = Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "";
+const WHATSAPP_PHONE_ID_FALLBACK = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
 const VALID_TYPES: Record<string, "image" | "video" | "audio"> = {
   "image/jpeg": "image",
@@ -25,9 +26,9 @@ const VALID_TYPES: Record<string, "image" | "video" | "audio"> = {
   "audio/mpeg": "audio",
   "audio/amr": "audio",
   "audio/ogg": "audio",
-  "audio/webm": "audio", // browsers commonly record voice notes as webm; WhatsApp
-                          // itself doesn't list it, but Meta transcodes on send
 };
+// audio/webm is deliberately NOT accepted: WhatsApp doesn't support it, so the
+// dashboard converts Chrome's webm recordings to mp3 before uploading.
 
 function json(obj: any, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -47,10 +48,6 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) {
-    return json({ error: "Beoliv WhatsApp secrets are not configured." }, 500);
-  }
-
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -61,21 +58,33 @@ Deno.serve(async (req: Request) => {
       return json({ error: "file and conversation_id are required." }, 400);
     }
 
-    const mediaType = VALID_TYPES[file.type];
+    // Browsers append codec params ("audio/ogg;codecs=opus") -- match on the base type.
+    const baseType = (file.type || "").split(";")[0].trim().toLowerCase();
+    const mediaType = VALID_TYPES[baseType];
     if (!mediaType) {
-      return json({ error: `Unsupported file type: ${file.type}` }, 400);
+      return json({ error: `Unsupported file type: ${file.type || "unknown"}` }, 400);
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      return json({ error: "File is too large (WhatsApp's limit is 16 MB)." }, 400);
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { data: conv, error: convErr } = await supabase
-      .from("beoliv_conversations")
-      .select("id, phone")
+      .from("conversations")
+      .select("id, phone, company_id, buyer_whatsapp_numbers(phone_number_id, access_token)")
       .eq("id", conversationId)
       .maybeSingle();
 
     if (convErr || !conv) {
       return json({ error: "Conversation not found." }, 404);
+    }
+
+    const numberRow = conv.buyer_whatsapp_numbers as any;
+    const phoneId = numberRow?.phone_number_id || WHATSAPP_PHONE_ID_FALLBACK;
+    const token = numberRow?.access_token || WHATSAPP_TOKEN_FALLBACK;
+    if (!phoneId || !token) {
+      return json({ error: "No WhatsApp number is connected for this conversation (Settings -> WhatsApp Numbers)." }, 500);
     }
 
     const timestamp = Date.now();
@@ -86,7 +95,7 @@ Deno.serve(async (req: Request) => {
     const arrayBuffer = await file.arrayBuffer();
     const { error: storageError } = await supabase.storage
       .from("creative-vault")
-      .upload(bucketPath, new Uint8Array(arrayBuffer), { contentType: file.type, upsert: false });
+      .upload(bucketPath, new Uint8Array(arrayBuffer), { contentType: baseType, upsert: false });
 
     if (storageError) {
       return json({ error: `Storage error: ${storageError.message}` }, 500);
@@ -98,9 +107,9 @@ Deno.serve(async (req: Request) => {
     const mediaPayload: Record<string, any> = { link: publicUrl };
     if (caption && mediaType !== "audio") mediaPayload.caption = caption; // WhatsApp doesn't support captions on audio
 
-    const waRes = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
+    const waRes = await fetch(`${META_GRAPH_BASE}/${phoneId}/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: conv.phone,
@@ -115,7 +124,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: waData?.error?.message || "WhatsApp send failed." }, 502);
     }
 
-    await supabase.from("beoliv_messages").insert({
+    await supabase.from("messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
       message_type: "agent_media",
@@ -123,9 +132,10 @@ Deno.serve(async (req: Request) => {
       metadata: { url: publicUrl, media_type: mediaType, caption },
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",
+      company_id: conv.company_id,
     });
     await supabase
-      .from("beoliv_conversations")
+      .from("conversations")
       .update({ last_message_at: new Date().toISOString(), human_handling: true })
       .eq("id", conv.id);
 

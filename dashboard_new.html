@@ -439,6 +439,17 @@ textarea{resize:vertical;min-height:80px;}
   background:var(--panel2);color:var(--text2);border:1px solid var(--border);cursor:pointer;transition:all .14s;
 }
 .compose-icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+.conv-compose .compose-mic-btn{background:var(--panel2);color:var(--text2);border:1px solid var(--border);}
+.conv-compose .compose-mic-btn:hover{border-color:var(--accent);color:var(--accent);}
+.conv-recording{flex:1;display:flex;align-items:center;gap:10px;min-width:0;padding:0 6px;font-size:13px;}
+.conv-recording .rec-dot{width:10px;height:10px;border-radius:50%;background:var(--danger,#e5484d);animation:recPulse 1s infinite;flex-shrink:0;}
+@keyframes recPulse{50%{opacity:.25;}}
+.conv-recording .rec-time{font-variant-numeric:tabular-nums;font-weight:600;}
+.conv-recording .rec-hint{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.conv-thread.drag-over{outline:2px dashed var(--accent);outline-offset:-6px;}
+.bubble-audio{display:block;width:230px;max-width:100%;height:36px;margin-bottom:4px;}
+.bv-media-preview{width:100%;max-height:300px;object-fit:contain;border-radius:8px;background:var(--panel2);display:block;margin-bottom:10px;}
 .compose-attach-wrap{position:relative;flex-shrink:0;}
 .compose-attach-menu{
   display:none;flex-direction:column;position:absolute;bottom:44px;left:0;min-width:220px;
@@ -4948,7 +4959,10 @@ function bvFmtMsg(m) {
 // separate from bvFmtMsg's text since it renders above the message content.
 function bvMediaThumb(metadata) {
   const url = metadata?.image_url || metadata?.url;
-  if (!url || metadata?.media_type === "audio") return "";
+  if (url && metadata?.media_type === "audio") {
+    return `<audio class="bubble-audio" src="${bvEscape(url)}" controls preload="none"></audio>`;
+  }
+  if (!url) return "";
   const isVideo = metadata?.media_type === "video";
   if (isVideo) {
     return `<video class="bubble-media" src="${bvEscape(url)}" controls></video>`;
@@ -5074,6 +5088,7 @@ function bvMarkConversationRead(id) {
 }
 
 async function bvSelectConversation(id) {
+  if (typeof bvRec !== "undefined" && bvRec && bvRec.convId !== id) bvStopRecording(false);
   bvSelectedConvId = id;
   bvMarkConversationRead(id);
   bvFilterList();
@@ -5120,7 +5135,7 @@ async function bvSelectConversation(id) {
         </div>`).join("")}
     </div>
     <div class="conv-compose">
-      <input type="file" id="convFileInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/*" style="display:none;" onchange="bvSendMedia()">
+      <input type="file" id="convFileInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/3gpp,audio/*" style="display:none;" onchange="bvPickMedia(this)">
       <div class="compose-attach-wrap">
         <button class="compose-icon-btn" onclick="bvToggleAttachMenu(event)" title="Attach">${icon("plus",18)}</button>
         <div id="composeAttachMenu" class="compose-attach-menu">
@@ -5131,12 +5146,19 @@ async function bvSelectConversation(id) {
           <button onclick="bvAttachMenuAction('template')">${icon("chat",14)} Send template (re-open after 24h)</button>
         </div>
       </div>
-      <input id="convReplyInput" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" onkeydown="if(event.key==='Enter'){event.preventDefault();bvSendReply();}">
+      <input id="convReplyInput" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" onkeydown="if(event.key==='Enter'){event.preventDefault();bvSendReply();}" onpaste="bvPasteMedia(event)">
+      <div id="convRecording" class="conv-recording" style="display:none;">
+        <span class="rec-dot"></span><span class="rec-time" id="convRecTime">0:00</span>
+        <span class="rec-hint">Recording… tap ✓ to send</span>
+        <button type="button" class="compose-icon-btn" onclick="bvStopRecording(false)" title="Cancel" style="margin-left:auto;">✕</button>
+      </div>
+      <button id="convMicBtn" class="compose-mic-btn" onclick="bvStartRecording()" title="Record voice note">${icon("mic",16)}</button>
       <button id="convSendBtn" onclick="bvSendReply()" title="Send">${icon("send",16)}</button>
     </div>`;
 
   const msgsEl = document.getElementById("convMsgs");
   if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+  bvInitDropZone();
 }
 
 function bvHandoffBadgeHtml() {
@@ -5203,42 +5225,266 @@ async function bvSendReply() {
   }
 }
 
-async function bvSendMedia() {
-  const fileInput = document.getElementById("convFileInput");
-  const file = fileInput?.files?.[0];
-  if (!file || !bvSelectedConvId) return;
+// ── Media sending ─────────────────────────────────────────────────────────────
+// Files from the attach menu, drag-and-drop, or paste all go through the same
+// preview modal (with optional caption) before anything is sent.
+const BV_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/3gpp", "audio/aac", "audio/mp4", "audio/mpeg", "audio/amr", "audio/ogg"];
 
-  const msgsEl = document.getElementById("convMsgs");
-  msgsEl?.querySelector(".empty")?.remove();
-  const tempDiv = document.createElement("div");
-  tempDiv.className = "bubble out";
-  tempDiv.innerHTML = `<span style="color:var(--muted);font-style:italic;">Uploading…</span>`;
-  msgsEl?.appendChild(tempDiv);
-  if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight;
+function bvPickMedia(input) {
+  const file = input?.files?.[0];
+  input.value = "";
+  if (file) bvOpenMediaPreview(file);
+}
 
+function bvPasteMedia(e) {
+  const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith("image/"));
+  if (!file) return;
+  e.preventDefault();
+  bvOpenMediaPreview(file);
+}
+
+function bvInitDropZone() {
+  const thread = document.getElementById("convThread");
+  if (!thread || thread.dataset.dropReady) return;
+  thread.dataset.dropReady = "1";
+  ["dragenter", "dragover"].forEach((ev) => thread.addEventListener(ev, (e) => {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    thread.classList.add("drag-over");
+  }));
+  ["dragleave", "drop"].forEach((ev) => thread.addEventListener(ev, (e) => {
+    if (ev === "dragleave" && thread.contains(e.relatedTarget)) return;
+    thread.classList.remove("drag-over");
+  }));
+  thread.addEventListener("drop", (e) => {
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    e.preventDefault();
+    bvOpenMediaPreview(file);
+  });
+}
+
+function bvOpenMediaPreview(file, opts = {}) {
+  if (!bvSelectedConvId) return;
+  const baseType = (file.type || "").split(";")[0];
+  const kind = baseType.startsWith("video/") ? "video" : baseType.startsWith("audio/") ? "audio" : "image";
+  if (!BV_MEDIA_TYPES.includes(baseType)) {
+    alert(`WhatsApp can't send this file type (${file.type || "unknown"}). Use JPG/PNG/WebP images, MP4 videos, or AAC/MP3/OGG audio.`);
+    return;
+  }
+  if (file.size > 16 * 1024 * 1024) {
+    alert("This file is over WhatsApp's 16 MB limit.");
+    return;
+  }
+  bvCloseModal();
+  const url = URL.createObjectURL(file);
+  const preview = kind === "video"
+    ? `<video class="bv-media-preview" src="${url}" controls></video>`
+    : kind === "audio"
+      ? `<audio class="bv-media-preview" style="max-height:48px;" src="${url}" controls></audio>`
+      : `<img class="bv-media-preview" src="${url}" alt="">`;
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseMediaPreview(); };
+  overlay.innerHTML = `<div class="bv-modal" style="max-width:420px;">
+    <button class="bv-modal-close" onclick="bvCloseMediaPreview()">✕</button>
+    <div style="font-weight:600;font-size:14px;margin-bottom:10px;">${kind === "audio" ? (opts.voiceNote ? "Send voice note" : "Send audio") : kind === "video" ? "Send video" : "Send photo"}</div>
+    ${preview}
+    ${kind === "audio" ? "" : `<input id="bvMediaCaption" placeholder="Add a caption (optional)…" style="width:100%;font-size:13px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);">`}
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="btn btn-a" style="width:auto;padding:8px 16px;" onclick="bvCloseMediaPreview()">Cancel</button>
+      <button class="btn btn-g" style="width:auto;padding:8px 16px;" id="bvMediaSendBtn">Send</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay._objectUrl = url;
+  const sendBtn = document.getElementById("bvMediaSendBtn");
+  const doSend = async () => {
+    const caption = document.getElementById("bvMediaCaption")?.value?.trim() || "";
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Sending…";
+    const ok = await bvSendMediaFile(file, caption);
+    if (ok) bvCloseMediaPreview();
+    else { sendBtn.disabled = false; sendBtn.textContent = "Send"; }
+  };
+  sendBtn.onclick = doSend;
+  const cap = document.getElementById("bvMediaCaption");
+  if (cap) {
+    cap.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doSend(); } });
+    cap.focus();
+  } else {
+    sendBtn.focus();
+  }
+}
+
+function bvCloseMediaPreview() {
+  const overlay = document.getElementById("bvModalOverlay");
+  if (overlay?._objectUrl) URL.revokeObjectURL(overlay._objectUrl);
+  bvCloseModal();
+}
+
+// Returns true on success so the preview modal knows whether to close.
+async function bvSendMediaFile(file, caption) {
+  if (!bvSelectedConvId) return false;
+  const convId = bvSelectedConvId;
   try {
     const fd = new FormData();
-    fd.append("file", file);
-    fd.append("conversation_id", bvSelectedConvId);
+    fd.append("file", file, file.name || "upload");
+    fd.append("conversation_id", convId);
+    if (caption) fd.append("caption", caption);
     const res = await fetch(`${SUPA_URL}/functions/v1/send-whatsapp-media`, {
       method: "POST",
       headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
       body: fd,
     });
-    const data = await res.json();
-    tempDiv.remove();
-
+    const data = await res.json().catch(() => ({ error: `Server error (${res.status})` }));
     if (data.error) {
       alert("Failed to send media: " + data.error);
-      return;
+      return false;
     }
-
+    // The new bubble arrives via the realtime subscription (bvOnRealtimeMessage).
     bvAfterAgentSend();
+    return true;
   } catch (e) {
-    tempDiv.remove();
     alert("Failed to send media: " + e.message);
+    return false;
+  }
+}
+
+// ── Voice notes ───────────────────────────────────────────────────────────────
+// WhatsApp accepts ogg/opus, mp4/aac and mp3 -- NOT webm, which is all Chrome's
+// MediaRecorder produces. Prefer a natively-supported format; otherwise record
+// webm and re-encode to mp3 in the browser (lamejs) before sending.
+let bvRec = null;
+
+function bvPickRecorderMime() {
+  // Explicit AAC for mp4: some Chrome builds record Opus-in-MP4 under plain "audio/mp4".
+  const prefs = ["audio/ogg;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/webm;codecs=opus", "audio/webm"];
+  return prefs.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+}
+
+async function bvStartRecording() {
+  if (bvRec || !bvSelectedConvId) return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    alert("Voice notes aren't supported in this browser. Try Chrome, Edge, Firefox or Safari over https.");
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert("Couldn't access the microphone. Allow microphone permission for this site and try again.");
+    return;
+  }
+  const mime = bvPickRecorderMime();
+  const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+  const chunks = [];
+  recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+  bvRec = { recorder, stream, chunks, startedAt: Date.now(), timer: null, send: false, convId: bvSelectedConvId };
+  recorder.onstop = () => bvFinishRecording(bvRec);
+  recorder.start();
+
+  document.getElementById("convReplyInput").style.display = "none";
+  document.getElementById("convRecording").style.display = "flex";
+  const micBtn = document.getElementById("convMicBtn");
+  micBtn.title = "Send voice note";
+  micBtn.innerHTML = "✓";
+  micBtn.style.cssText = "background:var(--accent);color:#fff;border-color:transparent;";
+  micBtn.onclick = () => bvStopRecording(true);
+  const timeEl = document.getElementById("convRecTime");
+  bvRec.timer = setInterval(() => {
+    const sec = Math.floor((Date.now() - bvRec.startedAt) / 1000);
+    timeEl.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+    if (sec >= 300) bvStopRecording(true); // keep notes well under WhatsApp's 16 MB cap
+  }, 250);
+}
+
+function bvStopRecording(send) {
+  if (!bvRec) return;
+  bvRec.send = send;
+  if (bvRec.recorder.state !== "inactive") bvRec.recorder.stop();
+}
+
+function bvResetRecordingUI() {
+  document.getElementById("convRecording")?.style.setProperty("display", "none");
+  const input = document.getElementById("convReplyInput");
+  if (input) input.style.display = "";
+  const micBtn = document.getElementById("convMicBtn");
+  if (micBtn) {
+    micBtn.title = "Record voice note";
+    micBtn.innerHTML = icon("mic", 16);
+    micBtn.style.cssText = "";
+    micBtn.onclick = bvStartRecording;
+    micBtn.disabled = false;
+  }
+}
+
+async function bvFinishRecording(rec) {
+  clearInterval(rec.timer);
+  rec.stream.getTracks().forEach((t) => t.stop());
+  bvRec = null;
+  bvResetRecordingUI();
+  const durationMs = Date.now() - rec.startedAt;
+  if (!rec.send || !rec.chunks.length) return;
+  if (durationMs < 700) return; // an accidental tap, not a message
+  if (rec.convId !== bvSelectedConvId) {
+    alert("You switched conversations -- the voice note was discarded.");
+    return;
+  }
+  const micBtn = document.getElementById("convMicBtn");
+  micBtn.disabled = true;
+  try {
+    const rawType = rec.recorder.mimeType || rec.chunks[0].type || "audio/webm";
+    let blob = new Blob(rec.chunks, { type: rawType });
+    let ext = rawType.includes("ogg") ? "ogg" : rawType.includes("mp4") ? "m4a" : "webm";
+    // webm, and Opus-in-MP4, aren't accepted by WhatsApp -- re-encode those.
+    if (rawType.includes("webm") || (rawType.includes("mp4") && rawType.includes("opus"))) {
+      blob = await bvWebmToMp3(blob);
+      ext = "mp3";
+    }
+    const file = new File([blob], `voice-note-${Date.now()}.${ext}`, { type: blob.type });
+    bvOpenMediaPreview(file, { voiceNote: true });
+  } catch (e) {
+    alert("Couldn't prepare the voice note: " + e.message);
   } finally {
-    fileInput.value = "";
+    micBtn.disabled = false;
+  }
+}
+
+function bvLoadLame() {
+  if (window.lamejs) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("couldn't load the audio encoder"));
+    document.head.appendChild(s);
+  });
+}
+
+async function bvWebmToMp3(blob) {
+  await bvLoadLame();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const samples = audio.getChannelData(0); // mono is plenty for speech
+    const pcm = new Int16Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+      const v = Math.max(-1, Math.min(1, samples[i]));
+      pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    const encoder = new lamejs.Mp3Encoder(1, audio.sampleRate, 64);
+    const parts = [];
+    for (let i = 0; i < pcm.length; i += 1152) {
+      const buf = encoder.encodeBuffer(pcm.subarray(i, i + 1152));
+      if (buf.length) parts.push(new Int8Array(buf));
+    }
+    const tail = encoder.flush();
+    if (tail.length) parts.push(new Int8Array(tail));
+    return new Blob(parts, { type: "audio/mpeg" });
+  } finally {
+    ctx.close();
   }
 }
 
