@@ -6,6 +6,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // switch, and the scheduled auto-kill that applies each profile's kill_rules.
 //
 //   POST { action: "list", ad_account_id, range }            -> rows at all 3 levels
+//   POST { action: "balances", ad_account_id? }              -> live prepaid balance per ad account
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
 //   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep (dry_run previews, pauses nothing)
@@ -285,6 +286,44 @@ async function handleDaily(userClient: any, body: any) {
   return { ok: true, since, until, accounts: info, rows };
 }
 
+// -- balances (prepaid wallet left in each ad account) --
+// funding_source_details.display_string is what Meta's own UI shows, e.g.
+// "Available balance (NGN2,323.94)". The plain `balance` field is spend not
+// yet billed, NOT money left, so it is only reported separately as "owed".
+function parseAvailable(display: string | undefined): number | null {
+  const m = String(display ?? "").match(/([\d,]+\.\d{2})/);
+  return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+}
+async function handleBalances(userClient: any, body: any) {
+  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, meta_connection_id, low_balance_threshold_naira").eq("status", "active");
+  if (body.ad_account_id) q = q.eq("id", body.ad_account_id);
+  const { data: accounts } = await q;
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const usable = (accounts ?? []).filter((a: any) => /^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+  const results = await Promise.allSettled(usable.map(async (a: any) => {
+    const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
+    const token = await resolveToken(admin, a);
+    const d = await graphGet(`act_${actId}`, { fields: "account_status,currency,balance,amount_spent,spend_cap,is_prepay_account,funding_source_details" }, token);
+    const available = parseAvailable(d.funding_source_details?.display_string);
+    if (available !== null) {
+      await admin.from("ad_accounts").update({ balance_naira: available, balance_updated_at: new Date().toISOString() }).eq("id", a.id);
+    }
+    return {
+      id: a.id, name: a.nickname, currency: d.currency ?? "NGN",
+      available, is_prepay: d.is_prepay_account === true,
+      owed: d.balance !== undefined ? num(d.balance) / 100 : null,
+      funding_label: d.funding_source_details?.display_string ?? null,
+      account_status: d.account_status ?? null,
+      low_threshold: a.low_balance_threshold_naira != null ? num(a.low_balance_threshold_naira) : null,
+    };
+  }));
+  const rows = usable.map((a: any, i: number) => {
+    const r = results[i];
+    return r.status === "fulfilled" ? r.value : { id: a.id, name: a.nickname, error: String((r.reason as any)?.message ?? r.reason) };
+  });
+  return { ok: true, fetched_at: new Date().toISOString(), accounts: rows };
+}
+
 // -- set_status --
 async function pauseOrResume(admin: any, account: any, actId: string, token: string, level: string, objectId: string, status: string) {
   // The object must belong to this ad account -- never trust the id alone.
@@ -407,6 +446,7 @@ Deno.serve(async (req: Request) => {
     const { userClient, profile } = await getUserContext(req);
     if (body.action === "list") return json(await handleList(userClient, profile, body));
     if (body.action === "daily") return json(await handleDaily(userClient, body));
+    if (body.action === "balances") return json(await handleBalances(userClient, body));
     if (body.action === "set_status") return json(await handleSetStatus(userClient, profile, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e: any) {

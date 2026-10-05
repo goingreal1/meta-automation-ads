@@ -824,6 +824,19 @@ html{-webkit-text-size-adjust:100%;}
 }
 
 /* ── ADS MANAGER (Campaigns tab) + KILL RULES (Settings) ───────────────────── */
+.am-bal{display:flex;align-items:center;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:12px;padding:12px 16px;margin-bottom:16px;}
+.am-bal.low{background:var(--dangerBg);border-color:var(--dangerBdr);}
+.am-bal-main{display:flex;align-items:baseline;gap:2px 14px;flex-wrap:wrap;}
+.am-bal-main b{font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:600;color:var(--accent);}
+.am-bal.low .am-bal-main b{color:var(--danger);}
+.am-bal-l{font-size:12.5px;font-weight:600;color:var(--text2);}
+.am-bal-s{font-size:12px;color:var(--text2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.am-balrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-top:1px solid var(--border);font-size:13.5px;}
+.am-balrow:first-child{border-top:none;}
+.am-balrow .nm{font-weight:600;color:var(--text);}
+.am-balrow .amt{font-family:'Fraunces',Georgia,serif;font-size:18px;font-weight:600;}
+.am-balrow.low .amt{color:var(--danger);}
+.am-balrow .sub{font-size:11.5px;color:var(--muted);}
 .am-acct{font-family:Inter,system-ui,sans-serif;font-size:12px;font-weight:600;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;margin-left:8px;vertical-align:middle;}
 .am-banner{background:var(--warnBg);border:1px solid var(--warnBdr);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
 .am-banner-t{font-weight:700;color:var(--warn);font-size:13px;margin-bottom:8px;}
@@ -1837,17 +1850,39 @@ function liveNotice(live) {
 }
 
 // ── TAB: OVERVIEW ─────────────────────────────────────────────────────────────
+// Prepaid balance left in every ad account, live from Meta.
+function bvOverviewBalances(bals) {
+  if (!bals) return "";
+  if (!bals.ok) return `<div class="panel"><div class="ph"><div class="ph-title">Ad account balances</div></div><div class="msg err" style="display:block;">❌ ${escH(bals.error || "Could not read balances from Meta.")}</div></div>`;
+  const accts = bals.accounts || [];
+  if (!accts.length) return "";
+  const total = accts.reduce((s, a) => s + (a.available || 0), 0);
+  return `<div class="panel">
+    <div class="ph"><div class="ph-title">Ad account balances</div><div class="ph-count">Prepaid money left · live from Meta${accts.filter(a => a.available != null).length > 1 ? ` · total ${fN2(total)}` : ""}</div></div>
+    ${accts.map(a => {
+      if (a.error) return `<div class="am-balrow"><div><div class="nm">${escH(a.name || "Ad account")}</div><div class="sub">${escH(a.error)}</div></div><span class="pill watch">unavailable</span></div>`;
+      const low = a.available != null && a.low_threshold != null && a.available <= a.low_threshold;
+      const issue = a.account_status && a.account_status !== 1 ? `<span class="pill rejected">${escH(AM_ACCT_STATUS[a.account_status] || "Account issue")}</span>` : "";
+      return `<div class="am-balrow${low ? " low" : ""}">
+        <div><div class="nm">${escH(a.name || "Ad account")} ${issue}</div><div class="sub">${a.available == null ? "Card-billed account (no prepaid balance)" : low ? "Low — top up soon" : "Available to spend"}</div></div>
+        <div class="amt">${a.available != null ? fN2(a.available) : "—"}</div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
 async function renderOverview(el) {
   const since = watDate(-6), until = watDate(0);
   // Ad numbers are for the people who run ads; customer care / delivery just see orders.
   const canAds = ["owner", "admin", "buyer"].includes(window.myProfile?.role);
-  const [tot, deliv, returned, orders7, wallet, live] = await Promise.all([
+  const [tot, deliv, returned, orders7, wallet, live, bals] = await Promise.all([
     sbCount("orders"),
     sbCount("orders", "order_status=eq.delivered"),
     sbCount("orders", "order_status=eq.returned"),
     sbCount("orders", `ordered_at=gte.${since}T00:00:00%2B01:00`).catch(() => 0),
     fetchWalletBalances().catch(() => ({ walletBalances: {}, fundingWalletBalance: 0 })),
     canAds ? fetchLiveDaily(since, until) : Promise.resolve({ ok: true, rows: [], accounts: [] }),
+    canAds ? amCall({ action: "balances" }) : Promise.resolve(null),
   ]);
   const isAdminOv = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myIdOv = window.myProfile?.media_buyer_id || null;
@@ -1934,6 +1969,8 @@ async function renderOverview(el) {
         <div class="kc-sub">${deliv} delivered · ${returned} returned</div>
       </div>
     </div>
+
+    ${canAds ? bvOverviewBalances(bals) : ""}
 
     ${canAds ? `<div class="panel">
       <div class="ph">
@@ -3467,6 +3504,7 @@ let am = {
   data: null, key: "", loading: false, error: null, at: 0, req: 0,
   level: "campaigns", range: "last7", filter: "all",
   sel: { campaigns: new Set(), adsets: new Set() }, busy: new Set(),
+  bal: null, balKey: "",
 };
 const amKey = () => `${activeAccountId}|${am.range}`;
 const amEl = () => document.getElementById("amRoot");
@@ -3481,7 +3519,40 @@ async function renderAdsManager(el) {
   }
 }
 
+const fN2 = n => n == null ? "—" : "₦" + Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const AM_ACCT_STATUS = { 2: "Account disabled", 3: "Payment issue (unsettled)", 7: "Under risk review", 8: "Settling payment", 9: "Grace period", 100: "Closing", 101: "Account closed" };
+
+// Prepaid money left in the selected ad account, read live from Meta.
+async function amBalanceFetch() {
+  const id = activeAccountId; if (!id) return;
+  const r = await amCall({ action: "balances", ad_account_id: id });
+  if (id !== activeAccountId) return;
+  am.bal = r && r.ok ? (r.accounts[0] || { error: "No balance returned." }) : { error: r?.error || "Could not read the balance from Meta." };
+  am.balKey = id;
+  amDraw();
+}
+
+function amBalanceHtml() {
+  const b = am.balKey === activeAccountId ? am.bal : null;
+  if (!b) return `<div class="am-bal"><span class="am-bal-l">💰 Checking prepaid balance…</span></div>`;
+  if (b.error) return `<div class="am-bal low"><span class="am-bal-l">💰 Balance unavailable</span><span class="am-bal-s">${escH(b.error)}</span></div>`;
+  const status = b.account_status && b.account_status !== 1 ? `<span class="pill rejected">${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}</span>` : "";
+  if (b.available == null) {
+    return `<div class="am-bal"><span class="am-bal-l">💰 ${escH(b.name || "Ad account")}</span><span class="am-bal-s">No prepaid balance — this account is billed to a card.${b.owed ? ` Spend not yet billed: ${fN2(b.owed)}.` : ""}</span>${status}</div>`;
+  }
+  const low = b.low_threshold != null && b.available <= b.low_threshold;
+  const days = { last3: 3, last7: 7, last30: 30 }[am.range];
+  const spend = am.data?.campaigns?.reduce((s, c) => s + c.spend, 0) || 0;
+  const perDay = days && spend > 0 ? spend / days : 0;
+  const runway = perDay > 0 ? `At your ${days}-day average (${fN(perDay)}/day) this lasts about ${Math.max(0, b.available / perDay).toFixed(1)} days.` : "";
+  return `<div class="am-bal${low ? " low" : ""}">
+    <div class="am-bal-main"><span class="am-bal-l">💰 ${escH(b.name || "Ad account")} · prepaid balance left</span><b>${fN2(b.available)}</b></div>
+    <div class="am-bal-s">${low ? `<b>Low — top up soon.</b> ` : ""}${runway}${status}</div>
+  </div>`;
+}
+
 async function amFetch() {
+  amBalanceFetch();
   const my = ++am.req;
   am.loading = true; am.error = null;
   amDraw();
@@ -3618,10 +3689,11 @@ function amDraw() {
     return;
   }
   if (!d) {
-    root.innerHTML = header + `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div><div style="margin-top:10px;">Loading live numbers from Meta…</div></div>`;
+    root.innerHTML = header + amBalanceHtml() + `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div><div style="margin-top:10px;">Loading live numbers from Meta…</div></div>`;
     return;
   }
 
+  const balance = amBalanceHtml();
   const flagged = d.ads.filter(a => a.status === "ACTIVE" && a.suggestion?.kill);
   const banner = flagged.length ? `
     <div class="am-banner">
@@ -3687,7 +3759,7 @@ function amDraw() {
     ? `<div class="am-table">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
     : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
 
-  root.innerHTML = `${header}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${body}
+  root.innerHTML = `${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${body}
     <div class="am-stamp">Live from Meta · updated ${ago(new Date(am.at).toISOString())} · switches pause/resume on Meta itself</div>`;
 }
 
