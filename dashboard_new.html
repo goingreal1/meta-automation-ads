@@ -298,6 +298,9 @@ a{color:inherit;}
 .bv-kebab-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;font-size:12px;background:none;border:none;cursor:pointer;color:var(--text);}
 .bv-kebab-dropdown button:hover{background:var(--panel2);}
 .bv-kebab-dropdown button.danger{color:var(--danger);}
+.bv-pgrid{display:flex;flex-wrap:wrap;gap:6px 14px;}
+.bv-pcb{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:400;cursor:pointer;}
+.bv-pcb.off{opacity:.45;cursor:not-allowed;}
 .bv-fitnote{margin-top:8px;font-size:12px;padding:8px 10px;border-radius:8px;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--text);}
 .bv-fitnote.warn{background:var(--warnBg);border-color:var(--warnBdr);}
 .bv-fitnote a{color:var(--accent);font-weight:600;cursor:pointer;}
@@ -3009,7 +3012,8 @@ async function bvExecuteLaunch(copies, scheduledIso) {
           behaviors: bvAudienceOf(row).behaviors.length ? bvAudienceOf(row).behaviors : null,
           audience_presets: (row.presets || []).length ? row.presets : null,
           sort_order: i,
-          placement_preset: row.placement_preset || null,
+          placement_preset: row.place_manual && (row.placements || []).length ? null : (row.placement_preset || null),
+          placements: row.place_manual && (row.placements || []).length ? row.placements : null,
           device_platforms: row.device_platforms?.length ? row.device_platforms : null,
           bid_strategy: row.bid_strategy || null,
           bid_amount_naira: row.bid_strategy && row.bid_strategy !== 'LOWEST_COST_WITHOUT_CAP' && row.bid_amount_naira ? Number(row.bid_amount_naira) : null,
@@ -3775,7 +3779,7 @@ function bvFindDuplicateNames(copies) {
 
 function bvResetAdSetBuilder() {
   bvAdSetRows = [{
-    label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: [], cities: [], city_radius: 17, presets: [], interests: [],
+    label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: [], cities: [], city_radius: 17, presets: [], interests: [], placements: [], place_manual: false,
     placement_preset: "", device_platforms: [], bid_strategy: "LOWEST_COST_WITHOUT_CAP", bid_amount_naira: "",
     billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true, display_name: "", uid: bvUid(),
   }];
@@ -3845,7 +3849,7 @@ function bvConfirmDuplicateAdSets() {
       ...last,
       device_platforms: [...(last.device_platforms || [])],
       states: [...bvStatesOf(last)], cities: (last.cities || []).map(c => ({ ...c })),
-      presets: [...(last.presets || [])], interests: (last.interests || []).map(x => ({ ...x })),
+      presets: [...(last.presets || [])], interests: (last.interests || []).map(x => ({ ...x })), placements: [...(last.placements || [])],
       advantage_audience: keepAdvantage,
       display_name: name,
       label: `Ad Set ${bvAdSetRows.length + 1}`,
@@ -3868,6 +3872,84 @@ function bvRemoveAdSetRow(i) {
   bvAdSetRows.forEach((row, idx) => { row.label = `Ad Set ${idx + 1}`; });
   bvRenderAdSetRows();
 }
+
+// ── PLACEMENTS: where the ad may show ────────────────────────────────────────
+// Meta's own rules (checked live): Marketplace / Search / Profile need Facebook feed; Facebook Stories needs
+// Facebook feed or Instagram Stories; Explore / Instagram profile need Instagram feed; WhatsApp Status needs
+// Instagram Stories; Threads and Audience Network ride on a feed.
+const BV_PLACE_GROUPS = [
+  { title: "Facebook", items: [["fb_feed", "Feed"], ["fb_reels", "Reels"], ["fb_stories", "Stories"], ["fb_marketplace", "Marketplace"], ["fb_search", "Search results"], ["fb_profile", "Profile feed"]] },
+  { title: "Instagram", items: [["ig_feed", "Feed"], ["ig_reels", "Reels"], ["ig_stories", "Stories"], ["ig_explore", "Explore"], ["ig_profile", "Profile feed"]] },
+  { title: "More apps", items: [["threads", "Threads"], ["wa_status", "WhatsApp Status"], ["an", "Audience Network"]] },
+];
+const BV_PLACE_PRESETS = [
+  ["Feed only", ["fb_feed", "ig_feed"]],
+  ["Feed + Reels", ["fb_feed", "fb_reels", "ig_feed", "ig_reels"]],
+  ["Reels & Stories (vertical)", ["fb_reels", "ig_reels", "ig_stories"]],
+  ["All Meta apps + Threads + WhatsApp", ["fb_feed", "fb_reels", "ig_feed", "ig_reels", "ig_stories", "threads", "wa_status", "an"]],
+];
+const BV_PLACE_DEFAULT_WA = ["fb_feed", "fb_search", "fb_reels", "ig_feed", "ig_reels"]; // what "Automatic" launches for WhatsApp ads
+function bvPlaceNeeds(set) {
+  const s = new Set(set), added = [];
+  const need = (k, why) => { if (!s.has(k)) { s.add(k); added.push([k, why]); } };
+  if (["fb_marketplace", "fb_search", "fb_profile"].some(k => s.has(k))) need("fb_feed", "Facebook feed");
+  if (s.has("fb_stories") && !s.has("fb_feed") && !s.has("ig_stories")) need("fb_feed", "Facebook feed");
+  if (["ig_explore", "ig_profile"].some(k => s.has(k))) need("ig_feed", "Instagram feed");
+  if (s.has("wa_status")) need("ig_stories", "Instagram Stories");
+  if (s.has("threads") && !s.has("fb_feed") && !s.has("ig_feed")) need("fb_feed", "Facebook feed");
+  if (s.has("an") && !s.has("fb_feed")) need("fb_feed", "Facebook feed");
+  return { set: [...s], added };
+}
+function bvMigratePlacement(row) {
+  if (row.placement_preset && !(row.placements || []).length && !row.place_manual) {
+    row.placements = row.placement_preset === "feed_only" ? ["fb_feed", "ig_feed"] : ["fb_feed", "fb_reels", "ig_feed", "ig_reels", "ig_stories"];
+    row.place_manual = true; row.placement_preset = "";
+  }
+}
+function bvPlaceSetMode(i, manual) {
+  const row = bvAdSetRows[i];
+  row.place_manual = manual;
+  if (manual && !(row.placements || []).length) row.placements = ["fb_feed", "fb_reels", "ig_feed", "ig_reels"];
+  bvRenderAdSetRows();
+}
+function bvPlaceToggle(i, key, on) {
+  const row = bvAdSetRows[i];
+  let set = new Set(row.placements || []);
+  if (on) set.add(key); else {
+    set.delete(key);
+    if (key === "fb_feed") ["fb_marketplace", "fb_search", "fb_profile"].forEach(k => set.delete(k));
+    if (key === "ig_feed") ["ig_explore", "ig_profile"].forEach(k => set.delete(k));
+    if (key === "ig_stories") set.delete("wa_status");
+  }
+  const r = bvPlaceNeeds(set);
+  row.placements = r.set;
+  if (!row.placements.length) row.place_manual = false;
+  if (on && r.added.length) bvToast(`Also added ${[...new Set(r.added.map(a => a[1]))].join(" and ")} — Meta needs it for that placement.`);
+  bvRenderAdSetRows();
+}
+function bvPlaceApplyPreset(i, keys) { bvAdSetRows[i].placements = [...keys]; bvAdSetRows[i].place_manual = true; bvRenderAdSetRows(); }
+
+function bvPlacementsHtml(row, i, isWa) {
+  bvMigratePlacement(row);
+  const manual = !!row.place_manual;
+  const on = new Set(row.placements || []);
+  const blocked = () => false;
+  return `
+      <div class="field"><label>Where your ad shows</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+          <button type="button" class="bv-preset ${!manual ? "on" : ""}" onclick="bvPlaceSetMode(${i}, false)">✨ Automatic <span style="font-weight:400;">(Meta chooses · broadest)</span></button>
+          <button type="button" class="bv-preset ${manual ? "on" : ""}" onclick="bvPlaceSetMode(${i}, true)">☑ Choose placements</button>
+        </div>
+        ${manual ? `
+        <div style="margin-top:8px;">${BV_PLACE_PRESETS.map(([label, keys]) => `<button type="button" class="bv-preset" onclick='bvPlaceApplyPreset(${i}, ${JSON.stringify(keys)})'>${label}</button>`).join("")}</div>
+        ${BV_PLACE_GROUPS.map(g => `<div style="margin-top:8px;"><div style="font-size:11.5px;font-weight:700;color:var(--text2);margin-bottom:3px;">${g.title}</div>
+          <div class="bv-pgrid">${g.items.map(([k, label]) => `<label class="bv-pcb ${blocked(k) ? "off" : ""}" title="${blocked(k) ? "Meta doesn't offer this for WhatsApp-chat ads" : ""}"><input type="checkbox" ${on.has(k) ? "checked" : ""} ${blocked(k) ? "disabled" : ""} onchange="bvPlaceToggle(${i}, '${k}', this.checked)"> ${label}</label>`).join("")}</div></div>`).join("")}
+        ` : `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Meta places the ad wherever it gets you the most ${isWa ? "conversations" : "results"} for your budget${isWa ? " (Facebook and Instagram feeds, Reels and search)" : ""}.</div>`}
+      </div>`;
+}
+
+// ── helpers for the audience/reach below ──
+function bvEffectivePlacements(row, isWa) { return row.place_manual && (row.placements || []).length ? row.placements : (isWa ? BV_PLACE_DEFAULT_WA : []); }
 
 // ── WHERE + WHO: states, cities, audience presets, live potential reach ──────
 // States/cities become Meta regions/cities; presets and searched interests become Meta
@@ -3994,48 +4076,51 @@ function bvGeoAudienceHtml(row, i) {
         <input type="checkbox" style="margin-top:2px;" ${row.advantage_audience !== false && !bvAudienceCount(row) ? "checked" : ""} ${bvAudienceCount(row) ? "disabled" : ""} onchange="bvToggleAdSetAdvantage(${i}, this.checked)">
         <span>Let Meta expand this audience automatically (Advantage+)${bvAudienceCount(row) ? `<br><span style="color:var(--muted);">Off while an audience is chosen, so Meta shows the ad only to those people.</span>` : ""}</span>
       </label>
-      <div class="bv-reach" data-uid="${row.uid}">${bvReachHtml(row)}</div>`;
+      `;
 }
 
 // Live potential reach (Meta's own delivery estimate for exactly this targeting).
 const bvReachCache = new Map();
 let bvReachTimer = null;
-function bvReachPayload(row) {
+function bvReachPayload(row, baseline = false) {
   const isWa = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
-  const a = bvAudienceOf(row), specific = row.geo_type === "states";
+  const a = bvAudienceOf(row), specific = row.geo_type === "states" && !baseline;
   return {
     states: specific ? bvStatesOf(row) : [],
     cities: specific ? (row.cities || []).map(c => ({ key: c.key, radius: Number(row.city_radius) || 17 })) : [],
-    age_min: Number(row.age_min) || 18, age_max: Number(row.age_max) || 65, gender: row.gender || "all",
-    interests: a.interests, behaviors: a.behaviors,
+    age_min: baseline ? 18 : (Number(row.age_min) || 18), age_max: baseline ? 65 : (Number(row.age_max) || 65), gender: baseline ? "all" : (row.gender || "all"),
+    interests: baseline ? [] : a.interests, behaviors: baseline ? [] : a.behaviors,
+    placements: bvEffectivePlacements(row, isWa), devices: row.device_platforms?.length ? row.device_platforms : ["mobile"],
     optimization_goal: isWa ? "CONVERSATIONS" : (row.optimization_goal || "OFFSITE_CONVERSIONS"),
   };
 }
-function bvReachText(r) {
-  if (!r) return `<span style="color:var(--muted);">Checking potential reach…</span>`;
+function bvReachText(r, base) {
+  if (!r) return `<span style="color:var(--muted);"><span class="spin"></span> Updating potential reach…</span>`;
   if (!r.ok) return `<span style="color:var(--muted);">Potential reach isn't available right now.</span>`;
   if (!r.ready || r.lower == null) return `<span style="color:var(--muted);">Meta is still calculating — change a setting or wait a moment.</span>`;
-  return `Potential reach: <b>${bvCompact(r.lower)}–${bvCompact(r.upper)} people</b><small>Meta's estimate of how many people match — not a promise of results.</small>`;
+  const mid = (r.lower + r.upper) / 2, bmid = base?.ok && base.lower != null ? (base.lower + base.upper) / 2 : null;
+  const share = bmid ? Math.min(100, Math.round(mid / bmid * 100)) : null;
+  return `Potential reach: <b>${bvCompact(r.lower)}–${bvCompact(r.upper)} people</b>${share != null && share < 100 ? ` · about ${share}% of everyone in Nigeria on these placements` : ""}<small>Meta's estimate for this ad set's age, gender, places, audience and placements. It changes as you change them — not a promise of results.</small>`;
 }
 function bvReachHtml(row) {
   if (!activeAccountId) return "";
-  return bvReachText(bvReachCache.get(JSON.stringify(bvReachPayload(row))));
+  return bvReachText(bvReachCache.get(JSON.stringify(bvReachPayload(row))), bvReachCache.get(JSON.stringify(bvReachPayload(row, true))));
 }
 function bvScheduleReach() { clearTimeout(bvReachTimer); bvReachTimer = setTimeout(bvRunReach, 500); }
 async function bvRunReach() {
   if (!activeAccountId) return;
-  const done = new Set();
-  for (const row of bvAdSetRows) {
-    const payload = bvReachPayload(row), key = JSON.stringify(payload);
-    if (bvReachCache.has(key) || done.has(key)) continue;
-    done.add(key);
-    const r = await amCall({ action: "reach_estimate", ad_account_id: activeAccountId, ...payload });
-    if (r?.ok) bvReachCache.set(key, r); else bvReachCache.set(key, { ok: false });
-    document.querySelectorAll(".bv-reach").forEach(el => {
-      const rw = bvAdSetRows.find(x => x.uid === el.dataset.uid);
-      if (rw) el.innerHTML = bvReachText(bvReachCache.get(JSON.stringify(bvReachPayload(rw))));
-    });
-  }
+  const paint = () => document.querySelectorAll(".bv-reach").forEach(el => {
+    const rw = bvAdSetRows.find(x => x.uid === el.dataset.uid);
+    if (rw) el.innerHTML = bvReachHtml(rw);
+  });
+  paint();
+  const todo = new Map();
+  for (const row of bvAdSetRows) for (const base of [false, true]) { const p = bvReachPayload(row, base); const k = JSON.stringify(p); if (!bvReachCache.has(k)) todo.set(k, p); }
+  await Promise.all([...todo].map(async ([k, p]) => {
+    const r = await amCall({ action: "reach_estimate", ad_account_id: activeAccountId, ...p });
+    bvReachCache.set(k, r?.ok ? r : { ok: false });
+    paint();
+  }));
 }
 
 function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
@@ -4069,13 +4154,7 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
       ${bvGeoAudienceHtml(row, i)}
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Placements</div>
-      <div class="field"><label>Where your ad shows</label>
-        <select onchange="bvUpdateAdSetRow(${i}, 'placement_preset', this.value)">
-          <option value="" ${!row.placement_preset ? "selected" : ""}>Advantage+ placements (recommended — broadest reach)</option>
-          <option value="feed_only" ${row.placement_preset === "feed_only" ? "selected" : ""}>Feed only (Facebook + Instagram feed)</option>
-          <option value="feed_stories_reels" ${row.placement_preset === "feed_stories_reels" ? "selected" : ""}>Feed + Stories + Reels</option>
-        </select>
-      </div>
+      ${bvPlacementsHtml(row, i, isWhatsappDest)}
       <div class="field" style="margin-top:8px;"><label>Devices</label>
         <div style="display:flex;gap:14px;margin-top:4px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
@@ -4086,6 +4165,8 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
           </label>
         </div>
       </div>
+
+      <div class="bv-reach" data-uid="${row.uid}">${bvReachHtml(row)}</div>
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Optimization & bidding</div>
       <div class="field"><label>Optimization goal <span style="font-weight:400;color:var(--muted);">(what Meta tries to get you the most of)</span></label>

@@ -11,7 +11,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
 //   POST { action: "set_budget", ad_account_id, level: "adset"|"campaign", object_id, daily_budget (Naira), reason? } -> scale a daily budget
 //   POST { action: "targeting_search", ad_account_id, kind: "interest"|"city", q } -> interests / Nigerian cities to target (builder search box)
-//   POST { action: "reach_estimate", ad_account_id, states?, cities?, age_min, age_max, gender, interests?, behaviors?, optimization_goal? } -> Meta's potential-audience estimate for a draft ad set
+//   POST { action: "reach_estimate", ad_account_id, states?, cities?, age_min, age_max, gender, interests?, behaviors?, placements?, devices?, optimization_goal? } -> Meta's potential-audience estimate for a draft ad set
 //   POST { action: "ad_preview", ad_account_id, ad_id? | spec: { image_url, message, headline, description, destination, link?, cta? } } -> Meta's own previews (mobile feed, desktop feed, Instagram, Reels, Stories)
 //   POST { action: "set_ad_image", ad_account_id, ad_ids, image_url } -> point live ads at a re-fitted copy of their image
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
@@ -587,6 +587,42 @@ async function handleTargetingSearch(userClient: any, body: any) {
   return { ok: true, results: (d.data ?? []).map((x: any) => ({ id: String(x.id), name: x.name, size_lower: x.audience_size_lower_bound ?? null, size_upper: x.audience_size_upper_bound ?? null, path: (x.path ?? []).join(" > ") })) };
 }
 
+// Where the ad may show. Each choice is a Meta publisher platform + position; Meta's own rules
+// (checked live with validate_only) say some need a partner placement, so those are added.
+const PLACEMENTS: Record<string, { p: string; k: string; pos: string[] }> = {
+  fb_feed: { p: "facebook", k: "facebook_positions", pos: ["feed"] },
+  fb_reels: { p: "facebook", k: "facebook_positions", pos: ["facebook_reels"] },
+  fb_stories: { p: "facebook", k: "facebook_positions", pos: ["story"] },
+  fb_marketplace: { p: "facebook", k: "facebook_positions", pos: ["marketplace"] },
+  fb_search: { p: "facebook", k: "facebook_positions", pos: ["search"] },
+  fb_profile: { p: "facebook", k: "facebook_positions", pos: ["profile_feed"] },
+  ig_feed: { p: "instagram", k: "instagram_positions", pos: ["stream"] },
+  ig_reels: { p: "instagram", k: "instagram_positions", pos: ["reels"] },
+  ig_stories: { p: "instagram", k: "instagram_positions", pos: ["story"] },
+  ig_explore: { p: "instagram", k: "instagram_positions", pos: ["explore", "explore_home"] },
+  ig_profile: { p: "instagram", k: "instagram_positions", pos: ["profile_feed"] },
+  threads: { p: "threads", k: "threads_positions", pos: ["threads_stream"] },
+  wa_status: { p: "whatsapp", k: "whatsapp_positions", pos: ["status"] },
+  an: { p: "audience_network", k: "audience_network_positions", pos: ["classic", "rewarded_video"] },
+};
+function placementSpec(keys: any): Record<string, any> | null {
+  const set = new Set<string>((Array.isArray(keys) ? keys : []).map(String).filter((k) => PLACEMENTS[k]));
+  if (!set.size) return null;
+  if (["fb_marketplace", "fb_search", "fb_profile"].some((k) => set.has(k))) set.add("fb_feed");
+  if (set.has("fb_stories") && !set.has("fb_feed") && !set.has("ig_stories")) set.add("fb_feed");
+  if (["ig_explore", "ig_profile"].some((k) => set.has(k))) set.add("ig_feed");
+  if (set.has("wa_status")) set.add("ig_stories");
+  if (set.has("threads") && !set.has("fb_feed") && !set.has("ig_feed")) set.add("fb_feed");
+  if (set.has("an") && !set.has("fb_feed")) set.add("fb_feed"); // Audience Network alone isn't accepted; with Facebook feed it is
+  const out: Record<string, any> = { publisher_platforms: [] as string[] };
+  for (const key of set) {
+    const m = PLACEMENTS[key];
+    if (!out.publisher_platforms.includes(m.p)) out.publisher_platforms.push(m.p);
+    out[m.k] = [...(out[m.k] ?? []), ...m.pos];
+  }
+  return out;
+}
+
 const GENDER_CODES: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
 const REACH_GOALS = ["CONVERSATIONS", "OFFSITE_CONVERSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS"];
 async function handleReachEstimate(userClient: any, body: any) {
@@ -607,8 +643,9 @@ async function handleReachEstimate(userClient: any, body: any) {
     age_min: Math.min(Math.max(Number(body.age_min) || 18, 13), 65),
     age_max: Math.min(Math.max(Number(body.age_max) || 65, 13), 65),
     genders: GENDER_CODES[String(body.gender ?? "all")] ?? [1, 2],
-    publisher_platforms: ["facebook", "instagram"],
+    ...(placementSpec(body.placements) ?? { publisher_platforms: ["facebook", "instagram"] }),
   };
+  if (Array.isArray(body.devices) && body.devices.length) spec.device_platforms = body.devices.filter((d: string) => ["mobile", "desktop"].includes(d));
   if (ints.length || behs.length) spec.flexible_spec = [{ ...(ints.length ? { interests: ints } : {}), ...(behs.length ? { behaviors: behs } : {}) }];
   const goal = REACH_GOALS.includes(body.optimization_goal) ? body.optimization_goal : "CONVERSATIONS";
   const d = await graphGet(`act_${actId}/delivery_estimate`, { optimization_goal: goal, targeting_spec: JSON.stringify(spec) }, token);
