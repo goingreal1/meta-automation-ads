@@ -823,6 +823,25 @@ html{-webkit-text-size-adjust:100%;}
   #bvBuilderOverlay input:not([type=checkbox]):not([type=radio]),#bvBuilderOverlay select,#bvBuilderOverlay textarea{font-size:16px;}
 }
 
+
+/* ── NAMES + VIEW ALL (builder) ─────────────────────────────────────────── */
+.bv-listrow{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;background:var(--panel);}
+.bv-listrow:hover{border-color:var(--accent);background:var(--accentBg);}
+.bv-listnum{width:26px;height:26px;border-radius:50%;background:var(--panel2);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.bv-listmain{flex:1;min-width:0;}
+.bv-listname{font-weight:700;font-size:13.5px;color:var(--text);overflow-wrap:anywhere;}
+.bv-listsub{font-size:12px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere;}
+.bv-listbtns{display:flex;gap:6px;flex-shrink:0;}
+.bv-listbtns .btn{padding:5px 10px;font-size:12px;width:auto;}
+.bv-sheet-ov{z-index:600;}
+@media(max-width:760px){
+  .bv-sheet-ov{padding:0;align-items:stretch;}
+  .bv-sheet{max-width:none !important;min-height:100vh;min-height:100dvh;border-radius:0;border:none;padding:58px 16px calc(24px + env(safe-area-inset-bottom));}
+  .bv-sheet .bv-modal-close{top:9px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;}
+  .bv-listrow{flex-wrap:wrap;}
+  .bv-listbtns{width:100%;justify-content:flex-end;}
+}
+
 /* ── ADS MANAGER (Campaigns tab) + KILL RULES (Settings) ───────────────────── */
 .am-bal{display:flex;align-items:center;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:12px;padding:12px 16px;margin-bottom:16px;}
 .am-bal.low{background:var(--dangerBg);border-color:var(--dangerBdr);}
@@ -2374,6 +2393,8 @@ function bvOpenCampaignBuilder(presetObjective) {
 
             <div class="bv-section-card">
               <div class="bv-section-card-title"><span class="bv-ico">✏️</span> Ad copy</div>
+              <div class="field" style="margin-bottom:14px;"><label>Ad name <span style="font-weight:400;color:var(--muted);">(optional — shown on Meta exactly as you type it)</span></label>
+                <input id="f_ad_name" maxlength="120" placeholder="e.g. Mama Ngozi testimonial video"></div>
               <div class="field"><label>Primary text (ad copy) *</label>
                 <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
               </div>
@@ -2383,6 +2404,7 @@ function bvOpenCampaignBuilder(presetObjective) {
               </div>
               <div style="margin-top:14px;position:relative;display:inline-block;">
                 <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvToggleKebab('bvAdActionsMenu', event)">⋯ Actions for this ad</button>
+                <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-left:8px;" onclick="bvOpenAdListModal()">☰ View all ads (<span id="bvAdCount">0</span>)</button>
                 <div id="bvAdActionsMenu" class="bv-kebab-dropdown" style="display:none;">
                   <button type="button" onclick="bvCloseKebabs(); bvStageAdCopy()">+ Add another ad copy</button>
                   <button type="button" onclick="bvCloseKebabs(); bvOpenDuplicateAdModal()">⧉ Duplicate…</button>
@@ -2449,6 +2471,7 @@ function bvOpenCampaignBuilder(presetObjective) {
       copies.push({
         file: currentFile || null,
         reuse_asset: bvReuseAsset,
+        ad_name: document.getElementById("f_ad_name").value.trim(),
         primary_text: currentPrimary,
         headline: document.getElementById("f_headline").value.trim(),
         description: document.getElementById("f_desc").value.trim(),
@@ -2460,6 +2483,12 @@ function bvOpenCampaignBuilder(presetObjective) {
     if (!copies.length) {
       msg.innerHTML = `<div class="msg err">Please select or drop a file first (or reuse an existing creative).</div>`;
       // On a phone the message sits at the end of a long scrolling page -- bring it into view.
+      if (window.matchMedia("(max-width: 760px)").matches) msg.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const dupNames = bvFindDuplicateNames(copies);
+    if (dupNames) {
+      msg.innerHTML = `<div class="msg err">${dupNames}</div>`;
       if (window.matchMedia("(max-width: 760px)").matches) msg.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
@@ -2526,6 +2555,8 @@ function bvOpenReviewModal(copies) {
         <div><b>${escH(campaignLabel)}</b> — ${destLabel} · ${objectiveLabels[objective] || objective}</div>
         <div>${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} × ${copies.length} ad cop${copies.length === 1 ? "y" : "ies"} = <b>${totalAds} ad${totalAds === 1 ? "" : "s"}</b> total</div>
         <div>₦${totalBudget.toLocaleString()}/day total budget</div>
+        <div style="color:var(--muted);">Ad sets: ${bvAdSetRows.map(r => escH(bvAdSetName(r)) + ((r.display_name || "").trim() ? "" : " <i>(auto)</i>")).join(" · ")}</div>
+        <div style="color:var(--muted);">Ads: ${copies.map((c, n) => bvAdName(c) ? escH(bvAdName(c)) : `Ad ${n + 1} <i>(auto)</i>`).join(" · ")}</div>
       </div>
       <div class="field" style="margin-top:14px;"><label>Schedule for (optional)</label>
         <input type="datetime-local" id="reviewScheduled" value="${existingSchedule}">
@@ -2583,6 +2614,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       // instead of N separate campaigns.
       const launchBatchId = copies.length > 1 ? crypto.randomUUID() : null;
       const assetIds = [];
+      const assetNames = [];
       for (const copy of copies) {
         if (copy.reuse_asset) {
           // Reusing an existing creative's media -- clone the storage
@@ -2606,7 +2638,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
             uploaded_at: new Date().toISOString(),
           }).select('id').single();
           if (cloneErr) throw new Error(`"${copy.reuse_asset.file_name}" (reused): ${cloneErr.message}`);
-          if (cloned?.id) assetIds.push(cloned.id);
+          if (cloned?.id) { assetIds.push(cloned.id); assetNames.push((copy.ad_name || "").trim()); }
           continue;
         }
 
@@ -2628,9 +2660,15 @@ async function bvExecuteLaunch(copies, scheduledIso) {
         });
         const r = await res.json();
         if (r.error) throw new Error(`"${copy.file.name}": ${r.error}`);
-        if (r.asset?.id) assetIds.push(r.asset.id);
+        if (r.asset?.id) { assetIds.push(r.asset.id); assetNames.push((copy.ad_name || "").trim()); }
       }
       if (!assetIds.length) throw new Error("No ad copies uploaded successfully.");
+      // Names typed in the builder -- the launch uses them exactly as written.
+      for (let k = 0; k < assetIds.length; k++) {
+        if (!assetNames[k]) continue;
+        const { error: nameErr } = await supabaseClient.from('creative_assets').update({ ad_name: assetNames[k] }).eq('id', assetIds[k]);
+        if (nameErr) throw new Error(`Could not save the name "${assetNames[k]}": ${nameErr.message}`);
+      }
 
       const endDate = document.getElementById("f_end_date").value;
       const sharedFields = {
@@ -2671,6 +2709,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
           billing_event: row.billing_event || null,
           optimization_goal: row.optimization_goal || null,
           advantage_audience: row.advantage_audience !== false,
+          display_name: (row.display_name || "").trim() || null,
         }))
       );
       if (adSetErr) throw adSetErr;
@@ -2714,6 +2753,7 @@ function bvStageAdCopy() {
   bvStagedCopies.push({
     file: file || null,
     reuse_asset: bvReuseAsset,
+    ad_name: bvNextName(document.getElementById("f_ad_name")?.value.trim() || "", bvUsedAdNames().slice(0, -1)),
     primary_text,
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -2723,6 +2763,7 @@ function bvStageAdCopy() {
   });
   // Clear only the copy-specific fields -- product/campaign/ad-set config stay shared.
   document.getElementById("f_file").value = "";
+  document.getElementById("f_ad_name").value = "";
   document.getElementById("f_primary").value = "";
   document.getElementById("f_headline").value = "";
   document.getElementById("f_desc").value = "";
@@ -2737,7 +2778,8 @@ function bvRemoveStagedCopy(i) {
 }
 
 function bvQuickDuplicateStagedCopy(i) {
-  bvStagedCopies.splice(i + 1, 0, { ...bvStagedCopies[i] });
+  const src = bvStagedCopies[i];
+  bvStagedCopies.splice(i + 1, 0, { ...src, ad_name: bvNextName(src.ad_name, bvUsedAdNames()) });
   bvRenderStagedCopies();
 }
 
@@ -2753,12 +2795,13 @@ function bvRenderStagedCopies() {
   if (!wrap) return;
   bvRenderBuilderSummary();
   if (!bvStagedCopies.length) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} more ad${bvStagedCopies.length === 1 ? "" : "s"} staged below (plus whatever's filled in above) — each is its own real ad when you launch. Edit any of them here, or leave as-is.</div>` +
+  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} more ad${bvStagedCopies.length === 1 ? "" : "s"} staged below (plus whatever's filled in above) — each is its own real ad when you launch. Edit any of them here, or <a href="javascript:void(0)" onclick="bvOpenAdListModal()" style="color:var(--accent);font-weight:600;">view all ads</a> in one list.</div>` +
     bvStagedCopies.map((c, i) => `
       <div style="border:1px dashed var(--border);border-radius:8px;padding:10px;margin-top:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <span style="font-size:11px;color:var(--muted);">${c.reuse_asset ? `↺ ${escH(c.reuse_asset.file_name)} (reused)` : escH(c.file?.name || "")}</span>
-          <div style="position:relative;">
+          <div style="position:relative;display:flex;align-items:center;gap:6px;">
+            <button type="button" onclick="bvOpenAdEdit(${i})" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11.5px;font-weight:600;padding:0 4px;">✎ Edit</button>
             <button type="button" onclick="bvToggleKebab('bvStagedMenu-${i}', event)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;">⋯</button>
             <div id="bvStagedMenu-${i}" class="bv-kebab-dropdown" style="display:none;right:0;left:auto;">
               <button type="button" onclick="bvCloseKebabs(); bvQuickDuplicateStagedCopy(${i})">⧉ Quickly duplicate</button>
@@ -2766,6 +2809,7 @@ function bvRenderStagedCopies() {
             </div>
           </div>
         </div>
+        <input placeholder="Ad name (optional)" value="${escH(c.ad_name || "")}" maxlength="120" style="width:100%;font-size:12px;margin-bottom:6px;" oninput="bvUpdateStagedCopy(${i}, 'ad_name', this.value)">
         <textarea rows="2" placeholder="Primary text" style="width:100%;font-size:12px;" oninput="bvUpdateStagedCopy(${i}, 'primary_text', this.value)">${escH(c.primary_text || "")}</textarea>
         <div style="display:flex;gap:8px;margin-top:6px;">
           <input placeholder="Headline" value="${escH(c.headline || "")}" style="flex:1;font-size:12px;" oninput="bvUpdateStagedCopy(${i}, 'headline', this.value)">
@@ -2807,6 +2851,7 @@ function bvConfirmDuplicateAd() {
   const base = {
     file: file || null,
     reuse_asset: bvReuseAsset,
+    ad_name: document.getElementById("f_ad_name").value.trim(),
     primary_text: document.getElementById("f_primary").value.trim(),
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -2814,12 +2859,17 @@ function bvConfirmDuplicateAd() {
     format: document.getElementById("f_format").value,
     cta_type: document.getElementById("f_cta").value,
   };
+  const usedNames = bvStagedCopies.map(c => c.ad_name || "");
   for (let n = 0; n < count; n++) {
-    bvStagedCopies.push({ ...base });
+    const seed = base.ad_name ? (count > 1 ? `${base.ad_name} ${n + 1}` : base.ad_name) : "";
+    const name = bvNextName(seed, usedNames);
+    usedNames.push(name);
+    bvStagedCopies.push({ ...base, ad_name: name });
   }
   // Clear the form -- all copies (including the one just filled in) now live
   // in the staged list below, each individually editable there.
   document.getElementById("f_file").value = "";
+  document.getElementById("f_ad_name").value = "";
   document.getElementById("f_primary").value = "";
   document.getElementById("f_headline").value = "";
   document.getElementById("f_desc").value = "";
@@ -2827,6 +2877,7 @@ function bvConfirmDuplicateAd() {
   bvReuseAsset = null;
   document.getElementById("bvDupAdModalOverlay")?.remove();
   bvRenderStagedCopies();
+  bvToast(`${count} ad${count === 1 ? "" : "s"} added below — see them all with "View all ads".`);
 }
 
 // Meta's "Quickly duplicate" — one instant copy, no dialog, the original
@@ -2842,6 +2893,7 @@ function bvQuickDuplicateAd() {
   bvStagedCopies.push({
     file: file || null,
     reuse_asset: bvReuseAsset,
+    ad_name: bvNextName(document.getElementById("f_ad_name").value.trim(), bvUsedAdNames()),
     primary_text: primary,
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -2871,6 +2923,8 @@ function bvRenderBuilderSummary() {
   const currentFile = document.getElementById("f_file")?.files?.[0];
   const currentPrimary = document.getElementById("f_primary")?.value.trim();
   const adCount = bvStagedCopies.length + ((currentFile || bvReuseAsset) && currentPrimary ? 1 : 0);
+  const adCountEl = document.getElementById("bvAdCount");
+  if (adCountEl) adCountEl.textContent = adCount;
   const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
 
   el.innerHTML = `
@@ -3031,11 +3085,256 @@ function bvClearReuseAsset() {
 // sets will actually launch.
 let bvAdSetRows = [];
 
+// ── NAMES + "VIEW ALL" FOR AD SETS AND ADS ───────────────────────────────────
+// Every ad set and every ad can be named; a typed name is sent to Meta exactly
+// as written. Left blank, the launch falls back to the old automatic name.
+const bvAdSetName = row => (row.display_name || "").trim() || row.label;
+
+// "Lagos" -> "Lagos 2" -> "Lagos 3" ... first name not already in use.
+function bvNextName(base, used) {
+  base = (base || "").trim();
+  if (!base) return "";
+  const taken = new Set(used.map(n => String(n || "").trim().toLowerCase()).filter(Boolean));
+  if (!taken.has(base.toLowerCase())) return base;
+  const stem = base.replace(/\s+\d+$/, "");
+  if (!taken.has(stem.toLowerCase())) return stem;
+  for (let n = 2; n < 1000; n++) {
+    const c = `${stem} ${n}`;
+    if (!taken.has(c.toLowerCase())) return c;
+  }
+  return base;
+}
+
+function bvCloseSheet(id) { document.getElementById(id)?.remove(); }
+function bvOpenSheet(id, innerHtml, maxWidth = 720) {
+  bvCloseSheet(id);
+  const ov = document.createElement("div");
+  ov.id = id;
+  ov.className = "bv-overlay bv-sheet-ov";
+  ov.onclick = e => { if (e.target === ov) ov.querySelector("[data-sheet-close]")?.click(); };
+  ov.innerHTML = `<div class="bv-modal bv-sheet" style="max-width:${maxWidth}px;">${innerHtml}</div>`;
+  document.body.appendChild(ov);
+  return ov;
+}
+
+// ── ad sets ──
+function bvSetAdSetName(i, value) {
+  bvAdSetRows[i].display_name = value;
+  const shown = bvAdSetName(bvAdSetRows[i]);
+  document.querySelectorAll(`[data-astitle="${i}"]`).forEach(el => { el.textContent = shown; });
+  bvRefreshAdSetList();
+}
+
+function bvAdSetSummary(r) {
+  const gender = { all: "All genders", male: "Men", female: "Women" }[r.gender] || "All genders";
+  const where = r.geo_type === "states" && r.states ? String(r.states) : "Nationwide";
+  return `₦${Number(r.budget_naira || 0).toLocaleString()}/day · ${gender} ${r.age_min}–${r.age_max} · ${where}${r.advantage_audience === false ? "" : " · Advantage+"}`;
+}
+
+function bvOpenAdSetListModal() {
+  bvOpenSheet("bvAdSetListOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvAdSetListOverlay')">✕</button>
+    <div id="bvAdSetListBody"></div>`);
+  bvRefreshAdSetList();
+}
+
+function bvRefreshAdSetList() {
+  const body = document.getElementById("bvAdSetListBody");
+  if (!body) return;
+  const total = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+  body.innerHTML = `
+    <div class="ph-title" style="margin-bottom:4px;">All ad sets (${bvAdSetRows.length})</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Tap one to edit everything about it. ₦${total.toLocaleString()}/day across all of them.</div>
+    ${bvAdSetRows.map((r, i) => {
+      const custom = (r.display_name || "").trim();
+      return `<div class="bv-listrow" onclick="bvOpenAdSetEdit(${i})">
+        <div class="bv-listnum">${i + 1}</div>
+        <div class="bv-listmain">
+          <div class="bv-listname">${escH(bvAdSetName(r))} <span class="pill ${i === 0 ? "active" : "scale"}">${i === 0 ? "original" : "copy"}</span>${custom ? "" : ` <span class="pill off" title="No name typed — Meta gets an automatic name">auto name</span>`}</div>
+          <div class="bv-listsub">${escH(bvAdSetSummary(r))}</div>
+        </div>
+        <div class="bv-listbtns" onclick="event.stopPropagation()">
+          <button type="button" class="btn btn-g" onclick="bvOpenAdSetEdit(${i})">Edit</button>
+          <button type="button" class="btn btn-g" onclick="bvQuickDupAdSet(${i})" title="Add a copy of this ad set">⧉</button>
+          ${i > 0 ? `<button type="button" class="btn btn-g" style="color:var(--danger);" onclick="bvRemoveAdSetRow(${i})" title="Remove">✕</button>` : ""}
+        </div>
+      </div>`;
+    }).join("")}
+    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-g" onclick="bvOpenDuplicateAdSetModal()">⧉ Duplicate ad set…</button>
+      <button type="button" class="btn btn-a" onclick="bvCloseSheet('bvAdSetListOverlay')">Done</button>
+    </div>`;
+}
+
+function bvQuickDupAdSet(i) {
+  const src = bvAdSetRows[i];
+  const used = bvAdSetRows.map(r => r.display_name || "");
+  bvAdSetRows.push({
+    ...src,
+    device_platforms: [...(src.device_platforms || [])],
+    display_name: bvNextName(src.display_name, used),
+    label: `Ad Set ${bvAdSetRows.length + 1}`,
+  });
+  bvRenderAdSetRows();
+  bvToast("Ad set copied — rename it if you like.");
+}
+
+let bvAdSetEditIdx = null;
+function bvOpenAdSetEdit(i) {
+  bvAdSetEditIdx = i;
+  bvOpenSheet("bvAdSetEditOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseAdSetEdit()">✕</button>
+    <div id="bvAdSetEditBody"></div>`, 760);
+  bvRefreshAdSetEdit();
+}
+function bvCloseAdSetEdit() {
+  bvAdSetEditIdx = null;
+  bvCloseSheet("bvAdSetEditOverlay");
+  bvRefreshAdSetList();
+}
+function bvRefreshAdSetEdit() {
+  const body = document.getElementById("bvAdSetEditBody");
+  if (!body || bvAdSetEditIdx == null) return;
+  const row = bvAdSetRows[bvAdSetEditIdx];
+  if (!row) { bvCloseAdSetEdit(); return; }
+  const ov = document.getElementById("bvAdSetEditOverlay");
+  const top = ov ? ov.scrollTop : 0;
+  const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+  body.innerHTML = bvAdSetCardHtml(row, bvAdSetEditIdx, isWhatsapp, true) +
+    `<div style="display:flex;justify-content:flex-end;margin-top:6px;"><button type="button" class="btn btn-a" onclick="bvCloseAdSetEdit()">Done</button></div>`;
+  if (ov) ov.scrollTop = top;
+}
+
+// ── ad copies ──
+const bvAdName = c => (c.ad_name || "").trim();
+
+// The copy currently typed into the form (not staged yet), or null.
+function bvAdCurrentCopy() {
+  const file = document.getElementById("f_file")?.files?.[0];
+  const primary = document.getElementById("f_primary")?.value.trim();
+  if (!(file || bvReuseAsset) || !primary) return null;
+  return {
+    file: file || null,
+    reuse_asset: bvReuseAsset,
+    ad_name: document.getElementById("f_ad_name")?.value.trim() || "",
+    primary_text: primary,
+    headline: document.getElementById("f_headline").value.trim(),
+    description: document.getElementById("f_desc").value.trim(),
+    mechanism: document.getElementById("f_mechanism").value,
+    format: document.getElementById("f_format").value,
+    cta_type: document.getElementById("f_cta").value,
+  };
+}
+const bvUsedAdNames = () => [...bvStagedCopies.map(c => c.ad_name || ""), document.getElementById("f_ad_name")?.value || ""];
+
+function bvOpenAdListModal() {
+  bvOpenSheet("bvAdListOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvAdListOverlay')">✕</button>
+    <div id="bvAdListBody"></div>`);
+  bvRefreshAdList();
+}
+
+function bvRefreshAdList() {
+  const body = document.getElementById("bvAdListBody");
+  if (!body) return;
+  const cur = bvAdCurrentCopy();
+  const items = [...(cur ? [{ c: cur, form: true }] : []), ...bvStagedCopies.map((c, i) => ({ c, i }))];
+  const setCount = bvAdSetRows.length;
+  const fileLabel = c => c.reuse_asset ? `↺ ${c.reuse_asset.file_name} (reused)` : (c.file?.name || "");
+  body.innerHTML = `
+    <div class="ph-title" style="margin-bottom:4px;">All ads (${items.length})</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Tap one to edit it. Each ad launches inside every ad set: ${items.length} ad${items.length === 1 ? "" : "s"} × ${setCount} ad set${setCount === 1 ? "" : "s"} = <b>${items.length * setCount} ads</b>.</div>
+    ${items.length ? items.map((it, n) => {
+      const c = it.c, named = bvAdName(c);
+      const act = it.form ? "bvAdGoToForm()" : `bvOpenAdEdit(${it.i})`;
+      return `<div class="bv-listrow" onclick="${act}">
+        <div class="bv-listnum">${n + 1}</div>
+        <div class="bv-listmain">
+          <div class="bv-listname">${named ? escH(named) : `<span style="color:var(--muted);font-weight:500;">Unnamed ad</span>`}${it.form ? ` <span class="pill pending">in the form</span>` : ""}${named ? "" : ` <span class="pill off" title="No name typed — Meta gets an automatic name">auto name</span>`}</div>
+          <div class="bv-listsub">${escH(fileLabel(c))}</div>
+          <div class="bv-listsub" style="color:var(--text2);">${escH((c.primary_text || "").slice(0, 110))}${(c.primary_text || "").length > 110 ? "…" : ""}</div>
+        </div>
+        <div class="bv-listbtns" onclick="event.stopPropagation()">
+          <button type="button" class="btn btn-g" onclick="${act}">${it.form ? "Go to form" : "Edit"}</button>
+          ${it.form ? "" : `<button type="button" class="btn btn-g" onclick="bvQuickDuplicateStagedCopy(${it.i});bvRefreshAdList()" title="Add a copy of this ad">⧉</button>
+          <button type="button" class="btn btn-g" style="color:var(--danger);" onclick="bvRemoveStagedCopy(${it.i});bvRefreshAdList()" title="Remove">✕</button>`}
+        </div>
+      </div>`;
+    }).join("") : `<div class="empty" style="padding:24px;">No ads yet — fill in the ad above and add it.</div>`}
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button type="button" class="btn btn-a" onclick="bvCloseSheet('bvAdListOverlay')">Done</button></div>`;
+}
+
+function bvAdGoToForm() {
+  bvCloseSheet("bvAdListOverlay");
+  document.getElementById("f_primary")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function bvOpenAdEdit(i) {
+  const c = bvStagedCopies[i];
+  if (!c) return;
+  const optsOf = (id, val) => {
+    const html = document.getElementById(id)?.innerHTML || "";
+    return html.replace(new RegExp(`(value="${val}")`), "$1 selected");
+  };
+  bvOpenSheet("bvAdEditOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseAdEdit()">✕</button>
+    <div class="ph-title" style="margin-bottom:14px;">Edit ad ${i + 1}</div>
+    <div class="field"><label>Ad name <span style="font-weight:400;color:var(--muted);">(shown on Meta exactly as you type it)</span></label>
+      <input value="${escH(c.ad_name || "")}" maxlength="120" placeholder="Type your own name, or leave blank for an automatic one" oninput="bvUpdateStagedCopy(${i}, 'ad_name', this.value)"></div>
+    <div class="field" style="margin-top:12px;"><label>Creative</label>
+      <div id="bvAdEditFile" style="font-size:12.5px;color:var(--text2);">${escH(c.reuse_asset ? `↺ ${c.reuse_asset.file_name} (reused)` : (c.file?.name || "—"))}</div>
+      <input type="file" accept="video/*,image/*" style="margin-top:6px;" onchange="bvReplaceStagedFile(${i}, this)">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Pick a file only if you want to replace this ad's image or video.</div></div>
+    <div class="field" style="margin-top:12px;"><label>Primary text</label>
+      <textarea rows="5" oninput="bvUpdateStagedCopy(${i}, 'primary_text', this.value)">${escH(c.primary_text || "")}</textarea></div>
+    <div class="fg" style="margin-top:12px;">
+      <div class="field"><label>Headline</label><input value="${escH(c.headline || "")}" oninput="bvUpdateStagedCopy(${i}, 'headline', this.value)"></div>
+      <div class="field"><label>Description</label><input value="${escH(c.description || "")}" oninput="bvUpdateStagedCopy(${i}, 'description', this.value)"></div>
+      <div class="field"><label>CTA</label><select onchange="bvUpdateStagedCopy(${i}, 'cta_type', this.value)">${optsOf("f_cta", c.cta_type)}</select></div>
+      <div class="field"><label>Mechanism</label><select onchange="bvUpdateStagedCopy(${i}, 'mechanism', this.value)">${optsOf("f_mechanism", c.mechanism)}</select></div>
+      <div class="field"><label>Format</label><select onchange="bvUpdateStagedCopy(${i}, 'format', this.value)">${optsOf("f_format", c.format)}</select></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button type="button" class="btn btn-a" onclick="bvCloseAdEdit()">Done</button></div>`, 760);
+}
+function bvCloseAdEdit() {
+  bvCloseSheet("bvAdEditOverlay");
+  bvRenderStagedCopies();
+  bvRefreshAdList();
+}
+function bvReplaceStagedFile(i, input) {
+  const f = input.files?.[0];
+  if (!f) return;
+  bvStagedCopies[i].file = f;
+  bvStagedCopies[i].reuse_asset = null;
+  const el = document.getElementById("bvAdEditFile");
+  if (el) el.textContent = f.name;
+}
+
+// Two ad sets (or two ads) typed with the same name would be confusing in Ads
+// Manager -- ask for different names instead of launching.
+function bvFindDuplicateNames(copies) {
+  const dupIn = names => {
+    const seen = new Set();
+    for (const n of names.map(x => String(x || "").trim()).filter(Boolean)) {
+      const k = n.toLowerCase();
+      if (seen.has(k)) return n;
+      seen.add(k);
+    }
+    return null;
+  };
+  const a = dupIn(bvAdSetRows.map(r => r.display_name));
+  if (a) return `Two ad sets are both named "${escH(a)}". Give each ad set its own name (Ad set step → View all).`;
+  const b = dupIn(copies.map(c => c.ad_name));
+  if (b) return `Two ads are both named "${escH(b)}". Give each ad its own name (Ad step → View all ads).`;
+  return null;
+}
+
+
 function bvResetAdSetBuilder() {
   bvAdSetRows = [{
     label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: "",
     placement_preset: "", device_platforms: [], bid_strategy: "LOWEST_COST_WITHOUT_CAP", bid_amount_naira: "",
-    billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true,
+    billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true, display_name: "",
   }];
   bvRenderAdSetRows();
 }
@@ -3070,9 +3369,13 @@ function bvOpenDuplicateAdSetModal() {
   overlay.innerHTML = `
     <div class="bv-modal" style="max-width:420px;">
       <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
-      <div class="ph-title" style="margin-bottom:12px;">Duplicate "${last.label}"</div>
+      <div class="ph-title" style="margin-bottom:12px;">Duplicate "${escH(bvAdSetName(last))}"</div>
       <div class="field"><label>Number of copies</label>
         <input type="number" id="dupCount" min="1" max="20" value="1">
+      </div>
+      <div class="field" style="margin-top:12px;"><label>Name for the copies <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+        <input id="dupName" maxlength="120" placeholder="e.g. Lagos women 25-45" value="">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">With several copies they are numbered (… 1, … 2). Leave blank to name them later in View all.</div>
       </div>
       <label style="display:flex;align-items:center;gap:7px;margin-top:14px;font-size:12px;font-weight:400;cursor:pointer;">
         <input type="checkbox" id="dupKeepAdvantage" ${last.advantage_audience !== false ? "checked" : ""}>
@@ -3088,16 +3391,23 @@ function bvConfirmDuplicateAdSets() {
   const count = Math.max(1, Math.min(20, Number(document.getElementById("dupCount").value) || 1));
   const keepAdvantage = document.getElementById("dupKeepAdvantage").checked;
   const last = bvAdSetRows[bvAdSetRows.length - 1];
+  const typed = document.getElementById("dupName")?.value.trim() || "";
+  const used = bvAdSetRows.map(r => r.display_name || "");
   for (let n = 0; n < count; n++) {
+    const seed = typed ? (count > 1 ? `${typed} ${n + 1}` : typed) : (last.display_name || "");
+    const name = bvNextName(seed, used);
+    used.push(name);
     bvAdSetRows.push({
       ...last,
       device_platforms: [...(last.device_platforms || [])],
       advantage_audience: keepAdvantage,
+      display_name: name,
       label: `Ad Set ${bvAdSetRows.length + 1}`,
     });
   }
   document.getElementById("bvDupModalOverlay")?.remove();
   bvRenderAdSetRows();
+  bvToast(`${count} ad set cop${count === 1 ? "y" : "ies"} added — see them all with "View all ad sets".`);
 }
 
 function bvRemoveAdSetRow(i) {
@@ -3106,37 +3416,15 @@ function bvRemoveAdSetRow(i) {
   bvRenderAdSetRows();
 }
 
-function bvRenderAdSetRows() {
-  const wrap = document.getElementById("adSetRows");
-  if (!wrap) return;
-  const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
-  // Optimization goal is a real choice for a website-destination ad; WhatsApp
-  // ads are always optimized for CONVERSATIONS -- Meta requires that for
-  // Click-to-WhatsApp under Sales, not something ai-auto-launch-tests can
-  // override no matter what's picked here (see its own comment on this).
-  const isWhatsappDest = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
-
-  // WhatsApp ads are always Sales/Conversations under the hood (a real Meta
-  // requirement for Click-to-WhatsApp) no matter what's picked in the
-  // objective select -- lock it visibly instead of letting the user choose
-  // something ai-auto-launch-tests will silently override.
-  const objSelect = document.getElementById("f_objective");
-  const objNote = document.getElementById("f_objectiveNote");
-  if (objSelect) {
-    objSelect.disabled = isWhatsappDest;
-    if (isWhatsappDest) objSelect.value = "OUTCOME_SALES";
-  }
-  if (objNote) {
-    objNote.textContent = isWhatsappDest
-      ? "WhatsApp ads are always Sales/Conversations — Meta requires this for Click-to-WhatsApp."
-      : "";
-  }
-
-  wrap.innerHTML = bvAdSetRows.map((row, i) => `
+function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
+  return `
     <div class="bv-section-card">
       <div class="bv-section-card-title" style="justify-content:space-between;margin-bottom:10px;">
-        <span><span class="bv-ico">▦</span> ${row.label}${i === 0 ? " (original)" : " (copy)"}</span>
-        ${i > 0 ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;font-weight:400;">✕ Remove</button>` : ""}
+        <span><span class="bv-ico">▦</span> <span data-astitle="${i}">${escH(bvAdSetName(row))}</span>${i === 0 ? " (original)" : " (copy)"}</span>
+        ${i > 0 && !inModal ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;font-weight:400;">✕ Remove</button>` : ""}
+      </div>
+      <div class="field" style="margin-bottom:14px;"><label>Ad set name <span style="font-weight:400;color:var(--muted);">(shown on Meta exactly as you type it)</span></label>
+        <input value="${escH(row.display_name || "")}" maxlength="120" placeholder="${escH(row.label)} — type your own name" oninput="bvSetAdSetName(${i}, this.value)">
       </div>
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin-bottom:8px;">Budget</div>
@@ -3217,12 +3505,44 @@ function bvRenderAdSetRows() {
         <input type="number" min="1" step="1" value="${row.bid_amount_naira || ""}" placeholder="e.g. 500" onchange="bvUpdateAdSetRow(${i}, 'bid_amount_naira', this.value)">
       </div>` : ""}
     </div>
-  `).join("") + `
+  `;
+}
+
+function bvRenderAdSetRows() {
+  const wrap = document.getElementById("adSetRows");
+  if (!wrap) return;
+  const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
+  // Optimization goal is a real choice for a website-destination ad; WhatsApp
+  // ads are always optimized for CONVERSATIONS -- Meta requires that for
+  // Click-to-WhatsApp under Sales, not something ai-auto-launch-tests can
+  // override no matter what's picked here (see its own comment on this).
+  const isWhatsappDest = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+
+  // WhatsApp ads are always Sales/Conversations under the hood (a real Meta
+  // requirement for Click-to-WhatsApp) no matter what's picked in the
+  // objective select -- lock it visibly instead of letting the user choose
+  // something ai-auto-launch-tests will silently override.
+  const objSelect = document.getElementById("f_objective");
+  const objNote = document.getElementById("f_objectiveNote");
+  if (objSelect) {
+    objSelect.disabled = isWhatsappDest;
+    if (isWhatsappDest) objSelect.value = "OUTCOME_SALES";
+  }
+  if (objNote) {
+    objNote.textContent = isWhatsappDest
+      ? "WhatsApp ads are always Sales/Conversations — Meta requires this for Click-to-WhatsApp."
+      : "";
+  }
+
+  wrap.innerHTML = bvAdSetRows.map((row, i) => bvAdSetCardHtml(row, i, isWhatsappDest)).join("") + `
     <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenDuplicateAdSetModal()">⧉ Duplicate ad set…</button>
+      <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenAdSetListModal()">☰ View all ad sets (${bvAdSetRows.length})</button>
       <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
     </div>`;
   bvRenderBuilderSummary();
+  bvRefreshAdSetEdit();
+  bvRefreshAdSetList();
 }
 
 // ── LAUNCHED AD DETAIL/EDIT MODAL ────────────────────────────────────────────

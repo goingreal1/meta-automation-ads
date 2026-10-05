@@ -804,7 +804,7 @@ async function launchAdSetGroup(
     // real "Lunessa Whatsapp ADSET" runs 3 distinct ad copies side by side).
     // Every ad set created below gets one ad per copy here, not just one
     // shared ad, so testing 3 copies across 4 ad sets produces 12 real ads.
-    const localCreatives: { id: string; metaCreativeId: string; fileName: string }[] = [];
+    const localCreatives: { id: string; metaCreativeId: string; fileName: string; adName: string }[] = [];
     for (const copy of creativeGroup) {
       const media = await ensureMetaMedia(supabase, accountId, copy);
       if (!media || media.error) {
@@ -817,7 +817,7 @@ async function launchAdSetGroup(
       const { data: localCreativeRow, error: localCreativeErr } = await supabase
         .from("creatives")
         .insert({
-          creative_name: `${productName}-${copy.file_name}`,
+          creative_name: String(copy.ad_name ?? "").trim() || `${productName}-${copy.file_name}`,
           format: copy.format || "customer_review",
           mechanism: copy.mechanism || "why_product_works",
           awareness_stage: "product_aware",
@@ -848,7 +848,7 @@ async function launchAdSetGroup(
         // over a unique-constraint hit.
         const { data: existing } = await supabase.from("creatives").select("id").eq("meta_ad_id", adCreativeId).maybeSingle();
         if (existing) {
-          localCreatives.push({ id: existing.id, metaCreativeId: adCreativeId, fileName: copy.file_name });
+          localCreatives.push({ id: existing.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim() });
           continue;
         }
       }
@@ -856,7 +856,7 @@ async function launchAdSetGroup(
         console.error("Failed to record local creative row:", localCreativeErr);
         return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
       }
-      localCreatives.push({ id: localCreativeRow.id, metaCreativeId: adCreativeId, fileName: copy.file_name });
+      localCreatives.push({ id: localCreativeRow.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim() });
     }
     // Kept for backward compat with dashboard code that still reads
     // ad_sets.creative_id as a single value (e.g. the creative-detail modal) --
@@ -871,6 +871,8 @@ async function launchAdSetGroup(
     for (const config of adSetConfigs) {
       const targeting = await buildTargetingFromConfig(config, destinationType);
       const label = config.label;
+      // A name typed in the builder is used exactly as written; otherwise the old generated name.
+      const customAdSetName = String(config.display_name ?? "").trim();
 
       // Per-ad-set resolution, each falling back to the exact previous fixed
       // behavior when the config row doesn't set it. WhatsApp's optimization
@@ -899,7 +901,7 @@ async function launchAdSetGroup(
         body: JSON.stringify({
           campaign_id: campaignId,
           ...buildAdSetPayload({
-            name: `${label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
+            name: customAdSetName || `${label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
             budgetNaira: Number(config.budget_naira || 5000),
             budgetType,
             targeting,
@@ -926,7 +928,7 @@ async function launchAdSetGroup(
         .insert({
           campaign_id: localCampaignId,
           meta_adset_id: adsetData.id,
-          adset_name: `${label}-${creative.file_name}`,
+          adset_name: customAdSetName || `${label}-${creative.file_name}`,
           creative_id: localCreativeId,
           targeting_type: config.geo_type === "states" ? "narrow" : "broad",
           budget_naira: budgetType === "abo" ? Number(config.budget_naira || 5000) : null,
@@ -975,7 +977,7 @@ async function launchAdSetGroup(
         const adId = await createAdWithCTA(
           a.metaId,
           lc.metaCreativeId,
-          `AD-${a.label}-${lc.fileName.substring(0, 20)}-${Date.now()}`,
+          lc.adName || `AD-${a.label}-${lc.fileName.substring(0, 20)}-${Date.now()}`,
           accountId
         );
         if (!adId) {
