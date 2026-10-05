@@ -5463,9 +5463,16 @@ async function bvFinishRecording(rec) {
         ext = "mp3";
       }
     } else if (!rawType.includes("ogg")) {
-      // Safari records MP4/AAC, which WhatsApp mis-handles -- mp3 is the safe fallback.
-      blob = await bvWebmToMp3(blob);
-      ext = "mp3";
+      // Safari records MP4/AAC, which WhatsApp rejects as a voice note. Encode
+      // real Opus instead; mp3 (plain audio file) only if that fails.
+      try {
+        blob = await bvAudioToOggOpus(blob);
+        ext = "ogg";
+      } catch (err) {
+        console.warn("Opus encode failed, falling back to mp3:", err);
+        blob = await bvWebmToMp3(blob);
+        ext = "mp3";
+      }
     }
     const file = new File([blob], `voice-note-${Date.now()}.${ext}`, { type: blob.type });
     bvOpenMediaPreview(file, { voiceNote: true });
@@ -5602,6 +5609,64 @@ async function bvWebmOpusToOgg(blob) {
     pages.push(bvOggPage(group, i >= packets.length ? 0x04 : 0, granule, serial, seq++));
   }
   return new Blob(pages, { type: "audio/ogg; codecs=opus" });
+}
+
+// ── Opus encoding for browsers that can't record it (Safari / iPhone) ────────
+// Decodes the recording, then encodes it to OGG/Opus with libopus (WASM, served
+// from our own origin as /opus-encoder-worker.min.js -- opus-recorder, MIT).
+function bvOpusEncode(pcm, sampleRate) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker("/opus-encoder-worker.min.js");
+    const pages = [];
+    const timer = setTimeout(() => { worker.terminate(); reject(new Error("opus encoder timed out")); }, 30000);
+    worker.onerror = (e) => { clearTimeout(timer); worker.terminate(); reject(new Error(e.message || "opus encoder failed")); };
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.message === "ready") {
+        worker.postMessage({ command: "getHeaderPages" }); // OpusHead + OpusTags
+        worker.postMessage({ command: "encode", buffers: [pcm] });
+        worker.postMessage({ command: "done" });
+      } else if (m.message === "page") {
+        pages.push(m.page);
+      } else if (m.message === "done") {
+        clearTimeout(timer);
+        worker.terminate();
+        resolve(new Blob(pages, { type: "audio/ogg; codecs=opus" }));
+      }
+    };
+    worker.postMessage({ command: "init", originalSampleRate: sampleRate, numberOfChannels: 1, encoderSampleRate: 48000, encoderApplication: 2048, encoderFrameSize: 20, resampleQuality: 3, streamPages: false });
+  });
+}
+
+async function bvAudioToOggOpus(blob) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    // Safari's decodeAudioData is callback-based on older versions.
+    const data = await blob.arrayBuffer();
+    const audio = await new Promise((res, rej) => { const r = ctx.decodeAudioData(data, res, rej); if (r?.then) r.then(res, rej); });
+    const mono = new Float32Array(audio.length);
+    for (let c = 0; c < audio.numberOfChannels; c++) {
+      const ch = audio.getChannelData(c);
+      for (let i = 0; i < mono.length; i++) mono[i] += ch[i] / audio.numberOfChannels;
+    }
+    const ogg = await bvOpusEncode(mono, audio.sampleRate);
+    // Sanity check: the last Ogg page's granule position is the length in 48 kHz
+    // samples; it must match the source length or something went wrong.
+    const bytes = new Uint8Array(await ogg.arrayBuffer());
+    let last = -1;
+    for (let i = bytes.length - 27; i >= 0; i--) {
+      if (bytes[i] === 0x4f && bytes[i + 1] === 0x67 && bytes[i + 2] === 0x67 && bytes[i + 3] === 0x53) { last = i; break; }
+    }
+    if (last < 0) throw new Error("opus output has no pages");
+    const dv = new DataView(bytes.buffer, last);
+    const granule = dv.getUint32(6, true) + dv.getUint32(10, true) * 4294967296;
+    if (Math.abs(granule / 48000 - audio.duration) > Math.max(0.3, audio.duration * 0.1)) {
+      throw new Error("opus output length mismatch");
+    }
+    return ogg;
+  } finally {
+    ctx.close();
+  }
 }
 
 // Served from our own origin first (ad blockers / office networks often block

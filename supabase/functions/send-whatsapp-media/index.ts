@@ -107,6 +107,29 @@ Deno.serve(async (req: Request) => {
     const mediaPayload: Record<string, any> = { link: publicUrl };
     if (caption && mediaType !== "audio") mediaPayload.caption = caption; // WhatsApp doesn't support captions on audio
 
+    // OGG/Opus audio only shows up as a real voice note (sender's profile
+    // picture, mic icon, waveform) when it is uploaded to WhatsApp as
+    // "audio/ogg; codecs=opus" and sent by media id. Sent by link, WhatsApp
+    // treats it as a plain audio file (music-note icon).
+    if (mediaType === "audio" && baseType === "audio/ogg") {
+      const form = new FormData();
+      form.append("messaging_product", "whatsapp");
+      form.append("type", "audio/ogg; codecs=opus");
+      form.append("file", new Blob([new Uint8Array(arrayBuffer)], { type: "audio/ogg; codecs=opus" }), "voice.ogg");
+      const upRes = await fetch(`${META_GRAPH_BASE}/${phoneId}/media`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const upData = await upRes.json();
+      if (upRes.ok && upData?.id) {
+        delete mediaPayload.link;
+        mediaPayload.id = upData.id;
+      } else {
+        console.error("WhatsApp media upload failed, falling back to link:", upData);
+      }
+    }
+
     const waRes = await fetch(`${META_GRAPH_BASE}/${phoneId}/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
