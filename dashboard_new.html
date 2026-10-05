@@ -822,6 +822,96 @@ html{-webkit-text-size-adjust:100%;}
   /* 16px inputs: iPhones zoom the page in on anything smaller. */
   #bvBuilderOverlay input:not([type=checkbox]):not([type=radio]),#bvBuilderOverlay select,#bvBuilderOverlay textarea{font-size:16px;}
 }
+
+/* ── ADS MANAGER (Campaigns tab) + KILL RULES (Settings) ───────────────────── */
+.am-acct{font-family:Inter,system-ui,sans-serif;font-size:12px;font-weight:600;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;margin-left:8px;vertical-align:middle;}
+.am-banner{background:var(--warnBg);border:1px solid var(--warnBdr);border-radius:12px;padding:12px 14px;margin-bottom:16px;}
+.am-banner-t{font-weight:700;color:var(--warn);font-size:13px;margin-bottom:8px;}
+.am-banner-r{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--warnBdr);font-size:12.5px;}
+.am-banner-n{font-weight:600;color:var(--text);flex:0 1 260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.am-banner-why{flex:1;color:var(--text2);}
+.am-flagbtn{padding:4px 10px;font-size:11px;flex-shrink:0;}
+.am-tabs{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;}
+.am-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-size:13.5px;font-weight:600;padding:11px 6px;margin-right:20px;cursor:pointer;display:flex;align-items:center;gap:7px;}
+.am-tab.active{color:var(--text);border-bottom-color:var(--accent);}
+.am-tab-n{font-size:11px;font-weight:700;background:var(--panel2);color:var(--muted);border-radius:20px;padding:1px 8px;}
+.am-tab.active .am-tab-n{background:var(--accent);color:#fff;}
+.am-actions select{width:auto;padding:5px 9px;font-size:12.5px;}
+.am-filter{margin-left:auto;width:auto;padding:5px 9px;font-size:12px;}
+.am-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.am-chip{background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accent);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;}
+.am-chip a{cursor:pointer;margin-left:6px;opacity:.7;}
+.am-table{border:1px solid var(--border);border-radius:12px;overflow-x:auto;background:var(--panel);}
+.am-row{display:grid;grid-template-columns:34px 56px minmax(240px,1fr) 128px 90px 104px 96px 100px 86px 66px;align-items:center;min-width:960px;border-bottom:1px solid var(--border);}
+.am-row:last-child{border-bottom:none;}
+.am-top,.am-metrics{display:contents;}
+.am-c{padding:11px 8px;font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;}
+.am-c b{color:var(--text);font-weight:700;}
+.am-c-chk{padding-left:14px;padding-right:0;}
+.am-c-chk input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
+.am-head .am-c{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel2);}
+.am-row.off .am-c-name,.am-row.off .am-metrics .am-c{opacity:.62;}
+.am-row.flag{background:var(--warnBg);}
+.am-foot{background:var(--panel2);font-weight:600;}
+.am-foot .am-c-name{color:var(--muted);font-size:12px;}
+.am-c-name{display:flex;align-items:center;gap:10px;min-width:0;}
+.am-name{min-width:0;display:flex;flex-direction:column;}
+.am-name-t{color:var(--text);font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
+.am-sub{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;}
+.am-link{cursor:pointer;display:flex;flex-direction:column;min-width:0;}
+.am-link:hover .am-name-t{color:var(--accent);text-decoration:underline;}
+.am-thumb{width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0;border:1px solid var(--border);}
+.am-sw{display:block;width:38px;height:22px;}
+.am-sw .sw-track{border-radius:11px;}
+.am-sw .sw-track::after{width:16px;height:16px;left:3px;top:3px;}
+.am-sw input:checked + .sw-track::after{transform:translateX(16px);}
+.am-flagline{grid-column:1/-1;padding:0 14px 11px 104px;font-size:12px;color:var(--warn);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.am-stamp{margin-top:12px;font-size:11.5px;color:var(--muted);}
+.kr-block{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;}
+.kr-title{font-weight:700;font-size:14px;margin-bottom:10px;}
+.kr-switches{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:12px;}
+.kr-sw{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);cursor:pointer;}
+.kr-note{color:var(--muted);font-size:11.5px;}
+.kr-msg{margin-left:10px;font-size:12px;}
+.kr-log-r{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--text2);}
+.kr-log-t{flex:1;min-width:0;}
+.kr-log-d{color:var(--muted);font-size:11.5px;white-space:nowrap;}
+@media(max-width:760px){
+  .am-tabs{position:sticky;top:0;z-index:5;background:var(--bg);margin-left:-16px;margin-right:-16px;padding:0 16px;}
+  .am-tab{margin-right:10px;white-space:nowrap;font-size:13px;padding:10px 2px;}
+  .am-filter{width:76px;flex-shrink:0;}
+  .am-kpis{gap:8px;margin-bottom:14px;}
+  .am-kpis .kc{padding:10px 12px;}
+  .am-kpis .kc-lbl{font-size:10px;margin-bottom:4px;}
+  .am-kpis .kc-val{font-size:20px;}
+  .am-kpis .kc-sub{display:none;}
+  .am-banner-r{flex-wrap:wrap;}
+  .am-banner-n{flex-basis:100%;}
+  .am-banner-why{flex-basis:100%;}
+  .am-table{border:none;background:none;overflow:visible;}
+  .am-row{display:block;min-width:0;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel);}
+  .am-row.flag{background:var(--warnBg);border-color:var(--warnBdr);}
+  .am-head{display:none;}
+  .am-top{display:grid;grid-template-columns:auto auto 1fr;grid-template-areas:"chk sw name" ". . st";align-items:center;column-gap:10px;row-gap:4px;}
+  .am-c{padding:0;}
+  .am-c-chk{grid-area:chk;}
+  .am-c-sw{grid-area:sw;}
+  .am-c-name{grid-area:name;}
+  .am-c-st{grid-area:st;}
+  .am-c-name .am-name-t,.am-c-name .am-sub{white-space:normal;}
+  .am-sw{width:44px;height:26px;}
+  .sh-actions.am-actions{width:100%;flex-wrap:nowrap;}
+  .am-actions select{flex:1;min-width:0;}
+  .am-sw .sw-track{border-radius:13px;}
+  .am-sw .sw-track::after{width:20px;height:20px;}
+  .am-sw input:checked + .sw-track::after{transform:translateX(18px);}
+  .am-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+  .am-metrics .am-c::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px;}
+  .am-metrics .am-c b{font-size:15px;}
+  .am-flagline{padding:10px 0 0;}
+  .am-foot .am-c-name{grid-area:name;}
+  .kr-block .fg{grid-template-columns:1fr !important;}
+}
 </style>
 </head>
 <body>
@@ -1686,7 +1776,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -3307,7 +3397,388 @@ function bvBackToCampaign() {
   render();
 }
 
+// ── ADS MANAGER (live from Meta) ────────────────────────────────────────────
+// Campaigns / Ad sets / Ads exactly as Meta's Ads Manager shows them: real
+// status, WhatsApp conversations + cost per conversation, tick a campaign or
+// ad set to see only what is inside it, and a switch on every row that
+// pauses/resumes on Meta itself (via the ads-manager edge function).
+const AM_RANGES = [["today", "Today"], ["yesterday", "Yesterday"], ["last3", "Last 3 days"], ["last7", "Last 7 days"], ["last30", "Last 30 days"], ["lifetime", "Lifetime"]];
+const AM_STALE_MS = 90 * 1000;
+const AM_SINGULAR = { campaigns: "campaign", adsets: "adset", ads: "ad" };
+let am = {
+  data: null, key: "", loading: false, error: null, at: 0, req: 0,
+  level: "campaigns", range: "last7", filter: "all",
+  sel: { campaigns: new Set(), adsets: new Set() }, busy: new Set(),
+};
+const amKey = () => `${activeAccountId}|${am.range}`;
+const amEl = () => document.getElementById("amRoot");
+
+async function renderAdsManager(el) {
+  el.innerHTML = `<div id="amRoot"></div>`;
+  if (am.key !== amKey() || Date.now() - am.at > AM_STALE_MS) {
+    if (am.key !== amKey()) { am.data = null; am.sel = { campaigns: new Set(), adsets: new Set() }; }
+    amFetch();
+  } else {
+    amDraw();
+  }
+}
+
+async function amFetch() {
+  const my = ++am.req;
+  am.loading = true; am.error = null;
+  amDraw();
+  const key = amKey();
+  const r = await sbFn("ads-manager", { action: "list", range: am.range });
+  if (my !== am.req) return; // a newer request (range/account switch) owns the screen
+  am.loading = false;
+  if (!r || r.ok === false || r.error) {
+    am.error = r?.error || "Could not load from Meta.";
+  } else {
+    am.data = r; am.key = key; am.at = Date.now();
+    amPruneSelection();
+  }
+  amDraw();
+}
+
+function amPruneSelection() {
+  const d = am.data; if (!d) return;
+  const campIds = new Set(d.campaigns.map(c => c.id));
+  for (const id of [...am.sel.campaigns]) if (!campIds.has(id)) am.sel.campaigns.delete(id);
+  const setOk = new Set(d.adsets.filter(a => !am.sel.campaigns.size || am.sel.campaigns.has(a.campaign_id)).map(a => a.id));
+  for (const id of [...am.sel.adsets]) if (!setOk.has(id)) am.sel.adsets.delete(id);
+}
+
+function amDelivery(r) {
+  const e = r.effective_status || r.status;
+  const map = {
+    ACTIVE: ["Active", "active"], PAUSED: ["Paused", "paused"], CAMPAIGN_PAUSED: ["Campaign paused", "paused"],
+    ADSET_PAUSED: ["Ad set paused", "paused"], PENDING_REVIEW: ["In review", "pending"], IN_PROCESS: ["Processing", "pending"],
+    DISAPPROVED: ["Rejected", "rejected"], WITH_ISSUES: ["Has issues", "watch"], PENDING_BILLING_INFO: ["Billing issue", "watch"],
+    ARCHIVED: ["Archived", "off"], DELETED: ["Deleted", "off"],
+  };
+  const [label, cls] = map[e] || [String(e || "—").replace(/_/g, " ").toLowerCase(), "off"];
+  return `<span class="pill ${cls}">${escH(label)}</span>`;
+}
+
+function amRows(level) {
+  const d = am.data; if (!d) return [];
+  let rows;
+  if (level === "campaigns") rows = d.campaigns;
+  else if (level === "adsets") {
+    rows = d.adsets;
+    if (am.sel.campaigns.size) rows = rows.filter(a => am.sel.campaigns.has(a.campaign_id));
+  } else {
+    rows = d.ads;
+    if (am.sel.adsets.size) rows = rows.filter(a => am.sel.adsets.has(a.adset_id));
+    else if (am.sel.campaigns.size) rows = rows.filter(a => am.sel.campaigns.has(a.campaign_id));
+  }
+  rows = rows.filter(r => !["DELETED", "ARCHIVED"].includes(r.effective_status));
+  if (am.filter === "active") rows = rows.filter(r => r.status === "ACTIVE");
+  else if (am.filter === "paused") rows = rows.filter(r => r.status !== "ACTIVE");
+  return [...rows].sort((a, b) => (b.status === "ACTIVE") - (a.status === "ACTIVE") || b.spend - a.spend);
+}
+
+function amFmtResult(r) {
+  if (r.results == null) return "—";
+  return String(r.results);
+}
+
+function amRowHtml(level, r) {
+  const d = am.data;
+  const on = r.status === "ACTIVE";
+  const busy = am.busy.has(r.id);
+  const checkable = level !== "ads";
+  const checked = checkable && am.sel[level].has(r.id);
+  let sub = "";
+  if (level === "adsets") sub = escH(d.campaigns.find(c => c.id === r.campaign_id)?.name || "");
+  if (level === "ads") sub = escH(d.adsets.find(s => s.id === r.adset_id)?.name || "");
+  if (level !== "ads" && r.daily_budget) sub += `${sub ? " · " : ""}${fN(r.daily_budget)}/day`;
+  const flag = level === "ads" && r.suggestion?.kill && on;
+  const thumb = level === "ads" && r.thumbnail_url ? `<img class="am-thumb" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
+  const next = level === "campaigns" ? "View ad sets" : level === "adsets" ? "View ads" : "";
+  const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}`;
+  return `
+    <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}">
+      <div class="am-top">
+        <div class="am-c am-c-chk">${checkable ? `<input type="checkbox" ${checked ? "checked" : ""} onchange="amToggleSel('${level}','${r.id}',this.checked)" aria-label="Select">` : ""}</div>
+        <div class="am-c am-c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)"><span class="sw-track"></span></label></div>
+        <div class="am-c am-c-name">${thumb}<div class="am-name">${next ? `<a class="am-link" onclick="amDrill('${level}','${r.id}')" title="${next}">${nameInner}</a>` : nameInner}</div></div>
+        <div class="am-c am-c-st">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div>
+      </div>
+      <div class="am-metrics">
+        <div class="am-c am-c-res" data-label="${escH(r.result_label || "Results")}"><b>${amFmtResult(r)}</b></div>
+        <div class="am-c am-c-cpr" data-label="Cost / result"><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div>
+        <div class="am-c am-c-spend" data-label="Spent"><b>${fN(r.spend)}</b></div>
+        <div class="am-c am-c-imp" data-label="Impressions">${Number(r.impressions).toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-clk" data-label="Link clicks">${Number(r.clicks).toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-ctr" data-label="CTR">${r.impressions ? Number(r.ctr).toFixed(2) + "%" : "—"}</div>
+      </div>
+      ${flag ? `<div class="am-flagline">⚠ ${escH(r.suggestion.reason)} <button type="button" class="btn btn-g am-flagbtn" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause this ad</button></div>` : ""}
+    </div>`;
+}
+
+function amTotals(rows) {
+  const sum = k => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const msg = rows.filter(r => r.kind === "messaging");
+  const pur = rows.filter(r => r.kind === "purchase");
+  const pick = msg.length ? msg : pur;
+  const results = pick.reduce((s, r) => s + (r.results || 0), 0);
+  const spend = pick.reduce((s, r) => s + r.spend, 0);
+  return {
+    spend: sum("spend"), imp: sum("impressions"), clk: sum("clicks"), results, label: msg.length ? "Conversations" : pur.length ? "Purchases" : "",
+    cpr: results > 0 ? spend / results : null,
+  };
+}
+
+function amDraw() {
+  const root = amEl(); if (!root) return;
+  const d = am.data;
+  const rangeSel = `<select id="amRange" onchange="amSetRange(this.value)" aria-label="Date range">${AM_RANGES.map(([k, l]) => `<option value="${k}" ${am.range === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  const header = `
+    <div class="sh">
+      <div class="sh-title">Campaigns${d?.account?.name ? ` <span class="am-acct">${escH(d.account.name)}</span>` : ""}</div>
+      <div class="sh-actions am-actions">
+        <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenObjectiveGateModal()">+ Create</button>
+        ${rangeSel}
+        <button class="btn btn-g" id="amRefresh" onclick="amFetch()" ${am.loading ? "disabled" : ""}>${am.loading ? '<span class="spin"></span> Loading…' : "↻ Refresh"}</button>
+      </div>
+    </div>`;
+
+  if (am.error && !d) {
+    root.innerHTML = header + `<div class="msg err" style="display:block;">❌ ${escH(am.error)}</div>`;
+    return;
+  }
+  if (!d) {
+    root.innerHTML = header + `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div><div style="margin-top:10px;">Loading live numbers from Meta…</div></div>`;
+    return;
+  }
+
+  const flagged = d.ads.filter(a => a.status === "ACTIVE" && a.suggestion?.kill);
+  const banner = flagged.length ? `
+    <div class="am-banner">
+      <div class="am-banner-t">⚠ ${flagged.length} ad${flagged.length === 1 ? "" : "s"} ${flagged.length === 1 ? "breaks" : "break"} your kill rule</div>
+      ${flagged.slice(0, 5).map(a => `<div class="am-banner-r"><span class="am-banner-n">${escH(a.name)}</span><span class="am-banner-why">${escH(a.suggestion.reason)}</span><button type="button" class="btn btn-g am-flagbtn" onclick="amSetStatus('ad','${a.id}','PAUSED','kill rule suggestion')">Pause</button></div>`).join("")}
+      ${flagged.length > 5 ? `<div class="am-sub">…and ${flagged.length - 5} more in the Ads tab.</div>` : ""}
+    </div>` : "";
+
+  const t = amTotals(d.campaigns);
+  const liveAds = d.ads.filter(a => a.status === "ACTIVE" && a.effective_status === "ACTIVE").length;
+  const kpis = `
+    <div class="g4 am-kpis">
+      <div class="kc"><div class="kc-lbl">Spent</div><div class="kc-val">${fN(t.spend)}</div><div class="kc-sub">${(AM_RANGES.find(x => x[0] === am.range) || [])[1] || ""}</div></div>
+      <div class="kc"><div class="kc-lbl">${t.label || "Results"}</div><div class="kc-val a">${t.results.toLocaleString("en-NG")}</div><div class="kc-sub">${t.label === "Conversations" ? "WhatsApp chats started" : ""}</div></div>
+      <div class="kc"><div class="kc-lbl">Cost per ${t.label === "Purchases" ? "purchase" : "conversation"}</div><div class="kc-val">${t.cpr != null ? fN(t.cpr) : "—"}</div><div class="kc-sub">&nbsp;</div></div>
+      <div class="kc"><div class="kc-lbl">Ads delivering</div><div class="kc-val b">${liveAds}</div><div class="kc-sub">of ${d.ads.length} ads</div></div>
+    </div>`;
+
+  const lvl = am.level;
+  const counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
+  const tabs = [["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]];
+  const tabsHtml = `<div class="am-tabs">${tabs.map(([k, l]) => `<button type="button" class="am-tab${lvl === k ? " active" : ""}" onclick="amSetLevel('${k}')">${l} <span class="am-tab-n">${counts[k]}</span></button>`).join("")}
+    <select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="all" ${am.filter === "all" ? "selected" : ""}>All</option><option value="active" ${am.filter === "active" ? "selected" : ""}>Active</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option></select></div>`;
+
+  const chips = [];
+  if (lvl !== "campaigns" && am.sel.campaigns.size) {
+    const names = [...am.sel.campaigns].map(id => d.campaigns.find(c => c.id === id)?.name).filter(Boolean);
+    chips.push(`<span class="am-chip">Campaign: ${escH(names.join(", "))} <a onclick="amClearSel('campaigns')" aria-label="Clear">✕</a></span>`);
+  }
+  if (lvl === "ads" && am.sel.adsets.size) {
+    const names = [...am.sel.adsets].map(id => d.adsets.find(s => s.id === id)?.name).filter(Boolean);
+    chips.push(`<span class="am-chip">Ad set: ${escH(names.join(", "))} <a onclick="amClearSel('adsets')" aria-label="Clear">✕</a></span>`);
+  }
+
+  const rows = amRows(lvl);
+  const tot = amTotals(rows);
+  const allChecked = lvl !== "ads" && rows.length > 0 && rows.every(r => am.sel[lvl].has(r.id));
+  const head = `
+    <div class="am-row am-head">
+      <div class="am-top">
+        <div class="am-c am-c-chk">${lvl !== "ads" ? `<input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('${lvl}',this.checked)" aria-label="Select all">` : ""}</div>
+        <div class="am-c am-c-sw"></div><div class="am-c am-c-name">${lvl === "campaigns" ? "Campaign" : lvl === "adsets" ? "Ad set" : "Ad"}</div><div class="am-c am-c-st">Delivery</div>
+      </div>
+      <div class="am-metrics"><div class="am-c am-c-res">Results</div><div class="am-c am-c-cpr">Cost / result</div><div class="am-c am-c-spend">Spent</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
+    </div>`;
+  const foot = rows.length ? `
+    <div class="am-row am-foot">
+      <div class="am-top"><div class="am-c am-c-chk"></div><div class="am-c am-c-sw"></div><div class="am-c am-c-name">Total · ${rows.length} ${lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad"}${rows.length === 1 ? "" : "s"}</div><div class="am-c am-c-st"></div></div>
+      <div class="am-metrics">
+        <div class="am-c am-c-res" data-label="${escH(tot.label || "Results")}"><b>${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</b></div>
+        <div class="am-c am-c-cpr" data-label="Cost / result"><b>${tot.cpr != null ? fN(tot.cpr) : "—"}</b></div>
+        <div class="am-c am-c-spend" data-label="Spent"><b>${fN(tot.spend)}</b></div>
+        <div class="am-c am-c-imp" data-label="Impressions">${tot.imp.toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-clk" data-label="Link clicks">${tot.clk.toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-ctr" data-label="CTR"></div>
+      </div>
+    </div>` : "";
+
+  const body = rows.length
+    ? `<div class="am-table">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
+    : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
+
+  root.innerHTML = `${header}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${body}
+    <div class="am-stamp">Live from Meta · updated ${ago(new Date(am.at).toISOString())} · switches pause/resume on Meta itself</div>`;
+}
+
+function amSetLevel(l) { am.level = l; amDraw(); }
+function amSetFilter(f) { am.filter = f; amDraw(); }
+function amSetRange(r) { am.range = r; am.at = 0; amFetch(); }
+function amToggleSel(level, id, on) {
+  on ? am.sel[level].add(id) : am.sel[level].delete(id);
+  if (level === "campaigns") amPruneSelection();
+  amDraw();
+}
+function amSelectAll(level, on) {
+  const rows = amRows(level);
+  rows.forEach(r => on ? am.sel[level].add(r.id) : am.sel[level].delete(r.id));
+  if (level === "campaigns") amPruneSelection();
+  amDraw();
+}
+function amClearSel(level) {
+  am.sel[level].clear();
+  if (level === "campaigns") am.sel.adsets.clear();
+  amDraw();
+}
+function amDrill(level, id) {
+  if (level === "campaigns") { am.sel = { campaigns: new Set([id]), adsets: new Set() }; am.level = "adsets"; }
+  else if (level === "adsets") {
+    const s = am.data.adsets.find(x => x.id === id);
+    am.sel = { campaigns: new Set(s ? [s.campaign_id] : []), adsets: new Set([id]) }; am.level = "ads";
+  }
+  amDraw();
+  window.scrollTo({ top: 0 });
+}
+
+function amFind(level, id) {
+  const d = am.data;
+  return (level === "campaign" ? d.campaigns : level === "adset" ? d.adsets : d.ads).find(r => r.id === id);
+}
+
+// The switch flips visually first; pausing a whole campaign/ad set asks first
+// because it stops everything inside it.
+function amSwitch(level, id, input) {
+  const turnOn = input.checked;
+  const r = amFind(level, id); if (!r) return;
+  if (turnOn || level === "ad") return amSetStatus(level, id, turnOn ? "ACTIVE" : "PAUSED");
+  const live = level === "campaign"
+    ? am.data.adsets.filter(s => s.campaign_id === id && s.status === "ACTIVE").length
+    : am.data.ads.filter(a => a.adset_id === id && a.status === "ACTIVE").length;
+  const what = level === "campaign" ? "campaign" : "ad set";
+  const inner = level === "campaign" ? "ad sets" : "ads";
+  bvModal(`Pause this ${what}?`, `
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px;"><b>${escH(r.name)}</b><br>${live} live ${inner} inside will stop delivering. You can turn it back on any time.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-g" onclick="bvCloseModal();amDraw()">Cancel</button>
+      <button class="btn btn-a" style="background:var(--danger);border-color:var(--danger);" onclick="bvCloseModal();amSetStatus('${level}','${id}','PAUSED')">Pause on Meta</button>
+    </div>`);
+}
+
+async function amSetStatus(level, id, status, reason) {
+  const r = amFind(level, id); if (!r) return;
+  am.busy.add(id); amDraw();
+  const res = await sbFn("ads-manager", { action: "set_status", level, object_id: id, status, reason });
+  am.busy.delete(id);
+  if (res && res.ok) {
+    r.status = res.status; r.effective_status = res.effective_status;
+    bvToast(`${status === "PAUSED" ? "Paused" : "Turned on"} on Meta: ${r.name}`);
+    amDraw();
+    amQuietRefresh();
+  } else {
+    bvToast(res?.error || "Meta did not accept that change.", "err");
+    amDraw();
+  }
+}
+
+// After a switch, parents/children change delivery too (a paused campaign
+// pauses everything inside it) -- pull Meta's truth without a spinner.
+async function amQuietRefresh() {
+  const my = ++am.req;
+  const key = amKey();
+  const r = await sbFn("ads-manager", { action: "list", range: am.range });
+  if (my !== am.req || !r || r.ok === false || r.error) return;
+  am.data = r; am.key = key; am.at = Date.now();
+  amPruneSelection();
+  amDraw();
+}
+
+// ── KILL RULES (Settings) ───────────────────────────────────────────────────
+const KR_KINDS = [
+  { kind: "messaging", icon: "💬", title: "WhatsApp message ads", unit: "conversation", defaults: { max: 100, spend: 150, hours: 6 } },
+  { kind: "purchase", icon: "🛒", title: "Website purchase ads", unit: "purchase", defaults: { max: 2500, spend: 3000, hours: 48 } },
+];
+
+function krSummary(unit, max, spend, hours, auto) {
+  return `An ad is flagged once it has spent at least ${fN(spend)} and run for ${hours}+ hours, and it either got no ${unit}s or costs more than ${fN(max)} per ${unit}. ${auto ? "It is then paused automatically within 15 minutes." : "You get a warning in Campaigns and pause it yourself."}`;
+}
+
+async function bvRenderKillRules() {
+  const el = document.getElementById("killRulesPanel"); if (!el) return;
+  if (!["owner", "admin", "buyer"].includes(window.myProfile?.role)) { el.remove(); return; }
+  const uid = sessionData?.user?.id;
+  const [rows, logs] = await Promise.all([
+    sbQuery("kill_rules", `select=*&profile_id=eq.${uid}`).catch(() => []),
+    sbQuery("ad_kill_log", "select=*&order=created_at.desc&limit=8").catch(() => []),
+  ]);
+  const byKind = Object.fromEntries((rows || []).map(r => [r.kind, r]));
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Ad kill rules</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Set when an ad should be killed, separately for WhatsApp-message ads and website-purchase ads. These rules are yours; other team members set their own.</div>
+    ${KR_KINDS.map(k => {
+      const r = byKind[k.kind];
+      const v = r || { enabled: false, auto_kill: false, max_cost_per_result: k.defaults.max, min_spend: k.defaults.spend, min_hours: k.defaults.hours };
+      return `
+      <div class="kr-block" id="kr_${k.kind}">
+        <div class="kr-title">${k.icon} ${k.title}</div>
+        <div class="kr-switches">
+          <label class="kr-sw"><span class="switch"><input type="checkbox" class="kr-enabled" ${v.enabled ? "checked" : ""}><span class="sw-track"></span></span> Use this rule${r ? "" : " <span class=\"kr-note\">(not set up yet)</span>"}</label>
+          <label class="kr-sw"><span class="switch"><input type="checkbox" class="kr-auto" ${v.auto_kill ? "checked" : ""}><span class="sw-track"></span></span> Pause automatically</label>
+        </div>
+        <div class="fg" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+          <div class="field"><label>Max cost per ${k.unit} (₦)</label><input type="number" min="1" class="kr-max" value="${Number(v.max_cost_per_result)}"></div>
+          <div class="field"><label>Judge after it spent (₦)</label><input type="number" min="0" class="kr-spend" value="${Number(v.min_spend)}"></div>
+          <div class="field"><label>Judge after running (hours)</label><input type="number" min="0" class="kr-hours" value="${Number(v.min_hours)}"></div>
+        </div>
+        <div class="kr-sum" style="font-size:11.5px;color:var(--muted);margin:8px 0 10px;">${krSummary(k.unit, v.max_cost_per_result, v.min_spend, v.min_hours, v.auto_kill)}</div>
+        <button type="button" class="btn btn-a" style="padding:6px 14px;" onclick="bvSaveKillRule('${k.kind}')">Save ${k.kind === "messaging" ? "message" : "purchase"} rule</button>
+        <span class="kr-msg" id="krMsg_${k.kind}"></span>
+      </div>`;
+    }).join("")}
+    ${logs?.length ? `
+      <div class="ph" style="margin-top:18px;"><div class="ph-title" style="font-size:14px;">Recent pauses &amp; restarts</div></div>
+      <div class="kr-log">${logs.map(l => `
+        <div class="kr-log-r"><span class="pill ${l.source === "auto" ? "scale" : "watch"}">${l.source === "auto" ? "Auto" : "By you"}</span>
+          <span class="kr-log-t"><b>${escH(l.object_name || l.meta_object_id)}</b> · ${l.level === "adset" ? "ad set" : l.level} ${l.action}${l.reason ? ` — ${escH(l.reason)}` : ""}</span>
+          <span class="kr-log-d">${ago(l.created_at)}</span></div>`).join("")}</div>` : ""}`;
+  for (const k of KR_KINDS) {
+    const box = document.getElementById(`kr_${k.kind}`);
+    box?.querySelectorAll("input").forEach(i => i.addEventListener("input", () => {
+      const g = c => box.querySelector(c);
+      g(".kr-sum").textContent = krSummary(k.unit, g(".kr-max").value || 0, g(".kr-spend").value || 0, g(".kr-hours").value || 0, g(".kr-auto").checked);
+    }));
+  }
+}
+
+async function bvSaveKillRule(kind) {
+  const box = document.getElementById(`kr_${kind}`); if (!box) return;
+  const msg = document.getElementById(`krMsg_${kind}`);
+  const g = c => box.querySelector(c);
+  const max = Number(g(".kr-max").value), spend = Number(g(".kr-spend").value), hours = Number(g(".kr-hours").value);
+  if (!(max > 0) || !(spend >= 0) || !(hours >= 0)) { msg.innerHTML = `<span style="color:var(--danger);">Enter valid numbers (max cost must be above 0).</span>`; return; }
+  const auto = g(".kr-auto").checked, enabled = g(".kr-enabled").checked;
+  if (auto && enabled && !confirm("Turn on automatic pausing? Ads that break this rule will be paused on Meta for you, without asking.")) return;
+  const { error } = await supabaseClient.from("kill_rules").upsert({
+    profile_id: sessionData.user.id, company_id: window.myProfile.company_id, kind,
+    enabled, auto_kill: auto, max_cost_per_result: max, min_spend: spend, min_hours: hours, updated_at: new Date().toISOString(),
+  }, { onConflict: "profile_id,kind" });
+  msg.innerHTML = error ? `<span style="color:var(--danger);">❌ ${escH(error.message)}</span>` : `<span style="color:var(--accent);">✅ Saved</span>`;
+  if (!error) { am.at = 0; setTimeout(() => { if (msg) msg.innerHTML = ""; }, 2500); }
+}
+
 async function renderCampaigns(el) {
+  // The live Ads Manager view replaces the old DB-backed drill-down; the older
+  // renderers below are kept for reference but no longer routed to.
+  return renderAdsManager(el);
+}
+async function renderCampaignsLegacy(el) {
   if (campaignsView.level === "campaign") return renderCampaignDetail(el, campaignsView.campaignId);
   if (campaignsView.level === "adset") return renderAdSetDetail(el, campaignsView.adSetId, campaignsView.campaignId);
   return renderCampaignsList(el);
@@ -7415,6 +7886,8 @@ async function renderSettings(el) {
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
 
     <div class="panel" id="notifPanel"></div>
+
+    <div class="panel" id="killRulesPanel"></div>
 
     <div class="panel">
       <div class="ph"><div class="ph-title">WhatsApp alerts</div></div>
