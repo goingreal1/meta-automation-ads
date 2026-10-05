@@ -51,12 +51,10 @@ Reply with ONLY a JSON object, keys in this order:
  "lead_type": "prospect" | "seller_pitch" | "spam" | "support" | "other",
  "stage": "new" | "qualifying" | "interested" | "objection" | "ready_to_pay" | "paid" | "lost",
  "notify": "none" | "hot_lead" | "needs_human",
- "reason": "one short line for the team (why it's hot / what they need)",
+ "reason": "one short line for the team",
  "stop_replying": false
 }
-- answer_is_in_business_info is FALSE whenever answering needs a fact (price, what's included, timeline, refund, guarantee, payment detail, availability) that is not written in the business information. If false: tell the customer you'll confirm that point with the team (you may still answer the parts that ARE covered) and set notify to "needs_human".
-- notify "hot_lead": they are ready to pay/start or sent proof of payment (still answer with the next step). "needs_human": complaint, wants a person, custom or bulk deal, anything outside the business info, anything you're unsure about.
-- "messages" may be [] only if the customer's message needs no reply at all (a bare thank-you or emoji).`;
+Follow the guidance above on when to flag the team. "messages" may be [] only if the customer's message needs no reply at all.`;
 
 async function loadTemplate(admin: any, agent: Agent): Promise<string> {
   if (agent.system_prompt?.trim()) return agent.system_prompt;
