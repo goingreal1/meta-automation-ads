@@ -326,8 +326,16 @@ async function createAdCreative(
             text_format: {
               customer_action_type: "autofill_message",
               message: {
-                text: `Hi! Interested in ${productName}? 👋`,
-                autofill_message: { content: `Hi, I'm interested in ${productName}` },
+                // What the customer sees when the chat opens, and what is pre-typed in their message
+                // box -- both typed in the dashboard per ad. When left blank: the linked product's name if
+                // there is one, otherwise a neutral line. Never the campaign name (that produced
+                // greetings like "Interested in ADS 12:12 AM buyer?"). Meta limit: greeting <= 300 chars.
+                text: String(creative.whatsapp_greeting ?? "").trim().slice(0, 300)
+                  || (productName ? `Hi! Interested in ${productName}? 👋` : "Hi! 👋 Thanks for clicking our ad. How can we help you today?"),
+                autofill_message: {
+                  content: String(creative.whatsapp_prefill ?? "").trim().slice(0, 1000)
+                    || (productName ? `Hi, I'm interested in ${productName}` : "Hi, I saw your ad and I'd like to know more."),
+                },
               },
             },
           },
@@ -810,7 +818,7 @@ async function launchAdSetGroup(
       if (!media || media.error) {
         return await abortAndCleanup(`Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`);
       }
-      const adCreativeId = await createAdCreative(accountId, pageId, igUserId, copy, media, destinationLink, ctaType, destinationType, productName);
+      const adCreativeId = await createAdCreative(accountId, pageId, igUserId, copy, media, destinationLink, ctaType, destinationType, creative.products?.product_name || "");
       if (!adCreativeId) {
         return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}).`);
       }
