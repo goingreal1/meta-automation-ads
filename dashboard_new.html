@@ -307,6 +307,21 @@ a{color:inherit;}
 .bv-prevtabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}
 .bv-prevtab{padding:6px 12px;border-radius:16px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;cursor:pointer;color:var(--text2);}
 .bv-prevtab.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
+
+.ai-num{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);}
+.ai-num:first-of-type{border-top:0;}
+.ai-pill{font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;background:var(--panel2);color:var(--muted);}
+.ai-pill.on{background:var(--accentBg);color:var(--accent);}
+.ai-chat{background:var(--panel2);border-radius:12px;padding:10px;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:6px;min-height:80px;}
+.ai-b{max-width:82%;padding:7px 11px;border-radius:14px;font-size:13px;line-height:1.35;white-space:pre-wrap;}
+.ai-b.me{align-self:flex-end;background:var(--accent);color:#fff;}
+.ai-b.bot{align-self:flex-start;background:var(--panel);border:1px solid var(--border);}
+.ai-note{align-self:center;font-size:11px;color:var(--muted);}
+.ai-modes{display:grid;gap:8px;margin:8px 0 14px;}
+.ai-mode{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:12px;cursor:pointer;}
+.ai-mode.on{border-color:var(--accent);background:var(--accentBg);}
+.ai-mode input{margin-top:3px;}
+.ai-ta{width:100%;min-height:78px;resize:vertical;font:inherit;font-size:13px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel);color:var(--text);}
 .bv-prevframe{display:flex;justify-content:center;padding:6px 0;overflow:auto;}
 .bv-prevwrap{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:#fff;}
 .bv-prevload{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--muted);}
@@ -1917,7 +1932,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -2681,9 +2696,9 @@ function bvOpenCampaignBuilder(presetObjective) {
                 <input id="f_ad_name" maxlength="120" placeholder="e.g. Mama Ngozi testimonial video"></div>
               <div id="f_waMsgBox" class="bv-wa-box">
                 <div class="field"><label>WhatsApp greeting <span style="font-weight:400;color:var(--muted);">(what the customer sees when the chat opens · max 300)</span></label>
-                  <textarea id="f_wa_greeting" rows="2" maxlength="300" placeholder="e.g. Hi! 👋 Thanks for clicking our ad. Which package are you interested in?"></textarea></div>
+                  <textarea id="f_wa_greeting" rows="2" maxlength="300" placeholder="Short & punchy, e.g. Welcome 👋 Want real orders from your ads? Tap send and I'll show you how."></textarea></div>
                 <div class="field" style="margin-top:12px;"><label>Pre-filled message <span style="font-weight:400;color:var(--muted);">(already typed in the customer's message box · max 500)</span></label>
-                  <textarea id="f_wa_prefill" rows="2" maxlength="500" placeholder="e.g. Hi, I want to know more about your media buying service"></textarea></div>
+                  <textarea id="f_wa_prefill" rows="2" maxlength="500" placeholder="e.g. Hi, I'm interested in getting more orders 🔥"></textarea></div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px;">Meta uses exactly what you type here. Left blank, a neutral line is used ("Hi, I saw your ad and I'd like to know more.") — never the campaign name.</div>
               </div>
               <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
@@ -5113,6 +5128,159 @@ const KR_KINDS = [
 
 function krSummary(unit, max, spend, hours, auto) {
   return `An ad is flagged once it has spent at least ${fN(spend)} and run for ${hours}+ hours, and it either got no ${unit}s or costs more than ${fN(max)} per ${unit}. ${auto ? "It is then paused automatically within 15 minutes." : "You get a warning in Campaigns and pause it yourself."}`;
+}
+
+
+// ── AI SALES AGENT (per WhatsApp number) ─────────────────────────────────────
+// Each connected number gets its own business profile, so the AI only ever talks about THAT business.
+const AI_MODE_LABEL = { off: "Off", first: "First reply only", full: "Replies to everything" };
+const AI_FIELDS = ["business_name", "agent_name", "business_type", "offer", "proof", "how_to_buy", "faqs", "rules", "opener"];
+const AI_TEMPLATES = {
+  media_buying: {
+    label: "Media buying / Meta ads service",
+    business_type: "done-for-you Meta (Facebook & Instagram) ads service",
+    offer: "We run Meta (Facebook & Instagram) ads for businesses so real customers message them on WhatsApp and buy. Done-for-you: targeting, creative direction, campaign set-up, daily monitoring and optimisation.\nPrice: ₦ per week (edit me).\nTarget: 500+ valid orders (a target, not a guarantee).\nNo website needed.",
+    how_to_buy: "When the customer is ready: tell them the team is sending payment details and next steps now (mark hot_lead). To start we need: what they sell, product price, their WhatsApp number, state/city.",
+    faqs: "Do I need a website? No — customers can message you on WhatsApp.",
+    rules: "Only talk about our Meta ads service. If asked about ad spend, contract length, refunds or anything not written above: say you'll confirm with the team (needs_human). Never promise income or exact orders.",
+    opener: "Hey {name} 👋 Welcome! We run Meta ads that bring real WhatsApp orders to your business.\n\nWhat do you sell? 🛒",
+  },
+  food: {
+    label: "Food / restaurant / small chops",
+    business_type: "food vendor",
+    offer: "We sell: (list your menu with prices, e.g. Jollof rice + chicken — ₦3,500).\nDelivery areas & fee: (edit me).\nOpening hours: (edit me).\nOrders are confirmed once payment is made / on delivery (edit me).",
+    how_to_buy: "1) Customer picks items & quantity. 2) Ask for delivery address + phone. 3) Share payment details / say pay on delivery (edit me). Mark hot_lead when they confirm an order.",
+    faqs: "How long is delivery? (edit me)\nDo you do bulk/party orders? Yes — the team will confirm price (needs_human).",
+    rules: "Only talk about our food and orders. Never invent menu items, prices or delivery times. Anything not written above: say you'll confirm with the team (needs_human).",
+    opener: "Hey {name} 👋 Welcome! Hungry? 😋\n\nTell me what you'd like and I'll sort your order fast.",
+  },
+};
+
+let bvAiNumbers = [], bvAiAgents = {};
+async function bvRenderAiAgents() {
+  const el = document.getElementById("aiAgentPanel"); if (!el) return;
+  if (!["owner", "admin", "buyer"].includes(window.myProfile?.role)) { el.remove(); return; }
+  const [nums, agents] = await Promise.all([
+    sbQuery("buyer_whatsapp_numbers", "select=id,nickname,display_phone_number,media_buyer_id,media_buyers(name)&status=eq.active&order=created_at.asc").catch(() => []),
+    sbQuery("ai_sales_agents", "select=*").catch(() => []),
+  ]);
+  bvAiNumbers = nums || []; bvAiAgents = {};
+  (agents || []).forEach(a => { bvAiAgents[a.buyer_whatsapp_number_id] = a; });
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">🤖 AI sales agent</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Replies to your customers on WhatsApp within seconds, like a sharp salesperson, and closes deals. Each WhatsApp number has its own profile, so the AI only ever talks about <b>that</b> business. You get pinged for hot leads, and it steps back as soon as you reply yourself.</div>
+    ${bvAiNumbers.length ? bvAiNumbers.map(n => {
+      const a = bvAiAgents[n.id], mode = a?.mode || "off";
+      return `<div class="ai-num"><div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13.5px;">${escH(n.nickname || n.display_phone_number)}</div><div style="font-size:11.5px;color:var(--muted);">${escH(n.display_phone_number || "")}${n.media_buyers?.name ? " · " + escH(n.media_buyers.name) : ""}</div></div>
+        <span class="ai-pill${mode !== "off" ? " on" : ""}">${AI_MODE_LABEL[mode]}</span>
+        <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenAiAgent('${n.id}')">${a ? "Edit" : "Set up"}</button></div>`;
+    }).join("") : `<div class="empty" style="padding:14px;">Connect a WhatsApp number first.</div>`}`;
+}
+
+function bvAiForm(n, a) {
+  const v = k => escH(a?.[k] ?? "");
+  const mode = a?.mode || "off";
+  const modeOpt = (m, title, sub) => `<label class="ai-mode${mode === m ? " on" : ""}"><input type="radio" name="ai_mode" value="${m}" ${mode === m ? "checked" : ""} onchange="document.querySelectorAll('.ai-mode').forEach(x=>x.classList.toggle('on',x.querySelector('input').checked))"><div><div style="font-weight:600;font-size:13px;">${title}</div><div style="font-size:11.5px;color:var(--muted);">${sub}</div></div></label>`;
+  const ta = (k, label, ph, hint) => `<div class="field" style="margin-top:12px;"><label>${label}${hint ? ` <span style="font-weight:400;color:var(--muted);">${hint}</span>` : ""}</label><textarea class="ai-ta" id="ai_${k}" placeholder="${escH(ph)}">${v(k)}</textarea></div>`;
+  return `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvAiOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:2px;">🤖 AI sales agent</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${escH(n.nickname || "")} ${escH(n.display_phone_number || "")}</div>
+    <div class="ai-modes">
+      ${modeOpt("off", "Off", "The AI stays quiet. Nothing is sent.")}
+      ${modeOpt("first", "First reply only", "Answers the very first message instantly, then leaves the chat to you.")}
+      ${modeOpt("full", "Replies to everything", "Chats, handles doubts and closes. Steps back when you reply or when it needs you.")}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">
+      <span style="font-size:11.5px;color:var(--muted);">Start from a template:</span>
+      ${Object.entries(AI_TEMPLATES).map(([k, t]) => `<button type="button" class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvAiApplyTemplate('${k}')">${escH(t.label)}</button>`).join("")}
+    </div>
+    <div class="fg">
+      <div class="field"><label>Business name</label><input id="ai_business_name" value="${v("business_name")}" placeholder="e.g. Mella Foods"></div>
+      <div class="field"><label>Name customers see</label><input id="ai_agent_name" value="${v("agent_name")}" placeholder="e.g. Sofi"></div>
+    </div>
+    <div class="field" style="margin-top:12px;"><label>What kind of business is it?</label><input id="ai_business_type" value="${v("business_type")}" placeholder="e.g. food vendor, Meta ads service, wig seller"></div>
+    ${ta("opener", "First reply (instant)", "Hey {name} 👋 Welcome! …", "— short and punchy. {name} = customer's first name")}
+    ${ta("offer", "What you sell + prices", "List what you offer, prices, what's included, delivery or timelines…", "— the AI only states facts written here")}
+    ${ta("proof", "Proof it can quote", "Results, number of customers served, testimonials you are happy to share…", "— leave empty if none; the AI won't invent any")}
+    ${ta("how_to_buy", "How a customer buys / pays", "Steps to order, bank account details, what you need from them…")}
+    ${ta("faqs", "Common questions & answers", "Q: … A: …")}
+    ${ta("rules", "Your own rules", "e.g. Never discuss other services. Don't give discounts. Hand over if they ask for bulk.")}
+    <div style="margin-top:16px;font-weight:600;font-size:13px;">Try it before you switch it on</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Type as if you were a customer. Nothing is sent to WhatsApp.</div>
+    <div class="ai-chat" id="aiTestChat"></div>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <input id="aiTestInput" style="flex:1;" placeholder="Hi, I'm interested…" onkeydown="if(event.key==='Enter'){event.preventDefault();bvAiTestSend();}">
+      <button type="button" class="btn btn-g" id="aiTestBtn" style="width:auto;padding:6px 14px;" onclick="bvAiTestSend()">Send</button>
+      <button type="button" class="btn btn-g" style="width:auto;padding:6px 10px;" onclick="bvAiTestReset()" title="Start over">↺</button>
+    </div>
+    <div id="aiAgentMsg" style="margin-top:10px;"></div>
+    <button type="button" class="btn btn-a btn-full" style="margin-top:10px;" onclick="bvAiSave('${n.id}')">Save</button>`;
+}
+
+let bvAiTestHistory = [];
+function bvOpenAiAgent(numberId) {
+  const n = bvAiNumbers.find(x => x.id === numberId); if (!n) return;
+  window._bvAiNumber = n;
+  bvAiTestHistory = [];
+  bvOpenSheet("bvAiOverlay", bvAiForm(n, bvAiAgents[numberId]), 640);
+  bvAiTestReset();
+}
+function bvAiApplyTemplate(k) {
+  const t = AI_TEMPLATES[k]; if (!t) return;
+  const filled = AI_FIELDS.filter(f => document.getElementById("ai_" + f)?.value.trim());
+  if (filled.length > 2 && !confirm("Replace what you've typed with this template?")) return;
+  ["business_type", "offer", "how_to_buy", "faqs", "rules", "opener"].forEach(f => { const el = document.getElementById("ai_" + f); if (el && t[f] != null) el.value = t[f]; });
+}
+function bvAiCollect() {
+  const o = {};
+  AI_FIELDS.forEach(f => { o[f] = document.getElementById("ai_" + f)?.value.trim() || null; });
+  o.mode = document.querySelector('input[name="ai_mode"]:checked')?.value || "off";
+  return o;
+}
+function bvAiTestReset() {
+  bvAiTestHistory = [];
+  const box = document.getElementById("aiTestChat");
+  if (box) box.innerHTML = `<div class="ai-note">Say hi as a customer 👇</div>`;
+}
+async function bvAiTestSend() {
+  const input = document.getElementById("aiTestInput"), box = document.getElementById("aiTestChat"), btn = document.getElementById("aiTestBtn");
+  const text = input.value.trim(); if (!text || btn.disabled) return;
+  input.value = ""; btn.disabled = true;
+  if (!bvAiTestHistory.length) box.innerHTML = "";
+  bvAiTestHistory.push({ role: "user", content: text });
+  box.insertAdjacentHTML("beforeend", `<div class="ai-b me">${escH(text)}</div><div class="ai-b bot" id="aiTyping">…</div>`);
+  box.scrollTop = box.scrollHeight;
+  try {
+    const r = await sbFn("ai-sales-reply", { test: true, agent: bvAiCollect(), history: bvAiTestHistory, contact_name: "Chuka" });
+    document.getElementById("aiTyping")?.remove();
+    if (r.error) throw new Error(r.error);
+    (r.messages || []).forEach(m => { bvAiTestHistory.push({ role: "assistant", content: m }); box.insertAdjacentHTML("beforeend", `<div class="ai-b bot">${escH(m)}</div>`); });
+    const note = r.notify === "hot_lead" ? "🔥 You'd get a hot-lead alert" : r.notify === "needs_human" ? "🙋 It would hand this chat to you" : r.stop ? "⛔ It would stop replying (not a buyer)" : "";
+    if (note) box.insertAdjacentHTML("beforeend", `<div class="ai-note">${note}${r.reason ? " — " + escH(r.reason) : ""}</div>`);
+    if (!(r.messages || []).length) box.insertAdjacentHTML("beforeend", `<div class="ai-note">(no reply needed)</div>`);
+  } catch (e) {
+    document.getElementById("aiTyping")?.remove();
+    box.insertAdjacentHTML("beforeend", `<div class="ai-note" style="color:var(--red,#c0392b);">${escH(e.message)}</div>`);
+  }
+  box.scrollTop = box.scrollHeight; btn.disabled = false; input.focus();
+}
+async function bvAiSave(numberId) {
+  const msg = document.getElementById("aiAgentMsg");
+  const n = bvAiNumbers.find(x => x.id === numberId); if (!n) return;
+  const o = bvAiCollect();
+  if (o.mode !== "off" && !o.offer) { msg.innerHTML = `<div class="msg err" style="display:block;">Add what you sell and your prices first, otherwise the AI has nothing true to say.</div>`; return; }
+  try {
+    const companyId = window.myProfile?.company_id || bvAiAgents[numberId]?.company_id;
+    const row = { ...o, company_id: companyId, buyer_whatsapp_number_id: numberId, updated_at: new Date().toISOString(), updated_by: sessionData?.user?.id };
+    const { error } = await supabaseClient.from("ai_sales_agents").upsert(row, { onConflict: "buyer_whatsapp_number_id" });
+    if (error) throw error;
+    bvCloseSheet("bvAiOverlay");
+    bvToast(o.mode === "off" ? "Saved. AI is off for this number." : "Saved. AI is ON for " + (n.nickname || "this number") + ".");
+    bvRenderAiAgents();
+  } catch (e) {
+    msg.innerHTML = `<div class="msg err" style="display:block;">${escH(e.message || String(e))}</div>`;
+  }
 }
 
 async function bvRenderKillRules() {
@@ -9311,6 +9479,8 @@ async function renderSettings(el) {
     <div class="panel" id="notifPanel"></div>
 
     <div class="panel" id="killRulesPanel"></div>
+
+    <div class="panel" id="aiAgentPanel"></div>
 
     <div class="panel">
       <div class="ph"><div class="ph-title">WhatsApp alerts</div></div>
