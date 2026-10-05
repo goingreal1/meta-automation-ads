@@ -756,6 +756,72 @@ html{-webkit-text-size-adjust:100%;}
   /* Nothing floats over the open sheet. */
   body:has(.sidebar.mobile-open) .chat-toggle{display:none;}
 }
+
+/* ── CAMPAIGN BUILDER ON PHONES: a full-screen, one-step-at-a-time flow ───────
+   Phones only. The desktop builder (side menu + form + summary) is untouched. */
+@media(max-width:760px){
+  body:has(.bv-overlay) .chat-toggle{display:none;}
+  #bvBuilderOverlay{padding:0;align-items:stretch;}
+  #bvBuilderOverlay .bv-modal-xl{height:100vh;height:100dvh;max-height:none;border:none;border-radius:0;}
+  #bvBuilderOverlay .bv-modal-xl::before{
+    content:"New campaign";order:-1;flex-shrink:0;display:flex;align-items:center;height:54px;padding:0 60px 0 16px;
+    border-bottom:1px solid var(--border);background:var(--panel);font-family:'Fraunces',serif;font-weight:600;font-size:18px;
+  }
+  #bvBuilderOverlay .bv-modal-close{top:9px;right:10px;width:36px;height:36px;border-radius:50%;background:var(--panel2);font-size:15px;z-index:8;padding:0;display:flex;align-items:center;justify-content:center;}
+
+  /* The whole form scrolls as one page; stepper on top, buttons pinned to the bottom. */
+  #bvBuilderOverlay #uploadForm{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  #bvBuilderOverlay .bv-builder-shell{display:contents;}
+
+  #bvBuilderOverlay .bv-builder-sidebar{
+    order:1;position:sticky;top:0;z-index:6;display:flex;gap:6px;width:auto;flex-shrink:0;overflow:visible;
+    padding:10px 12px;background:var(--panel);border-right:none;border-bottom:1px solid var(--border);counter-reset:bvstep;
+  }
+  #bvBuilderOverlay .bv-tree-item,#bvBuilderOverlay .bv-tree-item.child{
+    flex:1;margin:0;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 4px;
+    font-size:13px;font-weight:600;border-radius:10px;background:var(--panel2);
+  }
+  /* The original "📁 Campaign" text is hidden (font-size 0) and redrawn without the
+     emoji, so the desktop markup stays byte-for-byte identical. */
+  #bvBuilderOverlay .bv-tree-item,#bvBuilderOverlay .bv-tree-item.child{font-size:0;}
+  #bvBuilderOverlay #bvTabBtn-campaign::after{content:"Campaign";}
+  #bvBuilderOverlay #bvTabBtn-adset::after{content:"Ad set";}
+  #bvBuilderOverlay #bvTabBtn-ad::after{content:"Ad";}
+  #bvBuilderOverlay .bv-tree-item::after{font-size:13px;font-weight:600;}
+  #bvBuilderOverlay .bv-tree-item::before{
+    counter-increment:bvstep;content:counter(bvstep);width:20px;height:20px;border-radius:50%;flex-shrink:0;
+    background:var(--border);color:var(--text2);font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;
+  }
+  #bvBuilderOverlay .bv-tree-item.active::before{background:var(--accent);color:#fff;}
+  #bvBuilderOverlay .bv-tree-item.done::before{content:"✓";background:var(--accentBg);color:var(--accent);}
+
+  /* Destination / number / product belong to step 1 only. */
+  #bvBuilderOverlay .bv-builder-head{order:2;padding:16px 16px 0;border-bottom:none;}
+  #bvBuilderOverlay .bv-builder-head .ph-title{display:none;}
+  #bvBuilderOverlay:not([data-step="campaign"]) .bv-builder-head{display:none;}
+  #bvBuilderOverlay .bv-builder-body{order:3;flex:none;overflow:visible;padding:14px 16px 24px;}
+  #bvBuilderOverlay .bv-section-card{padding:14px;}
+
+  /* The summary is the last thing you see, on the final step. */
+  #bvBuilderOverlay .bv-builder-summary{order:4;display:none;width:auto;border-left:none;border-top:1px solid var(--border);padding:16px;}
+  #bvBuilderOverlay[data-step="ad"] .bv-builder-summary{display:block;}
+  #bvBuilderOverlay #uploadMsg{order:5;padding:0 16px 10px !important;}
+
+  /* Pinned footer: Next on steps 1-2, Review & Launch on the last. */
+  #bvBuilderOverlay .bv-builder-foot{order:6;position:sticky;bottom:0;z-index:6;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--panel);box-shadow:0 -6px 18px -12px rgba(20,19,15,.3);}
+  #bvBuilderOverlay .bv-builder-foot > div{flex:1;display:flex !important;gap:10px;}
+  #bvBuilderOverlay .bv-builder-foot .btn{width:auto !important;height:48px;padding:0 18px !important;font-size:15px !important;font-weight:600;border-radius:12px;justify-content:center;}
+  #bvBuilderOverlay #bvTabNextBtn{flex:1;background:var(--accent);color:#fff;border-color:transparent;}
+  #bvBuilderOverlay #bvTabBackBtn{flex:0 0 auto;}
+  #bvBuilderOverlay[data-step="campaign"] #bvTabBackBtn{display:none;}
+  #bvBuilderOverlay[data-step="ad"] #bvTabNextBtn{display:none;}
+  #bvBuilderOverlay #uploadBtn{display:none;}
+  #bvBuilderOverlay[data-step="ad"] #uploadBtn{display:flex;flex:1;align-items:center;}
+  #bvBuilderOverlay[data-step="ad"] .bv-builder-foot > div{flex:0 0 auto;}
+
+  /* 16px inputs: iPhones zoom the page in on anything smaller. */
+  #bvBuilderOverlay input:not([type=checkbox]):not([type=radio]),#bvBuilderOverlay select,#bvBuilderOverlay textarea{font-size:16px;}
+}
 </style>
 </head>
 <body>
@@ -2206,7 +2272,12 @@ function bvOpenCampaignBuilder(presetObjective) {
         cta_type: document.getElementById("f_cta").value,
       });
     }
-    if (!copies.length) { msg.innerHTML = `<div class="msg err">Please select or drop a file first (or reuse an existing creative).</div>`; return; }
+    if (!copies.length) {
+      msg.innerHTML = `<div class="msg err">Please select or drop a file first (or reuse an existing creative).</div>`;
+      // On a phone the message sits at the end of a long scrolling page -- bring it into view.
+      if (window.matchMedia("(max-width: 760px)").matches) msg.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     msg.innerHTML = "";
     bvOpenReviewModal(copies);
   });
@@ -2220,6 +2291,10 @@ function bvSwitchBuilderTab(tab) {
     document.getElementById(`bvTabBtn-${t}`)?.classList.toggle("active", t === tab);
   });
   const i = BV_BUILDER_TABS.indexOf(tab);
+  // Phone layout keys off these: which step is showing, and which are finished.
+  document.getElementById("bvBuilderOverlay")?.setAttribute("data-step", tab);
+  BV_BUILDER_TABS.forEach((t, n) => document.getElementById(`bvTabBtn-${t}`)?.classList.toggle("done", n < i));
+  document.getElementById("uploadForm")?.scrollTo(0, 0);
   const backBtn = document.getElementById("bvTabBackBtn");
   const nextBtn = document.getElementById("bvTabNextBtn");
   if (backBtn) backBtn.style.visibility = i === 0 ? "hidden" : "visible";
