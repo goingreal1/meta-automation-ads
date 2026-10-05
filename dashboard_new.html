@@ -408,19 +408,31 @@ textarea{resize:vertical;min-height:80px;}
 .conv-search{padding:10px;border-bottom:1px solid var(--border);}
 .conv-search input{font-size:12px;padding:7px 10px;}
 .conv-list-items{max-height:660px;overflow-y:auto;}
-.conv-row{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+/* Chat list rows, WhatsApp style: avatar, name + time on one line, ticks + preview
+   + unread badge on the next. The divider is inset so it starts after the avatar. */
+.conv-row{position:relative;display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;transition:background .12s;}
+.conv-row::after{content:"";position:absolute;left:72px;right:0;bottom:0;height:1px;background:var(--border);}
 .conv-row:hover{background:var(--panel2);}
 .conv-row.active{background:var(--accentBg);}
-.conv-row-top{display:flex;justify-content:space-between;align-items:baseline;gap:6px;}
-.conv-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.conv-time{font-size:9.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;white-space:nowrap;flex-shrink:0;}
-.conv-phone{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;}
-.conv-row:has(.conv-unread-badge) .conv-name{font-weight:800;color:var(--text);}
+.cr-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+.cr-top,.cr-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
+.conv-name{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.conv-time{font-size:11.5px;color:var(--muted);white-space:nowrap;flex-shrink:0;}
+.conv-time.unread{color:var(--accent);font-weight:600;}
+.cr-preview{font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;display:flex;align-items:center;gap:2px;}
+.cr-preview .cr-text{overflow:hidden;text-overflow:ellipsis;}
+.cr-preview .bubble-ticks span{margin:0 3px 0 0 !important;font-size:12px;}
+.conv-row:has(.conv-unread-badge) .conv-name{font-weight:800;}
+.conv-row:has(.conv-unread-badge) .cr-preview{color:var(--text);}
+.cr-state{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:0 5px;margin-left:6px;flex-shrink:0;}
 .conv-unread-badge{
-  background:var(--accent);color:#fff;font-size:10.5px;font-weight:800;
-  min-width:18px;height:18px;border-radius:9px;padding:0 5px;
+  background:#25d366;color:#fff;font-size:11.5px;font-weight:700;
+  min-width:20px;height:20px;border-radius:10px;padding:0 6px;
   display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
 }
+.conv-chips{display:flex;gap:6px;padding:0 10px 10px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.conv-chip{background:var(--panel2);color:var(--text2);border:1px solid var(--border);border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;white-space:nowrap;}
+.conv-chip.on{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);font-weight:600;}
 .conv-thread{height:680px;display:flex;flex-direction:column;}
 .conv-thread:has(.empty){justify-content:center;align-items:center;}
 .conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;}
@@ -499,6 +511,20 @@ textarea{resize:vertical;min-height:80px;}
   .conv-compose{padding:8px;gap:6px;}
   .conv-compose > .compose-icon-btn,.conv-compose > button,.compose-attach-wrap > .compose-icon-btn{width:34px;height:34px;}
   .bubble{max-width:82%;}
+
+  /* Chat LIST on phones: big "Chats" title, pill search, no KPI tiles, taller rows. */
+  #convTabRoot:not(.thread-open) .g4{display:none;}
+  #convTabRoot .sh-title{font-size:24px;font-weight:700;}
+  #convTabRoot .conv-search{padding:6px 12px 8px;border-bottom:none;}
+  #convTabRoot .conv-search input{font-size:16px;padding:10px 16px;border-radius:22px;background:var(--panel2);border-color:transparent;}
+  #convTabRoot .conv-chips{padding:0 12px 8px;}
+  #convTabRoot #convListPanel{border:none;border-radius:0;box-shadow:none;background:transparent;}
+  #convTabRoot .conv-name{font-size:16.5px;font-weight:500;}
+  #convTabRoot .conv-row:has(.conv-unread-badge) .conv-name{font-weight:700;}
+  #convTabRoot .cr-preview{font-size:14.5px;}
+  #convTabRoot .conv-row{padding:11px 14px;}
+  #convTabRoot .cr-state{display:none;}
+  .conv-list-items{height:calc(100vh - 250px);height:calc(100dvh - 250px);}
 
   /* WhatsApp-style chat on phones: wallpaper, compact bubbles, slim header,
      pill input with a mic/send button that swaps depending on whether you've typed. */
@@ -4754,6 +4780,8 @@ async function renderWebsiteLeads(el) {
 
 // ── TAB: CONVERSATIONS (WhatsApp leads, any buyer's number) ────────────────────
 let bvConversations = [];
+let bvLastMsgs = {};      // conversation_id -> latest message (preview + ticks in the chat list)
+let bvListFilter = "all"; // all | unread | handoff
 let bvSelectedConvId = null;
 let bvRealtimeChannel = null;
 // Which of the signed-in buyer's own WhatsApp numbers is selected -- "" means
@@ -4803,6 +4831,15 @@ async function renderConversations(el) {
   if (numbers && !numbers.some(n => n.id === bvSelectedNumberId)) bvSelectedNumberId = "";
   bvConversations = (convs || []).filter(bvMatchesNumberFilter);
   bvSelectedConvId = null;
+  bvLastMsgs = {};
+  // Latest message per chat for previews/ticks. Chunked to keep URLs short; a
+  // failure just leaves the previews blank rather than breaking the tab.
+  const convIds = bvConversations.map((c) => c.id);
+  const chunks = [];
+  for (let i = 0; i < convIds.length; i += 50) chunks.push(convIds.slice(i, i + 50));
+  const lastRows = await Promise.all(chunks.map((ch) =>
+    sbQuery("conversation_last_message", `select=*&conversation_id=in.(${ch.join(",")})`).catch(() => [])));
+  lastRows.flat().forEach((r) => { bvLastMsgs[r.conversation_id] = r; });
 
   const tot  = bvConversations.length;
   const nw   = bvConversations.filter(c => c.current_state === "NEW").length;
@@ -4828,6 +4865,7 @@ async function renderConversations(el) {
       <div class="conv-wrap">
         <div class="panel" style="padding:0;" id="convListPanel">
           <div class="conv-search"><input id="convSearch" placeholder="Search name or phone…" oninput="bvFilterList()"></div>
+          <div class="conv-chips" id="convChips"></div>
           <div class="conv-list-items" id="convListItems"></div>
         </div>
         <div class="panel conv-thread" id="convThread">
@@ -4922,6 +4960,11 @@ function bvSyncComposeBtns() {
 }
 
 function bvOnRealtimeMessage(m) {
+  bvLastMsgs[m.conversation_id] = {
+    conversation_id: m.conversation_id, message_id: m.id, direction: m.direction, message_type: m.message_type,
+    media_type: m.metadata?.media_type || m.message_type, content: (m.content || "").slice(0, 200),
+    status: m.status, created_at: m.created_at,
+  };
   // Always bump/refresh the conversation list so a new inbound message (even on
   // an unselected or brand-new conversation) is reflected without a reload.
   const conv = bvConversations.find((c) => c.id === m.conversation_id);
@@ -4958,6 +5001,12 @@ function bvOnRealtimeMessage(m) {
 // Delivery/read receipts arrive as UPDATEs on an existing message row --
 // swap just that bubble's ticks in place rather than re-rendering the thread.
 function bvOnMessageStatus(m) {
+  // The list shows the ticks of each chat's latest message.
+  const last = bvLastMsgs[m.conversation_id];
+  if (last && last.message_id === m.id && last.status !== m.status) {
+    last.status = m.status;
+    bvFilterList();
+  }
   if (m.conversation_id !== bvSelectedConvId) return;
   const slot = document.querySelector(`#convMsgs [data-msg-id="${m.id}"] .bubble-ticks`);
   if (slot) slot.innerHTML = bvTicks(m);
@@ -4987,32 +5036,78 @@ function bvOnRealtimeConversation(row) {
   }
 }
 
+// WhatsApp-style time for the list: clock time today, "Yesterday", weekday this
+// week, otherwise the date.
+function bvListTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso), now = new Date();
+  const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === yest.toDateString()) return "Yesterday";
+  if ((now - d) / 86400000 < 6) return d.toLocaleDateString([], { weekday: "long" });
+  return d.toLocaleDateString([], { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+// One-line preview of the latest message, WhatsApp style (emoji for media).
+function bvPreviewText(l) {
+  if (!l) return "";
+  const t = l.message_type, mt = l.media_type;
+  const c = (l.content || "").replace(/[*~`]/g, "").replace(/\s+/g, " ").trim();
+  if (t === "image" || mt === "image") return "📷 " + (c || "Photo");
+  if (mt === "video") return "🎥 " + (c || "Video");
+  if (t === "audio" || mt === "audio") return "🎤 Voice message";
+  if (t === "document" || mt === "document") return "📄 " + (c || "Document");
+  if (t === "sticker") return "Sticker";
+  if (t === "template") return "📨 " + (c || "Template");
+  if (t === "flow_reply") return "✅ Order submitted";
+  if (t === "flow") return c === "order_flow" ? "📝 Order form" : c.startsWith("offer_") ? "🛒 Offer" : "📋 Message";
+  if (t === "url_button") return "🔗 Link";
+  if ((t === "button" || t === "list" || t === "interactive") && l.direction === "inbound") return "👆 " + c;
+  return c;
+}
+
+function bvRenderChips() {
+  const el = document.getElementById("convChips");
+  if (!el) return;
+  const unread = bvConversations.filter((c) => c.unread_count > 0).length;
+  const handoff = bvConversations.filter((c) => c.human_handling).length;
+  const chip = (key, label) => `<button class="conv-chip ${bvListFilter === key ? "on" : ""}" onclick="bvSetListFilter('${key}')">${label}</button>`;
+  el.innerHTML = chip("all", "All") + chip("unread", `Unread${unread ? " " + unread : ""}`) + chip("handoff", `You're handling${handoff ? " " + handoff : ""}`);
+}
+
+function bvSetListFilter(key) {
+  bvListFilter = key;
+  bvFilterList();
+}
+
 function bvRenderList(list) {
   const wrap = document.getElementById("convListItems");
   if (!wrap) return;
-  if (!list.length) { wrap.innerHTML = `<div class="empty" style="padding:24px;">No conversations yet.</div>`; return; }
-  wrap.innerHTML = list.map(c => `
-    <div class="conv-row ${c.id === bvSelectedConvId ? "active" : ""}" onclick="bvSelectConversation('${c.id}')" style="display:flex;gap:10px;align-items:flex-start;">
-      ${bvAvatar(c, 34)}
-      <div style="flex:1;min-width:0;">
-        <div class="conv-row-top">
-          <span class="conv-name">${bvEscape(bvName(c))}</span>
-          <span class="conv-time">${ago(c.last_message_at)}</span>
-        </div>
-        <div class="conv-phone">${bvEscape(c.phone)}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:2px;">
-          <span class="pill ${c.current_state === "COMPLETED" ? "delivered" : c.current_state === "NEW" ? "pending" : "active"}">${c.current_state}</span>
-          ${c.unread_count > 0 ? `<span class="conv-unread-badge">${c.unread_count > 9 ? "9+" : c.unread_count}</span>` : ""}
-        </div>
-      </div>
-    </div>`).join("");
+  bvRenderChips();
+  if (!list.length) { wrap.innerHTML = `<div class="empty" style="padding:24px;">${bvListFilter === "all" ? "No conversations yet." : "Nothing here."}</div>`; return; }
+  wrap.innerHTML = list.map((c) => {
+    const l = bvLastMsgs[c.id];
+    const unread = c.unread_count > 0;
+    const when = bvListTime(l?.created_at || c.last_message_at);
+    const ticks = l && l.direction === "outbound" ? `<span class="bubble-ticks">${bvTicks(l)}</span>` : "";
+    return `<div class="conv-row ${c.id === bvSelectedConvId ? "active" : ""}" onclick="bvSelectConversation('${c.id}')">`
+      + bvAvatar(c, 48)
+      + `<div class="cr-body">`
+      + `<div class="cr-top"><span class="conv-name">${bvEscape(bvName(c))}</span><span class="conv-time ${unread ? "unread" : ""}">${bvEscape(when)}</span></div>`
+      + `<div class="cr-bottom"><span class="cr-preview">${ticks}<span class="cr-text">${bvEscape(bvPreviewText(l))}</span></span>`
+      + (c.current_state ? `<span class="cr-state">${bvEscape(c.current_state)}</span>` : "")
+      + (unread ? `<span class="conv-unread-badge">${c.unread_count > 99 ? "99+" : c.unread_count}</span>` : "")
+      + `</div></div></div>`;
+  }).join("");
 }
 
 function bvFilterList() {
   const q = (document.getElementById("convSearch")?.value || "").toLowerCase();
-  const filtered = !q ? bvConversations : bvConversations.filter(c =>
-    bvName(c).toLowerCase().includes(q) || (c.phone || "").includes(q));
-  bvRenderList(filtered);
+  let list = bvConversations;
+  if (bvListFilter === "unread") list = list.filter((c) => c.unread_count > 0);
+  else if (bvListFilter === "handoff") list = list.filter((c) => c.human_handling);
+  if (q) list = list.filter((c) => bvName(c).toLowerCase().includes(q) || (c.phone || "").includes(q));
+  bvRenderList(list);
 }
 
 // message_type values written by the bot: text, audio, audio_transcript, button,
