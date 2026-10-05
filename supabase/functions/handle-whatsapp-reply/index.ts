@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { createPushFromEnv } from "./push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -92,10 +91,22 @@ function pushPreview(type: string, content: string): string {
   return c || "New message";
 }
 
-const push = createPushFromEnv();
+// The push module is loaded lazily and guarded: this function receives every
+// customer message from Meta, so a problem in the push code (or its npm
+// dependency) must never be able to take the webhook down.
+let _push: any = null;
+async function getPush() {
+  try {
+    if (!_push) _push = (await import("./push.ts")).createPushFromEnv();
+    return _push;
+  } catch (err) {
+    console.error("push module unavailable:", err);
+    return null;
+  }
+}
 
 function notifyInboundMessage(args: { companyId: string; mediaBuyerId: string | null; convId: string; title: string; type: string; content: string }) {
-  const p = push.toAudience(
+  const p = getPush().then((push) => push?.toAudience(
     { company_id: args.companyId, roles: ["owner", "admin", "customer_care"], media_buyer_id: args.mediaBuyerId },
     "messages",
     {
@@ -104,7 +115,7 @@ function notifyInboundMessage(args: { companyId: string; mediaBuyerId: string | 
       url: `/dashboard_new.html?open=conv:${args.convId}`,
       tag: `conv-${args.convId}`,
     },
-  ).catch((err) => console.error("push (inbound message) failed:", err));
+  )).catch((err) => console.error("push (inbound message) failed:", err));
   // Keep the function alive until the push finishes, without delaying Meta's 200.
   (globalThis as any).EdgeRuntime?.waitUntil?.(p);
 }
@@ -291,8 +302,16 @@ Deno.serve(async (req: Request) => {
 
   // Staff push notifications (PWA): public key, test push, server-to-server sends.
   // Claims only those requests; Meta's webhook traffic falls through untouched.
-  const pushResponse = await push.handle(req);
-  if (pushResponse) return pushResponse;
+  // Only requests shaped like push calls are even handed to the push module, so
+  // normal webhook traffic never depends on it loading.
+  const isPushCall = (req.method === "GET" && url.searchParams.get("action") === "public_key") || req.method === "OPTIONS" ||
+    (req.method === "POST" && /"(type":\s*"test"|audience")/.test(await req.clone().text().catch(() => "")));
+  if (isPushCall) {
+    const push = await getPush();
+    if (!push) return new Response(JSON.stringify({ error: "push unavailable" }), { status: 503, headers: { "Content-Type": "application/json" } });
+    const pushResponse = await push.handle(req);
+    if (pushResponse) return pushResponse;
+  }
 
   // Meta webhook verification handshake (GET)
   if (req.method === "GET") {
