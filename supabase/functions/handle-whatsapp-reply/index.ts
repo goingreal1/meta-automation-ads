@@ -77,6 +77,49 @@ async function downloadInboundMedia(supabase: any, token: string, message: any) 
   return { url: data?.publicUrl as string, media_type: folder, mime_type: mime, filename: media.filename };
 }
 
+// Phone notification (Web Push) for staff when a customer messages in. Goes to
+// the company's owners/admins/customer care plus the media buyer whose number
+// or ads the chat belongs to; each device can switch "messages" off.
+function pushPreview(type: string, content: string): string {
+  const c = (content || "").replace(/\s+/g, " ").trim();
+  if (type === "image") return "📷 " + (c || "Photo");
+  if (type === "video") return "🎥 " + (c || "Video");
+  if (type === "audio") return "🎤 Voice message";
+  if (type === "document") return "📄 " + (c || "Document");
+  if (type === "sticker") return "Sticker";
+  if (type === "button" || type === "interactive") return "👆 " + c;
+  return c || "New message";
+}
+
+// The push module is loaded lazily and guarded: this function receives every
+// customer message from Meta, so a problem in the push code (or its npm
+// dependency) must never be able to take the webhook down.
+let _push: any = null;
+async function getPush() {
+  try {
+    if (!_push) _push = (await import("./push.ts")).createPushFromEnv();
+    return _push;
+  } catch (err) {
+    console.error("push module unavailable:", err);
+    return null;
+  }
+}
+
+function notifyInboundMessage(args: { companyId: string; mediaBuyerId: string | null; convId: string; title: string; type: string; content: string }) {
+  const p = getPush().then((push) => push?.toAudience(
+    { company_id: args.companyId, roles: ["owner", "admin", "customer_care"], media_buyer_id: args.mediaBuyerId },
+    "messages",
+    {
+      title: args.title,
+      body: pushPreview(args.type, args.content),
+      url: `/dashboard_new.html?open=conv:${args.convId}`,
+      tag: `conv-${args.convId}`,
+    },
+  )).catch((err) => console.error("push (inbound message) failed:", err));
+  // Keep the function alive until the push finishes, without delaying Meta's 200.
+  (globalThis as any).EdgeRuntime?.waitUntil?.(p);
+}
+
 // Any inbound message that isn't an APPROVE/REJECT admin command -- a real
 // customer reply, most often the very first message after tapping "Send
 // Message" on a Click-to-WhatsApp ad -- lands here instead of being dropped.
@@ -211,7 +254,18 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
     wa_message_id: message.id || null,
     company_id: numberRow.company_id,
   });
-  if (msgErr) console.error("Failed to insert inbound WhatsApp message:", msgErr);
+  if (msgErr) {
+    console.error("Failed to insert inbound WhatsApp message:", msgErr);
+    return;
+  }
+  notifyInboundMessage({
+    companyId: numberRow.company_id,
+    mediaBuyerId: numberRow.media_buyer_id ?? null,
+    convId: conv.id,
+    title: whatsappName || from,
+    type,
+    content,
+  });
 }
 
 // Receipts can arrive out of order (e.g. "read" before "delivered"), so a
@@ -245,6 +299,19 @@ async function applyStatusUpdates(supabase: any, statuses: any[]) {
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
+
+  // Staff push notifications (PWA): public key, test push, server-to-server sends.
+  // Claims only those requests; Meta's webhook traffic falls through untouched.
+  // Only requests shaped like push calls are even handed to the push module, so
+  // normal webhook traffic never depends on it loading.
+  const isPushCall = (req.method === "GET" && url.searchParams.get("action") === "public_key") || req.method === "OPTIONS" ||
+    (req.method === "POST" && /"(type":\s*"test"|audience")/.test(await req.clone().text().catch(() => "")));
+  if (isPushCall) {
+    const push = await getPush();
+    if (!push) return new Response(JSON.stringify({ error: "push unavailable" }), { status: 503, headers: { "Content-Type": "application/json" } });
+    const pushResponse = await push.handle(req);
+    if (pushResponse) return pushResponse;
+  }
 
   // Meta webhook verification handshake (GET)
   if (req.method === "GET") {

@@ -2,7 +2,15 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1a7a5e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Revora">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
 <title>Revora</title>
 <meta name="description" content="Revora — track orders, creatives, campaigns, deliveries, and earnings in real time.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -625,6 +633,37 @@ textarea{resize:vertical;min-height:80px;}
 @keyframes bv-toast-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
 @keyframes bv-toast-out{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(10px);}}
 
+
+/* ── INSTALLED-APP POLISH ─────────────────────────────────────────────────── */
+html{-webkit-text-size-adjust:100%;}
+*{-webkit-tap-highlight-color:transparent;}
+
+/* Install / notification prompt strip under the header */
+.app-banner{display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--accentBg);border-bottom:1px solid var(--accentBdr);color:var(--text);font-size:13px;}
+.app-banner.show{display:flex;}
+.app-banner .ab-ico{width:34px;height:34px;border-radius:9px;flex-shrink:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;}
+.app-banner .ab-txt{flex:1;min-width:0;line-height:1.35;}
+.app-banner .ab-txt b{display:block;font-size:13.5px;}
+.app-banner .ab-txt span{color:var(--text2);font-size:12px;}
+.app-banner .ab-x{background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px 6px;}
+
+/* Notification settings panel */
+.np-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--border);}
+.np-row .np-lbl{font-size:13.5px;font-weight:600;}
+.np-row .np-sub{font-size:11.5px;color:var(--muted);margin-top:1px;}
+.np-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:14px;}
+.np-status.on{background:var(--accentBg);color:var(--accent);}
+.np-status.off{background:var(--panel2);color:var(--muted);}
+.np-status.warn{background:var(--warnBg);color:var(--warn);}
+.np-steps{margin:10px 0 0;padding-left:20px;font-size:13px;line-height:1.6;color:var(--text2);}
+.np-steps li{margin-bottom:6px;}
+.switch{position:relative;width:44px;height:26px;flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;position:absolute;}
+.switch .sw-track{position:absolute;inset:0;background:var(--borderStrong);border-radius:13px;transition:background .18s;cursor:pointer;}
+.switch .sw-track::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .18s;}
+.switch input:checked + .sw-track{background:var(--accent);}
+.switch input:checked + .sw-track::after{transform:translateX(18px);}
+
 /* ── MOBILE ────────────────────────────────────────────────────────────────── */
 @media(max-width:760px){
   /* .app-shell switches to flex-direction:column here, which turns .content's
@@ -633,7 +672,7 @@ textarea{resize:vertical;min-height:80px;}
      shrink-to-fit its content's max-content width rather than stretch to
      fill the container, which is what was pushing the whole page into
      horizontal scroll. Plain block margin/width on mobile instead. */
-  .content{padding:18px 16px 90px;margin:0;max-width:none;width:100%;}
+  .content{padding:18px 16px calc(90px + env(safe-area-inset-bottom));margin:0;max-width:none;width:100%;}
   .sh{flex-direction:column;align-items:flex-start;gap:10px;}
   .sh-title{font-size:21px;}
   .g4,.g2{gap:10px;margin-bottom:18px;}
@@ -693,6 +732,7 @@ textarea{resize:vertical;min-height:80px;}
     </div>
   </div>
 </div>
+<div class="app-banner" id="appBanner"></div>
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
 <div class="app-shell">
@@ -873,7 +913,10 @@ async function init() {
   await loadAccounts();
   loadApprovalCount();
   loadCallFlagCount();
+  bvApplyOpenParam(); // ?open=conv:<id> / tab:<name> (from a notification or app shortcut)
   render();
+  bvPushSync();
+  bvRenderAppBanner();
 
   setInterval(loadAccounts, 60000);
   setInterval(loadApprovalCount, 30000);
@@ -888,6 +931,239 @@ async function init() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) sessionData = session;
   }, 5 * 60 * 1000);
+}
+
+// ── PWA: install, service worker, push notifications ─────────────────────────
+const BV_STANDALONE = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+const BV_IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const BV_PUSH_SUPPORTED = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+let bvInstallPrompt = null; // Android/desktop Chrome's deferred "install app" prompt
+
+// What each notification switch controls. Add a line here to add a switch.
+const BV_PUSH_CATEGORIES = [
+  { key: "messages", label: "New customer messages", sub: "A customer messages you on WhatsApp (text, photo or voice note)." },
+];
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("SW registration failed:", e)));
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    if (e.data?.type === "open") {
+      try { bvOpenTarget(new URL(e.data.url).searchParams.get("open")); } catch {}
+    } else if (e.data?.type === "push-resubscribe") {
+      bvPushSync(true);
+    }
+  });
+}
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); bvInstallPrompt = e; bvRenderAppBanner(); });
+window.addEventListener("appinstalled", () => { bvInstallPrompt = null; bvRenderAppBanner(); });
+
+// "?open=conv:<id>" or "?open=tab:<name>" -> pick the screen before the first render.
+function bvApplyOpenParam() {
+  const target = new URLSearchParams(window.location.search).get("open");
+  if (!target) return;
+  history.replaceState(null, "", window.location.pathname);
+  bvSetTarget(target);
+}
+function bvSetTarget(target) {
+  if (!target) return false;
+  if (target.startsWith("conv:")) { window.bvPendingConv = target.slice(5); activeTab = "conversations"; }
+  else if (target.startsWith("tab:") && document.querySelector(`[data-tab="${target.slice(4)}"]`)) activeTab = target.slice(4);
+  else return false;
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === activeTab));
+  return true;
+}
+// A notification was tapped while the app was already open.
+function bvOpenTarget(target) {
+  if (bvSetTarget(target)) render();
+}
+
+function bvU8FromB64url(s) {
+  const pad = "=".repeat((4 - (s.length % 4)) % 4);
+  const raw = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+async function bvVapidKey() {
+  const r = await fetch(`${SUPA_URL}/functions/v1/handle-whatsapp-reply?action=public_key`, { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } });
+  const j = await r.json();
+  if (!j.publicKey) throw new Error(j.error || "couldn't get the notification key");
+  return j.publicKey;
+}
+async function bvSaveSubscription(sub) {
+  const j = sub.toJSON();
+  const { error } = await supabaseClient.rpc("register_push_subscription", {
+    p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_user_agent: navigator.userAgent.slice(0, 200),
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Turn notifications on for this device (must be called from a tap/click).
+async function bvPushEnable() {
+  if (!BV_PUSH_SUPPORTED) throw new Error("This browser doesn't support notifications.");
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error(perm === "denied" ? "Notifications are blocked for this site in your phone/browser settings." : "Permission wasn't granted.");
+  const reg = await navigator.serviceWorker.ready;
+  const key = await bvVapidKey();
+  let sub = await reg.pushManager.getSubscription();
+  // A subscription made with a different server key can never receive our pushes.
+  if (sub && btoa(String.fromCharCode(...new Uint8Array(sub.options.applicationServerKey || []))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") !== key) {
+    await sub.unsubscribe();
+    sub = null;
+  }
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bvU8FromB64url(key) });
+  await bvSaveSubscription(sub);
+}
+async function bvPushDisable() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  const endpoint = sub.endpoint;
+  await sub.unsubscribe();
+  await supabaseClient.from("push_subscriptions").delete().eq("endpoint", endpoint);
+}
+// Quietly keep this device's registration fresh (new login, rotated endpoint).
+async function bvPushSync(force) {
+  try {
+    if (!BV_PUSH_SUPPORTED || Notification.permission !== "granted") return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await bvSaveSubscription(sub);
+    else if (force) await bvPushEnable();
+  } catch (e) { console.warn("push sync:", e.message); }
+}
+async function bvPushPrefs() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return null;
+  const { data } = await supabaseClient.from("push_subscriptions").select("prefs").eq("endpoint", sub.endpoint).maybeSingle();
+  return { endpoint: sub.endpoint, prefs: data?.prefs || {} };
+}
+async function bvPushSetPref(key, on) {
+  const cur = await bvPushPrefs();
+  if (!cur) return;
+  const prefs = { ...cur.prefs, [key]: on };
+  const { error } = await supabaseClient.from("push_subscriptions").update({ prefs }).eq("endpoint", cur.endpoint);
+  if (error) throw new Error(error.message);
+}
+
+function bvIosInstallSteps() {
+  return `<ol class="np-steps">
+    <li>Open this page in <b>Safari</b>.</li>
+    <li>Tap the <b>Share</b> button (the square with an arrow) at the bottom of the screen.</li>
+    <li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+    <li>Open <b>Revora</b> from your home screen, go to <b>Settings</b> and tap <b>Turn on notifications</b>.</li>
+  </ol>`;
+}
+
+// The Notifications card on the Settings tab.
+async function bvRenderNotifPanel() {
+  const el = document.getElementById("notifPanel");
+  if (!el) return;
+  const head = (status) => `<div class="ph"><div class="ph-title">Notifications</div>${status || ""}</div>`;
+  const box = (inner) => { el.innerHTML = inner; };
+
+  if (BV_IS_IOS && !BV_STANDALONE) {
+    return box(`${head(`<span class="np-status warn">Install first</span>`)}
+      <div style="font-size:12.5px;color:var(--text2);line-height:1.5;">On iPhone, notifications only work once Revora is added to your home screen:</div>${bvIosInstallSteps()}`);
+  }
+  if (!BV_PUSH_SUPPORTED) {
+    return box(`${head(`<span class="np-status off">Not available</span>`)}<div style="font-size:12.5px;color:var(--text2);">This browser doesn't support notifications. Try Chrome, Edge or Safari (iPhone: iOS 16.4 or newer).</div>`);
+  }
+  if (Notification.permission === "denied") {
+    return box(`${head(`<span class="np-status warn">Blocked</span>`)}<div style="font-size:12.5px;color:var(--text2);line-height:1.5;">Notifications are blocked for Revora. ${BV_IS_IOS ? "Open <b>Settings → Notifications → Revora</b> on your iPhone and allow them." : "Click the lock icon next to the address (or the app's settings on Android), set <b>Notifications</b> to <b>Allow</b>, then reload."}</div>`);
+  }
+
+  let cur = null;
+  try { cur = Notification.permission === "granted" ? await bvPushPrefs() : null; } catch {}
+
+  if (!cur) {
+    box(`${head(`<span class="np-status off">Off</span>`)}
+      <div style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:12px;">Get an alert on this device the moment a customer messages you${BV_STANDALONE ? "" : " — even when the app is closed"}.</div>
+      <button class="btn btn-g" id="npEnableBtn">Turn on notifications</button><div id="npMsg" style="margin-top:8px;"></div>`);
+    document.getElementById("npEnableBtn").onclick = async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Turning on…";
+      try { await bvPushEnable(); bvRenderAppBanner(); await bvRenderNotifPanel(); }
+      catch (err) { btn.disabled = false; btn.textContent = "Turn on notifications"; document.getElementById("npMsg").innerHTML = `<div class="msg err" style="display:block;">${escH(err.message)}</div>`; }
+    };
+    return;
+  }
+
+  box(`${head(`<span class="np-status on">On</span>`)}
+    ${BV_PUSH_CATEGORIES.map((c) => `<div class="np-row"><div><div class="np-lbl">${escH(c.label)}</div><div class="np-sub">${escH(c.sub)}</div></div>
+      <label class="switch"><input type="checkbox" data-cat="${c.key}" ${cur.prefs[c.key] === false ? "" : "checked"}><span class="sw-track"></span></label></div>`).join("")}
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn btn-g" id="npTestBtn">Send test notification</button>
+      <button class="btn btn-a" id="npOffBtn">Turn off on this device</button>
+    </div><div id="npMsg" style="margin-top:8px;"></div>`);
+  el.querySelectorAll("input[data-cat]").forEach((i) => i.addEventListener("change", async () => {
+    try { await bvPushSetPref(i.dataset.cat, i.checked); } catch (err) { i.checked = !i.checked; alert("Couldn't save: " + err.message); }
+  }));
+  document.getElementById("npTestBtn").onclick = async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    const msg = document.getElementById("npMsg");
+    try {
+      const res = await sbFn("handle-whatsapp-reply", { type: "test" });
+      msg.innerHTML = res?.error ? `<div class="msg err" style="display:block;">${escH(res.error)}</div>` : `<div class="msg ok" style="display:block;">Sent — it should arrive in a few seconds.</div>`;
+    } catch (err) { msg.innerHTML = `<div class="msg err" style="display:block;">${escH(err.message)}</div>`; }
+    btn.disabled = false;
+  };
+  document.getElementById("npOffBtn").onclick = async () => { try { await bvPushDisable(); bvRenderAppBanner(); await bvRenderNotifPanel(); } catch (err) { alert(err.message); } };
+}
+
+// A dismissible strip under the header: "install the app" / "turn on notifications".
+function bvRenderAppBanner() {
+  const el = document.getElementById("appBanner");
+  if (!el) return;
+  const hide = () => { el.classList.remove("show"); el.innerHTML = ""; };
+  const dismissedAt = Number(localStorage.getItem("bv_banner_dismissed") || 0);
+  if (Date.now() - dismissedAt < 14 * 86400000) return hide();
+
+  const show = (title, sub, btnLabel, onClick) => {
+    el.innerHTML = `<div class="ab-ico">${icon("chat", 18)}</div><div class="ab-txt"><b>${title}</b><span>${sub}</span></div>
+      <button class="btn btn-g" id="abBtn" style="white-space:nowrap;">${btnLabel}</button><button class="ab-x" id="abX" title="Dismiss">×</button>`;
+    el.classList.add("show");
+    document.getElementById("abBtn").onclick = onClick;
+    document.getElementById("abX").onclick = () => { localStorage.setItem("bv_banner_dismissed", String(Date.now())); hide(); };
+  };
+
+  if (!BV_STANDALONE) {
+    if (BV_IS_IOS) {
+      return show("Install Revora on your iPhone", "Get instant alerts and a full-screen app.", "How",
+        () => bvModal("Install on iPhone", `<div style="font-size:13px;color:var(--text2);">Add Revora to your home screen:</div>${bvIosInstallSteps()}`));
+    }
+    if (bvInstallPrompt) {
+      return show("Install Revora", "Open it like an app and get instant alerts.", "Install", async () => {
+        bvInstallPrompt.prompt();
+        await bvInstallPrompt.userChoice.catch(() => {});
+        bvInstallPrompt = null; bvRenderAppBanner();
+      });
+    }
+    return hide();
+  }
+  // Installed: nudge to turn notifications on if this device isn't subscribed yet
+  // (never asked, or permission was granted but the subscription is gone).
+  if (BV_PUSH_SUPPORTED && Notification.permission !== "denied") {
+    navigator.serviceWorker.ready.then((reg) => reg.pushManager.getSubscription()).then((sub) => {
+      if (sub) return hide();
+      show("Turn on notifications", "Know the moment a customer messages you.", "Turn on", async () => {
+        try { await bvPushEnable(); hide(); if (activeTab === "settings") bvRenderNotifPanel(); }
+        catch (err) { alert(err.message); }
+      });
+    }).catch(hide);
+    return;
+  }
+  hide();
+}
+
+// Tiny generic modal using the same overlay styles as the rest of the app.
+function bvModal(title, bodyHtml) {
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal" style="max-width:420px;"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div style="font-weight:600;font-size:15px;margin-bottom:10px;">${escH(title)}</div>${bodyHtml}</div>`;
+  document.body.appendChild(overlay);
 }
 
 // ── API HELPERS ───────────────────────────────────────────────────────────────
@@ -1207,7 +1483,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  await renderSettings(c);
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -4878,6 +5154,13 @@ async function renderConversations(el) {
 
   bvRenderList(bvConversations);
   bvSubscribeRealtime();
+
+  // Arrived from a notification (?open=conv:<id>): jump straight into that chat.
+  if (window.bvPendingConv) {
+    const id = window.bvPendingConv;
+    window.bvPendingConv = null;
+    if (bvConversations.some((c) => c.id === id)) bvSelectConversation(id);
+  }
 }
 
 // Live updates so the tab never needs a manual reload: new inbound customer
@@ -6917,6 +7200,8 @@ async function renderSettings(el) {
     <div class="sh"><div class="sh-title">Settings & Ad Accounts</div></div>
 
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
+
+    <div class="panel" id="notifPanel"></div>
 
     <div class="panel">
       <div class="ph"><div class="ph-title">WhatsApp alerts</div></div>

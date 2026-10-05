@@ -1,0 +1,32 @@
+{
+  "id": "/dashboard_new.html",
+  "name": "Revora",
+  "short_name": "Revora",
+  "description": "Orders, chats, campaigns and earnings in one place.",
+  "start_url": "/dashboard_new.html?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1a7a5e",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Chats",
+      "short_name": "Chats",
+      "url": "/dashboard_new.html?open=tab:conversations&source=shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Orders",
+      "short_name": "Orders",
+      "url": "/dashboard_new.html?open=tab:orders&source=shortcut",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
