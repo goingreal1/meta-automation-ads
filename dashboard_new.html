@@ -4922,7 +4922,10 @@ function bvTicks(m) {
   if (m.status === "read") return `<span style="color:#53bdeb;margin-left:4px;" title="Read">✓✓</span>`;
   if (m.status === "delivered") return `<span style="color:var(--muted);margin-left:4px;" title="Delivered">✓✓</span>`;
   if (m.status === "sent") return `<span style="color:var(--muted);margin-left:4px;" title="Sent">✓</span>`;
-  if (m.status === "failed") return `<span style="color:var(--danger);margin-left:4px;" title="Failed to send">⚠</span>`;
+  if (m.status === "failed") {
+    const why = m.metadata?.error?.message || m.metadata?.error?.title;
+    return `<span style="color:var(--danger);margin-left:4px;" title="${bvEscape(why ? "Failed: " + why : "Failed to send")}">⚠</span>`;
+  }
   return "";
 }
 
@@ -4932,6 +4935,12 @@ function bvFmtMsg(m) {
   if (t === "text" || t === "audio_transcript") return bvEscape(c);
   if (t === "agent_text") return `<div class="agent-tag">Agent</div>${bvEscape(c)}`;
   if (t === "agent_media") return c ? `<div class="agent-tag">Agent</div>${bvEscape(c)}` : `<div class="agent-tag">Agent</div>`;
+  // Inbound customer media that the webhook has downloaded (metadata.url) is
+  // rendered by bvMediaThumb above the text -- only the caption goes here.
+  if (m.direction === "inbound" && m.metadata?.url && ["image", "video", "audio", "sticker"].includes(t)) return bvEscape(c);
+  if (m.direction === "inbound" && m.metadata?.url && t === "document") {
+    return `<a href="${bvEscape(m.metadata.url)}" target="_blank" style="color:var(--accent);">📄 ${bvEscape(m.metadata.filename || "Document")}</a>${c ? "<br>" + bvEscape(c) : ""}`;
+  }
   if (t === "audio") return `<span style="color:var(--muted);font-style:italic;display:inline-flex;align-items:center;gap:5px;">${icon("mic",13)} Voice note</span>`;
   if (t === "image") return "📷 Sent: product photo";
   if (t === "template") return `📨 Sent template: ${bvEscape(c)}`;
@@ -5359,8 +5368,7 @@ async function bvSendMediaFile(file, caption) {
 let bvRec = null;
 
 function bvPickRecorderMime() {
-  // Explicit AAC for mp4: some Chrome builds record Opus-in-MP4 under plain "audio/mp4".
-  const prefs = ["audio/ogg;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/webm;codecs=opus", "audio/webm"];
+  const prefs = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
   return prefs.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
 }
 
@@ -5438,8 +5446,10 @@ async function bvFinishRecording(rec) {
     const rawType = rec.recorder.mimeType || rec.chunks[0].type || "audio/webm";
     let blob = new Blob(rec.chunks, { type: rawType });
     let ext = rawType.includes("ogg") ? "ogg" : rawType.includes("mp4") ? "m4a" : "webm";
-    // webm, and Opus-in-MP4, aren't accepted by WhatsApp -- re-encode those.
-    if (rawType.includes("webm") || (rawType.includes("mp4") && rawType.includes("opus"))) {
+    // Only ogg/opus is sent as recorded. Chrome's webm and MP4 recordings are
+    // fragmented/odd containers that WhatsApp accepts the upload for and then
+    // reports as failed (seen live with a Chrome .m4a) -- so re-encode to mp3.
+    if (!rawType.includes("ogg")) {
       blob = await bvWebmToMp3(blob);
       ext = "mp3";
     }

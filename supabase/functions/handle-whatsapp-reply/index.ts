@@ -24,6 +24,59 @@ async function sendWhatsApp(to: string, body: string) {
   });
 }
 
+// Customer media (photos, voice notes, videos, documents) arrives as a Meta
+// media id plus a short-lived URL that needs the number's access token to
+// fetch -- so the dashboard couldn't show or play any of it. Download it now
+// into the public creative-vault bucket (random path) and return a URL the
+// dashboard can use directly.
+const INBOUND_MEDIA_TYPES = ["image", "video", "audio", "document", "sticker"];
+const MAX_INBOUND_MEDIA_BYTES = 20 * 1024 * 1024;
+const EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+  "video/mp4": "mp4", "video/3gpp": "3gp",
+  "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/aac": "aac", "audio/amr": "amr",
+  "application/pdf": "pdf",
+};
+
+async function downloadInboundMedia(supabase: any, token: string, message: any) {
+  const type = message.type;
+  const media = message[type];
+  if (!token || !media?.id) return null;
+
+  const metaRes = await fetch(`https://graph.facebook.com/v21.0/${media.id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const meta = await metaRes.json();
+  if (!metaRes.ok || !meta?.url) {
+    console.error("Inbound media lookup failed:", meta);
+    return null;
+  }
+  if (meta.file_size && Number(meta.file_size) > MAX_INBOUND_MEDIA_BYTES) {
+    console.warn(`Inbound ${type} too large to store (${meta.file_size} bytes).`);
+    return null;
+  }
+
+  const fileRes = await fetch(meta.url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!fileRes.ok) {
+    console.error("Inbound media download failed:", fileRes.status);
+    return null;
+  }
+  const bytes = new Uint8Array(await fileRes.arrayBuffer());
+  if (bytes.length > MAX_INBOUND_MEDIA_BYTES) return null;
+
+  const mime = (meta.mime_type || media.mime_type || "application/octet-stream").split(";")[0].trim().toLowerCase();
+  const ext = EXT_BY_MIME[mime] || mime.split("/")[1] || "bin";
+  const folder = type === "sticker" ? "image" : type;
+  const path = `inbound-media/${folder}s/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("creative-vault").upload(path, bytes, { contentType: mime, upsert: false });
+  if (error) {
+    console.error("Inbound media upload failed:", error);
+    return null;
+  }
+  const { data } = supabase.storage.from("creative-vault").getPublicUrl(path);
+  return { url: data?.publicUrl as string, media_type: folder, mime_type: mime, filename: media.filename };
+}
+
 // Any inbound message that isn't an APPROVE/REJECT admin command -- a real
 // customer reply, most often the very first message after tapping "Send
 // Message" on a Click-to-WhatsApp ad -- lands here instead of being dropped.
@@ -42,7 +95,7 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
   // has connected yet has nowhere to go.
   const { data: numberRow } = await supabase
     .from("buyer_whatsapp_numbers")
-    .select("id, company_id, media_buyer_id")
+    .select("id, company_id, media_buyer_id, access_token")
     .eq("phone_number_id", phoneNumberId)
     .eq("status", "active")
     .maybeSingle();
@@ -139,12 +192,22 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
   else if (type === "interactive") content = message.interactive?.button_reply?.title || message.interactive?.list_reply?.title || "";
   else content = message[type]?.caption ?? "";
 
+  let metadata: any = message;
+  if (INBOUND_MEDIA_TYPES.includes(type)) {
+    try {
+      const stored = await downloadInboundMedia(supabase, numberRow.access_token || WHATSAPP_TOKEN, message);
+      if (stored) metadata = { ...message, ...stored };
+    } catch (err) {
+      console.error("downloadInboundMedia error:", err);
+    }
+  }
+
   const { error: msgErr } = await supabase.from("messages").insert({
     conversation_id: conv.id,
     direction: "inbound",
     message_type: type,
     content,
-    metadata: message,
+    metadata,
     wa_message_id: message.id || null,
     company_id: numberRow.company_id,
   });
@@ -163,7 +226,7 @@ async function applyStatusUpdates(supabase: any, statuses: any[]) {
 
     const { data: row } = await supabase
       .from("messages")
-      .select("id, status")
+      .select("id, status, metadata")
       .eq("wa_message_id", id)
       .eq("direction", "outbound")
       .maybeSingle();
@@ -171,7 +234,11 @@ async function applyStatusUpdates(supabase: any, statuses: any[]) {
 
     if (next !== "failed" && (STATUS_RANK[row.status] ?? 0) >= STATUS_RANK[next]) continue;
 
-    const { error } = await supabase.from("messages").update({ status: next }).eq("id", row.id);
+    // Keep Meta's reason for a failure so the dashboard can show why (e.g. an
+    // unsupported audio format) instead of just a warning icon.
+    const update: any = { status: next };
+    if (next === "failed" && s.errors?.[0]) update.metadata = { ...(row.metadata ?? {}), error: s.errors[0] };
+    const { error } = await supabase.from("messages").update(update).eq("id", row.id);
     if (error) console.error("Failed to update message status:", error);
   }
 }
