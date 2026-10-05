@@ -12,6 +12,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "set_budget", ad_account_id, level: "adset"|"campaign", object_id, daily_budget (Naira), reason? } -> scale a daily budget
 //   POST { action: "targeting_search", ad_account_id, kind: "interest"|"city", q } -> interests / Nigerian cities to target (builder search box)
 //   POST { action: "reach_estimate", ad_account_id, states?, cities?, age_min, age_max, gender, interests?, behaviors?, optimization_goal? } -> Meta's potential-audience estimate for a draft ad set
+//   POST { action: "ad_preview", ad_account_id, ad_id? | spec: { image_url, message, headline, description, destination, link?, cta? } } -> Meta's own previews (mobile feed, desktop feed, Instagram, Reels, Stories)
+//   POST { action: "set_ad_image", ad_account_id, ad_ids, image_url } -> point live ads at a re-fitted copy of their image
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
 //   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep every 5 min: auto-pauses where the owner turned auto-pause on,
 //        otherwise drops a kill suggestion into the AI inbox (+ push), and announces campaigns that just went live (dry_run previews, changes nothing)
@@ -267,6 +269,7 @@ async function handleList(userClient: any, profile: any, body: any) {
       id: a.id, name: a.name, adset_id: a.adset_id, campaign_id: a.campaign_id, status: a.status,
       effective_status: a.effective_status, kind, created_time: a.created_time,
       thumbnail_url: a.creative?.thumbnail_url ?? null,
+      picture_url: a.creative?.object_story_spec?.link_data?.picture ?? null,
       wa_greeting: readWaMessage(a.creative)?.greeting ?? null,
       wa_prefill: readWaMessage(a.creative)?.prefill ?? null,
       ...m, ...withResults(kind, m), suggestion,
@@ -475,6 +478,90 @@ async function handleSetBudget(userClient: any, profile: any, body: any) {
   return { ok: true, name: obj.name as string, previous_daily_budget: before, daily_budget: num(after.daily_budget) / 100 };
 }
 
+// -- previews + image swap (so a creative is shown whole, not cropped) --
+const PREVIEW_FORMATS = ["MOBILE_FEED_STANDARD", "DESKTOP_FEED_STANDARD", "INSTAGRAM_STANDARD", "INSTAGRAM_REELS", "INSTAGRAM_STORY"];
+function readIframe(html: string) {
+  const src = String(html ?? "").match(/src="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
+  if (!src) return null;
+  return { src, width: Number(String(html).match(/width="(\d+)"/)?.[1]) || 340, height: Number(String(html).match(/height="(\d+)"/)?.[1]) || 600 };
+}
+const isOurImage = (u: string) => u.startsWith(`${SUPABASE_URL}/storage/v1/object/public/`);
+
+async function handleAdPreview(userClient: any, body: any) {
+  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const token = await resolveToken(admin, account);
+  const formats = (Array.isArray(body.formats) && body.formats.length ? body.formats : PREVIEW_FORMATS).filter((f: string) => PREVIEW_FORMATS.includes(f));
+  let creativeParam: string | null = null;
+  if (!body.ad_id) {
+    const sp = body.spec ?? {};
+    const image = String(sp.image_url ?? "");
+    if (!isOurImage(image)) throw new HttpError(400, "Preview needs an image uploaded from the dashboard.");
+    const { data: acc } = await admin.from("ad_accounts").select("fb_page_id, ig_user_id").eq("id", account.id).maybeSingle();
+    if (!acc?.fb_page_id) throw new HttpError(400, "This ad account has no Facebook Page connected yet.");
+    const wa = sp.destination !== "website";
+    creativeParam = JSON.stringify({
+      object_story_spec: {
+        page_id: acc.fb_page_id, ...(acc.ig_user_id ? { instagram_user_id: acc.ig_user_id } : {}),
+        link_data: {
+          picture: image, link: wa ? "https://api.whatsapp.com/send" : String(sp.link || "https://example.com"),
+          message: String(sp.message ?? "").slice(0, 2000), name: String(sp.headline ?? "").slice(0, 100) || undefined, description: String(sp.description ?? "").slice(0, 150) || undefined,
+          call_to_action: wa ? { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } } : { type: String(sp.cta || "SHOP_NOW"), value: { link: String(sp.link || "https://example.com") } },
+        },
+      },
+    });
+  } else if (!/^\d+$/.test(String(body.ad_id))) throw new HttpError(400, "Invalid ad_id.");
+  const results = await Promise.allSettled(formats.map(async (f: string) => {
+    const d = body.ad_id
+      ? await graphGet(`${body.ad_id}/previews`, { ad_format: f }, token)
+      : await graphGet(`act_${actId}/generatepreviews`, { ad_format: f, creative: creativeParam! }, token);
+    const it = readIframe(d?.data?.[0]?.body);
+    if (!it) throw new HttpError(502, "Meta did not return a preview for this placement.");
+    return { format: f, ...it };
+  }));
+  return { ok: true, previews: results.map((r, i) => r.status === "fulfilled" ? r.value : { format: formats[i], error: String((r.reason as any)?.message ?? r.reason) }) };
+}
+
+async function handleSetAdImage(userClient: any, body: any) {
+  const imageUrl = String(body.image_url ?? "");
+  if (!isOurImage(imageUrl)) throw new HttpError(400, "image_url must be an image uploaded from the dashboard.");
+  const adIds: string[] = Array.isArray(body.ad_ids) ? [...new Set(body.ad_ids.map(String))] as string[] : [];
+  if (!adIds.length || adIds.some((i) => !/^\d+$/.test(i))) throw new HttpError(400, "ad_ids must be a list of ad ids.");
+  if (adIds.length > MAX_ADS_PER_MESSAGE_EDIT) throw new HttpError(400, `Change at most ${MAX_ADS_PER_MESSAGE_EDIT} ads at a time.`);
+  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const token = await resolveToken(admin, account);
+  // ads that share one creative get one new creative, not one each
+  const made: Record<string, Promise<string>> = {};
+  const results = await Promise.allSettled(adIds.map(async (adId) => {
+    const ad = await graphGet(adId, { fields: "account_id,name,creative{id,name,object_story_spec}" }, token);
+    if (String(ad.account_id ?? "").replace(/^act_/, "") !== actId) throw new HttpError(403, "That ad is not in this ad account.");
+    const spec = ad.creative?.object_story_spec;
+    if (!spec?.link_data) throw new HttpError(400, "This ad is not a single-image ad (videos and carousels can't be re-fitted here).");
+    const key = String(ad.creative?.id);
+    made[key] ??= (async () => {
+      const newSpec = structuredClone(spec);
+      delete newSpec.link_data.image_hash; // Meta rejects image_hash together with picture; the new picture replaces it
+      newSpec.link_data.picture = imageUrl;
+      const cRes = await fetch(`${GRAPH}/act_${actId}/adcreatives`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: `${String(ad.creative?.name ?? ad.name).slice(0, 150)}-fit-${Date.now()}`, object_story_spec: newSpec, contextual_multi_ads: { enroll_status: "OPT_OUT" }, access_token: token }),
+      });
+      const cData = await cRes.json();
+      if (!cData.id) throw new HttpError(502, cData?.error?.error_user_msg || cData?.error?.message || "Meta could not create the new creative.");
+      return String(cData.id);
+    })();
+    const creativeId = await made[key];
+    const uRes = await fetch(`${GRAPH}/${adId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creative: { creative_id: creativeId }, access_token: token }) });
+    const uData = await uRes.json();
+    if (!uRes.ok || uData.error || uData.success === false) throw new HttpError(502, uData?.error?.error_user_msg || uData?.error?.message || "Meta refused to update the ad.");
+    const after = await graphGet(adId, { fields: "effective_status,creative{object_story_spec}" }, token);
+    return { id: adId, name: ad.name, effective_status: after.effective_status, picture_url: after.creative?.object_story_spec?.link_data?.picture ?? null };
+  }));
+  const out = results.map((r, i) => r.status === "fulfilled" ? { ok: true, ...r.value } : { ok: false, id: adIds[i], error: String((r.reason as any)?.message ?? r.reason) });
+  return { ok: out.every((x: any) => x.ok), results: out };
+}
+
 // -- targeting helpers (builder search box + live potential reach) --
 // Same targeting shape ai-auto-launch-tests sends, so the estimate matches what will really launch.
 async function resolveRegionKeys(names: string[], token: string): Promise<string[]> {
@@ -670,6 +757,8 @@ Deno.serve(async (req: Request) => {
     if (body.action === "set_budget") return json(await handleSetBudget(userClient, profile, body));
     if (body.action === "targeting_search") return json(await handleTargetingSearch(userClient, body));
     if (body.action === "reach_estimate") return json(await handleReachEstimate(userClient, body));
+    if (body.action === "ad_preview") return json(await handleAdPreview(userClient, body));
+    if (body.action === "set_ad_image") return json(await handleSetAdImage(userClient, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e: any) {
     const status = e instanceof HttpError ? e.status : 500;

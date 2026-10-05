@@ -298,6 +298,15 @@ a{color:inherit;}
 .bv-kebab-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;font-size:12px;background:none;border:none;cursor:pointer;color:var(--text);}
 .bv-kebab-dropdown button:hover{background:var(--panel2);}
 .bv-kebab-dropdown button.danger{color:var(--danger);}
+.bv-fitnote{margin-top:8px;font-size:12px;padding:8px 10px;border-radius:8px;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--text);}
+.bv-fitnote.warn{background:var(--warnBg);border-color:var(--warnBdr);}
+.bv-fitnote a{color:var(--accent);font-weight:600;cursor:pointer;}
+.bv-prevtabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;}
+.bv-prevtab{padding:6px 12px;border-radius:16px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;cursor:pointer;color:var(--text2);}
+.bv-prevtab.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.bv-prevframe{display:flex;justify-content:center;padding:6px 0;overflow:auto;}
+.am-acts{display:flex;gap:10px;margin-top:3px;font-size:11.5px;}
+.am-acts a{color:var(--accent);cursor:pointer;font-weight:600;}
 .bv-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:14px;background:var(--accentBg);border:1px solid var(--accentBdr);font-size:12px;margin:5px 5px 0 0;color:var(--text);}
 .bv-chip button{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;line-height:1;padding:0 3px;}
 .bv-preset{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:18px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;cursor:pointer;margin:0 6px 6px 0;color:var(--text2);}
@@ -2617,6 +2626,8 @@ function bvOpenCampaignBuilder(presetObjective) {
                 <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
                 <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
               </div>
+              <div id="dzFit"></div>
+              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:10px;" onclick="bvOpenAdPreview()">👁 Preview on phone &amp; laptop</button>
               <div class="fg" style="margin-top:14px;">
                 <div class="field"><label>Mechanism</label>
                   <select id="f_mechanism">
@@ -4361,8 +4372,146 @@ async function bvShowCreativeDetail(creativeId) {
   `;
 }
 
+// ── PREVIEW: how it looks in each Meta placement (Meta's own preview) ──────────
+const BV_PREVIEW_LABELS = { MOBILE_FEED_STANDARD: "📱 Mobile feed", DESKTOP_FEED_STANDARD: "💻 Desktop feed", INSTAGRAM_STANDARD: "Instagram feed", INSTAGRAM_REELS: "Reels", INSTAGRAM_STORY: "Stories" };
+function bvShowPreviewSheet(title, previews, note) {
+  const ok = previews.filter(p => p.src);
+  const want = window.matchMedia("(max-width: 760px)").matches ? "MOBILE_FEED_STANDARD" : "DESKTOP_FEED_STANDARD";
+  const first = ok.find(p => p.format === want) || ok[0];
+  bvOpenSheet("bvPreviewOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvPreviewOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:2px;">Preview</div>
+    <div style="font-size:12px;color:var(--muted);">${escH(title || "")}</div>
+    <div class="bv-prevtabs">${previews.map(p => `<button type="button" class="bv-prevtab${first && p.format === first.format ? " on" : ""}" data-f="${p.format}" ${p.src ? "" : "disabled style=\"opacity:.45\""} onclick="bvPreviewTab('${p.format}')">${BV_PREVIEW_LABELS[p.format] || p.format}</button>`).join("")}</div>
+    <div class="bv-prevframe" id="bvPrevFrame"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">This is Meta's own preview of the ad in that spot — what people will really see.${note ? " " + note : ""}</div>`, 560);
+  window._bvPreviews = previews;
+  if (first) bvPreviewTab(first.format);
+  else document.getElementById("bvPrevFrame").innerHTML = `<div class="msg err" style="display:block;">${escH(previews[0]?.error || "Meta could not make a preview.")}</div>`;
+}
+function bvPreviewTab(f) {
+  document.querySelectorAll("#bvPreviewOverlay .bv-prevtab").forEach(b => b.classList.toggle("on", b.dataset.f === f));
+  const p = (window._bvPreviews || []).find(x => x.format === f);
+  const box = document.getElementById("bvPrevFrame"); if (!box) return;
+  box.innerHTML = p?.src ? `<iframe src="${escH(p.src)}" width="${p.width}" height="${p.height}" scrolling="no" frameborder="0" style="border:1px solid var(--border);border-radius:12px;max-width:100%;background:#fff;"></iframe>` : `<div class="msg err" style="display:block;">${escH(p?.error || "No preview.")}</div>`;
+}
+
+async function bvUploadFitted(file) {
+  const uid = sessionData?.user?.id;
+  const path = `${uid}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
+  const { error } = await supabaseClient.storage.from("ad-fit").upload(path, file, { contentType: file.type || "image/jpeg" });
+  if (error) throw new Error(error.message);
+  return supabaseClient.storage.from("ad-fit").getPublicUrl(path).data.publicUrl;
+}
+
+async function bvOpenAdPreview() {
+  if (!activeAccountId) { bvToast("Pick an ad account first."); return; }
+  const g = id => document.getElementById(id);
+  const formFile = g("f_file")?.files?.[0];
+  const staged = bvStagedOf(bvAdTabUid)[0]?.c;
+  const file = formFile || staged?.file;
+  if (!file) { bvToast("Add your image first, then preview it."); return; }
+  if (!file.type.startsWith("image/")) { bvToast("Video previews appear after launch: Campaigns → Ads → 👁 Preview."); return; }
+  const src = formFile ? { message: g("f_primary")?.value, headline: g("f_headline")?.value, description: g("f_desc")?.value } : { message: staged.primary_text, headline: staged.headline, description: staged.description };
+  bvOpenSheet("bvPreviewOverlay", `<button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvPreviewOverlay')">✕</button><div class="ph-title">Preview</div><div class="empty" style="padding:30px;"><span class="spin"></span> Asking Meta to draw your ad…</div>`, 560);
+  try {
+    const url = file.__previewUrl || await bvUploadFitted(file);
+    file.__previewUrl = url;
+    const r = await amCall({ action: "ad_preview", ad_account_id: activeAccountId, spec: {
+      image_url: url, ...src, destination: document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp",
+      link: g("f_landing_url")?.value || "", cta: g("f_cta")?.value || "SHOP_NOW" } });
+    if (!r?.ok) throw new Error(r?.error || "Meta could not draw a preview.");
+    bvShowPreviewSheet(g("f_campaign_name")?.value || "", r.previews, bvFitState && file.name === bvFitState.fitted.name ? "Your image was fitted so Meta shows all of it." : "");
+  } catch (e) {
+    bvCloseSheet("bvPreviewOverlay");
+    bvToast("Preview failed: " + e.message);
+  }
+}
+
+async function amPreviewAd(adId) {
+  const ad = amAdById(adId);
+  bvOpenSheet("bvPreviewOverlay", `<button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvPreviewOverlay')">✕</button><div class="ph-title">Preview</div><div class="empty" style="padding:30px;"><span class="spin"></span> Asking Meta to draw this ad…</div>`, 560);
+  const r = await amCall({ action: "ad_preview", ad_account_id: activeAccountId, ad_id: adId });
+  if (!r?.ok) { bvCloseSheet("bvPreviewOverlay"); bvToast("Preview failed: " + (r?.error || "Meta could not draw it.")); return; }
+  bvShowPreviewSheet(ad?.name || "", r.previews, "");
+}
+
+// Fix an already-live ad whose image Meta is cropping: re-fit the whole picture and point the ad at it.
+async function amFitImage(adId) {
+  const ad = amAdById(adId); if (!ad) return;
+  if (!ad.picture_url) { bvToast("This ad isn't a single-image ad, so there is nothing to fit."); return; }
+  bvToast("Checking the image…");
+  let fitted = null;
+  try {
+    const blob = await (await fetch(ad.picture_url)).blob();
+    fitted = await bvFitImage(new File([blob], "ad-image.jpg", { type: blob.type || "image/jpeg" }));
+  } catch { bvToast("Couldn't read this ad's image."); return; }
+  if (!fitted) { bvToast("This image already fits Meta's Feed — nothing to fix. Use 👁 Preview to see each placement."); return; }
+  const same = am.data.ads.filter(a => a.picture_url === ad.picture_url);
+  const scope = same.length > 1 ? (confirm(`${same.length} ads use this same image. Fix all ${same.length}? (Cancel = only this one)`) ? same : [ad]) : [ad];
+  try {
+    const url = await bvUploadFitted(fitted);
+    const r = await amCall({ action: "set_ad_image", ad_account_id: activeAccountId, ad_ids: scope.map(a => a.id), image_url: url });
+    if (!r?.results) throw new Error(r?.error || "Meta did not accept it.");
+    for (const x of r.results) { const row = amAdById(x.id); if (x.ok && row) { row.picture_url = x.picture_url; row.thumbnail_url = x.picture_url || row.thumbnail_url; } }
+    const bad = r.results.filter(x => !x.ok);
+    bvToast(bad.length ? `Fixed ${r.results.length - bad.length}, ${bad.length} failed: ${bad[0].error}` : `Fixed on Meta (${r.results.length} ad${r.results.length === 1 ? "" : "s"}). Meta may re-check the ad for a few minutes.`);
+    amDraw(); amQuietRefresh();
+  } catch (e) { bvToast("Couldn't fix it: " + e.message); }
+}
+
 function handleFilePick(input) { if (input.files?.[0]) setFile(input.files[0]); bvRenderBuilderSummary(); }
-function setFile(file) {
+// ── FIT THE WHOLE IMAGE ──────────────────────────────────────────────────────
+// Feed shows images between 4:5 (tall) and 1.91:1 (wide) in full; anything taller or wider is cut by Meta.
+// A tall flyer (2:3) would lose its top and bottom, so the picture is placed whole on a 4:5 canvas with a soft
+// blurred copy of itself filling the sides. Images already inside the range are left exactly as they are.
+let bvFitState = null;
+async function bvFitImage(file) {
+  if (!file?.type?.startsWith("image/")) return null;
+  const bmp = await createImageBitmap(file);
+  const r = bmp.width / bmp.height;
+  if (r >= 0.8 && r <= 1.91) { bmp.close?.(); return null; }
+  const [W, H] = r < 0.8 ? [1080, 1350] : [1200, 628];
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  // soft background: a tiny copy scaled up is a blur that works in every browser
+  const t = document.createElement("canvas"); t.width = 24; t.height = Math.max(2, Math.round(24 * H / W));
+  const tg = t.getContext("2d"); tg.imageSmoothingQuality = "high";
+  const cover = Math.max(t.width / bmp.width, t.height / bmp.height);
+  tg.drawImage(bmp, (t.width - bmp.width * cover) / 2, (t.height - bmp.height * cover) / 2, bmp.width * cover, bmp.height * cover);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+  g.drawImage(t, 0, 0, W, H);
+  g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(0, 0, W, H);
+  const k = Math.min(W / bmp.width, H / bmp.height), w = bmp.width * k, h = bmp.height * k;
+  g.drawImage(bmp, (W - w) / 2, (H - h) / 2, w, h);
+  const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.94));
+  const out = new File([blob], file.name.replace(/\.[^.]+$/, "") + "-fit.jpg", { type: "image/jpeg" });
+  bvFitState = { orig: file, fitted: out, from: `${bmp.width}×${bmp.height}`, to: `${W}×${H}` };
+  bmp.close?.();
+  return out;
+}
+function bvShowFitNote() {
+  const el = document.getElementById("dzFit"); if (!el) return;
+  const cur = document.getElementById("f_file")?.files?.[0];
+  const st = bvFitState;
+  if (!st || !cur) { el.innerHTML = ""; return; }
+  if (cur.name === st.fitted.name) el.innerHTML = `<div class="bv-fitnote">✓ Your image is ${st.from}, taller or wider than Meta shows in Feed, so it was fitted onto a ${st.to === "1080×1350" ? "4:5" : "1.91:1"} canvas — Meta will show <b>all</b> of it, not a cropped piece. <a onclick="bvUseOriginalImage()">Use my original instead</a></div>`;
+  else if (cur.name === st.orig.name) el.innerHTML = `<div class="bv-fitnote warn">⚠ Using your original (${st.from}). Meta will crop it in Feed. <a onclick="bvUseFittedImage()">Fit the whole image</a></div>`;
+  else el.innerHTML = "";
+}
+function bvUseOriginalImage() { if (bvFitState) setFile(bvFitState.orig, { original: true }); }
+function bvUseFittedImage() { if (bvFitState) setFile(bvFitState.fitted, { original: true }); }
+
+async function setFile(file, opts = {}) {
+  if (!opts.original && file.type?.startsWith("image/")) {
+    let fitted = null;
+    try { fitted = await bvFitImage(file); } catch {}
+    if (fitted) file = fitted; else bvFitState = null;
+  }
+  setFileRaw(file);
+  bvShowFitNote();
+}
+function setFileRaw(file) {
   const dz   = document.getElementById("dropZone");
   const prev = document.getElementById("dzPrev");
   const inp  = document.getElementById("f_file");
@@ -4560,7 +4709,8 @@ function amRowHtml(level, r) {
   const flag = level === "ads" && r.suggestion?.kill && on;
   const thumb = level === "ads" && r.thumbnail_url ? `<img class="am-thumb" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
   const next = level === "campaigns" ? "View ad sets" : level === "adsets" ? "View ads" : "";
-  const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}`;
+  const acts = level === "ads" ? `<span class="am-acts"><a onclick="amPreviewAd('${r.id}')">👁 Preview</a>${r.picture_url ? `<a onclick="amFitImage('${r.id}')" title="Re-fit the whole image so Meta doesn't crop it">⤢ Fit image</a>` : ""}</span>` : "";
+  const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}${acts}`;
   return `
     <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}">
       <div class="am-top">
