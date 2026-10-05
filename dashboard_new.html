@@ -5135,6 +5135,7 @@ function krSummary(unit, max, spend, hours, auto) {
 // Each connected number gets its own business profile, so the AI only ever talks about THAT business.
 const AI_MODE_LABEL = { off: "Off", first: "First reply only", full: "Replies to everything" };
 const AI_FIELDS = ["business_name", "agent_name", "business_type", "offer", "proof", "how_to_buy", "faqs", "rules", "opener"];
+let bvAiDefaultPrompt = "";
 const AI_TEMPLATES = {
   media_buying: {
     label: "Media buying / Meta ads service",
@@ -5200,12 +5201,21 @@ function bvAiForm(n, a) {
       <div class="field"><label>Name customers see</label><input id="ai_agent_name" value="${v("agent_name")}" placeholder="e.g. Sofi"></div>
     </div>
     <div class="field" style="margin-top:12px;"><label>What kind of business is it?</label><input id="ai_business_type" value="${v("business_type")}" placeholder="e.g. food vendor, Meta ads service, wig seller"></div>
-    ${ta("opener", "First reply (instant)", "Hey {name} 👋 Welcome! …", "— short and punchy. {name} = customer's first name")}
+    ${ta("opener", "Example of a great first reply", "Hey 👋 Welcome! We run Meta ads that bring real WhatsApp orders. What do you sell? 🛒", "— the AI matches this energy but writes every reply fresh")}
     ${ta("offer", "What you sell + prices", "List what you offer, prices, what's included, delivery or timelines…", "— the AI only states facts written here")}
     ${ta("proof", "Proof it can quote", "Results, number of customers served, testimonials you are happy to share…", "— leave empty if none; the AI won't invent any")}
     ${ta("how_to_buy", "How a customer buys / pays", "Steps to order, bank account details, what you need from them…")}
     ${ta("faqs", "Common questions & answers", "Q: … A: …")}
     ${ta("rules", "Your own rules", "e.g. Never discuss other services. Don't give discounts. Hand over if they ask for bulk.")}
+    <details style="margin-top:14px;" id="aiPromptBox">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px;">⚙️ AI instructions (system prompt)</summary>
+      <div style="font-size:11.5px;color:var(--muted);margin:6px 0;">How the AI thinks, sells and behaves. Not hard-coded: edit it freely. Your business details above are inserted where you see <code>{{business_info}}</code>, <code>{{how_to_buy}}</code>, <code>{{proof}}</code>, <code>{{faqs}}</code>, <code>{{owner_rules}}</code>, <code>{{products}}</code>, <code>{{agent_name}}</code>, <code>{{business_name}}</code>, <code>{{business_type}}</code>, <code>{{first_reply_example}}</code>, <code>{{customer_name}}</code>, <code>{{chat_source}}</code>, <code>{{time_lagos}}</code>, <code>{{conversation_state}}</code>.</div>
+      <textarea class="ai-ta" id="ai_system_prompt" style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12px;" placeholder="Loading…"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-g" style="width:auto;padding:5px 12px;font-size:12px;" onclick="bvAiResetPrompt()">↺ Use the recommended prompt</button>
+        <span style="font-size:11.5px;color:var(--muted);" id="aiPromptHint"></span>
+      </div>
+    </details>
     <div style="margin-top:16px;font-weight:600;font-size:13px;">Try it before you switch it on</div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Type as if you were a customer. Nothing is sent to WhatsApp.</div>
     <div class="ai-chat" id="aiTestChat"></div>
@@ -5225,6 +5235,21 @@ function bvOpenAiAgent(numberId) {
   bvAiTestHistory = [];
   bvOpenSheet("bvAiOverlay", bvAiForm(n, bvAiAgents[numberId]), 640);
   bvAiTestReset();
+  bvAiLoadPrompt(bvAiAgents[numberId]);
+}
+async function bvAiLoadPrompt(agent) {
+  const box = document.getElementById("ai_system_prompt"); if (!box) return;
+  try {
+    if (!bvAiDefaultPrompt) bvAiDefaultPrompt = (await sbQuery("ai_settings", "select=value&key=eq.sales_system_prompt"))?.[0]?.value || "";
+  } catch (e) { /* editor stays usable */ }
+  box.value = agent?.system_prompt?.trim() ? agent.system_prompt : bvAiDefaultPrompt;
+  box.placeholder = "";
+  const hint = document.getElementById("aiPromptHint");
+  if (hint) hint.textContent = agent?.system_prompt?.trim() ? "Custom prompt for this number." : "Using the recommended prompt.";
+}
+function bvAiResetPrompt() {
+  if (!confirm("Replace the instructions with the recommended prompt?")) return;
+  const box = document.getElementById("ai_system_prompt"); if (box) box.value = bvAiDefaultPrompt;
 }
 function bvAiApplyTemplate(k) {
   const t = AI_TEMPLATES[k]; if (!t) return;
@@ -5236,6 +5261,8 @@ function bvAiCollect() {
   const o = {};
   AI_FIELDS.forEach(f => { o[f] = document.getElementById("ai_" + f)?.value.trim() || null; });
   o.mode = document.querySelector('input[name="ai_mode"]:checked')?.value || "off";
+  const sp = document.getElementById("ai_system_prompt")?.value.trim() || "";
+  o.system_prompt = sp && sp !== (bvAiDefaultPrompt || "").trim() ? sp : null; // null = follow the recommended prompt
   return o;
 }
 function bvAiTestReset() {
