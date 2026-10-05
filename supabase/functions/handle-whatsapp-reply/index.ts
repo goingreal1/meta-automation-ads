@@ -151,6 +151,31 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
   if (msgErr) console.error("Failed to insert inbound WhatsApp message:", msgErr);
 }
 
+// Receipts can arrive out of order (e.g. "read" before "delivered"), so a
+// status only ever moves forward; "failed" always wins.
+const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+
+async function applyStatusUpdates(supabase: any, statuses: any[]) {
+  for (const s of statuses) {
+    const id = s?.id;
+    const next = s?.status;
+    if (!id || !(next === "failed" || next in STATUS_RANK)) continue;
+
+    const { data: row } = await supabase
+      .from("messages")
+      .select("id, status")
+      .eq("wa_message_id", id)
+      .eq("direction", "outbound")
+      .maybeSingle();
+    if (!row) continue;
+
+    if (next !== "failed" && (STATUS_RANK[row.status] ?? 0) >= STATUS_RANK[next]) continue;
+
+    const { error } = await supabase.from("messages").update({ status: next }).eq("id", row.id);
+    if (error) console.error("Failed to update message status:", error);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
 
@@ -172,6 +197,14 @@ Deno.serve(async (req: Request) => {
     const entry = payload.entry?.[0];
     const change = entry?.changes?.[0];
     const message = change?.value?.messages?.[0];
+
+    // Meta delivery receipts for messages we sent (sent/delivered/read/failed).
+    // Same webhook URL as inbound messages, but a different payload shape.
+    const statuses = change?.value?.statuses;
+    if (!message && Array.isArray(statuses) && statuses.length) {
+      await applyStatusUpdates(supabase, statuses).catch((err) => console.error("applyStatusUpdates error:", err));
+      return new Response("ok", { status: 200 });
+    }
 
     if (!message) {
       return new Response("ok", { status: 200 });
