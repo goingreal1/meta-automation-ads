@@ -298,6 +298,18 @@ a{color:inherit;}
 .bv-kebab-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;font-size:12px;background:none;border:none;cursor:pointer;color:var(--text);}
 .bv-kebab-dropdown button:hover{background:var(--panel2);}
 .bv-kebab-dropdown button.danger{color:var(--danger);}
+.bv-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:14px;background:var(--accentBg);border:1px solid var(--accentBdr);font-size:12px;margin:5px 5px 0 0;color:var(--text);}
+.bv-chip button{background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;line-height:1;padding:0 3px;}
+.bv-preset{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:18px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;cursor:pointer;margin:0 6px 6px 0;color:var(--text2);}
+.bv-preset.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.bv-res{border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--panel);max-height:190px;overflow-y:auto;}
+.bv-res:empty{display:none;}
+.bv-res button{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--border);padding:8px 10px;font-size:12.5px;cursor:pointer;color:var(--text);}
+.bv-res button:last-child{border-bottom:none;}
+.bv-res button small{display:block;color:var(--muted);font-size:11px;}
+.bv-reach{margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--panel2);font-size:12.5px;color:var(--text2);}
+.bv-reach b{color:var(--text);font-size:14px;}
+.bv-reach small{display:block;color:var(--muted);font-size:11px;margin-top:2px;}
 .bv-section-card{border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px;background:var(--panel);box-shadow:0 1px 4px rgba(20,19,15,.05);}
 .bv-section-card-title{font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px;}
 .bv-section-card-title .bv-ico{font-size:14px;}
@@ -2237,6 +2249,7 @@ async function renderVault(el) {
         Build a Campaign → Ad Set → Ad in one guided flow, Meta Ads Manager-style — pick what you're promoting, set targeting and budget, add the creative, then review and launch.
       </div>
       <button type="button" class="btn btn-a" style="width:auto;padding:10px 22px;" onclick="bvOpenObjectiveGateModal()">+ New Campaign</button>
+      <button type="button" class="btn btn-g" style="width:auto;padding:10px 18px;margin-left:8px;" onclick="bvOpenDraftsModal()">📝 Drafts</button>
     </div>
 
     <div class="panel">
@@ -2317,6 +2330,173 @@ function bvConfirmObjectiveGate() {
   bvOpenCampaignBuilder(val);
 }
 
+// ── CAMPAIGN DRAFTS ──────────────────────────────────────────────────────────
+// The builder saves itself a moment after every change (settings, ad sets, ads, even the
+// attached image/video) so a half-built campaign can be continued later, from any device.
+let bvDraftId = null, bvDraftTimer = null, bvDraftBusy = false, bvDraftRestoring = false, bvDraftDirty = false;
+const BV_DRAFT_FIELDS = ["f_whatsapp_number", "f_landing_url", "f_product", "f_campaign_name", "f_objective", "f_budget_type", "f_scheduled", "f_end_date", "f_ad_name", "f_wa_greeting", "f_wa_prefill", "f_primary", "f_headline", "f_desc", "f_mechanism", "f_format", "f_cta"];
+const bvDraftStatus = t => { const el = document.getElementById("bvDraftStatus"); if (el) el.textContent = t; };
+
+function bvDraftStart() {
+  if (!bvDraftRestoring) bvDraftId = null;
+  const ov = document.getElementById("bvBuilderOverlay");
+  ov?.addEventListener("input", bvDraftSoon);
+  ov?.addEventListener("change", bvDraftSoon);
+}
+function bvDraftSoon() {
+  if (bvDraftRestoring || !document.getElementById("bvBuilderOverlay")) return;
+  bvDraftDirty = true;
+  clearTimeout(bvDraftTimer);
+  bvDraftTimer = setTimeout(bvDraftSave, 1500);
+}
+
+async function bvDraftUpload(file) {
+  if (!file) return null;
+  if (file.__draftPath) return { path: file.__draftPath, name: file.name, type: file.type };
+  if (file.__draftFail) return null;
+  const uid = sessionData?.user?.id;
+  const path = `${uid}/${bvDraftId}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
+  const { error } = await supabaseClient.storage.from("draft-media").upload(path, file, { contentType: file.type || undefined });
+  if (error) { file.__draftFail = true; return null; }
+  file.__draftPath = path;
+  return { path, name: file.name, type: file.type };
+}
+
+async function bvDraftSave() {
+  if (bvDraftBusy) { bvDraftSoon(); return; }
+  const g = id => document.getElementById(id);
+  if (!g("bvBuilderOverlay") || !bvDraftDirty) return;
+  const formFile = g("f_file")?.files?.[0] || null;
+  const hasContent = g("f_campaign_name")?.value.trim() || bvStagedCopies.length || g("f_primary")?.value.trim() || formFile;
+  if (!hasContent) return;
+  bvDraftBusy = true; bvDraftDirty = false;
+  bvDraftStatus("Saving draft…");
+  try {
+    if (!bvDraftId) {
+      const { data, error } = await supabaseClient.from("campaign_drafts").insert({ ad_account_id: activeAccountId || null, name: g("f_campaign_name")?.value.trim() || null, state: {} }).select("id").single();
+      if (error) throw error;
+      bvDraftId = data.id;
+    }
+    const fields = {};
+    for (const id of BV_DRAFT_FIELDS) if (g(id)) fields[id] = g(id).value;
+    fields.destination = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
+    let lost = 0;
+    const copies = [];
+    for (const c of bvStagedCopies) {
+      const { file, ...rest } = c;
+      const ref = file ? await bvDraftUpload(file) : null;
+      if (file && !ref) lost++;
+      copies.push({ ...rest, file_ref: ref });
+    }
+    const formRef = formFile ? await bvDraftUpload(formFile) : null;
+    if (formFile && !formRef) lost++;
+    const state = {
+      v: 1, step: g("bvBuilderOverlay")?.getAttribute("data-step") || "campaign", fields,
+      adsets: bvAdSetRows, copies, adTabUid: bvAdTabUid, formFile: formRef, formReuse: bvReuseAsset, lost,
+    };
+    const { error } = await supabaseClient.from("campaign_drafts").update({ name: fields.f_campaign_name?.trim() || null, state, ad_account_id: activeAccountId || null, updated_at: new Date().toISOString() }).eq("id", bvDraftId);
+    if (error) throw error;
+    bvDraftStatus(lost ? `Draft saved · ${lost} file${lost === 1 ? " is" : "s are"} too big to keep — re-attach later` : "Draft saved ✓");
+  } catch (e) {
+    bvDraftStatus("Couldn't save draft");
+  }
+  bvDraftBusy = false;
+  if (bvDraftDirty) bvDraftSoon();
+}
+
+async function bvDraftDelete(id) {
+  if (!id) return;
+  try {
+    const { data } = await supabaseClient.from("campaign_drafts").select("state").eq("id", id).maybeSingle();
+    const paths = [...(data?.state?.copies || []).map(c => c.file_ref?.path), data?.state?.formFile?.path].filter(Boolean);
+    if (paths.length) await supabaseClient.storage.from("draft-media").remove(paths);
+    await supabaseClient.from("campaign_drafts").delete().eq("id", id);
+  } catch {}
+}
+
+async function bvOpenDraftsModal() {
+  document.getElementById("bvObjectiveGateOverlay")?.remove();
+  bvOpenSheet("bvDraftsOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvDraftsOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:4px;">Saved drafts</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Campaigns you started but didn't launch. They save themselves as you build.</div>
+    <div id="bvDraftsBody"><div class="empty" style="padding:20px;">Loading…</div></div>`, 560);
+  let rows = [];
+  try { rows = await sbQuery("campaign_drafts", "select=id,name,ad_account_id,updated_at,state&order=updated_at.desc&limit=30"); } catch {}
+  const body = document.getElementById("bvDraftsBody");
+  if (!body) return;
+  if (!Array.isArray(rows) || !rows.length) { body.innerHTML = `<div class="empty" style="padding:20px;">No drafts yet. Start a campaign and it saves itself here.</div>`; return; }
+  body.innerHTML = rows.map(d => {
+    const st = d.state || {}, n = (st.copies || []).length + (st.formFile ? 1 : 0), sets = (st.adsets || []).length || 1;
+    const acct = accountsList.find(a => a.id === d.ad_account_id);
+    return `<div class="bv-listrow">
+      <div class="bv-listmain"><div class="bv-listname">${escH(d.name || "Untitled campaign")}</div>
+        <div class="bv-listsub">${sets} ad set${sets === 1 ? "" : "s"} · ${n} ad${n === 1 ? "" : "s"}${acct ? ` · ${escH(acct.nickname || acct.name || "")}` : ""} · ${ago(d.updated_at)}</div></div>
+      <button type="button" class="btn btn-a" style="width:auto;padding:6px 14px;font-size:12px;" onclick="bvResumeDraft('${d.id}')">Continue</button>
+      <button type="button" class="btn btn-g" style="width:auto;padding:6px 10px;font-size:12px;margin-left:6px;" onclick="bvDeleteDraftRow('${d.id}', this)" aria-label="Delete draft">🗑</button>
+    </div>`;
+  }).join("");
+}
+async function bvDeleteDraftRow(id, btn) {
+  if (!confirm("Delete this draft? This can't be undone.")) return;
+  await bvDraftDelete(id);
+  btn.closest(".bv-listrow")?.remove();
+  if (!document.querySelector("#bvDraftsBody .bv-listrow")) bvOpenDraftsModal();
+}
+
+async function bvResumeDraft(id) {
+  let d;
+  try { [d] = await sbQuery("campaign_drafts", `id=eq.${id}&select=*`); } catch {}
+  if (!d?.state) { bvToast("Couldn't open that draft."); return; }
+  const st = d.state;
+  if (d.ad_account_id && d.ad_account_id !== activeAccountId && accountsList.some(a => a.id === d.ad_account_id)) {
+    activeAccountId = d.ad_account_id;
+    ["acctSelector", "acctSelectorMobile"].forEach(sid => { const el = document.getElementById(sid); if (el) el.value = activeAccountId; });
+  }
+  bvCloseSheet("bvDraftsOverlay");
+  bvDraftRestoring = true;
+  bvDraftId = id;
+  try {
+    bvOpenCampaignBuilder(st.fields?.destination === "website" ? "OUTCOME_TRAFFIC" : "OUTCOME_SALES");
+    const g = x => document.getElementById(x);
+    const dest = document.querySelector(`input[name="f_destination"][value="${st.fields?.destination || "whatsapp"}"]`);
+    if (dest) { dest.checked = true; bvOnDestinationChange(); }
+    for (const [k, v] of Object.entries(st.fields || {})) if (g(k) && k !== "destination") g(k).value = v;
+    if (st.fields?.f_product) bvOnProductChange();
+    if (st.adsets?.length) bvAdSetRows = st.adsets;
+    bvStagedCopies = [];
+    bvToast("Loading your saved draft…");
+    const fetchFile = async ref => {
+      if (!ref?.path) return null;
+      const { data } = await supabaseClient.storage.from("draft-media").download(ref.path);
+      if (!data) return null;
+      const f = new File([data], ref.name, { type: ref.type || data.type });
+      f.__draftPath = ref.path;
+      return f;
+    };
+    for (const c of st.copies || []) { const { file_ref, ...rest } = c; bvStagedCopies.push({ ...rest, file: await fetchFile(file_ref) }); }
+    bvAdTabUid = st.adTabUid;
+    bvReuseAsset = st.formReuse || null;
+    const ff = await fetchFile(st.formFile);
+    if (ff) setFile(ff);
+    bvRenderAdSetRows();
+    bvEnsureAdTab();
+    bvRenderStagedCopies();
+    bvRenderBuilderSummary();
+    bvSwitchBuilderTab(st.step || "campaign");
+    if (st.lost) bvToast(`${st.lost} file${st.lost === 1 ? "" : "s"} couldn't be kept in the draft — please attach again.`);
+  } finally {
+    bvDraftRestoring = false;
+    bvDraftStatus("Draft loaded");
+  }
+}
+
+async function bvCloseBuilder() {
+  clearTimeout(bvDraftTimer);
+  try { await bvDraftSave(); } catch {}
+  document.getElementById("bvBuilderOverlay")?.remove();
+}
+
 function bvOpenCampaignBuilder(presetObjective) {
   const products = window.bvVaultProductsCache || [];
   const pOpts = window.bvVaultProductOpts || "";
@@ -2325,7 +2505,7 @@ function bvOpenCampaignBuilder(presetObjective) {
   overlay.className = "bv-overlay bv-overlay-xl";
   overlay.innerHTML = `
     <div class="bv-modal bv-modal-xl">
-      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
+      <button class="bv-modal-close" onclick="bvCloseBuilder()">✕</button>
       <form id="uploadForm" style="display:flex;flex-direction:column;height:100%;min-height:0;">
 
         <div class="bv-builder-head">
@@ -2511,9 +2691,10 @@ function bvOpenCampaignBuilder(presetObjective) {
         </div>
 
         <div class="bv-builder-foot">
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;align-items:center;">
             <button type="button" class="btn btn-g" style="width:auto;padding:8px 16px;font-size:12.5px;" id="bvTabBackBtn" onclick="bvBuilderTabStep(-1)">← Back</button>
             <button type="button" class="btn btn-g" style="width:auto;padding:8px 16px;font-size:12.5px;" id="bvTabNextBtn" onclick="bvBuilderTabStep(1)">Next →</button>
+            <span id="bvDraftStatus" style="font-size:11.5px;color:var(--muted);margin-left:4px;"></span>
           </div>
           <button type="submit" class="btn btn-a" style="width:auto;padding:8px 20px;" id="uploadBtn">Review & Launch →</button>
         </div>
@@ -2532,6 +2713,7 @@ function bvOpenCampaignBuilder(presetObjective) {
   bvLoadBuilderIdentity();
   bvRenderBuilderSummary();
   bvSwitchBuilderTab("campaign");
+  bvDraftStart();
 
   // Drag-and-drop
   const dz = document.getElementById("dropZone");
@@ -2810,9 +2992,11 @@ async function bvExecuteLaunch(copies, scheduledIso) {
           age_max: Number(row.age_max) || 65,
           gender: row.gender,
           geo_type: row.geo_type,
-          states: row.geo_type === 'states' && row.states
-            ? row.states.split(',').map(s => s.trim()).filter(Boolean)
-            : null,
+          states: row.geo_type === 'states' && bvStatesOf(row).length ? bvStatesOf(row) : null,
+          cities: row.geo_type === 'states' && (row.cities || []).length ? row.cities.map(c => ({ key: c.key, name: c.name, region: c.region, radius: Number(row.city_radius) || 17 })) : null,
+          interests: bvAudienceOf(row).interests.length ? bvAudienceOf(row).interests : null,
+          behaviors: bvAudienceOf(row).behaviors.length ? bvAudienceOf(row).behaviors : null,
+          audience_presets: (row.presets || []).length ? row.presets : null,
           sort_order: i,
           placement_preset: row.placement_preset || null,
           device_platforms: row.device_platforms?.length ? row.device_platforms : null,
@@ -2820,7 +3004,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
           bid_amount_naira: row.bid_strategy && row.bid_strategy !== 'LOWEST_COST_WITHOUT_CAP' && row.bid_amount_naira ? Number(row.bid_amount_naira) : null,
           billing_event: row.billing_event || null,
           optimization_goal: row.optimization_goal || null,
-          advantage_audience: row.advantage_audience !== false,
+          advantage_audience: row.advantage_audience !== false && !bvAudienceCount(row),
           display_name: (row.display_name || "").trim() || null,
         }))
       );
@@ -2835,6 +3019,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       const scheduleNote = scheduledIso ? ` Scheduled to start ${new Date(scheduledIso).toLocaleString()}.` : "";
       bvToast((launchRes.message || "Launched.") + scheduleNote);
       document.getElementById("bvBuilderOverlay")?.remove();
+      bvDraftDelete(bvDraftId);
       bvStagedCopies = [];
       bvReuseAsset = null;
       setTimeout(render, 400);
@@ -2905,6 +3090,7 @@ function bvUpdateStagedCopy(i, key, value) {
 }
 
 function bvRenderStagedCopies() {
+  bvDraftSoon();
   const wrap = document.getElementById("stagedCopies");
   bvRenderAdTabs();
   bvRenderBuilderSummary();
@@ -3251,8 +3437,9 @@ function bvSetAdSetName(i, value) {
 
 function bvAdSetSummary(r) {
   const gender = { all: "All genders", male: "Men", female: "Women" }[r.gender] || "All genders";
-  const where = r.geo_type === "states" && r.states ? String(r.states) : "Nationwide";
-  return `₦${Number(r.budget_naira || 0).toLocaleString()}/day · ${gender} ${r.age_min}–${r.age_max} · ${where}${r.advantage_audience === false ? "" : " · Advantage+"}`;
+  const where = bvPlacesLabel(r);
+  const aud = bvAudienceCount(r) ? ` · ${bvAudienceLabel(r)}` : "";
+  return `₦${Number(r.budget_naira || 0).toLocaleString()}/day · ${gender} ${r.age_min}–${r.age_max} · ${where}${aud}${r.advantage_audience === false || bvAudienceCount(r) ? "" : " · Advantage+"}`;
 }
 
 function bvOpenAdSetListModal() {
@@ -3577,7 +3764,7 @@ function bvFindDuplicateNames(copies) {
 
 function bvResetAdSetBuilder() {
   bvAdSetRows = [{
-    label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: "",
+    label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: [], cities: [], city_radius: 17, presets: [], interests: [],
     placement_preset: "", device_platforms: [], bid_strategy: "LOWEST_COST_WITHOUT_CAP", bid_amount_naira: "",
     billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true, display_name: "", uid: bvUid(),
   }];
@@ -3646,6 +3833,8 @@ function bvConfirmDuplicateAdSets() {
     const fresh = {
       ...last,
       device_platforms: [...(last.device_platforms || [])],
+      states: [...bvStatesOf(last)], cities: (last.cities || []).map(c => ({ ...c })),
+      presets: [...(last.presets || [])], interests: (last.interests || []).map(x => ({ ...x })),
       advantage_audience: keepAdvantage,
       display_name: name,
       label: `Ad Set ${bvAdSetRows.length + 1}`,
@@ -3667,6 +3856,175 @@ function bvRemoveAdSetRow(i) {
   bvAdSetRows.splice(i, 1);
   bvAdSetRows.forEach((row, idx) => { row.label = `Ad Set ${idx + 1}`; });
   bvRenderAdSetRows();
+}
+
+// ── WHERE + WHO: states, cities, audience presets, live potential reach ──────
+// States/cities become Meta regions/cities; presets and searched interests become Meta
+// detailed targeting. Whenever an audience is chosen Advantage+ expansion is off, because
+// Meta only treats detailed targeting as a hard filter without expansion.
+const BV_NG_STATES = [["Abia"],["Adamawa"],["Akwa Ibom"],["Anambra"],["Bauchi"],["Bayelsa"],["Benue"],["Borno"],["Cross River"],["Delta"],["Ebonyi"],["Edo"],["Ekiti"],["Enugu"],["Abuja (FCT)", "Federal Capital Territory"],["Gombe"],["Imo"],["Jigawa"],["Kaduna"],["Kano"],["Katsina"],["Kebbi"],["Kogi"],["Kwara"],["Lagos"],["Nasarawa"],["Niger"],["Ogun"],["Ondo"],["Osun"],["Oyo"],["Plateau"],["Rivers"],["Sokoto"],["Taraba"],["Yobe"],["Zamfara"]].map(x => ({ label: x[0], value: x[1] || x[0] }));
+const bvStateLabel = v => BV_NG_STATES.find(x => x.value === v)?.label || v;
+const BV_PRESETS = {
+  business: { icon: "💼", label: "Business owners", interests: [{ id: "6002884511422", name: "Small business" }, { id: "6003371567474", name: "Entrepreneurship" }], behaviors: [{ id: "6002714898572", name: "Small business owners" }] },
+  students: { icon: "🎓", label: "Students", interests: [{ id: "6003342188930", name: "Student" }], behaviors: [] },
+  parents: { icon: "👨‍👩‍👧", label: "Parents", interests: [{ id: "6003232518610", name: "Parenting" }, { id: "6003332764437", name: "Parent" }], behaviors: [] },
+  shoppers: { icon: "🛍️", label: "Online shoppers", interests: [{ id: "6003346592981", name: "Online shopping" }], behaviors: [{ id: "6071631541183", name: "Engaged shoppers" }] },
+  wellness: { icon: "💪", label: "Health & wellness", interests: [{ id: "6003384248805", name: "Fitness and wellness" }, { id: "6840321905207", name: "Wellness" }], behaviors: [] },
+};
+const bvStatesOf = row => Array.isArray(row.states) ? row.states : String(row.states || "").split(",").map(s => s.trim()).filter(Boolean);
+function bvAudienceOf(row) {
+  const ints = new Map(), behs = new Map();
+  for (const k of row.presets || []) {
+    for (const x of BV_PRESETS[k]?.interests || []) ints.set(x.id, x);
+    for (const x of BV_PRESETS[k]?.behaviors || []) behs.set(x.id, x);
+  }
+  for (const x of row.interests || []) ints.set(x.id, x);
+  return { interests: [...ints.values()], behaviors: [...behs.values()] };
+}
+const bvAudienceCount = row => { const a = bvAudienceOf(row); return a.interests.length + a.behaviors.length; };
+function bvAudienceLabel(row) {
+  const named = (row.presets || []).map(k => BV_PRESETS[k]?.label).filter(Boolean);
+  const extra = (row.interests || []).map(x => x.name);
+  return [...named, ...extra].join(" + ");
+}
+function bvPlacesLabel(row) {
+  if (row.geo_type !== "states") return "Nationwide";
+  const parts = [...bvStatesOf(row).map(bvStateLabel), ...(row.cities || []).map(c => c.name)];
+  return parts.length ? parts.join(", ") : "Nationwide";
+}
+
+function bvSetGeoType(i, v) { bvAdSetRows[i].geo_type = v; bvRenderAdSetRows(); }
+function bvAddState(i, v) {
+  if (!v) return;
+  const row = bvAdSetRows[i], cur = bvStatesOf(row);
+  if (!cur.includes(v)) row.states = [...cur, v];
+  bvRenderAdSetRows();
+}
+function bvRemoveState(i, v) { const row = bvAdSetRows[i]; row.states = bvStatesOf(row).filter(x => x !== v); bvRenderAdSetRows(); }
+function bvAddCity(i, key, name, region) {
+  const row = bvAdSetRows[i];
+  row.cities = row.cities || [];
+  if (!row.cities.some(c => c.key === key)) row.cities.push({ key, name, region });
+  bvRenderAdSetRows();
+}
+function bvRemoveCity(i, key) { const row = bvAdSetRows[i]; row.cities = (row.cities || []).filter(c => c.key !== key); bvRenderAdSetRows(); }
+function bvTogglePreset(i, key) {
+  const row = bvAdSetRows[i], set = new Set(row.presets || []);
+  if (set.has(key)) set.delete(key); else set.add(key);
+  row.presets = [...set];
+  bvRenderAdSetRows();
+}
+function bvAddInterest(i, id, name) {
+  const row = bvAdSetRows[i];
+  row.interests = row.interests || [];
+  if (!row.interests.some(x => x.id === id)) row.interests.push({ id, name });
+  bvRenderAdSetRows();
+}
+function bvRemoveInterest(i, id) { const row = bvAdSetRows[i]; row.interests = (row.interests || []).filter(x => x.id !== id); bvRenderAdSetRows(); }
+
+// Search box (city / interest): results fill the list under the input without re-drawing the card.
+const bvSearchTimers = new WeakMap();
+function bvTargetSearch(input, i, kind) {
+  clearTimeout(bvSearchTimers.get(input));
+  const box = input.parentElement.querySelector(".bv-res");
+  const q = input.value.trim();
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  bvSearchTimers.set(input, setTimeout(async () => {
+    if (!activeAccountId) { box.innerHTML = `<button type="button" disabled>Pick an ad account first</button>`; return; }
+    box.innerHTML = `<button type="button" disabled>Searching…</button>`;
+    const r = await amCall({ action: "targeting_search", ad_account_id: activeAccountId, kind, q });
+    if (input.value.trim() !== q) return;
+    if (!r?.ok) { box.innerHTML = `<button type="button" disabled>Couldn't search right now</button>`; return; }
+    if (!r.results.length) { box.innerHTML = `<button type="button" disabled>No match</button>`; return; }
+    box.innerHTML = r.results.map(x => kind === "city"
+      ? `<button type="button" data-k="${escH(x.key)}" data-n="${escH(x.name)}" data-r="${escH(x.region)}" onclick="bvAddCity(${i}, this.dataset.k, this.dataset.n, this.dataset.r)">${escH(x.name)}<small>${escH(x.region)}</small></button>`
+      : `<button type="button" data-k="${escH(x.id)}" data-n="${escH(x.name)}" onclick="bvAddInterest(${i}, this.dataset.k, this.dataset.n)">${escH(x.name)}<small>${escH(x.path || "")}${x.size_lower ? ` · ${bvCompact(x.size_lower)}–${bvCompact(x.size_upper)} people` : ""}</small></button>`).join("");
+  }, 350));
+}
+
+const bvCompact = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace(/\.0$/, "") + "B" : n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(n);
+
+function bvGeoAudienceHtml(row, i) {
+  const chosen = bvStatesOf(row);
+  const remaining = BV_NG_STATES.filter(s => !chosen.includes(s.value));
+  const specific = row.geo_type === "states";
+  const aud = bvAudienceOf(row);
+  const customOnly = (row.interests || []).filter(x => !aud.interests.some(y => y.id === x.id && (row.presets || []).some(k => BV_PRESETS[k]?.interests.some(z => z.id === x.id))));
+  return `
+      <div class="field bv-geo" style="margin-top:8px;"><label>Location</label>
+        <select onchange="bvSetGeoType(${i}, this.value)">
+          <option value="nationwide" ${!specific ? "selected" : ""}>Nationwide (Nigeria)</option>
+          <option value="states" ${specific ? "selected" : ""}>Specific states / cities</option>
+        </select>
+        ${specific ? `
+        <select style="margin-top:6px;" onchange="bvAddState(${i}, this.value)">
+          <option value="">+ Add a state…</option>
+          ${remaining.map(s => `<option value="${escH(s.value)}">${escH(s.label)}</option>`).join("")}
+        </select>
+        <div style="position:relative;margin-top:6px;">
+          <input placeholder="+ Add a city (Ibadan, Port Harcourt…)" oninput="bvTargetSearch(this, ${i}, 'city')" autocomplete="off">
+          <div class="bv-res"></div>
+        </div>
+        <div>${chosen.map(v => `<span class="bv-chip">${escH(bvStateLabel(v))}<button type="button" onclick="bvRemoveState(${i}, '${escH(v)}')" aria-label="Remove">✕</button></span>`).join("")}${(row.cities || []).map(c => `<span class="bv-chip">📍 ${escH(c.name)}<button type="button" onclick="bvRemoveCity(${i}, '${escH(c.key)}')" aria-label="Remove">✕</button></span>`).join("")}</div>
+        ${(row.cities || []).length ? `<div style="margin-top:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);">City radius
+          <select style="width:auto;" onchange="bvUpdateAdSetRow(${i}, 'city_radius', this.value)">${[10, 17, 25, 40, 80].map(k => `<option value="${k}" ${Number(row.city_radius || 17) === k ? "selected" : ""}>${k} km</option>`).join("")}</select></div>` : ""}
+        ${!chosen.length && !(row.cities || []).length ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;">Nothing picked yet — this ad set will run nationwide until you add a state or city.</div>` : ""}` : ""}
+      </div>
+
+      <div class="field bv-aud" style="margin-top:10px;"><label>Who should see it <span style="font-weight:400;color:var(--muted);">(tap one or more — leave empty for everyone)</span></label>
+        <div style="margin-top:4px;">${Object.entries(BV_PRESETS).map(([k, p]) => `<button type="button" class="bv-preset ${(row.presets || []).includes(k) ? "on" : ""}" onclick="bvTogglePreset(${i}, '${k}')">${p.icon} ${p.label}</button>`).join("")}</div>
+        <div style="position:relative;margin-top:2px;">
+          <input placeholder="+ Search another interest (e.g. Fashion, Real estate…)" oninput="bvTargetSearch(this, ${i}, 'interest')" autocomplete="off">
+          <div class="bv-res"></div>
+        </div>
+        <div>${customOnly.map(x => `<span class="bv-chip">${escH(x.name)}<button type="button" onclick="bvRemoveInterest(${i}, '${escH(x.id)}')" aria-label="Remove">✕</button></span>`).join("")}</div>
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:7px;margin-top:10px;font-size:12px;font-weight:400;cursor:${bvAudienceCount(row) ? "default" : "pointer"};${bvAudienceCount(row) ? "opacity:.75;" : ""}">
+        <input type="checkbox" style="margin-top:2px;" ${row.advantage_audience !== false && !bvAudienceCount(row) ? "checked" : ""} ${bvAudienceCount(row) ? "disabled" : ""} onchange="bvToggleAdSetAdvantage(${i}, this.checked)">
+        <span>Let Meta expand this audience automatically (Advantage+)${bvAudienceCount(row) ? `<br><span style="color:var(--muted);">Off while an audience is chosen, so Meta shows the ad only to those people.</span>` : ""}</span>
+      </label>
+      <div class="bv-reach" data-uid="${row.uid}">${bvReachHtml(row)}</div>`;
+}
+
+// Live potential reach (Meta's own delivery estimate for exactly this targeting).
+const bvReachCache = new Map();
+let bvReachTimer = null;
+function bvReachPayload(row) {
+  const isWa = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+  const a = bvAudienceOf(row), specific = row.geo_type === "states";
+  return {
+    states: specific ? bvStatesOf(row) : [],
+    cities: specific ? (row.cities || []).map(c => ({ key: c.key, radius: Number(row.city_radius) || 17 })) : [],
+    age_min: Number(row.age_min) || 18, age_max: Number(row.age_max) || 65, gender: row.gender || "all",
+    interests: a.interests, behaviors: a.behaviors,
+    optimization_goal: isWa ? "CONVERSATIONS" : (row.optimization_goal || "OFFSITE_CONVERSIONS"),
+  };
+}
+function bvReachText(r) {
+  if (!r) return `<span style="color:var(--muted);">Checking potential reach…</span>`;
+  if (!r.ok) return `<span style="color:var(--muted);">Potential reach isn't available right now.</span>`;
+  if (!r.ready || r.lower == null) return `<span style="color:var(--muted);">Meta is still calculating — change a setting or wait a moment.</span>`;
+  return `Potential reach: <b>${bvCompact(r.lower)}–${bvCompact(r.upper)} people</b><small>Meta's estimate of how many people match — not a promise of results.</small>`;
+}
+function bvReachHtml(row) {
+  if (!activeAccountId) return "";
+  return bvReachText(bvReachCache.get(JSON.stringify(bvReachPayload(row))));
+}
+function bvScheduleReach() { clearTimeout(bvReachTimer); bvReachTimer = setTimeout(bvRunReach, 500); }
+async function bvRunReach() {
+  if (!activeAccountId) return;
+  const done = new Set();
+  for (const row of bvAdSetRows) {
+    const payload = bvReachPayload(row), key = JSON.stringify(payload);
+    if (bvReachCache.has(key) || done.has(key)) continue;
+    done.add(key);
+    const r = await amCall({ action: "reach_estimate", ad_account_id: activeAccountId, ...payload });
+    if (r?.ok) bvReachCache.set(key, r); else bvReachCache.set(key, { ok: false });
+    document.querySelectorAll(".bv-reach").forEach(el => {
+      const rw = bvAdSetRows.find(x => x.uid === el.dataset.uid);
+      if (rw) el.innerHTML = bvReachText(bvReachCache.get(JSON.stringify(bvReachPayload(rw))));
+    });
+  }
 }
 
 function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
@@ -3697,17 +4055,7 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
         <div class="field"><label>Age min</label><input type="number" min="13" max="65" value="${row.age_min}" onchange="bvUpdateAdSetRow(${i}, 'age_min', this.value)"></div>
         <div class="field"><label>Age max</label><input type="number" min="13" max="65" value="${row.age_max}" onchange="bvUpdateAdSetRow(${i}, 'age_max', this.value)"></div>
       </div>
-      <div class="field" style="margin-top:8px;"><label>Location</label>
-        <select onchange="bvUpdateAdSetRow(${i}, 'geo_type', this.value)">
-          <option value="nationwide" ${row.geo_type === "nationwide" ? "selected" : ""}>Nationwide (Nigeria)</option>
-          <option value="states" ${row.geo_type === "states" ? "selected" : ""}>Specific states</option>
-        </select>
-        ${row.geo_type === "states" ? `<input style="margin-top:6px;" placeholder="Lagos, Ogun, Abuja..." value="${row.states || ""}" onchange="bvUpdateAdSetRow(${i}, 'states', this.value)">` : ""}
-      </div>
-      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;font-weight:400;cursor:pointer;">
-        <input type="checkbox" ${row.advantage_audience !== false ? "checked" : ""} onchange="bvToggleAdSetAdvantage(${i}, this.checked)">
-        Let Meta expand this audience automatically (Advantage+)
-      </label>
+      ${bvGeoAudienceHtml(row, i)}
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Placements</div>
       <div class="field"><label>Where your ad shows</label>
@@ -3797,6 +4145,8 @@ function bvRenderAdSetRows() {
   bvRefreshAdSetEdit();
   bvRefreshAdSetList();
   bvRenderAdTabs();
+  bvScheduleReach();
+  bvDraftSoon();
 }
 
 // ── LAUNCHED AD DETAIL/EDIT MODAL ────────────────────────────────────────────
@@ -3954,7 +4304,8 @@ async function bvShowCreativeDetail(creativeId) {
         <dt>Budget</dt><dd>₦${Number(c.budget_naira).toLocaleString()}/day</dd>
         <dt>Age</dt><dd>${c.age_min}–${c.age_max}</dd>
         <dt>Gender</dt><dd>${c.gender}</dd>
-        <dt>Geography</dt><dd>${c.geo_type === "states" ? (c.states || []).join(", ") : "Nationwide (NG)"}</dd>
+        <dt>Geography</dt><dd>${c.geo_type === "states" ? [...(c.states || []), ...(c.cities || []).map(x => `${x.name} (+${x.radius || 17} km)`)].join(", ") || "Nationwide (NG)" : "Nationwide (NG)"}</dd>
+        ${(c.interests || []).length || (c.behaviors || []).length ? `<dt>Audience</dt><dd>${[...(c.audience_presets || []).map(k => BV_PRESETS[k]?.label || k), ...(c.interests || []).filter(x => !(c.audience_presets || []).some(k => BV_PRESETS[k]?.interests.some(y => y.id === x.id))).map(x => x.name)].join(", ")}</dd>` : ""}
       </dl>
     </div>`).join("") || `<div class="msg err" style="margin-top:6px;">No ad sets configured — Publish will have nothing to launch.</div>`;
 
@@ -4257,6 +4608,7 @@ function amDraw() {
       <div class="sh-title">Campaigns${d?.account?.name ? ` <span class="am-acct">${escH(d.account.name)}</span>` : ""}</div>
       <div class="sh-actions am-actions">
         <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenObjectiveGateModal()">+ Create</button>
+        <button class="btn btn-g" style="width:auto;padding:6px 14px;margin-left:6px;" onclick="bvOpenDraftsModal()">📝 Drafts</button>
         ${rangeSel}
         <button class="btn btn-g" id="amRefresh" onclick="amFetch()" ${am.loading ? "disabled" : ""}>${am.loading ? '<span class="spin"></span> Loading…' : "↻ Refresh"}</button>
       </div>
@@ -4633,6 +4985,7 @@ function bvCampaignsHeader(counts) {
       <div class="sh-title">Campaigns</div>
       <div class="sh-actions">
         <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenObjectiveGateModal()">+ Create</button>
+        <button class="btn btn-g" style="width:auto;padding:6px 14px;margin-left:6px;" onclick="bvOpenDraftsModal()">📝 Drafts</button>
         <select id="campStatusFilter" style="width:auto;padding:5px 9px;font-size:12px;">
           <option value="all" ${campaignsStatusFilter === "all" ? "selected" : ""}>All</option>
           <option value="active" ${campaignsStatusFilter === "active" ? "selected" : ""}>Active</option>
