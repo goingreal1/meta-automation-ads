@@ -842,7 +842,7 @@ html{-webkit-text-size-adjust:100%;}
 .am-chip{background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accent);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;}
 .am-chip a{cursor:pointer;margin-left:6px;opacity:.7;}
 .am-table{border:1px solid var(--border);border-radius:12px;overflow-x:auto;background:var(--panel);}
-.am-row{display:grid;grid-template-columns:34px 56px minmax(240px,1fr) 128px 90px 104px 96px 100px 86px 66px;align-items:center;min-width:960px;border-bottom:1px solid var(--border);}
+.am-row{display:grid;grid-template-columns:34px 56px minmax(230px,1fr) 124px 140px 150px 100px 86px 100px 112px 92px 70px;align-items:center;min-width:1340px;border-bottom:1px solid var(--border);}
 .am-row:last-child{border-bottom:none;}
 .am-top,.am-metrics{display:contents;}
 .am-c{padding:11px 8px;font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;}
@@ -1783,54 +1783,91 @@ async function render() {
 }
 
 // ── TAB: OVERVIEW ─────────────────────────────────────────────────────────────
+// ── LIVE META NUMBERS (shared by Overview + Ad Spend & ROAS) ────────────────
+// One call to the ads-manager "daily" action returns every ad set's numbers
+// per day for every ad account this person can see -- real spend, WhatsApp
+// conversations, reach, frequency -- straight from Meta, no saved copy.
+const watDate = (offsetDays = 0) => new Date(Date.now() + 3600000 + offsetDays * 86400000).toISOString().slice(0, 10);
+let liveDaily = { key: "", at: 0, data: null };
+
+// sbFn() injects the selected ad account into every call; here we want every
+// account unless one is asked for, so call the function directly.
+async function amCall(body) {
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/ads-manager`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return await res.json();
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+async function fetchLiveDaily(since, until, force = false) {
+  const key = `${since}|${until}`;
+  if (!force && liveDaily.key === key && liveDaily.data?.ok && Date.now() - liveDaily.at < 60000) return liveDaily.data;
+  const r = await amCall({ action: "daily", since, until });
+  const data = r && r.ok ? r : { ok: false, error: r?.error || "Could not load live numbers from Meta.", rows: [], accounts: [] };
+  liveDaily = { key, at: Date.now(), data };
+  return data;
+}
+
+// Sum rows (ad set x day) into per-day totals. Reach isn't additive, so only
+// the numbers that are get summed.
+function liveByDay(rows) {
+  const days = new Map();
+  for (const r of rows || []) {
+    const d = days.get(r.date) ?? { date: r.date, spend: 0, conversations: 0, purchases: 0, clicks: 0, impressions: 0 };
+    d.spend += r.spend; d.conversations += r.conversations; d.purchases += r.purchases; d.clicks += r.clicks; d.impressions += r.impressions;
+    days.set(r.date, d);
+  }
+  return days;
+}
+function liveSum(rows) {
+  const t = { spend: 0, conversations: 0, purchases: 0, clicks: 0, impressions: 0 };
+  for (const r of rows || []) { t.spend += r.spend; t.conversations += r.conversations; t.purchases += r.purchases; t.clicks += r.clicks; t.impressions += r.impressions; }
+  t.costPerConv = t.conversations > 0 ? t.spend / t.conversations : null;
+  t.linkCtr = t.impressions > 0 ? t.clicks / t.impressions * 100 : null;
+  return t;
+}
+function liveNotice(live) {
+  if (!live.ok) return `<div class="msg err" style="display:block;margin-bottom:14px;">❌ Couldn't load live numbers from Meta: ${escH(live.error)} <button type="button" class="btn btn-g" style="padding:3px 10px;font-size:11px;margin-left:8px;" onclick="liveDaily.at=0;render()">Retry</button></div>`;
+  const bad = (live.accounts || []).filter(a => a.error);
+  return bad.length ? `<div class="msg err" style="display:block;margin-bottom:14px;">⚠ Some ad accounts could not be read from Meta (${bad.map(a => escH(a.name || "account")).join(", ")}), so their numbers are missing below.</div>` : "";
+}
+
+// ── TAB: OVERVIEW ─────────────────────────────────────────────────────────────
 async function renderOverview(el) {
-  const sevenDaysAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-  const [tot, deliv, returned, rawMetrics, wallet] = await Promise.all([
+  const since = watDate(-6), until = watDate(0);
+  // Ad numbers are for the people who run ads; customer care / delivery just see orders.
+  const canAds = ["owner", "admin", "buyer"].includes(window.myProfile?.role);
+  const [tot, deliv, returned, orders7, wallet, live] = await Promise.all([
     sbCount("orders"),
     sbCount("orders", "order_status=eq.delivered"),
     sbCount("orders", "order_status=eq.returned"),
-    // Company-wide (not scoped to whichever ad account happens to be selected) --
-    // Overview is the executive summary, so switching accounts shouldn't make
-    // spend/CPA swing between an unrelated account's numbers. Date-ranged, not
-    // row-limited: with multiple ad sets reporting per day, a flat "last 7 rows"
-    // limit was grabbing a handful of rows from a single day, not 7 real days.
-    // (RLS already narrows this to a buyer's own ad sets when they're not an
-    // owner/admin -- "company-wide" here just means "not account-selector-filtered".)
-    sbQuery("daily_metrics", `select=metric_date,spend_naira,orders,clicks,impressions,reach&metric_date=gte.${sevenDaysAgo}`, { allAccounts: true }).catch(() => []),
+    sbCount("orders", `ordered_at=gte.${since}T00:00:00%2B01:00`).catch(() => 0),
     fetchWalletBalances().catch(() => ({ walletBalances: {}, fundingWalletBalance: 0 })),
+    canAds ? fetchLiveDaily(since, until) : Promise.resolve({ ok: true, rows: [], accounts: [] }),
   ]);
   const isAdminOv = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myIdOv = window.myProfile?.media_buyer_id || null;
-  // Admin sees the real funding wallet (what's actually available to
-  // approve against); a buyer has no wallet of their own, so their chip
-  // is just "what's approved and waiting on you to send" -- hidden
-  // entirely when there's nothing to act on.
   const myApprovedOv = myIdOv ? (wallet.walletBalances[myIdOv]?.approved ?? 0) : 0;
   const walletChipLabel = isAdminOv ? (wallet.fundingWalletBalance < 0 ? "⚠️ Funding wallet low" : "Funding wallet") : "Ready to send";
   const walletChipBalance = isAdminOv ? wallet.fundingWalletBalance : (myApprovedOv > 0 ? myApprovedOv : null);
 
-  // Aggregate the (possibly many-rows-per-day, one per ad set) rows into one
-  // total per calendar day.
-  const byDay = new Map();
-  for (const m of rawMetrics || []) {
-    const d = byDay.get(m.metric_date) ?? { metric_date: m.metric_date, spend_naira: 0, orders: 0, clicks: 0, impressions: 0, reach: 0 };
-    d.spend_naira += Number(m.spend_naira || 0);
-    d.orders += Number(m.orders || 0);
-    d.clicks += Number(m.clicks || 0);
-    d.impressions += Number(m.impressions || 0);
-    d.reach += Number(m.reach || 0);
-    byDay.set(m.metric_date, d);
-  }
-  const metrics = [...byDay.values()].sort((a, b) => (a.metric_date < b.metric_date ? 1 : -1));
+  const rate = tot ? (deliv / tot * 100).toFixed(1) : "0";
+  const rateClr = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
 
-  const rate      = tot ? (deliv / tot * 100).toFixed(1) : "0";
-  const rateClr   = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
-
-  const totalSpend = metrics?.reduce((s,m) => s + (m.spend_naira||0), 0) ?? 0;
-  const metOrders  = metrics?.reduce((s,m) => s + (m.orders||0), 0) ?? 0;
-  const blendCPA   = metOrders > 0 ? Math.round(totalSpend / metOrders) : null;
-
-  const todayS     = metrics?.[0]?.spend_naira ?? 0;
+  const days = liveByDay(live.rows);
+  const week = liveSum(live.rows);
+  const today = days.get(until) ?? { spend: 0, conversations: 0 };
+  const yesterday = days.get(watDate(-1)) ?? { spend: 0 };
+  const todayCpc = today.conversations > 0 ? today.spend / today.conversations : null;
+  const dayList = [...days.values()].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const realCostPerOrder = orders7 > 0 && live.ok ? week.spend / orders7 : null;
+  const chatToOrder = week.conversations > 0 ? Math.min(100, orders7 / week.conversations * 100) : null;
+  const dash = "—";
+  const hasPurchases = week.purchases > 0;
 
   el.innerHTML = `
     <div class="sh">
@@ -1843,62 +1880,83 @@ async function renderOverview(el) {
       💰 ${walletChipLabel}: ${fN(walletChipBalance)} <span style="opacity:.7;">→ Wallet</span>
     </div>` : ""}
 
-    <!-- Quick Actions -->
     <div class="qa">
-      <button class="btn btn-b" id="btnPull"  onclick="triggerMetrics()">📊 Pull Meta Metrics</button>
+      ${canAds ? `<button class="btn btn-a" id="btnLive" onclick="liveDaily.at=0;render()" title="Reads today's numbers straight from Meta">↻ Refresh live data</button>` : ""}
+      <button class="btn btn-b" id="btnPull"  onclick="triggerMetrics()" title="Saves Meta's numbers into the dashboard's reports (Leaderboard)">📊 Pull Meta Metrics</button>
       <button class="btn btn-b" id="btnStructSync" onclick="triggerStructureSync()" title="Pulls every campaign/ad set/ad from Meta into this dashboard, whether launched from here or directly in Ads Manager">☁️ Sync from Meta</button>
       <button class="btn btn-g" id="btnSync"  onclick="triggerSync()">🔄 Sync Audiences</button>
-      <button class="btn btn-g" onclick="render()">↺ Refresh</button>
     </div>
     <div id="actionMsg"></div>
+    ${liveNotice(live)}
 
-    <!-- KPI Row -->
+    ${canAds ? `<div class="g4">
+      <div class="kc">
+        <div class="kc-lbl">Spent today</div>
+        <div class="kc-val">${live.ok ? fN(today.spend) : dash}</div>
+        <div class="kc-sub">${live.ok ? `yesterday ${fN(yesterday.spend)}` : ""}</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Conversations · 7 days</div>
+        <div class="kc-val a">${live.ok ? week.conversations.toLocaleString("en-NG") : dash}</div>
+        <div class="kc-sub">${live.ok ? `${today.conversations} today · WhatsApp chats started` : ""}</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Cost per conversation</div>
+        <div class="kc-val">${live.ok ? fN(week.costPerConv) : dash}</div>
+        <div class="kc-sub">${live.ok ? `7 days${todayCpc != null ? ` · today ${fN(todayCpc)}` : ""}` : ""}</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Spent · 7 days</div>
+        <div class="kc-val">${live.ok ? fN(week.spend) : dash}</div>
+        <div class="kc-sub">${live.ok ? `${fN(week.spend / 7)} a day on average` : ""}</div>
+      </div>
+    </div>` : ""}
+
     <div class="g4">
       <div class="kc">
-        <div class="kc-lbl">Orders this month</div>
-        <div class="kc-val">${tot}</div>
+        <div class="kc-lbl">Orders · 7 days</div>
+        <div class="kc-val">${orders7}</div>
+        <div class="kc-sub">${tot} orders all time</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Real cost per order</div>
+        <div class="kc-val">${fN(realCostPerOrder)}</div>
+        <div class="kc-sub">${realCostPerOrder != null ? "7-day ad spend ÷ orders placed" : "no orders yet this week"}</div>
+      </div>
+      <div class="kc">
+        <div class="kc-lbl">Chats that became orders</div>
+        <div class="kc-val b">${chatToOrder != null ? chatToOrder.toFixed(0) + "%" : dash}</div>
+        <div class="kc-sub">${chatToOrder != null ? "orders ÷ conversations, 7 days" : "needs conversations"}</div>
       </div>
       <div class="kc">
         <div class="kc-lbl">Delivery rate</div>
         <div class="kc-val ${rateClr}">${rate}%</div>
         <div class="kc-sub">${deliv} delivered · ${returned} returned</div>
       </div>
-      <div class="kc">
-        <div class="kc-lbl">Blended CPA</div>
-        <div class="kc-val">${fN(blendCPA)}</div>
-        <div class="kc-sub">${blendCPA ? "spend ÷ orders" : "no data yet"}</div>
-      </div>
-      <div class="kc">
-        <div class="kc-lbl">Today's spend</div>
-        <div class="kc-val">${fN(todayS)}</div>
-      </div>
     </div>
 
-    <!-- 7-Day Performance -->
-    <div class="panel">
+    ${canAds ? `<div class="panel">
       <div class="ph">
         <div class="ph-title">Last 7-day performance</div>
-        <div class="ph-count">${metrics?.length ?? 0} days tracked</div>
+        <div class="ph-count">Live from Meta · ${dayList.length} days with spend</div>
       </div>
-      ${!metrics?.length
-        ? `<div class="empty"><div class="empty-ico">📈</div>No metrics yet — click "Pull Meta Metrics" to fetch live data.</div>`
+      ${!live.ok ? "" : !dayList.length
+        ? `<div class="empty"><div class="empty-ico">📈</div>No ad spend in the last 7 days.</div>`
         : `<div class="tbl-wrap"><table>
-            <tr><th>Date</th><th>Spend</th><th>Orders</th><th>CPA</th><th>CTR</th><th>Clicks</th><th>Reach</th></tr>
-            ${metrics.map(m => {
-              const cpa = m.orders > 0 ? Math.round(m.spend_naira / m.orders) : null;
-              const ctrV = m.impressions > 0 ? ((m.clicks / m.impressions) * 100).toFixed(2) : null;
-              return `<tr>
-                <td class="s">${m.metric_date ?? "—"}</td>
-                <td>${fN(m.spend_naira)}</td>
-                <td class="s">${m.orders ?? "—"}</td>
-                <td class="s">${fN(cpa)}</td>
-                <td class="${ctrCls(ctrV)}">${ctrV ? ctrV+"%" : "—"}</td>
-                <td>${m.clicks?.toLocaleString() ?? "—"}</td>
-                <td>${m.reach?.toLocaleString() ?? "—"}</td>
-              </tr>`;
-            }).join("")}
+            <tr><th>Date</th><th>Spent</th><th>Conversations</th><th>Cost / conversation</th>${hasPurchases ? "<th>Purchases</th>" : ""}<th>Link clicks</th><th>Link CTR</th><th>Impressions</th></tr>
+            ${dayList.map(m => `<tr>
+                <td class="s">${m.date}</td>
+                <td>${fN(m.spend)}</td>
+                <td class="s">${m.conversations}</td>
+                <td class="s">${m.conversations > 0 ? fN(m.spend / m.conversations) : dash}</td>
+                ${hasPurchases ? `<td>${m.purchases}</td>` : ""}
+                <td>${m.clicks.toLocaleString("en-NG")}</td>
+                <td>${m.impressions > 0 ? (m.clicks / m.impressions * 100).toFixed(2) + "%" : dash}</td>
+                <td>${m.impressions.toLocaleString("en-NG")}</td>
+              </tr>`).join("")}
+            <tr style="font-weight:700;background:var(--panel2);"><td>Total</td><td>${fN(week.spend)}</td><td>${week.conversations}</td><td>${fN(week.costPerConv)}</td>${hasPurchases ? `<td>${week.purchases}</td>` : ""}<td>${week.clicks.toLocaleString("en-NG")}</td><td>${week.linkCtr != null ? week.linkCtr.toFixed(2) + "%" : dash}</td><td>${week.impressions.toLocaleString("en-NG")}</td></tr>
           </table></div>`}
-    </div>
+    </div>` : ""}
     <div id="actionResult"></div>`;
 }
 
@@ -3478,6 +3536,15 @@ function amRows(level) {
   return [...rows].sort((a, b) => (b.status === "ACTIVE") - (a.status === "ACTIVE") || b.spend - a.spend);
 }
 
+const amCostLabel = kind => kind === "messaging" ? "Cost / conversation" : kind === "purchase" ? "Cost / purchase" : "Cost / result";
+// Column titles follow what the rows on screen are: all message ads -> "Conversations".
+function amHeadLabels(rows) {
+  const kinds = new Set(rows.map(r => r.kind));
+  if (kinds.size === 1 && kinds.has("messaging")) return { res: "Conversations", cpr: "Cost / conversation" };
+  if (kinds.size === 1 && kinds.has("purchase")) return { res: "Purchases", cpr: "Cost / purchase" };
+  return { res: "Results", cpr: "Cost / result" };
+}
+
 function amFmtResult(r) {
   if (r.results == null) return "—";
   return String(r.results);
@@ -3507,8 +3574,10 @@ function amRowHtml(level, r) {
       </div>
       <div class="am-metrics">
         <div class="am-c am-c-res" data-label="${escH(r.result_label || "Results")}"><b>${amFmtResult(r)}</b></div>
-        <div class="am-c am-c-cpr" data-label="Cost / result"><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div>
+        <div class="am-c am-c-cpr" data-label="${escH(amCostLabel(r.kind))}"><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div>
         <div class="am-c am-c-spend" data-label="Spent"><b>${fN(r.spend)}</b></div>
+        <div class="am-c am-c-reach" data-label="Reach">${Number(r.reach).toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-freq" data-label="Frequency">${r.reach ? Number(r.frequency).toFixed(2) + "×" : "—"}</div>
         <div class="am-c am-c-imp" data-label="Impressions">${Number(r.impressions).toLocaleString("en-NG")}</div>
         <div class="am-c am-c-clk" data-label="Link clicks">${Number(r.clicks).toLocaleString("en-NG")}</div>
         <div class="am-c am-c-ctr" data-label="CTR">${r.impressions ? Number(r.ctr).toFixed(2) + "%" : "—"}</div>
@@ -3589,6 +3658,7 @@ function amDraw() {
 
   const rows = amRows(lvl);
   const tot = amTotals(rows);
+  const hl = amHeadLabels(rows);
   const allChecked = lvl !== "ads" && rows.length > 0 && rows.every(r => am.sel[lvl].has(r.id));
   const head = `
     <div class="am-row am-head">
@@ -3596,15 +3666,17 @@ function amDraw() {
         <div class="am-c am-c-chk">${lvl !== "ads" ? `<input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('${lvl}',this.checked)" aria-label="Select all">` : ""}</div>
         <div class="am-c am-c-sw"></div><div class="am-c am-c-name">${lvl === "campaigns" ? "Campaign" : lvl === "adsets" ? "Ad set" : "Ad"}</div><div class="am-c am-c-st">Delivery</div>
       </div>
-      <div class="am-metrics"><div class="am-c am-c-res">Results</div><div class="am-c am-c-cpr">Cost / result</div><div class="am-c am-c-spend">Spent</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
+      <div class="am-metrics"><div class="am-c am-c-res">${escH(hl.res)}</div><div class="am-c am-c-cpr">${escH(hl.cpr)}</div><div class="am-c am-c-spend">Spent</div><div class="am-c am-c-reach">Reach</div><div class="am-c am-c-freq">Frequency</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
     </div>`;
   const foot = rows.length ? `
     <div class="am-row am-foot">
       <div class="am-top"><div class="am-c am-c-chk"></div><div class="am-c am-c-sw"></div><div class="am-c am-c-name">Total · ${rows.length} ${lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad"}${rows.length === 1 ? "" : "s"}</div><div class="am-c am-c-st"></div></div>
       <div class="am-metrics">
         <div class="am-c am-c-res" data-label="${escH(tot.label || "Results")}"><b>${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</b></div>
-        <div class="am-c am-c-cpr" data-label="Cost / result"><b>${tot.cpr != null ? fN(tot.cpr) : "—"}</b></div>
+        <div class="am-c am-c-cpr" data-label="${escH(hl.cpr)}"><b>${tot.cpr != null ? fN(tot.cpr) : "—"}</b></div>
         <div class="am-c am-c-spend" data-label="Spent"><b>${fN(tot.spend)}</b></div>
+        <div class="am-c am-c-reach" data-label="Reach" title="Reach overlaps between rows, so it is not added up">—</div>
+        <div class="am-c am-c-freq" data-label="Frequency">—</div>
         <div class="am-c am-c-imp" data-label="Impressions">${tot.imp.toLocaleString("en-NG")}</div>
         <div class="am-c am-c-clk" data-label="Link clicks">${tot.clk.toLocaleString("en-NG")}</div>
         <div class="am-c am-c-ctr" data-label="CTR"></div>
@@ -4229,31 +4301,38 @@ async function renderAdSetDetail(el, adSetId, campaignId) {
 }
 
 // ── TAB: PERFORMANCE ─────────────────────────────────────────────────────────
-async function renderPerformance(el, fromDate, toDate) {
-  const today = new Date();
-  const defaultFrom = new Date(today.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const defaultTo = today.toISOString().slice(0, 10);
-  fromDate = fromDate || defaultFrom;
-  toDate = toDate || defaultTo;
+// Spend and conversations per buyer come live from Meta (grouped by the media
+// buyer each ad account belongs to); orders and revenue stay the real numbers
+// from the orders/payments tables.
+function bvMergeLiveSpend(roas, liveRows) {
+  const live = new Map();
+  for (const r of liveRows || []) {
+    const k = r.media_buyer_id ?? "none";
+    const a = live.get(k) ?? { spend: 0, conversations: 0 };
+    a.spend += r.spend; a.conversations += r.conversations;
+    live.set(k, a);
+  }
+  const list = roas.list.map(r => ({ ...r, spend: live.get(r.id)?.spend ?? 0, conversations: live.get(r.id)?.conversations ?? 0 }));
+  for (const [k, a] of live) if (!list.some(r => r.id === k)) list.push({ id: k, buyer: undefined, orders: 0, revenue: 0, delivered: 0, confirmed: 0, spend: a.spend, conversations: a.conversations });
+  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, confirmed: t.confirmed + r.confirmed, orders: t.orders + r.orders, conversations: t.conversations + r.conversations }), { spend: 0, revenue: 0, delivered: 0, confirmed: 0, orders: 0, conversations: 0 });
+  return { list, tot };
+}
 
-  const [rows, buyerRoas] = await Promise.all([
-    sbQuery(
-      "daily_metrics",
-      `select=*,ad_sets(adset_name,targeting_type,campaigns(campaign_name))&metric_date=gte.${fromDate}&metric_date=lte.${toDate}&order=metric_date.desc&limit=500`,
-    ),
+async function renderPerformance(el, fromDate, toDate, force = false) {
+  fromDate = fromDate || watDate(-29);
+  toDate = toDate || watDate(0);
+
+  const [live, roasRaw] = await Promise.all([
+    fetchLiveDaily(fromDate, toDate, force),
     fetchBuyerRoas(fromDate, toDate),
   ]);
-  const { list: buyerList, tot: buyerTot } = buyerRoas;
-
-  const totals = (rows || []).reduce((t, r) => ({
-    spend: t.spend + (r.spend_naira || 0),
-    impressions: t.impressions + (r.impressions || 0),
-    reach: t.reach + (r.reach || 0),
-    clicks: t.clicks + (r.clicks || 0),
-    orders: t.orders + (r.orders || 0),
-  }), { spend: 0, impressions: 0, reach: 0, clicks: 0, orders: 0 });
-  const blendedCtr = totals.impressions ? ((totals.clicks / totals.impressions) * 100).toFixed(2) : "0";
-  const blendedCpa = totals.orders ? Math.round(totals.spend / totals.orders) : null;
+  const { list: buyerList, tot: buyerTot } = bvMergeLiveSpend(roasRaw, live.rows);
+  const t = liveSum(live.rows);
+  const dash = "—";
+  const acct = accountsList.find(a => a.id === activeAccountId);
+  const rows = (live.rows || []).filter(r => !activeAccountId || r.account_id === activeAccountId)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.spend - a.spend)).slice(0, 500);
+  const hasPurchases = rows.some(r => r.purchases > 0);
 
   window._bvLastRoasExport = { fromDate, toDate, buyerList };
 
@@ -4261,37 +4340,41 @@ async function renderPerformance(el, fromDate, toDate) {
     <div class="sh">
       <div class="sh-title">Ad Spend &amp; ROAS</div>
       <div class="sh-actions">
-        <input type="date" id="perfFrom" value="${fromDate}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
-        <input type="date" id="perfTo" value="${toDate}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
+        <input type="date" id="perfFrom" value="${fromDate}" style="width:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
+        <input type="date" id="perfTo" value="${toDate}" style="width:auto;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;">
         <button class="btn btn-g" id="perfApply">Apply</button>
+        <button class="btn btn-a" id="perfLive" title="Reads the numbers straight from Meta again">↻ Refresh live data</button>
         <button class="btn btn-g" onclick="bvExportRoasCsv()">⬇ Download CSV</button>
       </div>
     </div>
+    ${liveNotice(live)}
 
     <div class="g4">
-      <div class="kc"><div class="kc-lbl">Spend</div><div class="kc-val">${fN(totals.spend)}</div></div>
-      <div class="kc"><div class="kc-lbl">Impressions / Reach</div><div class="kc-val">${totals.impressions.toLocaleString()}</div><div class="kc-sub">${totals.reach.toLocaleString()} reach</div></div>
-      <div class="kc"><div class="kc-lbl">Blended CTR</div><div class="kc-val">${blendedCtr}%</div><div class="kc-sub">${totals.clicks.toLocaleString()} clicks</div></div>
-      <div class="kc"><div class="kc-lbl">Orders / Blended CPA</div><div class="kc-val">${totals.orders}</div><div class="kc-sub">${blendedCpa ? fN(blendedCpa) + " per order" : "no orders yet"}</div></div>
+      <div class="kc"><div class="kc-lbl">Spend</div><div class="kc-val">${live.ok ? fN(t.spend) : dash}</div><div class="kc-sub">live from Meta, all your ad accounts</div></div>
+      <div class="kc"><div class="kc-lbl">Conversations</div><div class="kc-val a">${live.ok ? t.conversations.toLocaleString("en-NG") : dash}</div><div class="kc-sub">${live.ok && t.costPerConv != null ? fN(t.costPerConv) + " per conversation" : "WhatsApp chats started"}</div></div>
+      <div class="kc"><div class="kc-lbl">Impressions</div><div class="kc-val">${live.ok ? t.impressions.toLocaleString("en-NG") : dash}</div><div class="kc-sub">${live.ok ? `${t.clicks.toLocaleString("en-NG")} link clicks${t.linkCtr != null ? ` · ${t.linkCtr.toFixed(2)}% CTR` : ""}` : ""}</div></div>
+      <div class="kc"><div class="kc-lbl">Orders / cost per order</div><div class="kc-val">${buyerTot.orders}</div><div class="kc-sub">${buyerTot.orders && live.ok ? fN(t.spend / buyerTot.orders) + " per order" : "no orders yet"}</div></div>
     </div>
 
     <div class="g4">
       <div class="kc"><div class="kc-lbl">Order revenue</div><div class="kc-val">${fN(buyerTot.revenue)}</div><div class="kc-sub">excl. cancelled/returned</div></div>
-      <div class="kc"><div class="kc-lbl">ROAS (orders)</div><div class="kc-val a">${roasFmt(buyerTot.revenue, totals.spend)}</div></div>
-      <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roasFmt(buyerTot.delivered, totals.spend)}</div><div class="kc-sub">marked delivered -- not a payment confirmation</div></div>
-      <div class="kc"><div class="kc-lbl">Real ROAS</div><div class="kc-val a">${roasFmt(buyerTot.confirmed, totals.spend)}</div><div class="kc-sub">confirmed Paystack payments -- actual cash in hand</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (orders)</div><div class="kc-val a">${roasFmt(buyerTot.revenue, buyerTot.spend)}</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roasFmt(buyerTot.delivered, buyerTot.spend)}</div><div class="kc-sub">marked delivered -- not a payment confirmation</div></div>
+      <div class="kc"><div class="kc-lbl">Real ROAS</div><div class="kc-val a">${roasFmt(buyerTot.confirmed, buyerTot.spend)}</div><div class="kc-sub">confirmed Paystack payments -- actual cash in hand</div></div>
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Spend &amp; ROAS by media buyer</div><div class="ph-count">Attributed by [CODE] in ad set / campaign name</div></div>
-      ${!buyerList.length ? `<div class="empty"><div class="empty-ico">📊</div>No spend or orders in this range yet.</div>` : `
+      <div class="ph"><div class="ph-title">Spend &amp; ROAS by media buyer</div><div class="ph-count">Spend is each buyer's own ad accounts, live from Meta</div></div>
+      ${!buyerList.some(r => r.spend || r.orders) ? `<div class="empty"><div class="empty-ico">📊</div>No spend or orders in this range yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Spend</th><th>Orders</th><th>CPA</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th></tr>
-        ${buyerList.sort((a, b) => b.spend - a.spend).map(r => `<tr>
+        <tr><th>Buyer</th><th>Spend</th><th>Conversations</th><th>Cost / conversation</th><th>Orders</th><th>Cost / order</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th></tr>
+        ${buyerList.filter(r => r.spend || r.orders).sort((a, b) => b.spend - a.spend).map(r => `<tr>
           <td class="s">${r.buyer ? `${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span>` : `<span style="color:var(--muted)">Unattributed</span>`}</td>
           <td>${fN(r.spend)}</td>
+          <td>${r.conversations}</td>
+          <td>${r.conversations ? fN(r.spend / r.conversations) : dash}</td>
           <td>${r.orders}</td>
-          <td>${r.orders ? fN(r.spend / r.orders) : "—"}</td>
+          <td>${r.orders ? fN(r.spend / r.orders) : dash}</td>
           <td>${fN(r.revenue)}</td>
           <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
           <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
@@ -4301,30 +4384,34 @@ async function renderPerformance(el, fromDate, toDate) {
     </div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Daily metrics</div><div class="ph-count">${rows?.length ?? 0} rows</div></div>
-      ${!rows?.length
-        ? `<div class="empty"><div class="empty-ico">📊</div>No metrics in this date range yet.</div>`
+      <div class="ph"><div class="ph-title">Daily metrics${acct ? ` · ${escH(acct.nickname || acct.name || "")}` : ""}</div><div class="ph-count">${rows.length} rows · per ad set, per day</div></div>
+      ${!live.ok ? "" : !rows.length
+        ? `<div class="empty"><div class="empty-ico">📊</div>No ad spend in this date range for this ad account.</div>`
         : `<div class="tbl-wrap"><table>
-          <tr><th>Date</th><th>Ad Set</th><th>Spend</th><th>Impressions</th><th>Reach</th><th>Clicks</th><th>CTR</th><th>CPC</th><th>CPM</th><th>Frequency</th><th>Orders</th><th>Cost/Order</th></tr>
+          <tr><th>Date</th><th>Ad Set</th><th>Spend</th><th>Conversations</th><th>Cost / conversation</th>${hasPurchases ? "<th>Purchases</th>" : ""}<th>Impressions</th><th>Reach</th><th>Link clicks</th><th>CTR</th><th>CPC</th><th>CPM</th><th>Frequency</th></tr>
           ${rows.map(r => `<tr>
-            <td class="n">${r.metric_date}</td>
-            <td class="s n" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.ad_sets?.adset_name ?? ''}">${r.ad_sets?.adset_name ?? "—"}</td>
-            <td>${fN(r.spend_naira)}</td>
-            <td>${(r.impressions ?? 0).toLocaleString()}</td>
-            <td>${(r.reach ?? 0).toLocaleString()}</td>
-            <td>${(r.clicks ?? 0).toLocaleString()}</td>
-            <td class="${ctrCls(r.ctr)}">${r.ctr != null ? parseFloat(r.ctr).toFixed(2) + "%" : "—"}</td>
-            <td>${fN(r.cpc_naira)}</td>
-            <td>${fN(r.cpm_naira)}</td>
-            <td>${r.frequency != null ? parseFloat(r.frequency).toFixed(2) + "×" : "—"}</td>
-            <td>${r.orders ?? 0}</td>
-            <td>${fN(r.cost_per_order_naira)}</td>
+            <td class="n">${r.date}</td>
+            <td class="s n" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.adset_name || "")}">${escH(r.adset_name || "—")}</td>
+            <td>${fN(r.spend)}</td>
+            <td class="s">${r.conversations}</td>
+            <td>${r.cost_per_conversation != null ? fN(r.cost_per_conversation) : dash}</td>
+            ${hasPurchases ? `<td>${r.purchases}</td>` : ""}
+            <td>${r.impressions.toLocaleString("en-NG")}</td>
+            <td>${r.reach.toLocaleString("en-NG")}</td>
+            <td>${r.clicks.toLocaleString("en-NG")}</td>
+            <td class="${ctrCls(r.ctr)}">${r.impressions ? r.ctr.toFixed(2) + "%" : dash}</td>
+            <td>${r.cpc ? fN(r.cpc) : dash}</td>
+            <td>${r.cpm ? fN(r.cpm) : dash}</td>
+            <td>${r.reach ? r.frequency.toFixed(2) + "×" : dash}</td>
           </tr>`).join("")}
         </table></div>`}
     </div>`;
 
   document.getElementById("perfApply").addEventListener("click", () => {
     renderPerformance(el, document.getElementById("perfFrom").value, document.getElementById("perfTo").value);
+  });
+  document.getElementById("perfLive").addEventListener("click", () => {
+    renderPerformance(el, document.getElementById("perfFrom").value, document.getElementById("perfTo").value, true);
   });
 }
 
@@ -5214,11 +5301,13 @@ async function bvExportOrdersCsv(btn) {
 function bvExportRoasCsv() {
   const data = window._bvLastRoasExport;
   if (!data?.buyerList) { bvToast("Nothing to export yet."); return; }
-  const headers = ["Buyer", "Code", "Spend (NGN)", "Orders", "CPA (NGN)", "Revenue (NGN)", "ROAS", "Delivered ROAS", "Real ROAS (confirmed payments)"];
+  const headers = ["Buyer", "Code", "Spend (NGN)", "Conversations", "Cost per conversation (NGN)", "Orders", "Cost per order (NGN)", "Revenue (NGN)", "ROAS", "Delivered ROAS", "Real ROAS (confirmed payments)"];
   const rows = data.buyerList.sort((a, b) => b.spend - a.spend).map(r => [
     r.buyer?.name ?? "Unattributed",
     r.buyer?.code ?? "",
     r.spend,
+    r.conversations ?? 0,
+    r.conversations ? (r.spend / r.conversations).toFixed(0) : "",
     r.orders,
     r.orders ? (r.spend / r.orders).toFixed(0) : "",
     r.revenue,
