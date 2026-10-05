@@ -825,6 +825,18 @@ html{-webkit-text-size-adjust:100%;}
 
 
 /* ── NAMES + VIEW ALL (builder) ─────────────────────────────────────────── */
+.bv-adtabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px;}
+.bv-adtab{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--panel);color:var(--text2);border-radius:20px;padding:6px 14px 6px 8px;font-size:12.5px;font-weight:600;cursor:pointer;max-width:100%;}
+.bv-adtab-n{min-width:20px;height:20px;border-radius:10px;background:var(--panel2);color:var(--muted);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 5px;}
+.bv-adtab-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px;}
+.bv-adtab.active{border-color:var(--accent);background:var(--accentBg);color:var(--accent);}
+.bv-adtab.active .bv-adtab-n{background:var(--accent);color:#fff;}
+.bv-adtab.empty .bv-adtab-n{background:var(--warnBg);color:var(--warn);}
+.bv-adhint{font-size:11.5px;color:var(--muted);line-height:1.6;margin:0 0 14px;}
+.bv-adhint a{color:var(--accent);font-weight:600;margin-left:6px;}
+.bv-listgroup{margin-bottom:14px;}
+.bv-listgroup-h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px;}
+.bv-listgroup-h .bv-warn{color:var(--warn);}
 .bv-wa-box{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:12px;}
 .am-table.ads .am-row{grid-template-columns:34px 56px minmax(220px,1fr) 124px 270px 140px 150px 100px 86px 100px 112px 92px 70px;min-width:1640px;}
 .am-c-msg{display:flex;align-items:center;gap:8px;min-width:0;}
@@ -2362,6 +2374,9 @@ function bvOpenCampaignBuilder(presetObjective) {
               </div>
             </div>
 
+            <div id="bvAdSetTabs" class="bv-adtabs"></div>
+            <div id="bvAdTabHint" class="bv-adhint"></div>
+
             <div class="bv-section-card">
               <div class="bv-section-card-title"><span class="bv-ico">🎬</span> Ad creative</div>
               <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
@@ -2403,7 +2418,7 @@ function bvOpenCampaignBuilder(presetObjective) {
             </div>
 
             <div class="bv-section-card">
-              <div class="bv-section-card-title"><span class="bv-ico">✏️</span> Ad copy</div>
+              <div class="bv-section-card-title" id="bvAdFormTitle"><span class="bv-ico">✏️</span> Ad copy</div>
               <div class="field" style="margin-bottom:14px;"><label>Ad name <span style="font-weight:400;color:var(--muted);">(optional — shown on Meta exactly as you type it)</span></label>
                 <input id="f_ad_name" maxlength="120" placeholder="e.g. Mama Ngozi testimonial video"></div>
               <div id="f_waMsgBox" class="bv-wa-box">
@@ -2460,6 +2475,8 @@ function bvOpenCampaignBuilder(presetObjective) {
   bvOnDestinationChange();
   bvResetAdSetBuilder();
   bvStagedCopies = [];
+  bvAdTabUid = null;
+  bvEnsureAdTab();
   bvRenderStagedCopies();
   bvReuseAsset = null;
   bvLoadBuilderIdentity();
@@ -2489,6 +2506,7 @@ function bvOpenCampaignBuilder(presetObjective) {
       copies.push({
         file: currentFile || null,
         reuse_asset: bvReuseAsset,
+        adset_uid: bvAdTabUid,
         ad_name: document.getElementById("f_ad_name").value.trim(),
         ...bvFormWa(),
         primary_text: currentPrimary,
@@ -2503,6 +2521,13 @@ function bvOpenCampaignBuilder(presetObjective) {
       msg.innerHTML = `<div class="msg err">Please select or drop a file first (or reuse an existing creative).</div>`;
       // On a phone the message sits at the end of a long scrolling page -- bring it into view.
       if (window.matchMedia("(max-width: 760px)").matches) msg.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    // every ad set needs its own ad(s) -- this is what a missing "Ad" step looks like in the Review
+    const noAds = bvAdSetRows.filter(r => !copies.some(c => c.adset_uid === r.uid));
+    if (noAds.length) {
+      msg.innerHTML = `<div class="msg err">${noAds.map(r => `<b>${escH(bvAdSetName(r))}</b>`).join(", ")} ${noAds.length === 1 ? "has" : "have"} no ad yet. Open ${noAds.length === 1 ? "its" : "their"} tab above and add an ad, or use "Copy these ads to other ad sets".</div>`;
+      bvSelectAdTab(noAds[0].uid);
       return;
     }
     const dupNames = bvFindDuplicateNames(copies);
@@ -2533,6 +2558,7 @@ function bvSwitchBuilderTab(tab) {
   if (backBtn) backBtn.style.visibility = i === 0 ? "hidden" : "visible";
   if (nextBtn) nextBtn.style.visibility = i === BV_BUILDER_TABS.length - 1 ? "hidden" : "visible";
   document.querySelector(".bv-builder-body")?.scrollTo(0, 0);
+  if (tab === "ad") bvRenderStagedCopies();
   bvRenderBuilderSummary();
 }
 
@@ -2560,7 +2586,7 @@ function bvOpenReviewModal(copies) {
   };
   const objective = isWhatsapp ? "OUTCOME_SALES" : (document.getElementById("f_objective")?.value || "OUTCOME_SALES");
   const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
-  const totalAds = copies.length * bvAdSetRows.length;
+  const totalAds = copies.length;
   const existingSchedule = document.getElementById("f_scheduled")?.value || "";
 
   const overlay = document.createElement("div");
@@ -2572,15 +2598,14 @@ function bvOpenReviewModal(copies) {
       <div class="ph-title" style="margin-bottom:12px;">Review & launch</div>
       <div style="border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.7;">
         <div><b>${escH(campaignLabel)}</b> — ${destLabel} · ${objectiveLabels[objective] || objective}</div>
-        <div>${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} × ${copies.length} ad cop${copies.length === 1 ? "y" : "ies"} = <b>${totalAds} ad${totalAds === 1 ? "" : "s"}</b> total</div>
+        <div>${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} · <b>${totalAds} ad${totalAds === 1 ? "" : "s"}</b> in total</div>
         <div>₦${totalBudget.toLocaleString()}/day total budget</div>
-        <div style="color:var(--muted);">Ad sets: ${bvAdSetRows.map(r => escH(bvAdSetName(r)) + ((r.display_name || "").trim() ? "" : " <i>(auto)</i>")).join(" · ")}</div>
+        ${bvAdSetRows.map(r => `<div style="color:var(--muted);">▦ <b style="color:var(--text2);">${escH(bvAdSetName(r))}</b>${(r.display_name || "").trim() ? "" : " <i>(auto name)</i>"} → ${copies.filter(c => c.adset_uid === r.uid).map(c => bvAdName(c) ? escH(bvAdName(c)) : "<i>unnamed ad</i>").join(", ") || "<i>no ads</i>"}</div>`).join("")}
         ${isWhatsapp ? (() => {
           const g = [...new Set(copies.map(c => (c.wa_greeting || "").trim()))], p = [...new Set(copies.map(c => (c.wa_prefill || "").trim()))];
           const show = (arr, dflt) => arr.length > 1 ? "<i>varies by ad</i>" : (arr[0] ? "“" + escH(arr[0]) + "”" : "<i>" + dflt + "</i>");
           return `<div style="color:var(--muted);">Chat opens with: ${show(g, "neutral default greeting")}</div><div style="color:var(--muted);">Pre-filled message: ${show(p, "neutral default message")}</div>`;
         })() : ""}
-        <div style="color:var(--muted);">Ads: ${copies.map((c, n) => bvAdName(c) ? escH(bvAdName(c)) : `Ad ${n + 1} <i>(auto)</i>`).join(" · ")}</div>
       </div>
       <div class="field" style="margin-top:14px;"><label>Schedule for (optional)</label>
         <input type="datetime-local" id="reviewScheduled" value="${existingSchedule}">
@@ -2639,17 +2664,19 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       const launchBatchId = copies.length > 1 ? crypto.randomUUID() : null;
       const assetIds = [];
       const assetExtras = [];
+      const uploadedByFile = new Map(); // the same file used in several ad sets is uploaded once, then reused
       for (const copy of copies) {
-        if (copy.reuse_asset) {
+        const reuseSrc = copy.reuse_asset || (copy.file ? uploadedByFile.get(copy.file) : null);
+        if (reuseSrc) {
           // Reusing an existing creative's media -- clone the storage
           // reference (no re-upload of bytes) with this copy's own ad text.
           const { data: cloned, error: cloneErr } = await supabaseClient.from('creative_assets').insert({
-            file_name: copy.reuse_asset.file_name,
-            storage_path: copy.reuse_asset.storage_path,
-            public_url: copy.reuse_asset.public_url,
-            asset_type: copy.reuse_asset.asset_type,
-            meta_video_id: copy.reuse_asset.meta_video_id ?? null,
-            meta_image_hash: copy.reuse_asset.meta_image_hash ?? null,
+            file_name: reuseSrc.file_name,
+            storage_path: reuseSrc.storage_path,
+            public_url: reuseSrc.public_url,
+            asset_type: reuseSrc.asset_type,
+            meta_video_id: reuseSrc.meta_video_id ?? null,
+            meta_image_hash: reuseSrc.meta_image_hash ?? null,
             mechanism: copy.mechanism,
             format: copy.format,
             primary_text: copy.primary_text,
@@ -2661,7 +2688,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
             test_status: "untested",
             uploaded_at: new Date().toISOString(),
           }).select('id').single();
-          if (cloneErr) throw new Error(`"${copy.reuse_asset.file_name}" (reused): ${cloneErr.message}`);
+          if (cloneErr) throw new Error(`"${reuseSrc.file_name}" (reused): ${cloneErr.message}`);
           if (cloned?.id) { assetIds.push(cloned.id); assetExtras.push(copy); }
           continue;
         }
@@ -2684,7 +2711,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
         });
         const r = await res.json();
         if (r.error) throw new Error(`"${copy.file.name}": ${r.error}`);
-        if (r.asset?.id) { assetIds.push(r.asset.id); assetExtras.push(copy); }
+        if (r.asset?.id) { assetIds.push(r.asset.id); assetExtras.push(copy); if (copy.file) uploadedByFile.set(copy.file, r.asset); }
       }
       if (!assetIds.length) throw new Error("No ad copies uploaded successfully.");
       // Names typed in the builder -- the launch uses them exactly as written.
@@ -2692,6 +2719,9 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       for (let k = 0; k < assetIds.length; k++) {
         const c = assetExtras[k] || {};
         const upd = {};
+        // which ad set this ad belongs to (position in the ad set list) -- the launch puts it only there
+        const setIdx = bvAdSetIdx(c.adset_uid);
+        if (setIdx >= 0) upd.ad_set_sort_order = setIdx;
         if ((c.ad_name || "").trim()) upd.ad_name = c.ad_name.trim();
         if (isWhatsapp) {
           if ((c.wa_greeting || "").trim()) upd.whatsapp_greeting = c.wa_greeting.trim();
@@ -2785,6 +2815,7 @@ function bvStageAdCopy() {
   bvStagedCopies.push({
     file: file || null,
     reuse_asset: bvReuseAsset,
+    adset_uid: bvAdTabUid,
     ad_name: bvNextName(document.getElementById("f_ad_name")?.value.trim() || "", bvUsedAdNames().slice(0, -1)),
     ...bvFormWa(),
     primary_text,
@@ -2812,7 +2843,7 @@ function bvRemoveStagedCopy(i) {
 
 function bvQuickDuplicateStagedCopy(i) {
   const src = bvStagedCopies[i];
-  bvStagedCopies.splice(i + 1, 0, { ...src, ad_name: bvNextName(src.ad_name, bvUsedAdNames()) });
+  bvStagedCopies.splice(i + 1, 0, { ...src, ad_name: bvNextName(src.ad_name, bvAdNamesIn(src.adset_uid)) });
   bvRenderStagedCopies();
 }
 
@@ -2825,11 +2856,14 @@ function bvUpdateStagedCopy(i, key, value) {
 
 function bvRenderStagedCopies() {
   const wrap = document.getElementById("stagedCopies");
-  if (!wrap) return;
+  bvRenderAdTabs();
   bvRenderBuilderSummary();
-  if (!bvStagedCopies.length) { wrap.innerHTML = ""; return; }
-  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${bvStagedCopies.length} more ad${bvStagedCopies.length === 1 ? "" : "s"} staged below (plus whatever's filled in above) — each is its own real ad when you launch. Edit any of them here, or <a href="javascript:void(0)" onclick="bvOpenAdListModal()" style="color:var(--accent);font-weight:600;">view all ads</a> in one list.</div>` +
-    bvStagedCopies.map((c, i) => `
+  if (!wrap) return;
+  const mine = bvStagedOf(bvAdTabUid);
+  if (!mine.length) { wrap.innerHTML = ""; return; }
+  const cur = bvAdSetByUid(bvAdTabUid);
+  wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${mine.length} ad${mine.length === 1 ? "" : "s"} saved in <b>${escH(cur ? bvAdSetName(cur) : "this ad set")}</b> (plus whatever's filled in above) — each is its own real ad when you launch. Edit any of them here, or <a href="javascript:void(0)" onclick="bvOpenAdListModal()" style="color:var(--accent);font-weight:600;">view all ads</a> across every ad set.</div>` +
+    mine.map(({ c, i }) => `
       <div style="border:1px dashed var(--border);border-radius:8px;padding:10px;margin-top:6px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <span style="font-size:11px;color:var(--muted);">${c.reuse_asset ? `↺ ${escH(c.reuse_asset.file_name)} (reused)` : escH(c.file?.name || "")}</span>
@@ -2884,6 +2918,7 @@ function bvConfirmDuplicateAd() {
   const base = {
     file: file || null,
     reuse_asset: bvReuseAsset,
+    adset_uid: bvAdTabUid,
     ad_name: document.getElementById("f_ad_name").value.trim(),
     ...bvFormWa(),
     primary_text: document.getElementById("f_primary").value.trim(),
@@ -2893,7 +2928,7 @@ function bvConfirmDuplicateAd() {
     format: document.getElementById("f_format").value,
     cta_type: document.getElementById("f_cta").value,
   };
-  const usedNames = bvStagedCopies.map(c => c.ad_name || "");
+  const usedNames = bvAdNamesIn(bvAdTabUid);
   for (let n = 0; n < count; n++) {
     const seed = base.ad_name ? (count > 1 ? `${base.ad_name} ${n + 1}` : base.ad_name) : "";
     const name = bvNextName(seed, usedNames);
@@ -2927,6 +2962,7 @@ function bvQuickDuplicateAd() {
   bvStagedCopies.push({
     file: file || null,
     reuse_asset: bvReuseAsset,
+    adset_uid: bvAdTabUid,
     ad_name: bvNextName(document.getElementById("f_ad_name").value.trim(), bvUsedAdNames()),
     ...bvFormWa(),
     primary_text: primary,
@@ -2958,8 +2994,10 @@ function bvRenderBuilderSummary() {
   const currentFile = document.getElementById("f_file")?.files?.[0];
   const currentPrimary = document.getElementById("f_primary")?.value.trim();
   const adCount = bvStagedCopies.length + ((currentFile || bvReuseAsset) && currentPrimary ? 1 : 0);
+  const perSet = bvAdSetRows.map(r => ({ r, n: bvAdsCountFor(r.uid) }));
   const adCountEl = document.getElementById("bvAdCount");
   if (adCountEl) adCountEl.textContent = adCount;
+  bvRenderAdTabs();
   const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
 
   el.innerHTML = `
@@ -2969,7 +3007,8 @@ function bvRenderBuilderSummary() {
         ${acc?.fb_page_id ? "✓ Page connected" : "⚠ No Page connected"}<br>
         ${!isWhatsapp || acc?.meta_pixel_id ? "" : "⚠ No pixel connected<br>"}
         ${adSetCount ? "✓" : "⚠"} ${adSetCount} ad set${adSetCount === 1 ? "" : "s"} configured<br>
-        ${adCount ? "✓" : "⚠"} ${adCount} ad${adCount === 1 ? "" : "s"} staged
+        ${adCount ? "✓" : "⚠"} ${adCount} ad${adCount === 1 ? "" : "s"} in total
+        ${perSet.map(x => `<br>&nbsp;&nbsp;${x.n ? "✓" : "⚠"} ${escH(bvAdSetName(x.r))}: ${x.n ? x.n + " ad" + (x.n === 1 ? "" : "s") : "no ads yet"}`).join("")}
       </div>
     </div>
     <div class="bv-builder-summary-card">
@@ -3202,16 +3241,21 @@ function bvRefreshAdSetList() {
 }
 
 function bvQuickDupAdSet(i) {
+  bvCommitFormCopy();
   const src = bvAdSetRows[i];
   const used = bvAdSetRows.map(r => r.display_name || "");
-  bvAdSetRows.push({
+  const fresh = {
     ...src,
     device_platforms: [...(src.device_platforms || [])],
     display_name: bvNextName(src.display_name, used),
     label: `Ad Set ${bvAdSetRows.length + 1}`,
-  });
+    uid: bvUid(),
+  };
+  bvAdSetRows.push(fresh);
+  bvCloneAdsToAdSet(src.uid, fresh.uid);
   bvRenderAdSetRows();
-  bvToast("Ad set copied — rename it if you like.");
+  bvRenderStagedCopies();
+  bvToast("Ad set copied with its ads — rename it if you like.");
 }
 
 let bvAdSetEditIdx = null;
@@ -3253,6 +3297,7 @@ function bvAdCurrentCopy() {
   return {
     file: file || null,
     reuse_asset: bvReuseAsset,
+    adset_uid: bvAdTabUid,
     ad_name: document.getElementById("f_ad_name")?.value.trim() || "",
     ...bvFormWa(),
     primary_text: primary,
@@ -3263,7 +3308,101 @@ function bvAdCurrentCopy() {
     cta_type: document.getElementById("f_cta").value,
   };
 }
-const bvUsedAdNames = () => [...bvStagedCopies.map(c => c.ad_name || ""), document.getElementById("f_ad_name")?.value || ""];
+const bvUsedAdNames = () => [...bvAdNamesIn(bvAdTabUid), document.getElementById("f_ad_name")?.value || ""];
+
+// ── ADS BELONG TO AD SETS ────────────────────────────────────────────────────
+// 1 campaign -> N ad sets -> each ad set has its OWN ads (like Meta). An ad has
+// exactly one ad set (adset_uid). The Ad step shows one tab per ad set; ads
+// you add there belong to that ad set. Duplicating an ad set duplicates its ads.
+let bvAdTabUid = null;
+const bvUid = () => "as_" + Math.random().toString(36).slice(2, 10);
+const bvAdSetByUid = uid => bvAdSetRows.find(r => r.uid === uid);
+const bvAdSetIdx = uid => bvAdSetRows.findIndex(r => r.uid === uid);
+const bvStagedOf = uid => bvStagedCopies.map((c, i) => ({ c, i })).filter(x => x.c.adset_uid === uid);
+const bvAdNamesIn = uid => bvStagedCopies.filter(c => c.adset_uid === uid).map(c => c.ad_name || "");
+function bvEnsureAdTab() { if (!bvAdSetByUid(bvAdTabUid)) bvAdTabUid = bvAdSetRows[0]?.uid ?? null; }
+// ads in an ad set = saved ones + the one being typed in the form (if that ad set's tab is open)
+function bvAdsCountFor(uid) { return bvStagedOf(uid).length + (uid === bvAdTabUid && bvAdCurrentCopy() ? 1 : 0); }
+
+function bvRenderAdTabs() {
+  const wrap = document.getElementById("bvAdSetTabs");
+  if (!wrap) return;
+  bvEnsureAdTab();
+  wrap.innerHTML = bvAdSetRows.map(r => {
+    const n = bvAdsCountFor(r.uid);
+    return `<button type="button" class="bv-adtab${r.uid === bvAdTabUid ? " active" : ""}${n ? "" : " empty"}" onclick="bvSelectAdTab('${r.uid}')"><span class="bv-adtab-n">${n}</span><span class="bv-adtab-t">${escH(bvAdSetName(r))}</span></button>`;
+  }).join("");
+  const cur = bvAdSetByUid(bvAdTabUid);
+  const hint = document.getElementById("bvAdTabHint");
+  if (hint && cur) {
+    const saved = bvStagedOf(cur.uid).length;
+    hint.innerHTML = `Ads for <b>${escH(bvAdSetName(cur))}</b>${bvAdSetRows.length > 1 ? " — only this ad set. Other ad sets have their own ads (use the tabs above)." : "."}
+      ${saved ? `${saved} saved below.` : ""}
+      ${bvAdSetRows.length > 1 ? `<a href="javascript:void(0)" onclick="bvOpenCopyAdsModal()">⧉ Copy these ads to other ad sets</a>` : ""}`;
+  }
+  const sum = document.getElementById("bvAdFormTitle");
+  if (sum && cur) sum.textContent = `✏️ Ad copy — for ${bvAdSetName(cur)}`;
+}
+
+// Saves the ad typed in the form (if complete) into the ad set whose tab is open, then clears the form.
+function bvCommitFormCopy() {
+  const cur = bvAdCurrentCopy();
+  if (!cur) return false;
+  cur.ad_name = bvNextName(cur.ad_name, bvAdNamesIn(cur.adset_uid));
+  bvStagedCopies.push(cur);
+  document.getElementById("f_file").value = "";
+  document.getElementById("f_ad_name").value = "";
+  document.getElementById("f_primary").value = "";
+  document.getElementById("f_headline").value = "";
+  document.getElementById("f_desc").value = "";
+  document.getElementById("dzPrev").innerHTML = "";
+  bvReuseAsset = null;
+  return true;
+}
+
+function bvSelectAdTab(uid) {
+  if (uid === bvAdTabUid) return;
+  const old = bvAdSetByUid(bvAdTabUid);
+  if (bvCommitFormCopy() && old) bvToast(`Ad saved to ${bvAdSetName(old)}.`);
+  bvAdTabUid = uid;
+  bvRenderStagedCopies();
+  document.getElementById("uploadForm")?.scrollTo(0, 0);
+}
+
+function bvCloneAdsToAdSet(srcUid, dstUid) {
+  const used = bvAdNamesIn(dstUid);
+  for (const { c } of bvStagedOf(srcUid)) {
+    const name = bvNextName(c.ad_name, used);
+    used.push(name);
+    bvStagedCopies.push({ ...c, adset_uid: dstUid, ad_name: name });
+  }
+}
+
+function bvOpenCopyAdsModal() {
+  bvCommitFormCopy();
+  bvRenderStagedCopies();
+  const src = bvAdSetByUid(bvAdTabUid);
+  const n = bvStagedOf(bvAdTabUid).length;
+  const others = bvAdSetRows.filter(r => r.uid !== bvAdTabUid);
+  if (!src || !others.length) return;
+  bvOpenSheet("bvCopyAdsOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvCopyAdsOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:4px;">Copy ads to other ad sets</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">${n} ad${n === 1 ? "" : "s"} from <b>${escH(bvAdSetName(src))}</b> will be copied into the ad sets you tick. You can edit each copy afterwards (for example a different creative for women).</div>
+    ${n ? others.map(r => `<label class="bv-listrow" style="cursor:pointer;"><input type="checkbox" class="bv-copyads-cb" value="${r.uid}" checked style="width:18px;height:18px;accent-color:var(--accent);"><div class="bv-listmain"><div class="bv-listname">${escH(bvAdSetName(r))}</div><div class="bv-listsub">${bvStagedOf(r.uid).length} ad${bvStagedOf(r.uid).length === 1 ? "" : "s"} already</div></div></label>`).join("") : `<div class="empty" style="padding:20px;">This ad set has no saved ads yet — add one first.</div>`}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button type="button" class="btn btn-g" onclick="bvCloseSheet('bvCopyAdsOverlay')">Cancel</button>
+      ${n ? `<button type="button" class="btn btn-a" onclick="bvConfirmCopyAds()">Copy</button>` : ""}
+    </div>`, 520);
+}
+function bvConfirmCopyAds() {
+  const src = bvAdTabUid;
+  const dsts = [...document.querySelectorAll("#bvCopyAdsOverlay .bv-copyads-cb:checked")].map(cb => cb.value);
+  dsts.forEach(d => bvCloneAdsToAdSet(src, d));
+  bvCloseSheet("bvCopyAdsOverlay");
+  bvRenderStagedCopies();
+  bvToast(dsts.length ? `Copied to ${dsts.length} ad set${dsts.length === 1 ? "" : "s"}.` : "Nothing ticked.");
+}
 
 function bvOpenAdListModal() {
   bvOpenSheet("bvAdListOverlay", `
@@ -3276,29 +3415,35 @@ function bvRefreshAdList() {
   const body = document.getElementById("bvAdListBody");
   if (!body) return;
   const cur = bvAdCurrentCopy();
-  const items = [...(cur ? [{ c: cur, form: true }] : []), ...bvStagedCopies.map((c, i) => ({ c, i }))];
-  const setCount = bvAdSetRows.length;
+  const total = bvStagedCopies.length + (cur ? 1 : 0);
   const fileLabel = c => c.reuse_asset ? `↺ ${c.reuse_asset.file_name} (reused)` : (c.file?.name || "");
+  const row = (c, n, it) => {
+    const named = bvAdName(c);
+    const act = it.form ? "bvAdGoToForm()" : `bvOpenAdEdit(${it.i})`;
+    return `<div class="bv-listrow" onclick="${act}">
+      <div class="bv-listnum">${n}</div>
+      <div class="bv-listmain">
+        <div class="bv-listname">${named ? escH(named) : `<span style="color:var(--muted);font-weight:500;">Unnamed ad</span>`}${it.form ? ` <span class="pill pending">in the form</span>` : ""}${named ? "" : ` <span class="pill off" title="No name typed — Meta gets an automatic name">auto name</span>`}</div>
+        <div class="bv-listsub">${escH(fileLabel(c))}</div>
+        <div class="bv-listsub" style="color:var(--text2);">${escH((c.primary_text || "").slice(0, 110))}${(c.primary_text || "").length > 110 ? "…" : ""}</div>
+      </div>
+      <div class="bv-listbtns" onclick="event.stopPropagation()">
+        <button type="button" class="btn btn-g" onclick="${act}">${it.form ? "Go to form" : "Edit"}</button>
+        ${it.form ? "" : `<button type="button" class="btn btn-g" onclick="bvQuickDuplicateStagedCopy(${it.i});bvRefreshAdList()" title="Add a copy of this ad">⧉</button>
+        <button type="button" class="btn btn-g" style="color:var(--danger);" onclick="bvRemoveStagedCopy(${it.i});bvRefreshAdList()" title="Remove">✕</button>`}
+      </div>
+    </div>`;
+  };
   body.innerHTML = `
-    <div class="ph-title" style="margin-bottom:4px;">All ads (${items.length})</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Tap one to edit it. Each ad launches inside every ad set: ${items.length} ad${items.length === 1 ? "" : "s"} × ${setCount} ad set${setCount === 1 ? "" : "s"} = <b>${items.length * setCount} ads</b>.</div>
-    ${items.length ? items.map((it, n) => {
-      const c = it.c, named = bvAdName(c);
-      const act = it.form ? "bvAdGoToForm()" : `bvOpenAdEdit(${it.i})`;
-      return `<div class="bv-listrow" onclick="${act}">
-        <div class="bv-listnum">${n + 1}</div>
-        <div class="bv-listmain">
-          <div class="bv-listname">${named ? escH(named) : `<span style="color:var(--muted);font-weight:500;">Unnamed ad</span>`}${it.form ? ` <span class="pill pending">in the form</span>` : ""}${named ? "" : ` <span class="pill off" title="No name typed — Meta gets an automatic name">auto name</span>`}</div>
-          <div class="bv-listsub">${escH(fileLabel(c))}</div>
-          <div class="bv-listsub" style="color:var(--text2);">${escH((c.primary_text || "").slice(0, 110))}${(c.primary_text || "").length > 110 ? "…" : ""}</div>
-        </div>
-        <div class="bv-listbtns" onclick="event.stopPropagation()">
-          <button type="button" class="btn btn-g" onclick="${act}">${it.form ? "Go to form" : "Edit"}</button>
-          ${it.form ? "" : `<button type="button" class="btn btn-g" onclick="bvQuickDuplicateStagedCopy(${it.i});bvRefreshAdList()" title="Add a copy of this ad">⧉</button>
-          <button type="button" class="btn btn-g" style="color:var(--danger);" onclick="bvRemoveStagedCopy(${it.i});bvRefreshAdList()" title="Remove">✕</button>`}
-        </div>
+    <div class="ph-title" style="margin-bottom:4px;">All ads (${total})</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Every ad belongs to one ad set. ${total} ad${total === 1 ? "" : "s"} across ${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"}. Tap an ad to edit it.</div>
+    ${bvAdSetRows.map(r => {
+      const items = [...(cur && r.uid === bvAdTabUid ? [{ c: cur, form: true }] : []), ...bvStagedOf(r.uid).map(x => ({ c: x.c, i: x.i }))];
+      return `<div class="bv-listgroup">
+        <div class="bv-listgroup-h"><span>▦ ${escH(bvAdSetName(r))}</span><span class="${items.length ? "" : "bv-warn"}">${items.length ? items.length + " ad" + (items.length === 1 ? "" : "s") : "no ads yet"}</span></div>
+        ${items.length ? items.map((it, n) => row(it.c, n + 1, it)).join("") : `<div class="bv-listrow" style="cursor:default;"><div class="bv-listmain"><div class="bv-listsub">This ad set has no ad yet.</div></div><div class="bv-listbtns"><button type="button" class="btn btn-a" onclick="bvCloseSheet('bvAdListOverlay');bvSelectAdTab('${r.uid}')">Add an ad</button></div></div>`}
       </div>`;
-    }).join("") : `<div class="empty" style="padding:24px;">No ads yet — fill in the ad above and add it.</div>`}
+    }).join("")}
     <div style="display:flex;justify-content:flex-end;margin-top:16px;"><button type="button" class="btn btn-a" onclick="bvCloseSheet('bvAdListOverlay')">Done</button></div>`;
 }
 
@@ -3317,7 +3462,9 @@ function bvOpenAdEdit(i) {
   bvOpenSheet("bvAdEditOverlay", `
     <button class="bv-modal-close" data-sheet-close onclick="bvCloseAdEdit()">✕</button>
     <div class="ph-title" style="margin-bottom:14px;">Edit ad ${i + 1}</div>
-    <div class="field"><label>Ad name <span style="font-weight:400;color:var(--muted);">(shown on Meta exactly as you type it)</span></label>
+    <div class="field"><label>Ad set <span style="font-weight:400;color:var(--muted);">(the ad set this ad runs in)</span></label>
+      <select onchange="bvUpdateStagedCopy(${i}, 'adset_uid', this.value)">${bvAdSetRows.map(r => `<option value="${r.uid}" ${r.uid === c.adset_uid ? "selected" : ""}>${escH(bvAdSetName(r))}</option>`).join("")}</select></div>
+    <div class="field" style="margin-top:12px;"><label>Ad name <span style="font-weight:400;color:var(--muted);">(shown on Meta exactly as you type it)</span></label>
       <input value="${escH(c.ad_name || "")}" maxlength="120" placeholder="Type your own name, or leave blank for an automatic one" oninput="bvUpdateStagedCopy(${i}, 'ad_name', this.value)"></div>
     <div class="field" style="margin-top:12px;"><label>Creative</label>
       <div id="bvAdEditFile" style="font-size:12.5px;color:var(--text2);">${escH(c.reuse_asset ? `↺ ${c.reuse_asset.file_name} (reused)` : (c.file?.name || "—"))}</div>
@@ -3369,8 +3516,11 @@ function bvFindDuplicateNames(copies) {
   };
   const a = dupIn(bvAdSetRows.map(r => r.display_name));
   if (a) return `Two ad sets are both named "${escH(a)}". Give each ad set its own name (Ad set step → View all).`;
-  const b = dupIn(copies.map(c => c.ad_name));
-  if (b) return `Two ads are both named "${escH(b)}". Give each ad its own name (Ad step → View all ads).`;
+  // ads only need distinct names inside the same ad set
+  for (const r of bvAdSetRows) {
+    const b = dupIn(copies.filter(c => c.adset_uid === r.uid).map(c => c.ad_name));
+    if (b) return `Two ads in "${escH(bvAdSetName(r))}" are both named "${escH(b)}". Give each ad its own name (Ad step → View all ads).`;
+  }
   return null;
 }
 
@@ -3379,7 +3529,7 @@ function bvResetAdSetBuilder() {
   bvAdSetRows = [{
     label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: "",
     placement_preset: "", device_platforms: [], bid_strategy: "LOWEST_COST_WITHOUT_CAP", bid_amount_naira: "",
-    billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true, display_name: "",
+    billing_event: "IMPRESSIONS", optimization_goal: "OFFSITE_CONVERSIONS", advantage_audience: true, display_name: "", uid: bvUid(),
   }];
   bvRenderAdSetRows();
 }
@@ -3437,18 +3587,22 @@ function bvConfirmDuplicateAdSets() {
   const keepAdvantage = document.getElementById("dupKeepAdvantage").checked;
   const last = bvAdSetRows[bvAdSetRows.length - 1];
   const typed = document.getElementById("dupName")?.value.trim() || "";
+  bvCommitFormCopy(); // an ad typed in the form is saved first, so it is copied along
   const used = bvAdSetRows.map(r => r.display_name || "");
   for (let n = 0; n < count; n++) {
     const seed = typed ? (count > 1 ? `${typed} ${n + 1}` : typed) : (last.display_name || "");
     const name = bvNextName(seed, used);
     used.push(name);
-    bvAdSetRows.push({
+    const fresh = {
       ...last,
       device_platforms: [...(last.device_platforms || [])],
       advantage_audience: keepAdvantage,
       display_name: name,
       label: `Ad Set ${bvAdSetRows.length + 1}`,
-    });
+      uid: bvUid(),
+    };
+    bvAdSetRows.push(fresh);
+    bvCloneAdsToAdSet(last.uid, fresh.uid); // duplicating an ad set duplicates its ads too
   }
   document.getElementById("bvDupModalOverlay")?.remove();
   bvRenderAdSetRows();
@@ -3456,6 +3610,10 @@ function bvConfirmDuplicateAdSets() {
 }
 
 function bvRemoveAdSetRow(i) {
+  const gone = bvAdSetRows[i];
+  const n = gone ? bvStagedOf(gone.uid).length : 0;
+  if (n && !confirm(`Remove this ad set and its ${n} ad${n === 1 ? "" : "s"}?`)) return;
+  if (gone) bvStagedCopies = bvStagedCopies.filter(c => c.adset_uid !== gone.uid);
   bvAdSetRows.splice(i, 1);
   bvAdSetRows.forEach((row, idx) => { row.label = `Ad Set ${idx + 1}`; });
   bvRenderAdSetRows();
@@ -3588,6 +3746,7 @@ function bvRenderAdSetRows() {
   bvRenderBuilderSummary();
   bvRefreshAdSetEdit();
   bvRefreshAdSetList();
+  bvRenderAdTabs();
 }
 
 // ── LAUNCHED AD DETAIL/EDIT MODAL ────────────────────────────────────────────

@@ -7,3 +7,7 @@ alter table creative_assets add column if not exists ad_name text;
 -- launch function; blank falls back to a neutral default instead of the campaign name.
 alter table creative_assets add column if not exists whatsapp_greeting text;
 alter table creative_assets add column if not exists whatsapp_prefill text;
+
+-- Which ad set (its position, 0-based, in ad_set_configs.sort_order) an ad belongs to. NULL = every
+-- ad set (how older launches worked); the builder now sets it so each ad runs only in its own ad set.
+alter table creative_assets add column if not exists ad_set_sort_order integer;
