@@ -38,7 +38,8 @@ function fmtNaira(n: number) {
   return "₦" + Math.round(n || 0).toLocaleString("en-NG");
 }
 
-type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliveryAgentId: string | null; userId: string; displayName: string };
+type ActiveAccount = { id: string; name: string; balance: number | null; lowThreshold: number | null };
+type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliveryAgentId: string | null; userId: string; displayName: string; authHeader: string; account: ActiveAccount | null; proposals: any[] };
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -78,7 +79,24 @@ Deno.serve(async (req: Request) => {
   const ctx: Ctx = {
     companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id,
     deliveryAgentId: profile.delivery_agent_id, userId: user.id, displayName: profile.display_name || "",
+    authHeader, account: null, proposals: [],
   };
+
+  // The ad account the person currently has switched in on the dashboard.
+  // Verified server-side: it must belong to their company (and, for a buyer, to them).
+  const activeId = typeof body?.active_ad_account_id === "string" ? body.active_ad_account_id : "";
+  if (/^[0-9a-f-]{36}$/i.test(activeId)) {
+    let aq = supabase.from("ad_accounts").select("id, name, nickname, balance_naira, low_balance_threshold_naira, media_buyer_id")
+      .eq("id", activeId).eq("company_id", ctx.companyId);
+    if (ctx.role === "buyer") aq = aq.eq("media_buyer_id", ctx.mediaBuyerId);
+    const { data: a } = await aq.maybeSingle();
+    if (a) ctx.account = { id: a.id, name: a.nickname || a.name || a.id, balance: a.balance_naira ?? null, lowThreshold: a.low_balance_threshold_naira ?? null };
+  }
+  let killRules: any[] = [];
+  if (["owner", "admin", "buyer"].includes(ctx.role)) {
+    const { data: kr } = await supabase.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", ctx.userId);
+    killRules = kr || [];
+  }
 
   const { data: companyRow } = await supabase.from("companies").select("name").eq("id", ctx.companyId).maybeSingle();
   const companyName = companyRow?.name || "the company";
@@ -119,6 +137,12 @@ Rules:
 - Sending real money (e.g. "send 5k to 238193057227 Paga") is DIFFERENT from request_funds/approve_fund_request: it is owner/admin only, and you can NEVER send it yourself. Call resolve_bank_account with the account number, bank name, and amount they stated. That ONLY verifies whose account it is -- it never moves money. Once it comes back verified, tell them the account name it resolved to and that you've put up a confirm card for them -- the actual send happens only when they click Confirm and re-enter their password on the dashboard, which you cannot do for them. Never say the money has been sent or is on its way -- you don't know that; only the confirm step knows.
 - A buyer sending money is narrower: resolve_meta_transfer_account only works for a buyer sending their OWN already-approved fund request into their Meta/Facebook Ads billing account. It automatically finds their approved request and rejects the account outright if it doesn't resolve to a Facebook/Meta name. If they have more than one approved request it comes back ambiguous with a list -- ask which one, then call it again passing amount_naira set to the exact amount they picked so it can tell them apart (it can't be identified by date alone). Same as resolve_bank_account, it only verifies -- the real send still needs their Confirm-and-password step on the dashboard.
 
+- ACTIVE AD ACCOUNT: ${ctx.account ? `the person is currently working in the ad account "${ctx.account.name}" (id ${ctx.account.id})${ctx.account.balance != null ? `, prepaid balance about ${fmtNaira(ctx.account.balance)}` : ""}. When they say "my ad account", "this account", "my ads", "how are my ads doing" etc., they mean THIS one — NEVER ask which ad account. Only talk about a different account if they name one.` : "none is selected right now (the person is on the all-accounts view). If they ask about ads, call list_ad_accounts and ask which one only if there is more than one."}
+- For ad set / ad level questions call get_live_ads (live from Meta: spend, messages/conversations, cost per message, reach, frequency, CTR per ad set and per ad). List the ads under each ad set when asked, and comment on what is working or not. Judge against THIS PERSON'S kill thresholds (below), not made-up benchmarks; the tool also marks ads that break them.
+- KILL THRESHOLDS for this person (their own settings): ${killRules.length ? JSON.stringify(killRules.map(r => ({ type: r.kind === "messaging" ? "WhatsApp message ads" : "website purchase ads", rule_on: r.enabled, auto_pause: r.auto_kill, kill_if_cost_per_result_above_naira: Number(r.max_cost_per_result), only_judge_after_spend_naira: Number(r.min_spend), only_judge_after_hours: Number(r.min_hours) }))) : "none set yet — tell them they can set them in Settings → Ad kill rules."}
+- Taking action on ads: use propose_status_change (pause/kill/resume an ad, ad set or campaign) and propose_budget_change (scale a daily budget). These NEVER execute directly — they put a confirm card in the chat and the person taps Confirm. So after calling one, say what you propose and why, and that it is waiting for their tap. Never say it is done. Get the ids from get_live_ads. You may propose several at once. Do not propose pausing something just because it is new — respect the min spend/hours in their thresholds.
+- Creating a whole new campaign from chat is coming soon; for now point them to the Create/Launch button.
+
 DATA (JSON):
 ${JSON.stringify(data)}`;
 
@@ -141,6 +165,58 @@ ${JSON.stringify(data)}`;
             days: { type: "number", description: "How many days back to look. Defaults to 7." },
           },
           required: ["ad_account_name"],
+        },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "get_live_ads",
+        description: "LIVE from Meta: every campaign > ad set > ad in the person's currently selected ad account (or another account by id) with status, daily budget, spend, conversations (messages), cost per message, reach, frequency, CTR, plus whether each ad breaks the person's kill thresholds. Use for any question about ad sets, ads, what is working, what to kill or scale.",
+        parameters: {
+          type: "object",
+          properties: {
+            range: { type: "string", enum: ["today", "yesterday", "last3", "last7", "last30", "lifetime"], description: "Date range, default last7." },
+            ad_account_id: { type: "string", description: "Only pass to look at a different ad account than the selected one." },
+            only_active: { type: "boolean", description: "Only show running items (default true). Pass false to include paused ones." },
+          },
+          required: [],
+        },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "propose_status_change",
+        description: "PROPOSE pausing (kill) or resuming a campaign, ad set or ad. Does not execute -- shows a confirm card the person taps. Owner/admin/buyer only.",
+        parameters: {
+          type: "object",
+          properties: {
+            level: { type: "string", enum: ["campaign", "adset", "ad"] },
+            object_id: { type: "string", description: "Meta id from get_live_ads" },
+            object_name: { type: "string" },
+            status: { type: "string", enum: ["PAUSED", "ACTIVE"] },
+            reason: { type: "string", description: "One short sentence with the numbers behind it." },
+            ad_account_id: { type: "string", description: "Only if not the selected account." },
+          },
+          required: ["level", "object_id", "status", "reason"],
+        },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "propose_budget_change",
+        description: "PROPOSE changing the daily budget of an ad set or campaign (scale up or down), in Naira. Does not execute -- shows a confirm card. Owner/admin/buyer only.",
+        parameters: {
+          type: "object",
+          properties: {
+            level: { type: "string", enum: ["campaign", "adset"] },
+            object_id: { type: "string" },
+            object_name: { type: "string" },
+            current_daily_budget: { type: "number", description: "Naira, from get_live_ads" },
+            new_daily_budget: { type: "number", description: "Naira" },
+            reason: { type: "string" },
+            ad_account_id: { type: "string", description: "Only if not the selected account." },
+          },
+          required: ["level", "object_id", "new_daily_budget", "reason"],
         },
       },
     },
@@ -246,7 +322,7 @@ ${JSON.stringify(data)}`;
   let pendingPayment: unknown = null;
 
   try {
-    for (let step = 0; step < 4; step++) {
+    for (let step = 0; step < 6; step++) {
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
@@ -260,7 +336,7 @@ ${JSON.stringify(data)}`;
           tools: TOOLS,
           tool_choice: "auto",
           temperature: 0.3,
-          max_tokens: 600,
+          max_tokens: 900,
         }),
       });
       const out = await r.json();
@@ -271,7 +347,7 @@ ${JSON.stringify(data)}`;
       messages.push(msg);
 
       if (!msg.tool_calls || !msg.tool_calls.length) {
-        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies, pending_payment: pendingPayment });
+        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies, pending_payment: pendingPayment, proposals: ctx.proposals, active_account: ctx.account ? { id: ctx.account.id, name: ctx.account.name } : null });
       }
 
       for (const tc of msg.tool_calls) {
@@ -302,8 +378,84 @@ ${JSON.stringify(data)}`;
 
 // ── Tool execution -- the same actions the dashboard's own buttons take ───
 
+const ADS_URL = `${SUPABASE_URL}/functions/v1/ads-manager`;
+
+// Resolve which account a tool call is about: the one they named, else the selected one.
+// Always re-verified against the person's company (and ownership for a buyer).
+async function accountFor(ctx: Ctx, requested?: string): Promise<ActiveAccount | { error: string }> {
+  if (!requested || requested === ctx.account?.id) {
+    return ctx.account ?? { error: "No ad account is selected. Ask which one (use list_ad_accounts)." };
+  }
+  let q = supabase.from("ad_accounts").select("id, name, nickname, balance_naira, low_balance_threshold_naira, media_buyer_id")
+    .eq("id", requested).eq("company_id", ctx.companyId);
+  if (ctx.role === "buyer") q = q.eq("media_buyer_id", ctx.mediaBuyerId);
+  const { data: a } = await q.maybeSingle();
+  if (!a) return { error: "That ad account was not found or is not yours." };
+  return { id: a.id, name: a.nickname || a.name || a.id, balance: a.balance_naira ?? null, lowThreshold: a.low_balance_threshold_naira ?? null };
+}
+
+const r0 = (n: number | null | undefined, d = 0) => (n == null ? null : Number(Number(n).toFixed(d)));
+const slimMetrics = (m: any) => ({
+  spend: r0(m.spend), messages: m.kind === "messaging" ? m.conversations : undefined, purchases: m.kind === "purchase" ? m.purchases : undefined,
+  cost_per_result: r0(m.cost_per_result), reach: m.reach, frequency: r0(m.frequency, 2), ctr_percent: r0(m.ctr, 2), impressions: m.impressions, link_clicks: m.clicks,
+});
+
 async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
   switch (name) {
+    case "get_live_ads": {
+      if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can see live ads." };
+      const acct = await accountFor(ctx, args?.ad_account_id);
+      if ("error" in acct) return acct;
+      const range = ["today", "yesterday", "last3", "last7", "last30", "lifetime"].includes(args?.range) ? args.range : "last7";
+      const res = await fetch(ADS_URL, { method: "POST", headers: { Authorization: ctx.authHeader, "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", ad_account_id: acct.id, range }) });
+      const d = await res.json().catch(() => null);
+      if (!d?.ok) return { error: d?.error || "Could not load live ads from Meta." };
+      const onlyActive = args?.only_active !== false;
+      const live = (x: any) => x.effective_status === "ACTIVE" || x.effective_status === "WITH_ISSUES";
+      const adsByAdset: Record<string, any[]> = {};
+      for (const a of d.ads) {
+        if (onlyActive && !live(a) && !(a.spend > 0)) continue;
+        (adsByAdset[a.adset_id] ??= []).push({
+          id: a.id, name: a.name, status: a.effective_status, ...slimMetrics(a),
+          breaks_threshold: a.suggestion?.kill ? a.suggestion.reason : undefined,
+        });
+      }
+      const setsByCamp: Record<string, any[]> = {};
+      for (const s of d.adsets) {
+        const ads = adsByAdset[s.id] || [];
+        if (onlyActive && !live(s) && !(s.spend > 0)) continue;
+        (setsByCamp[s.campaign_id] ??= []).push({
+          id: s.id, name: s.name, status: s.effective_status, type: s.kind, daily_budget: s.daily_budget, ...slimMetrics(s), ads,
+        });
+      }
+      const campaigns = d.campaigns
+        .filter((c: any) => !onlyActive || live(c) || c.spend > 0)
+        .map((c: any) => ({ id: c.id, name: c.name, status: c.effective_status, daily_budget: c.daily_budget, ...slimMetrics(c), ad_sets: setsByCamp[c.id] || [] }))
+        .filter((c: any) => c.ad_sets.length);
+      return { account: acct.name, account_id: acct.id, range, note: "cost_per_result is cost per message for WhatsApp ads, per purchase for website ads. daily_budget is Naira.", campaigns };
+    }
+
+    case "propose_status_change": {
+      if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can change ads." };
+      const acct = await accountFor(ctx, args?.ad_account_id);
+      if ("error" in acct) return acct;
+      if (!["campaign", "adset", "ad"].includes(args?.level) || !/^\d+$/.test(String(args?.object_id))) return { error: "Invalid level or object_id." };
+      if (!["PAUSED", "ACTIVE"].includes(args?.status)) return { error: "status must be PAUSED or ACTIVE." };
+      ctx.proposals.push({ kind: "status", ad_account_id: acct.id, account_name: acct.name, level: args.level, object_id: String(args.object_id), object_name: String(args.object_name || ""), status: args.status, reason: String(args.reason || "").slice(0, 300) });
+      return { ok: true, note: "Confirm card shown to the person. Not executed until they tap Confirm." };
+    }
+
+    case "propose_budget_change": {
+      if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can change ads." };
+      const acct = await accountFor(ctx, args?.ad_account_id);
+      if ("error" in acct) return acct;
+      const nb = Number(args?.new_daily_budget);
+      if (!["campaign", "adset"].includes(args?.level) || !/^\d+$/.test(String(args?.object_id))) return { error: "Invalid level or object_id." };
+      if (!Number.isFinite(nb) || nb < 500 || nb > 5_000_000) return { error: "new_daily_budget must be between ₦500 and ₦5,000,000." };
+      ctx.proposals.push({ kind: "budget", ad_account_id: acct.id, account_name: acct.name, level: args.level, object_id: String(args.object_id), object_name: String(args.object_name || ""), current_daily_budget: Number(args.current_daily_budget) || null, new_daily_budget: Math.round(nb), reason: String(args.reason || "").slice(0, 300) });
+      return { ok: true, note: "Confirm card shown to the person. Not executed until they tap Confirm." };
+    }
+
     case "list_ad_accounts": {
       let q = supabase.from("ad_accounts")
         .select("id, name, nickname, status, balance_naira, balance_updated_at, low_balance_threshold_naira, media_buyer_id")
