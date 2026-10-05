@@ -690,6 +690,72 @@ html{-webkit-text-size-adjust:100%;}
   .chat-panel{width:calc(100vw - 32px);right:16px;}
   .chat-toggle{bottom:18px;right:18px;}
 }
+
+/* ── BOTTOM TAB BAR + "MORE" SHEET (phones only) ──────────────────────────────
+   Hidden by default; everything that changes the look lives inside the
+   max-width:760px block, so tablets/laptops keep the sidebar layout untouched. */
+.bottom-nav{display:none;}
+@media(max-width:760px){
+  .sidebar-toggle{display:none;}
+  .bottom-nav{
+    position:fixed;left:0;right:0;bottom:0;z-index:350;display:flex;
+    background:var(--panel);border-top:1px solid var(--border);
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    box-shadow:0 -6px 20px -12px rgba(20,19,15,.25);
+  }
+  .bn-item{
+    flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;
+    background:none;border:none;color:var(--muted);font-family:inherit;font-size:10.5px;font-weight:600;
+    padding:2px 0 0;cursor:pointer;position:relative;
+  }
+  .bn-ico{width:54px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;transition:background .15s;}
+  .bn-ico svg{width:23px;height:23px;}
+  .bn-item.active{color:var(--accent);}
+  .bn-item.active .bn-ico{background:var(--accentBg);}
+  .bn-item:active .bn-ico{background:var(--panel2);}
+  .bn-badge{
+    position:absolute;top:-2px;left:calc(50% + 8px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+    background:#25d366;color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;
+    border:2px solid var(--panel);box-sizing:content-box;
+  }
+  .bn-badge.show{display:flex;}
+  .bn-dot{position:absolute;top:0;left:calc(50% + 9px);width:9px;height:9px;border-radius:50%;background:var(--danger);border:2px solid var(--panel);box-sizing:content-box;display:none;}
+  .bn-dot.show{display:block;}
+
+  /* A chat that is open takes the whole screen (WhatsApp-style): no tab bar. */
+  body:has(#convTabRoot.thread-open) .bottom-nav{display:none;}
+
+  /* Keep floating things clear of the bar. */
+  .chat-toggle{bottom:calc(84px + env(safe-area-inset-bottom));}
+  .chat-panel{bottom:calc(144px + env(safe-area-inset-bottom));}
+  .bv-toast-wrap{bottom:calc(84px + env(safe-area-inset-bottom));}
+  body:has(#convTabRoot.thread-open) .chat-toggle{display:none;}
+
+  /* The old left-hand drawer becomes the "More" bottom sheet. */
+  .sidebar,.sidebar.collapsed{
+    top:auto;left:0;right:0;bottom:0;width:100%;max-width:none;height:auto;max-height:84vh;max-height:84dvh;
+    transform:translateY(105%);border-radius:20px 20px 0 0;border-right:none;border-top:1px solid var(--border);
+    padding:12px 14px calc(18px + env(safe-area-inset-bottom));
+    display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:start;
+    box-shadow:0 -12px 40px rgba(20,19,15,.25);
+  }
+  .sidebar.mobile-open{transform:translateY(0);}
+  .sidebar::before{content:"";grid-column:1/-1;width:40px;height:4px;border-radius:2px;background:var(--borderStrong);margin:0 auto 4px;}
+  .sidebar-group-lbl,.sidebar.collapsed .sidebar-group-lbl{grid-column:1/-1;padding:12px 4px 2px;}
+  .sidebar-group-lbl:first-of-type{padding-top:0;}
+  .sidebar .tab-btn,.sidebar.collapsed .tab-btn{
+    margin:0;padding:13px 12px;font-size:14px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;
+  }
+  .sidebar .tab-btn.active{background:var(--accentBg);border-color:var(--accentBdr);}
+  .sidebar-close{top:10px;right:12px;}
+  /* The four screens already in the bar aren't repeated in the sheet (the bar
+     still drives them through these same hidden buttons). */
+  .sidebar .tab-btn[data-tab="overview"],.sidebar .tab-btn[data-tab="conversations"],
+  .sidebar .tab-btn[data-tab="orders"],.sidebar .tab-btn[data-tab="campaigns"]{display:none;}
+  .sidebar .tab-btn .tab-label{white-space:normal;line-height:1.25;}
+  /* Nothing floats over the open sheet. */
+  body:has(.sidebar.mobile-open) .chat-toggle{display:none;}
+}
 </style>
 </head>
 <body>
@@ -773,6 +839,8 @@ html{-webkit-text-size-adjust:100%;}
     <div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>
   </div>
 </div>
+
+<nav class="bottom-nav" id="bottomNav" aria-label="Main navigation"></nav>
 
 <!-- AI CHAT -->
 <div class="chat-panel" id="chatPanel">
@@ -889,6 +957,7 @@ async function init() {
   for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
     document.querySelector(`[data-tab="${tab}"]`)?.style.setProperty("display", "none");
   }
+  bvBuildBottomNav();
 
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
   // with ?meta_oauth=connected|error&detail=... once a buyer finishes
@@ -918,6 +987,8 @@ async function init() {
   bvPushSync();
   bvRenderAppBanner();
 
+  loadChatUnread();
+  setInterval(loadChatUnread, 30000);
   setInterval(loadAccounts, 60000);
   setInterval(loadApprovalCount, 30000);
   setInterval(loadCallFlagCount, 30000);
@@ -931,6 +1002,72 @@ async function init() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) sessionData = session;
   }, 5 * 60 * 1000);
+}
+
+
+// ── BOTTOM TAB BAR (phones) ──────────────────────────────────────────────────
+// Reuses the sidebar's own tab buttons (icons, click handler, role hiding), so
+// the bar can never drift from the real navigation. "More" opens the sidebar,
+// which on phones is styled as a bottom sheet (see the CSS block).
+const BN_ITEMS = [
+  { tab: "overview", label: "Home" },
+  { tab: "conversations", label: "Chats" },
+  { tab: "orders", label: "Orders" },
+  { tab: "campaigns", label: "Ads" },
+];
+const BN_MORE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+
+function bvBuildBottomNav() {
+  const nav = document.getElementById("bottomNav");
+  if (!nav) return;
+  const iconOf = (tab) => document.querySelector(`[data-tab="${tab}"] .tab-ico`)?.innerHTML || "";
+  nav.innerHTML = BN_ITEMS.map((it) => `<button type="button" class="bn-item" data-go="${it.tab}"><span class="bn-ico">${iconOf(it.tab)}</span><span>${it.label}</span><span class="bn-badge" id="bnBadge-${it.tab}"></span></button>`).join("")
+    + `<button type="button" class="bn-item" data-go="__more"><span class="bn-ico">${BN_MORE_ICON}</span><span>More</span><span class="bn-dot" id="bnMoreDot"></span></button>`;
+  nav.addEventListener("click", (e) => {
+    const b = e.target.closest(".bn-item");
+    if (!b) return;
+    if (b.dataset.go === "__more") { document.getElementById("sidebarToggle").click(); return; }
+    // Same path as tapping the sidebar item: sets the tab, closes the sheet, renders.
+    document.querySelector(`[data-tab="${b.dataset.go}"]`)?.click();
+  });
+  bvSyncBottomNav();
+  // The sidebar's active class is the single source of truth for "where am I".
+  new MutationObserver(bvSyncBottomNav).observe(document.getElementById("tabsBar"), { attributes: true, subtree: true, attributeFilter: ["class", "style"], childList: true, characterData: true });
+}
+
+function bvSyncBottomNav() {
+  const nav = document.getElementById("bottomNav");
+  if (!nav) return;
+  const inBar = new Set(BN_ITEMS.map((i) => i.tab));
+  nav.querySelectorAll(".bn-item[data-go]").forEach((b) => {
+    const tab = b.dataset.go;
+    if (tab === "__more") { b.classList.toggle("active", !inBar.has(activeTab)); return; }
+    const src = document.querySelector(`[data-tab="${tab}"]`);
+    b.style.display = !src || src.style.display === "none" ? "none" : ""; // role-hidden tabs stay hidden
+    b.classList.toggle("active", tab === activeTab);
+  });
+  const shown = (id) => { const el = document.getElementById(id); return el && el.style.display !== "none" ? Number(el.textContent) || 0 : 0; };
+  // Orders: AI calls that flagged themselves for a human (same count as the sidebar badge).
+  const flags = shown("callFlagBadge");
+  const ob = document.getElementById("bnBadge-orders");
+  if (ob) { ob.textContent = flags > 99 ? "99+" : String(flags); ob.classList.toggle("show", flags > 0); }
+  // A dot on More when something inside it needs attention (pending approvals, support queue).
+  document.getElementById("bnMoreDot")?.classList.toggle("show", shown("approvalBadge") + shown("supportFlagBadge") > 0);
+}
+
+// Unread chats badge (number of chats with unread messages), plus the app-icon badge.
+function bvSetChatBadge(n) {
+  const el = document.getElementById("bnBadge-conversations");
+  if (el) { el.textContent = n > 99 ? "99+" : String(n); el.classList.toggle("show", n > 0); }
+  try {
+    if (BV_STANDALONE && "setAppBadge" in navigator) { n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge(); }
+  } catch {}
+}
+async function loadChatUnread() {
+  try {
+    const rows = await sbQuery("conversations", "select=id&unread_count=gt.0&current_state=neq.MERGED&limit=500");
+    bvSetChatBadge(rows?.length || 0);
+  } catch {}
 }
 
 // ── PWA: install, service worker, push notifications ─────────────────────────
@@ -5312,6 +5449,7 @@ function bvOnRealtimeConversation(row) {
   }
   bvConversations.sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
   bvFilterList();
+  bvSetChatBadge(bvConversations.filter((c) => c.unread_count > 0).length);
 
   if (row.id === bvSelectedConvId) {
     const badge = document.getElementById("convHandoffBadge");
