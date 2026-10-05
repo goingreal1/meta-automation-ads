@@ -84,6 +84,12 @@ button[type=submit]:disabled{opacity:.6;cursor:default;}
   background:var(--accentBg);border:1.5px solid var(--accentBdr);
   color:var(--accent);font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;
 }
+#thankyou .bank{background:var(--panel2,#f6f5f1);border:1px solid var(--border,#e4e1d8);border-radius:14px;padding:16px 18px;margin:20px auto 0;max-width:380px;text-align:left;}
+#thankyou .bank .row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:14.5px;border-top:1px solid var(--border,#e4e1d8);}
+#thankyou .bank .row:first-of-type{border-top:0;}
+#thankyou .bank .row span:first-child{color:var(--text2);}
+#thankyou .bank .acct{font-size:22px;font-weight:700;letter-spacing:.04em;}
+#thankyou .bank button,#thankyou .waBtn{margin-top:12px;width:100%;padding:12px;border-radius:12px;border:0;font-size:15px;font-weight:600;cursor:pointer;background:var(--accent,#1a7a5a);color:#fff;text-decoration:none;display:block;text-align:center;}
 #thankyou h1{font-size:26px;font-family:'Fraunces',Georgia,serif;}
 #thankyou p{color:var(--text2);margin-top:12px;font-size:15px;max-width:360px;margin-left:auto;margin-right:auto;}
 .ref{margin-top:20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);font-size:12px;background:var(--bg2);border:1px solid var(--border);display:inline-block;padding:8px 14px;border-radius:8px;letter-spacing:.03em;}
@@ -98,8 +104,9 @@ button[type=submit]:disabled{opacity:.6;cursor:default;}
 
 <div class="wrap" id="thankyou">
   <div class="check">✓</div>
-  <h1>Order received!</h1>
-  <p>Thank you. Our team will call you shortly to confirm your order and delivery details.</p>
+  <h1 id="tyTitle">Order received!</h1>
+  <p id="tyText">Thank you. Our team will call you shortly to confirm your order and delivery details.</p>
+  <div class="bank" id="bankBox" style="display:none;"></div>
   <div class="ref" id="orderRef"></div>
 </div>
 
@@ -183,7 +190,7 @@ function renderForm() {
       <h1>${esc(product.product_name)}</h1>
       ${!hasTiers ? `
         <div class="price" id="priceDisplay">${fmt(product.default_order_value_naira, product.currency)}</div>
-        <div class="muted">per unit</div>` : ""}
+        ${product.is_service ? "" : `<div class="muted">per unit</div>`}` : ""}
       ${product.description ? `<div class="desc">${esc(product.description)}</div>` : ""}
       ${product.benefits ? `<div class="desc">${esc(product.benefits)}</div>` : ""}
       ${(product.safety_notes || product.nafdac_reg_no) ? `<div class="safety">${product.safety_notes ? esc(product.safety_notes) : ""}${product.nafdac_reg_no ? ` NAFDAC Reg. No. ${esc(product.nafdac_reg_no)}.` : ""} This is a food supplement, not a substitute for medicine prescribed by a doctor.</div>` : ""}
@@ -201,7 +208,7 @@ function renderForm() {
               <div class="tc-price">${fmt(t.price_naira, product.currency)}</div>
             </div>`).join("")}
         </div>
-      </div>` : `
+      </div>` : product.is_service ? "" : `
       <div class="field">
         <label>Quantity</label>
         <div class="qty-row">
@@ -211,7 +218,11 @@ function renderForm() {
         </div>
       </div>`}
       <div class="field"><label>Full name *</label><input id="f_name" required placeholder="Your full name"></div>
-      <div class="field"><label>Phone number *</label><input id="f_phone" type="tel" required placeholder="080..."></div>
+      <div class="field"><label>Phone number (WhatsApp) *</label><input id="f_phone" type="tel" required placeholder="080..."></div>
+      ${product.is_service ? `
+      <div class="field"><label>State you want to advertise in *</label><select id="f_state" required><option value="">Select state</option>${stateOptions}</select></div>
+      <input type="hidden" id="f_address" value="Service - no delivery"><input type="hidden" id="f_city" value="-">
+      <input type="hidden" id="f_payment" value="Bank transfer">` : `
       <div class="field"><label>Delivery address *</label><input id="f_address" required placeholder="House number, street"></div>
       <div class="fg2">
         <div class="field"><label>City *</label><input id="f_city" required placeholder="City"></div>
@@ -222,10 +233,10 @@ function renderForm() {
           <option value="Pay on delivery">Pay on delivery</option>
           <option value="Bank transfer">Bank transfer</option>
         </select>
-      </div>
+      </div>`}
       <div class="total-row"><span>Order total</span><span id="totalDisplay">${fmt(hasTiers ? currentTierPrice() : product.default_order_value_naira, product.currency)}</span></div>
-      <button type="submit" id="submitBtn">Complete Order</button>
-      <div class="secure">🔒 Your details are kept private &middot; a team member will call to confirm</div>
+      <button type="submit" id="submitBtn">${product.is_service ? "Submit & get payment details" : "Complete Order"}</button>
+      <div class="secure">🔒 Your details are kept private &middot; ${product.is_service ? "your payment details show right after you submit" : "a team member will call to confirm"}</div>
     </form>
   `;
 
@@ -235,7 +246,7 @@ function renderForm() {
       document.querySelectorAll(".tier-card").forEach(c => c.classList.toggle("selected", c.dataset.tier === selectedTierId));
       document.getElementById("totalDisplay").textContent = fmt(currentTierPrice(), product.currency);
     }));
-  } else {
+  } else if (!product.is_service) {
     const qtyVal = document.getElementById("qtyVal");
     const updateTotals = () => {
       const total = (product.default_order_value_naira || 0) * qty;
@@ -314,7 +325,24 @@ async function onSubmit(e) {
     }
 
     document.getElementById("page").style.display = "none";
-    document.getElementById("orderRef").textContent = "Reference: " + eventId.slice(0, 8).toUpperCase();
+    const ref = eventId.slice(0, 8).toUpperCase();
+    const hasBank = product.bank_account_number && /bank/i.test(payment);
+    if (hasBank) {
+      const wa = String(product.whatsapp_number || "").replace(/\D/g, "");
+      document.getElementById("tyTitle").textContent = "Almost done - make your payment";
+      document.getElementById("tyText").textContent = `Transfer ${fmt(value, product.currency)} to the account below, then send your payment screenshot on WhatsApp so we can start straight away.`;
+      document.getElementById("bankBox").style.display = "block";
+      document.getElementById("bankBox").innerHTML = `
+        <div class="row"><span>Amount</span><b>${fmt(value, product.currency)}</b></div>
+        ${product.bank_name ? `<div class="row"><span>Bank</span><b>${esc(product.bank_name)}</b></div>` : ""}
+        <div class="row"><span>Account number</span><b class="acct" id="acctNo">${esc(product.bank_account_number)}</b></div>
+        ${product.bank_account_name ? `<div class="row"><span>Account name</span><b>${esc(product.bank_account_name)}</b></div>` : ""}
+        <div class="row"><span>Reference</span><b>${ref}</b></div>
+        ${product.payment_note ? `<div style="font-size:13px;color:var(--text2);margin-top:8px;">${esc(product.payment_note)}</div>` : ""}
+        <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('acctNo').textContent).then(()=>{this.textContent='Copied ✓'})">Copy account number</button>
+        ${wa ? `<a class="waBtn" style="background:#25d366;" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent("Hi, I have paid. Reference " + ref)}">Send payment proof on WhatsApp</a>` : ""}`;
+    }
+    document.getElementById("orderRef").textContent = "Reference: " + ref;
     document.getElementById("thankyou").style.display = "block";
     window.scrollTo(0, 0);
   } catch (err) {
@@ -322,7 +350,7 @@ async function onSubmit(e) {
     msg.className = "msg err";
     msg.style.display = "block";
     btn.disabled = false;
-    btn.textContent = "Complete Order";
+    btn.textContent = product.is_service ? "Submit & get payment details" : "Complete Order";
   }
 }
 
