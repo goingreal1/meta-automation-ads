@@ -812,7 +812,7 @@ async function launchAdSetGroup(
     // real "Lunessa Whatsapp ADSET" runs 3 distinct ad copies side by side).
     // Every ad set created below gets one ad per copy here, not just one
     // shared ad, so testing 3 copies across 4 ad sets produces 12 real ads.
-    const localCreatives: { id: string; metaCreativeId: string; fileName: string; adName: string }[] = [];
+    const localCreatives: { id: string; metaCreativeId: string; fileName: string; adName: string; adSetSortOrder: number | null }[] = [];
     for (const copy of creativeGroup) {
       const media = await ensureMetaMedia(supabase, accountId, copy);
       if (!media || media.error) {
@@ -856,7 +856,7 @@ async function launchAdSetGroup(
         // over a unique-constraint hit.
         const { data: existing } = await supabase.from("creatives").select("id").eq("meta_ad_id", adCreativeId).maybeSingle();
         if (existing) {
-          localCreatives.push({ id: existing.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim() });
+          localCreatives.push({ id: existing.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim(), adSetSortOrder: copy.ad_set_sort_order ?? null });
           continue;
         }
       }
@@ -864,7 +864,7 @@ async function launchAdSetGroup(
         console.error("Failed to record local creative row:", localCreativeErr);
         return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
       }
-      localCreatives.push({ id: localCreativeRow.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim() });
+      localCreatives.push({ id: localCreativeRow.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim(), adSetSortOrder: copy.ad_set_sort_order ?? null });
     }
     // Kept for backward compat with dashboard code that still reads
     // ad_sets.creative_id as a single value (e.g. the creative-detail modal) --
@@ -874,7 +874,7 @@ async function launchAdSetGroup(
     // 3. Create one ad set per ad-set config (each row from the dashboard's
     // builder, including any "Duplicate x N" clones), then attach an ad under
     // each one using the shared ad creative above.
-    const createdAdSets: { row: any; metaId: string; label: string; budgetNaira: number }[] = [];
+    const createdAdSets: { row: any; metaId: string; label: string; budgetNaira: number; sortOrder: number | null }[] = [];
     const adSetErrors: string[] = [];
     for (const config of adSetConfigs) {
       const targeting = await buildTargetingFromConfig(config, destinationType);
@@ -961,7 +961,7 @@ async function launchAdSetGroup(
         .single();
 
       if (row) {
-        createdAdSets.push({ row, metaId: adsetData.id, label, budgetNaira: Number(config.budget_naira || 5000) });
+        createdAdSets.push({ row, metaId: adsetData.id, label, budgetNaira: Number(config.budget_naira || 5000), sortOrder: config.sort_order ?? null });
       } else {
         // The ad set is real and live (PAUSED) on Meta at this point even though
         // the local record failed -- surface this distinctly so it isn't lost.
@@ -982,6 +982,8 @@ async function launchAdSetGroup(
     // in which ad set (not just the targeting-level ad set list).
     for (const a of createdAdSets) {
       for (const lc of localCreatives) {
+        // An ad built for a specific ad set runs only there; an ad with no ad set (older launches) runs in all of them.
+        if (lc.adSetSortOrder != null && a.sortOrder != null && lc.adSetSortOrder !== a.sortOrder) continue;
         const adId = await createAdWithCTA(
           a.metaId,
           lc.metaCreativeId,
