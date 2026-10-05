@@ -479,6 +479,42 @@ const VALID_BILLING_EVENTS = ["IMPRESSIONS", "LINK_CLICKS"];
 const VALID_WEBSITE_OPTIMIZATION_GOALS = ["OFFSITE_CONVERSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS"];
 const VALID_DEVICE_PLATFORMS = ["mobile", "desktop"];
 
+// Placements the person ticked in the builder (ad_set_configs.placements). Same table and same
+// "needs a partner placement" rules as ads-manager's reach estimate, so the estimate matches what launches.
+const PLACEMENTS: Record<string, { p: string; k: string; pos: string[] }> = {
+  fb_feed: { p: "facebook", k: "facebook_positions", pos: ["feed"] },
+  fb_reels: { p: "facebook", k: "facebook_positions", pos: ["facebook_reels"] },
+  fb_stories: { p: "facebook", k: "facebook_positions", pos: ["story"] },
+  fb_marketplace: { p: "facebook", k: "facebook_positions", pos: ["marketplace"] },
+  fb_search: { p: "facebook", k: "facebook_positions", pos: ["search"] },
+  fb_profile: { p: "facebook", k: "facebook_positions", pos: ["profile_feed"] },
+  ig_feed: { p: "instagram", k: "instagram_positions", pos: ["stream"] },
+  ig_reels: { p: "instagram", k: "instagram_positions", pos: ["reels"] },
+  ig_stories: { p: "instagram", k: "instagram_positions", pos: ["story"] },
+  ig_explore: { p: "instagram", k: "instagram_positions", pos: ["explore", "explore_home"] },
+  ig_profile: { p: "instagram", k: "instagram_positions", pos: ["profile_feed"] },
+  threads: { p: "threads", k: "threads_positions", pos: ["threads_stream"] },
+  wa_status: { p: "whatsapp", k: "whatsapp_positions", pos: ["status"] },
+  an: { p: "audience_network", k: "audience_network_positions", pos: ["classic", "rewarded_video"] },
+};
+function placementSpec(keys: any): Record<string, any> | null {
+  const set = new Set<string>((Array.isArray(keys) ? keys : []).map(String).filter((k) => PLACEMENTS[k]));
+  if (!set.size) return null;
+  if (["fb_marketplace", "fb_search", "fb_profile"].some((k) => set.has(k))) set.add("fb_feed");
+  if (set.has("fb_stories") && !set.has("fb_feed") && !set.has("ig_stories")) set.add("fb_feed");
+  if (["ig_explore", "ig_profile"].some((k) => set.has(k))) set.add("ig_feed");
+  if (set.has("wa_status")) set.add("ig_stories");
+  if (set.has("threads") && !set.has("fb_feed") && !set.has("ig_feed")) set.add("fb_feed");
+  if (set.has("an") && !set.has("fb_feed")) set.add("fb_feed"); // Audience Network alone isn't accepted; with Facebook feed it is
+  const out: Record<string, any> = { publisher_platforms: [] as string[] };
+  for (const key of set) {
+    const m = PLACEMENTS[key];
+    if (!out.publisher_platforms.includes(m.p)) out.publisher_platforms.push(m.p);
+    out[m.k] = [...(out[m.k] ?? []), ...m.pos];
+  }
+  return out;
+}
+
 // The campaign builder's objective step (website destination only -- a
 // WhatsApp-destination product stays forced to OUTCOME_SALES/CONVERSATIONS
 // exactly as before, same Meta requirement as ever). Each objective has its
@@ -551,6 +587,12 @@ async function buildTargetingFromConfig(config: any, destinationType: "website" 
     instagram_positions: positionOverride?.instagram_positions ?? basePlacements.instagram_positions,
     device_platforms: devicePlatforms.length ? devicePlatforms : basePlacements.device_platforms,
   };
+  // Placements picked one by one replace the preset/default entirely.
+  const chosen = placementSpec(config.placements);
+  if (chosen) {
+    for (const k of ["facebook_positions", "instagram_positions"]) delete targeting[k];
+    Object.assign(targeting, chosen);
+  }
 
   // Where: states (Meta regions) and/or cities (with a radius). Nothing resolvable -> nationwide.
   const geo: Record<string, any> = { location_types: ["frequently_in", "home", "recent"] };
