@@ -147,7 +147,8 @@ async function think(agent: Agent, turns: Turn[], ctx: { name: string; source: s
 
 function firstName(whatsappName: string | null): string {
   const m = String(whatsappName ?? "").match(/[A-Za-zÀ-ɏ]{2,}/);
-  return m ? m[0][0].toUpperCase() + m[0].slice(1).toLowerCase() : "";
+  // a long run of letters is a handle or business name ("Arangurpropertiesandcgrtech"), not a first name
+  return m && m[0].length <= 12 ? m[0][0].toUpperCase() + m[0].slice(1).toLowerCase() : "";
 }
 // A first message that is just a hello or the ad's pre-filled line -- safe to answer with the fixed opener.
 function looksLikeGreeting(text: string): boolean {
