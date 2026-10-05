@@ -11,7 +11,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
 //   POST { action: "set_budget", ad_account_id, level: "adset"|"campaign", object_id, daily_budget (Naira), reason? } -> scale a daily budget
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
-//   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep (dry_run previews, pauses nothing)
+//   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep every 5 min: auto-pauses where the owner turned auto-pause on,
+//        otherwise drops a kill suggestion into the AI inbox (+ push), and announces campaigns that just went live (dry_run previews, changes nothing)
 //
 // Authorization: the caller's JWT is used to read ad_accounts through RLS, so a
 // user can only ever touch ad accounts they can already see in the dashboard.
@@ -113,6 +114,10 @@ function insightRow(r: any) {
 }
 
 const EMPTY = insightRow({});
+function latestTime(a?: string, b?: string): string | undefined {
+  if (!a) return b; if (!b) return a;
+  return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
+}
 
 async function insightsByLevel(actId: string, level: "campaign" | "adset" | "ad", range: string, token: string) {
   const idField = level === "ad" ? "ad_id" : level === "adset" ? "adset_id" : "campaign_id";
@@ -146,8 +151,10 @@ interface Rule { kind: string; enabled: boolean; auto_kill: boolean; max_cost_pe
 function evaluateRule(rule: Rule | undefined, ad: any, life: ReturnType<typeof insightRow>): { kill: boolean; reason: string } | null {
   if (!rule || !rule.enabled) return null;
   if (ad.status !== "ACTIVE" || ad.effective_status !== "ACTIVE") return null;
-  const hours = ad.created_time ? (Date.now() - new Date(ad.created_time).getTime()) / 3600_000 : Infinity;
-  if (hours < Number(rule.min_hours)) return null;
+  // A scheduled ad set exists on Meta long before it starts delivering: the clock starts at go-live.
+  const since = ad.live_since ?? ad.created_time;
+  const hours = since ? (Date.now() - new Date(since).getTime()) / 3600_000 : Infinity;
+  if (hours < 0 || hours < Number(rule.min_hours)) return null;
   if (life.spend < Number(rule.min_spend)) return null;
   const results = ad.kind === "messaging" ? life.conversations : life.purchases;
   const label = ad.kind === "messaging" ? "conversation" : "purchase";
@@ -202,7 +209,7 @@ function readWaMessage(creative: any): { greeting: string; prefill: string } | n
 async function loadAccountObjects(actId: string, token: string, range: string, needLifetimeAds: boolean) {
   const [campaigns, adsets, ads, cIns, sIns, aIns, aLife] = await Promise.all([
     graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time" }, token),
-    graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,destination_type,created_time" }, token),
+    graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,destination_type,created_time,start_time" }, token),
     graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,thumbnail_url,object_story_spec}" }, token),
     insightsByLevel(actId, "campaign", range, token),
     insightsByLevel(actId, "adset", range, token),
@@ -233,7 +240,7 @@ async function handleList(userClient: any, profile: any, body: any) {
     const m = sIns[a.id] ?? EMPTY;
     return {
       id: a.id, name: a.name, campaign_id: a.campaign_id, status: a.status, effective_status: a.effective_status,
-      daily_budget: a.daily_budget ? num(a.daily_budget) / 100 : null, kind, created_time: a.created_time,
+      daily_budget: a.daily_budget ? num(a.daily_budget) / 100 : null, kind, created_time: a.created_time, start_time: a.start_time ?? null,
       ...m, ...withResults(kind, m),
     };
   });
@@ -251,7 +258,9 @@ async function handleList(userClient: any, profile: any, body: any) {
     const kind = adsetById[a.adset_id]?.kind ?? "other";
     const m = aIns[a.id] ?? EMPTY;
     const life = aLife[a.id] ?? EMPTY;
-    const suggestion = evaluateRule(rules[kind], { ...a, kind }, life);
+    const set = adsetById[a.adset_id];
+    const liveSince = latestTime(a.created_time, set?.start_time);
+    const suggestion = evaluateRule(rules[kind], { ...a, kind, live_since: liveSince }, life);
     return {
       id: a.id, name: a.name, adset_id: a.adset_id, campaign_id: a.campaign_id, status: a.status,
       effective_status: a.effective_status, kind, created_time: a.created_time,
@@ -464,66 +473,118 @@ async function handleSetBudget(userClient: any, profile: any, body: any) {
   return { ok: true, name: obj.name as string, previous_daily_budget: before, daily_budget: num(after.daily_budget) / 100 };
 }
 
-// -- scheduled auto-kill --
+// -- AI inbox + push --
+// An inbox row is the AI speaking first: it shows up in the person's AI chat tab, and a push
+// tells them to look. The unique (profile_id, dedupe_key) index means each thing is announced once.
+async function notifyInbox(admin: any, row: { company_id: string; profile_id: string; ad_account_id?: string; kind: string; title: string; body?: string; payload?: any; dedupe_key: string }): Promise<boolean> {
+  const { error } = await admin.from("ai_inbox").insert({ ...row, payload: row.payload ?? {} });
+  if (error) { if (error.code !== "23505") console.error("ai_inbox insert:", error.message); return false; }
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/handle-whatsapp-reply`, {
+      method: "POST", headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ audience: { user_ids: [row.profile_id] }, category: "ads", notification: { title: row.title, body: row.body ?? "", url: "/dashboard_new.html#ai", tag: row.dedupe_key } }),
+    });
+  } catch (e) { console.error("push failed:", e); }
+  return true;
+}
+
+// Campaigns created before the AI inbox existed are never announced.
+const LIVE_ANNOUNCE_AFTER = new Date("2026-10-06T00:00:00Z").getTime();
+
+// -- scheduled sweep (cron, every 5 minutes) --
 async function handleAutoKill(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const { data: ruleRows } = await admin.from("kill_rules").select("*").eq("enabled", true);
-  const byProfile: Record<string, Rule[]> = {};
-  for (const r of ruleRows ?? []) {
-    if (!dryRun && !r.auto_kill) continue; // a dry run previews every enabled rule
-    (byProfile[r.profile_id] ??= []).push(r);
-  }
+  const rulesByProfile: Record<string, Record<string, Rule>> = {};
+  for (const r of ruleRows ?? []) (rulesByProfile[r.profile_id] ??= {})[r.kind] = r;
+
+  const { data: accounts } = await admin.from("ad_accounts")
+    .select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id").eq("status", "active");
+  const { data: people } = await admin.from("profiles").select("id, company_id, role, media_buyer_id").in("role", ["owner", "admin", "buyer"]);
 
   const summary: any[] = [];
-  let pauses = 0;
-  for (const [profileId, list] of Object.entries(byProfile)) {
-    const { data: profile } = await admin.from("profiles").select("id, media_buyer_id, company_id").eq("id", profileId).maybeSingle();
-    if (!profile) continue;
-    const filters = [`user_id.eq.${profile.id}`];
-    if (profile.media_buyer_id) filters.push(`media_buyer_id.eq.${profile.media_buyer_id}`);
-    const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id")
-      .eq("company_id", profile.company_id).eq("status", "active").or(filters.join(","));
-    const rules: Record<string, Rule> = {};
-    for (const r of list) rules[r.kind] = r;
+  let pauses = 0, announced = 0, suggested = 0;
 
-    for (const account of accounts ?? []) {
-      const actId = String(account.meta_ad_account_id ?? "").replace(/^act_/, "");
-      if (!/^\d+$/.test(actId)) continue;
-      try {
-        const token = await resolveToken(admin, account);
-        const [adsets, ads, life] = await Promise.all([
-          graphGetAll(`act_${actId}/adsets`, { fields: "id,optimization_goal,destination_type" }, token),
-          graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,status,effective_status,created_time", effective_status: JSON.stringify(["ACTIVE"]) }, token),
-          insightsByLevel(actId, "ad", "lifetime", token),
-        ]);
-        const kindBySet: Record<string, string> = {};
-        for (const s of adsets) kindBySet[s.id] = adsetKind(s);
-        for (const ad of ads) {
-          if (pauses >= MAX_AUTO_PAUSES_PER_RUN) break;
-          const kind = kindBySet[ad.adset_id] ?? "other";
-          const m = life[ad.id] ?? EMPTY;
-          const verdict = evaluateRule(rules[kind], { ...ad, kind }, m);
-          if (dryRun) {
-            summary.push({ account: account.nickname, ad: ad.name, kind, ...m, would_pause: verdict?.reason ?? null });
-            continue;
+  for (const account of accounts ?? []) {
+    const actId = String(account.meta_ad_account_id ?? "").replace(/^act_/, "");
+    if (!/^\d+$/.test(actId)) continue;
+    const here = (people ?? []).filter((p: any) => p.company_id === account.company_id);
+    const owners = here.filter((p: any) => p.id === account.user_id || (p.media_buyer_id && p.media_buyer_id === account.media_buyer_id));
+    const watchers = owners.filter((p: any) => rulesByProfile[p.id]);
+    const liveFor = [...new Map([...owners, ...here.filter((p: any) => p.role === "owner" || p.role === "admin")].map((p: any) => [p.id, p])).values()];
+    if (!liveFor.length) continue;
+    try {
+      const token = await resolveToken(admin, account);
+      const [campaigns, adsets, ads, life] = await Promise.all([
+        graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,effective_status,created_time", effective_status: JSON.stringify(["ACTIVE"]) }, token),
+        graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,optimization_goal,destination_type,start_time,effective_status,created_time" }, token),
+        graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time", effective_status: JSON.stringify(["ACTIVE"]) }, token),
+        insightsByLevel(actId, "ad", "lifetime", token),
+      ]);
+      const setById: Record<string, any> = {};
+      for (const s of adsets) setById[s.id] = { ...s, kind: adsetKind(s) };
+      const paused = new Set<string>();
+
+      // 1) kill rules -- each watcher judges with their own thresholds
+      for (const ad of ads) {
+        const set = setById[ad.adset_id];
+        const kind = set?.kind ?? "other";
+        const m = life[ad.id] ?? EMPTY;
+        const liveSince = latestTime(ad.created_time, set?.start_time);
+        for (const w of watchers) {
+          const rule = rulesByProfile[w.id][kind];
+          const verdict = evaluateRule(rule, { ...ad, kind, live_since: liveSince }, m);
+          if (dryRun) { summary.push({ account: account.nickname, ad: ad.name, kind, for: w.id, ...m, would_pause: verdict?.reason ?? null, mode: verdict ? (rule.auto_kill ? "auto-pause" : "suggest") : null }); continue; }
+          if (!verdict?.kill || paused.has(ad.id)) continue;
+          if (rule.auto_kill) {
+            if (pauses >= MAX_AUTO_PAUSES_PER_RUN) continue;
+            const result = await pauseOrResume(admin, account, actId, token, "ad", ad.id, "PAUSED");
+            pauses++; paused.add(ad.id);
+            await admin.from("ad_kill_log").insert({
+              company_id: account.company_id, ad_account_id: account.id, level: "ad", meta_object_id: ad.id,
+              object_name: result.name, action: "paused", source: "auto", actor_profile_id: w.id, reason: verdict.reason, metrics: m,
+            });
+            await notifyInbox(admin, { company_id: account.company_id, profile_id: w.id, ad_account_id: account.id, kind: "auto_killed",
+              title: `Paused “${result.name}”`, body: `${verdict.reason} I paused it for you (${account.nickname}).`,
+              payload: { level: "ad", object_id: ad.id, object_name: result.name, ad_account_id: account.id, reason: verdict.reason }, dedupe_key: `auto:${ad.id}` });
+            summary.push({ account: account.nickname, ad: result.name, reason: verdict.reason, action: "paused" });
+          } else {
+            const ok = await notifyInbox(admin, { company_id: account.company_id, profile_id: w.id, ad_account_id: account.id, kind: "kill_suggestion",
+              title: `Kill “${ad.name}”?`, body: `${verdict.reason} (${account.nickname})`,
+              payload: { kind: "status", ad_account_id: account.id, account_name: account.nickname, level: "ad", object_id: ad.id, object_name: ad.name, status: "PAUSED", reason: verdict.reason },
+              dedupe_key: `kill:${ad.id}` });
+            if (ok) { suggested++; summary.push({ account: account.nickname, ad: ad.name, reason: verdict.reason, action: "suggested" }); }
           }
-          if (!verdict?.kill) continue;
-          const result = await pauseOrResume(admin, account, actId, token, "ad", ad.id, "PAUSED");
-          pauses++;
-          await admin.from("ad_kill_log").insert({
-            company_id: account.company_id, ad_account_id: account.id, level: "ad", meta_object_id: ad.id,
-            object_name: result.name, action: "paused", source: "auto", actor_profile_id: profileId,
-            reason: verdict.reason, metrics: m,
-          });
-          summary.push({ account: account.nickname, ad: result.name, reason: verdict.reason });
         }
-      } catch (e: any) {
-        console.error(`auto_kill ${account.nickname}:`, e.message);
-        summary.push({ account: account.nickname, error: e.message });
       }
+
+      // 2) campaigns that just went live: announce the campaign with its ad sets and ads, once
+      const now = Date.now();
+      for (const c of campaigns) {
+        const created = new Date(c.created_time).getTime();
+        if (created < LIVE_ANNOUNCE_AFTER || now - created > 14 * 86400_000) continue;
+        const sets = adsets.filter((s: any) => s.campaign_id === c.id && s.effective_status === "ACTIVE");
+        const liveSets = sets.filter((s: any) => !s.start_time || new Date(s.start_time).getTime() <= now);
+        if (!liveSets.length) continue;
+        const lines = liveSets.map((s: any) => {
+          const names = ads.filter((a: any) => a.adset_id === s.id).map((a: any) => a.name);
+          return `• ${s.name}: ${names.length ? names.join(", ") : "no active ads"}`;
+        });
+        const nAds = ads.filter((a: any) => a.campaign_id === c.id).length;
+        if (dryRun) { summary.push({ account: account.nickname, campaign_live: c.name, ad_sets: liveSets.length, ads: nAds }); continue; }
+        for (const p of liveFor) {
+          const ok = await notifyInbox(admin, { company_id: account.company_id, profile_id: p.id, ad_account_id: account.id, kind: "campaign_live",
+            title: `“${c.name}” is live`, body: `${liveSets.length} ad set${liveSets.length === 1 ? "" : "s"}, ${nAds} ad${nAds === 1 ? "" : "s"} running in ${account.nickname}.\n${lines.join("\n")}\nI'm watching them now and will flag anything that breaks your kill rules.`,
+            payload: { campaign_id: c.id }, dedupe_key: `live:${c.id}` });
+          if (ok) announced++;
+        }
+      }
+    } catch (e: any) {
+      console.error(`sweep ${account.nickname}:`, e.message);
+      summary.push({ account: account.nickname, error: e.message });
     }
   }
-  return { ok: true, paused: pauses, summary };
+  return { ok: true, paused: pauses, suggested, announced, summary };
 }
 
 // -- entrypoint --

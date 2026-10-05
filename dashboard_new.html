@@ -994,6 +994,9 @@ html{-webkit-text-size-adjust:100%;}
   .kr-block .fg{grid-template-columns:1fr !important;}
 }
 
+.chat-toggle{position:fixed;}
+.ch-badge{position:absolute;top:-3px;right:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:#ff3b30;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--bg,#fff);box-sizing:border-box;}
+.ch-act-card.info{background:var(--panel2);}
 /* AI chat: full-screen iMessage-style on phones */
 @media(max-width:760px){
   .chat-panel{inset:0;bottom:0;right:0;width:100%;height:100vh;height:100dvh;border-radius:0;border:none;box-shadow:none;z-index:1200;transform:translateY(100%);opacity:1;transition:transform .26s cubic-bezier(.32,.72,0,1);}
@@ -1332,13 +1335,14 @@ let bvInstallPrompt = null; // Android/desktop Chrome's deferred "install app" p
 // What each notification switch controls. Add a line here to add a switch.
 const BV_PUSH_CATEGORIES = [
   { key: "messages", label: "New customer messages", sub: "A customer messages you on WhatsApp (text, photo or voice note)." },
+  { key: "ads", label: "AI ad alerts", sub: "Your AI says an ad broke your kill rules, paused one for you, or a campaign just went live." },
 ];
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("SW registration failed:", e)));
   navigator.serviceWorker.addEventListener("message", (e) => {
     if (e.data?.type === "open") {
-      try { bvOpenTarget(new URL(e.data.url).searchParams.get("open")); } catch {}
+      try { const u = new URL(e.data.url); bvOpenTarget(u.hash === "#ai" ? "ai" : u.searchParams.get("open")); } catch {}
     } else if (e.data?.type === "push-resubscribe") {
       bvPushSync(true);
     }
@@ -1356,6 +1360,7 @@ function bvApplyOpenParam() {
 }
 function bvSetTarget(target) {
   if (!target) return false;
+  if (target === "ai") { window.bvPendingAi = true; return true; }
   if (target.startsWith("conv:")) { window.bvPendingConv = target.slice(5); activeTab = "conversations"; }
   else if (target.startsWith("tab:") && document.querySelector(`[data-tab="${target.slice(4)}"]`)) activeTab = target.slice(4);
   else return false;
@@ -1364,6 +1369,7 @@ function bvSetTarget(target) {
 }
 // A notification was tapped while the app was already open.
 function bvOpenTarget(target) {
+  if (target === "ai") { toggleChat(true); chLoadInbox(); return; }
   if (bvSetTarget(target)) render();
 }
 
@@ -9408,13 +9414,18 @@ function renderChatForRole(role) {
 }
 
 let chatOpen = false;
-document.getElementById("chatToggle").innerHTML = icon("chat", 20);
+let chUnread = 0;
+function chToggleIcon() {
+  document.getElementById("chatToggle").innerHTML = icon(chatOpen ? "x" : "chat", 20) + (chUnread > 0 && !chatOpen ? `<span class="ch-badge">${chUnread > 9 ? "9+" : chUnread}</span>` : "");
+}
+chToggleIcon();
 function toggleChat(open) {
   chatOpen = typeof open === "boolean" ? open : !chatOpen;
   document.getElementById("chatPanel").classList.toggle("open", chatOpen);
-  document.getElementById("chatToggle").innerHTML = icon(chatOpen ? "x" : "chat", 20);
+  chToggleIcon();
   if (chatOpen) {
     chRefreshAcct();
+    chLoadInbox();
     const m = document.getElementById("chMsgs"); m.scrollTop = m.scrollHeight;
     if (window.innerWidth > 760) document.getElementById("chInput").focus();
   }
@@ -9573,6 +9584,10 @@ function bvShowChatPaymentConfirm(payment) {
 
 // The AI never changes an ad itself -- it proposes, and the person taps Confirm here.
 const CH_LEVEL = { campaign: "campaign", adset: "ad set", ad: "ad" };
+async function chInboxResolve(id, status) {
+  if (!id) return;
+  try { await supabaseClient.from("ai_inbox").update({ status, resolved_at: new Date().toISOString(), read_at: new Date().toISOString() }).eq("id", id); } catch {}
+}
 function appendProposalCards(list) {
   const msgs = document.getElementById("chMsgs");
   for (const p of list || []) {
@@ -9596,7 +9611,7 @@ function appendProposalCards(list) {
       <div class="ch-act-btns"><button class="ch-act-no">Not now</button><button class="ch-act-ok">Confirm</button></div>
       <div class="ch-act-res"></div>`;
     const ok = card.querySelector(".ch-act-ok"), no = card.querySelector(".ch-act-no"), res = card.querySelector(".ch-act-res");
-    no.onclick = () => { card.querySelector(".ch-act-btns").remove(); res.textContent = "Dismissed."; res.style.color = "var(--muted)"; };
+    no.onclick = () => { card.querySelector(".ch-act-btns").remove(); res.textContent = "Dismissed."; res.style.color = "var(--muted)"; chInboxResolve(p.inbox_id, "dismissed"); };
     ok.onclick = async () => {
       ok.disabled = no.disabled = true; ok.textContent = "Working…";
       const body = p.kind === "budget"
@@ -9608,6 +9623,7 @@ function appendProposalCards(list) {
         card.querySelector(".ch-act-btns").remove();
         const what = p.kind === "budget" ? `Budget is now ${fN(r.daily_budget)} a day` : (r.status === "PAUSED" ? "Paused" : "Running again") + " (Meta confirms)";
         res.textContent = "✅ " + what; res.style.color = "#30d158";
+        chInboxResolve(p.inbox_id, "done");
         chatHistory.push({ role: "user", content: `[I tapped Confirm: ${p.kind === "budget" ? "budget of " : ""}${CH_LEVEL[p.level]} ${p.object_name || p.object_id} — ${what}]` });
       } else {
         card.classList.add("fail");
@@ -9618,6 +9634,46 @@ function appendProposalCards(list) {
     msgs.appendChild(card);
   }
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+// The AI speaks first: things its 5-minute watcher noticed show up here (and as a push).
+const chInboxShown = new Set();
+const CH_INBOX_ICON = { kill_suggestion: "⚠️", auto_killed: "⏸", campaign_live: "🚀", info: "💬" };
+async function chLoadInbox() {
+  if (!sessionData?.user?.id) return;
+  let rows = [];
+  try { rows = await sbQuery("ai_inbox", "select=*&order=created_at.desc&limit=30"); } catch { return; }
+  if (!Array.isArray(rows)) return;
+  const fresh = rows.filter(r => !chInboxShown.has(r.id)).reverse();
+  if (chatOpen) {
+    const msgs = document.getElementById("chMsgs");
+    for (const r of fresh) {
+      chInboxShown.add(r.id);
+      const t = document.createElement("div");
+      t.className = "ch-time";
+      t.textContent = new Date(r.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+      msgs.appendChild(t);
+      chLastTs = Date.now(); // the stamp above already labels this one
+      const showBody = r.body && !(r.kind === "kill_suggestion" && r.status === "open" && r.payload?.object_id);
+      const b = appendMsg(`${CH_INBOX_ICON[r.kind] || "💬"} **${r.title}**${showBody ? "\n" + r.body : ""}`, "bot");
+      b.style.maxWidth = "92%";
+      if (r.kind === "kill_suggestion" && r.status === "open" && r.payload?.object_id) {
+        appendProposalCards([{ ...r.payload, inbox_id: r.id }]);
+      } else if (r.kind === "kill_suggestion" && r.status !== "open") {
+        const n = document.createElement("div");
+        n.className = "ch-time"; n.style.margin = "0 0 6px";
+        n.textContent = r.status === "done" ? "✅ Paused" : r.status === "dismissed" ? "Dismissed" : "";
+        msgs.appendChild(n);
+      }
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+    const unread = rows.filter(r => !r.read_at).map(r => r.id);
+    if (unread.length) { try { await supabaseClient.from("ai_inbox").update({ read_at: new Date().toISOString() }).in("id", unread); } catch {} }
+    chUnread = 0;
+  } else {
+    chUnread = rows.filter(r => !r.read_at).length;
+  }
+  chToggleIcon();
 }
 
 let chBusy = false;
@@ -9663,7 +9719,12 @@ function sendChat() {
 }
 
 // Kickoff
-init();
+init().then(() => {
+  chLoadInbox();
+  setInterval(chLoadInbox, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) chLoadInbox(); });
+  if (window.bvPendingAi || location.hash === "#ai") { window.bvPendingAi = false; history.replaceState(null, "", location.pathname + location.search); toggleChat(true); }
+});
 </script>
 </body>
 </html>
