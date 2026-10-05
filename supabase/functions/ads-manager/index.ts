@@ -9,6 +9,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "balances", ad_account_id? }              -> live prepaid balance per ad account
 //   POST { action: "set_ad_message", ad_account_id, ad_ids, greeting, prefill } -> change the WhatsApp greeting + pre-filled message on live ads
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
+//   POST { action: "set_budget", ad_account_id, level: "adset"|"campaign", object_id, daily_budget (Naira), reason? } -> scale a daily budget
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
 //   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep (dry_run previews, pauses nothing)
 //
@@ -436,6 +437,33 @@ async function handleSetStatus(userClient: any, profile: any, body: any) {
   return { ok: true, ...result };
 }
 
+// -- set_budget (scale) --
+async function handleSetBudget(userClient: any, profile: any, body: any) {
+  const level = String(body.level);
+  const objectId = String(body.object_id ?? "");
+  const naira = Number(body.daily_budget);
+  if (!["campaign", "adset"].includes(level)) throw new HttpError(400, "level must be campaign or adset.");
+  if (!/^\d+$/.test(objectId)) throw new HttpError(400, "Invalid object_id.");
+  if (!Number.isFinite(naira) || naira < 500 || naira > 5_000_000) throw new HttpError(400, "daily_budget must be between ₦500 and ₦5,000,000.");
+  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const token = await resolveToken(admin, account);
+  const obj = await graphGet(objectId, { fields: "account_id,name,daily_budget,lifetime_budget" }, token);
+  if (String(obj.account_id ?? "").replace(/^act_/, "") !== actId) throw new HttpError(403, "That item is not in this ad account.");
+  if (!obj.daily_budget) throw new HttpError(400, "This item has no daily budget (it may use a lifetime budget or the budget sits on the campaign).");
+  const before = num(obj.daily_budget) / 100;
+  const res = await fetch(`${GRAPH}/${objectId}`, { method: "POST", body: new URLSearchParams({ daily_budget: String(Math.round(naira * 100)), access_token: token }) });
+  const data = await res.json();
+  if (!res.ok || data.error || data.success === false) throw new HttpError(502, data?.error?.error_user_msg || data?.error?.message || "Meta refused the budget change.");
+  const after = await graphGet(objectId, { fields: "daily_budget" }, token);
+  await admin.from("ad_kill_log").insert({
+    company_id: account.company_id, ad_account_id: account.id, level, meta_object_id: objectId,
+    object_name: obj.name, action: "scaled", source: "manual",
+    actor_profile_id: profile.id, reason: `Budget ₦${before.toLocaleString("en-NG")} → ₦${naira.toLocaleString("en-NG")}${body.reason ? " · " + String(body.reason).slice(0, 200) : ""}`,
+  });
+  return { ok: true, name: obj.name as string, previous_daily_budget: before, daily_budget: num(after.daily_budget) / 100 };
+}
+
 // -- scheduled auto-kill --
 async function handleAutoKill(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -518,6 +546,7 @@ Deno.serve(async (req: Request) => {
     if (body.action === "balances") return json(await handleBalances(userClient, body));
     if (body.action === "set_ad_message") return json(await handleSetAdMessage(userClient, body));
     if (body.action === "set_status") return json(await handleSetStatus(userClient, profile, body));
+    if (body.action === "set_budget") return json(await handleSetBudget(userClient, profile, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e: any) {
     const status = e instanceof HttpError ? e.status : 500;

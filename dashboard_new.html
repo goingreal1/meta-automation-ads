@@ -590,7 +590,7 @@ textarea{resize:vertical;min-height:80px;}
 }
 .chat-toggle:hover{transform:scale(1.09);}
 .chat-panel{
-  position:fixed;bottom:82px;right:22px;width:350px;height:500px;
+  position:fixed;bottom:82px;right:22px;width:380px;height:min(600px,calc(100vh - 110px));
   background:var(--panel);border:1px solid var(--border);border-radius:14px;
   box-shadow:var(--shadow);display:flex;flex-direction:column;z-index:999;
   transform:translateY(18px) scale(.95);opacity:0;pointer-events:none;
@@ -598,27 +598,55 @@ textarea{resize:vertical;min-height:80px;}
 }
 .chat-panel.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all;}
 .ch-head{
-  padding:12px 14px;border-bottom:1px solid var(--border);
-  display:flex;align-items:center;gap:9px;background:var(--panel2);
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;background:var(--panel2);
 }
-.ch-avatar{width:30px;height:30px;border-radius:50%;background:var(--accentBg);border:1px solid var(--accentBdr);display:flex;align-items:center;justify-content:center;font-size:14px;}
-.ch-name{font-size:12px;font-weight:600;}
-.ch-status{font-size:10px;color:var(--muted);}
-.ch-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;}
-.ch-msg{max-width:88%;padding:8px 11px;border-radius:9px;font-size:12px;line-height:1.5;white-space:pre-wrap;}
-.ch-msg.bot{background:var(--panel2);color:var(--text);align-self:flex-start;}
-.ch-msg.user{background:var(--accentBg);color:var(--accent);border:1px solid var(--accentBdr);align-self:flex-end;}
-.ch-suggs{padding:8px 12px;display:flex;flex-wrap:wrap;gap:5px;border-top:1px solid var(--border);}
-.ch-sugg{font-size:10px;padding:3px 9px;border-radius:20px;border:1px solid var(--border);color:var(--text2);cursor:pointer;transition:all .13s;background:transparent;}
-.ch-sugg:hover{border-color:var(--accent);color:var(--accent);}
-.ch-pay-card{background:var(--panel);border:1.5px solid var(--accentBdr);border-radius:10px;padding:11px 13px;align-self:stretch;}
+.ch-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(160deg,#5ac8fa,#0a84ff);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;}
+.ch-hmid{flex:1;min-width:0;}
+.ch-name{font-size:13px;font-weight:600;}
+.ch-status{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ch-x,.ch-back{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:6px 8px;border-radius:8px;line-height:1;}
+.ch-x:hover,.ch-back:hover{background:var(--panel);}
+.ch-back{display:none;font-size:26px;padding:0 8px 3px;color:#0a84ff;}
+.ch-acct{display:none;padding:6px 12px;font-size:11px;color:var(--text2);border-bottom:1px solid var(--border);background:var(--panel);}
+.ch-acct.on{display:block;}
+.ch-acct b{color:var(--text);font-weight:600;}
+.ch-msgs{flex:1;overflow-y:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:2px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+.ch-time{align-self:center;font-size:10.5px;color:var(--muted);margin:10px 0 6px;font-weight:500;}
+.ch-msg{max-width:82%;padding:8px 12px;border-radius:18px;font-size:13.5px;line-height:1.38;white-space:pre-wrap;word-break:break-word;margin-top:1px;}
+.ch-msg.bot{background:var(--panel2);color:var(--text);align-self:flex-start;box-shadow:inset 0 0 0 1px var(--border);}
+.ch-msg.user{background:#0a84ff;color:#fff;align-self:flex-end;}
+.ch-msg.bot.tail{border-bottom-left-radius:5px;margin-bottom:6px;}
+.ch-msg.user.tail{border-bottom-right-radius:5px;margin-bottom:6px;}
+.ch-msg b{font-weight:650;}
+.ch-typing{display:inline-flex;gap:4px;padding:11px 14px;}
+.ch-typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.5;animation:chDot 1.2s infinite ease-in-out;}
+.ch-typing i:nth-child(2){animation-delay:.18s;}.ch-typing i:nth-child(3){animation-delay:.36s;}
+@keyframes chDot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:.9}}
+.ch-suggs{padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;}
+.ch-sugg{font-size:12px;padding:6px 12px;border-radius:16px;border:1px solid #0a84ff;color:#0a84ff;cursor:pointer;transition:all .13s;background:transparent;}
+.ch-sugg:hover{background:#0a84ff;color:#fff;}
+.ch-pay-card,.ch-act-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:11px 13px;align-self:stretch;margin:4px 0 6px;max-width:100%;}
 .ch-pay-row{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0;color:var(--text2);}
 .ch-pay-row strong{color:var(--text);font-weight:600;text-align:right;}
 .ch-pay-row.ch-pay-amt{border-top:1px dashed var(--border);margin-top:4px;padding-top:7px;font-size:13px;}
 .ch-pay-row.ch-pay-amt strong{color:var(--accent);font-size:15px;}
-.ch-inp{display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--border);}
-.ch-inp input{flex:1;padding:7px 10px;font-size:12px;border-radius:7px;}
-.ch-inp button{padding:7px 11px;border-radius:7px;background:var(--accent);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;}
+.ch-act-h{display:flex;gap:9px;align-items:flex-start;}
+.ch-act-ico{font-size:20px;line-height:1.1;}
+.ch-act-t{font-size:13px;font-weight:650;line-height:1.3;}
+.ch-act-s{font-size:11.5px;color:var(--text2);margin-top:2px;line-height:1.4;}
+.ch-act-btns{display:flex;gap:8px;margin-top:10px;}
+.ch-act-btns button{flex:1;padding:9px 10px;border-radius:12px;border:none;font-size:13px;font-weight:650;cursor:pointer;}
+.ch-act-ok{background:#0a84ff;color:#fff;}
+.ch-act-no{background:var(--panel2);color:var(--text2);}
+.ch-act-card.done{border-color:rgba(48,209,88,.5);}
+.ch-act-card.fail{border-color:rgba(255,69,58,.5);}
+.ch-act-res{font-size:12px;margin-top:8px;font-weight:600;}
+.ch-inp{display:flex;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--border);align-items:flex-end;background:var(--panel);}
+.ch-inp textarea{flex:1;resize:none;max-height:120px;min-height:36px;padding:8px 14px;font-size:14px;line-height:1.35;border-radius:19px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-family:inherit;outline:none;}
+.ch-inp textarea:focus{border-color:#0a84ff;}
+.ch-inp button{width:36px;height:36px;flex:none;border-radius:50%;background:#0a84ff;color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.ch-inp button:disabled{background:var(--border);cursor:default;}
 
 /* ── SPINNER ───────────────────────────────────────────────────────────────── */
 .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rot .65s linear infinite;vertical-align:middle;}
@@ -965,6 +993,19 @@ html{-webkit-text-size-adjust:100%;}
   .am-foot .am-c-name{grid-area:name;}
   .kr-block .fg{grid-template-columns:1fr !important;}
 }
+
+/* AI chat: full-screen iMessage-style on phones */
+@media(max-width:760px){
+  .chat-panel{inset:0;bottom:0;right:0;width:100%;height:100vh;height:100dvh;border-radius:0;border:none;box-shadow:none;z-index:1200;transform:translateY(100%);opacity:1;transition:transform .26s cubic-bezier(.32,.72,0,1);}
+  .chat-panel.open{transform:translateY(0);}
+  .ch-head{padding:calc(8px + env(safe-area-inset-top)) 8px 8px;}
+  .ch-back{display:block;}
+  .ch-x{display:none;}
+  .ch-inp textarea{font-size:16px;}
+  .ch-msg{font-size:15px;max-width:84%;}
+  body:has(.chat-panel.open){overflow:hidden;}
+  body:has(.chat-panel.open) .chat-toggle,body:has(.chat-panel.open) .bottom-nav{display:none;}
+}
 </style>
 </head>
 <body>
@@ -1052,21 +1093,24 @@ html{-webkit-text-size-adjust:100%;}
 <nav class="bottom-nav" id="bottomNav" aria-label="Main navigation"></nav>
 
 <!-- AI CHAT -->
-<div class="chat-panel" id="chatPanel">
+<div class="chat-panel" id="chatPanel" role="dialog" aria-label="AI Assistant">
   <div class="ch-head">
-    <div class="ch-avatar">🤖</div>
-    <div>
+    <button class="ch-back" onclick="toggleChat(false)" aria-label="Close chat">‹</button>
+    <div class="ch-avatar">✦</div>
+    <div class="ch-hmid">
       <div class="ch-name" id="chName">AI Assistant</div>
       <div class="ch-status" id="chStatus">Grounded in your live data</div>
     </div>
+    <button class="ch-x" onclick="toggleChat(false)" aria-label="Close chat">✕</button>
   </div>
+  <div class="ch-acct" id="chAcct"></div>
   <div class="ch-msgs" id="chMsgs">
-    <div class="ch-msg bot" id="chWelcomeMsg">Hey 👋 Ask me anything about your live data. What do you want to know?</div>
+    <div class="ch-msg bot tail" id="chWelcomeMsg">Hey 👋 Ask me anything about your live data. What do you want to know?</div>
   </div>
   <div class="ch-suggs" id="chSuggs"></div>
   <div class="ch-inp">
-    <input type="text" id="chInput" placeholder="Ask about campaigns, creatives…" onkeydown="if(event.key==='Enter')sendChat()">
-    <button onclick="sendChat()">→</button>
+    <textarea id="chInput" rows="1" placeholder="Message" enterkeyhint="send"></textarea>
+    <button id="chSend" onclick="sendChat()" aria-label="Send">↑</button>
   </div>
 </div>
 <button class="chat-toggle" id="chatToggle" title="AI Assistant"></button>
@@ -9298,6 +9342,9 @@ const CHAT_PRESETS = {
     name: "AI Assistant", status: "Whole company, grounded in live data",
     welcome: "Hey 👋 I can see every buyer's spend, orders, and ROAS, which ad sets and creatives are actually driving orders, and what's flagged across calls, approvals and deliveries. What do you want to know?",
     suggs: [
+      ["Go through each ad set and its ads: messages, cost per message, reach, frequency, CTR and spend.", "Ad sets & ads breakdown"],
+      ["Which ads break my kill thresholds?", "What should I kill?"],
+      ["Which ad set is worth scaling?", "What should I scale?"],
       ["Which buyer has the best ROAS this week?", "Best buyer this week?"],
       ["Which ad sets and creatives are bringing the most orders?", "Top ad sets/creatives?"],
       ["What needs my attention right now?", "What needs attention?"],
@@ -9308,6 +9355,9 @@ const CHAT_PRESETS = {
     name: "AI Assistant", status: "Whole company, grounded in live data",
     welcome: "Hey 👋 I can see every buyer's spend, orders, and ROAS, which ad sets and creatives are actually driving orders, and what's flagged across calls, approvals and deliveries. What do you want to know?",
     suggs: [
+      ["Go through each ad set and its ads: messages, cost per message, reach, frequency, CTR and spend.", "Ad sets & ads breakdown"],
+      ["Which ads break my kill thresholds?", "What should I kill?"],
+      ["Which ad set is worth scaling?", "What should I scale?"],
       ["Which buyer has the best ROAS this week?", "Best buyer this week?"],
       ["Which ad sets and creatives are bringing the most orders?", "Top ad sets/creatives?"],
       ["What needs my attention right now?", "What needs attention?"],
@@ -9318,6 +9368,9 @@ const CHAT_PRESETS = {
     name: "AI Media Buyer", status: "Grounded in your live data",
     welcome: "Hey 👋 I'm trained on senior buyer patterns. I can analyze your CTR, CPA, delivery rate, creative performance, and scaling decisions — and tell you what the AI call agent has done on your new orders. What do you want to know?",
     suggs: [
+      ["Go through each ad set and its ads: messages, cost per message, reach, frequency, CTR and spend.", "Ad sets & ads breakdown"],
+      ["Which ads break my kill thresholds?", "What should I kill?"],
+      ["Which ad set is worth scaling?", "What should I scale?"],
       ["Which of my creatives has the best CTR this week?", "Best CTR this week?"],
       ["Which ad set is bringing me the most orders?", "Top ad set for orders?"],
       ["Has the AI agent called my new orders yet?", "Called my new orders?"],
@@ -9356,22 +9409,63 @@ function renderChatForRole(role) {
 
 let chatOpen = false;
 document.getElementById("chatToggle").innerHTML = icon("chat", 20);
-document.getElementById("chatToggle").addEventListener("click", () => {
-  chatOpen = !chatOpen;
+function toggleChat(open) {
+  chatOpen = typeof open === "boolean" ? open : !chatOpen;
   document.getElementById("chatPanel").classList.toggle("open", chatOpen);
   document.getElementById("chatToggle").innerHTML = icon(chatOpen ? "x" : "chat", 20);
-  if (chatOpen) document.getElementById("chInput").focus();
-});
+  if (chatOpen) {
+    chRefreshAcct();
+    const m = document.getElementById("chMsgs"); m.scrollTop = m.scrollHeight;
+    if (window.innerWidth > 760) document.getElementById("chInput").focus();
+  }
+}
+document.getElementById("chatToggle").addEventListener("click", () => toggleChat());
+(() => {
+  const inp = document.getElementById("chInput");
+  inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+  inp.addEventListener("input", () => { inp.style.height = "auto"; inp.style.height = Math.min(inp.scrollHeight, 120) + "px"; });
+})();
+
+// Which ad account the person has switched in -- the AI works in this one.
+function chActiveAcct() {
+  const a = (typeof accountsList !== "undefined" ? accountsList : []).find(x => x.id === activeAccountId);
+  return a ? { id: a.id, name: a.nickname || a.name || "ad account" } : null;
+}
+function chRefreshAcct() {
+  const el = document.getElementById("chAcct");
+  const a = chActiveAcct();
+  const showable = ["owner", "admin", "buyer"].includes(window.myProfile?.role);
+  el.classList.toggle("on", !!(a && showable));
+  el.innerHTML = a ? `Working in <b>${escH(a.name)}</b> · switch account at the top of the dashboard` : "";
+}
+
+// Light formatting for the assistant's replies: **bold** only, everything else escaped.
+const chFmt = t => escH(String(t)).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+let chLastTs = 0;
+function chStamp() {
+  const now = Date.now();
+  if (now - chLastTs > 10 * 60 * 1000) {
+    const t = document.createElement("div");
+    t.className = "ch-time";
+    t.textContent = new Date(now).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" });
+    document.getElementById("chMsgs").appendChild(t);
+  }
+  chLastTs = now;
+}
 
 function appendMsg(text, role) {
   const msgs = document.getElementById("chMsgs");
+  chStamp();
+  const prev = msgs.lastElementChild;
+  if (prev && prev.classList.contains("ch-msg") && prev.classList.contains(role)) prev.classList.remove("tail");
   const d = document.createElement("div");
-  d.className = "ch-msg " + role;
-  d.textContent = text;
+  d.className = "ch-msg " + role + " tail";
+  if (role === "bot") d.innerHTML = chFmt(text); else d.textContent = text;
   msgs.appendChild(d);
   msgs.scrollTop = msgs.scrollHeight;
   return d;
 }
+function chSetBot(el, text) { el.classList.remove("typing"); el.innerHTML = chFmt(text); }
 
 // The assistant can respond with "quick replies" -- e.g. after it looks up
 // several ad accounts, one chip per account so picking one is a tap instead
@@ -9477,31 +9571,94 @@ function bvShowChatPaymentConfirm(payment) {
   });
 }
 
+// The AI never changes an ad itself -- it proposes, and the person taps Confirm here.
+const CH_LEVEL = { campaign: "campaign", adset: "ad set", ad: "ad" };
+function appendProposalCards(list) {
+  const msgs = document.getElementById("chMsgs");
+  for (const p of list || []) {
+    const card = document.createElement("div");
+    card.className = "ch-act-card";
+    const nm = p.object_name ? `“${escH(p.object_name)}”` : `this ${CH_LEVEL[p.level]}`;
+    let ico, title;
+    if (p.kind === "budget") {
+      const up = p.current_daily_budget && p.new_daily_budget > p.current_daily_budget;
+      ico = up ? "📈" : "📉";
+      title = `${up ? "Scale" : "Change"} ${CH_LEVEL[p.level]} ${nm} budget`;
+    } else if (p.status === "PAUSED") { ico = "⏸"; title = `Pause ${CH_LEVEL[p.level]} ${nm}`; }
+    else { ico = "▶️"; title = `Resume ${CH_LEVEL[p.level]} ${nm}`; }
+    const sub = p.kind === "budget"
+      ? `${p.current_daily_budget ? fN(p.current_daily_budget) + " → " : "New daily budget: "}<b>${fN(p.new_daily_budget)}</b> a day`
+      : "";
+    card.innerHTML = `
+      <div class="ch-act-h"><div class="ch-act-ico">${ico}</div><div style="min-width:0;">
+        <div class="ch-act-t">${title}</div>
+        <div class="ch-act-s">${escH(p.account_name || "")}${sub ? " · " + sub : ""}${p.reason ? `<br>${escH(p.reason)}` : ""}</div></div></div>
+      <div class="ch-act-btns"><button class="ch-act-no">Not now</button><button class="ch-act-ok">Confirm</button></div>
+      <div class="ch-act-res"></div>`;
+    const ok = card.querySelector(".ch-act-ok"), no = card.querySelector(".ch-act-no"), res = card.querySelector(".ch-act-res");
+    no.onclick = () => { card.querySelector(".ch-act-btns").remove(); res.textContent = "Dismissed."; res.style.color = "var(--muted)"; };
+    ok.onclick = async () => {
+      ok.disabled = no.disabled = true; ok.textContent = "Working…";
+      const body = p.kind === "budget"
+        ? { action: "set_budget", ad_account_id: p.ad_account_id, level: p.level, object_id: p.object_id, daily_budget: p.new_daily_budget, reason: "Via AI chat" + (p.reason ? ": " + p.reason : "") }
+        : { action: "set_status", ad_account_id: p.ad_account_id, level: p.level, object_id: p.object_id, status: p.status, reason: "Via AI chat" + (p.reason ? ": " + p.reason : "") };
+      const r = await amCall(body);
+      if (r?.ok) {
+        card.classList.add("done");
+        card.querySelector(".ch-act-btns").remove();
+        const what = p.kind === "budget" ? `Budget is now ${fN(r.daily_budget)} a day` : (r.status === "PAUSED" ? "Paused" : "Running again") + " (Meta confirms)";
+        res.textContent = "✅ " + what; res.style.color = "#30d158";
+        chatHistory.push({ role: "user", content: `[I tapped Confirm: ${p.kind === "budget" ? "budget of " : ""}${CH_LEVEL[p.level]} ${p.object_name || p.object_id} — ${what}]` });
+      } else {
+        card.classList.add("fail");
+        ok.disabled = no.disabled = false; ok.textContent = "Try again";
+        res.textContent = "❌ " + (r?.error || "Meta did not accept that."); res.style.color = "#ff453a";
+      }
+    };
+    msgs.appendChild(card);
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+let chBusy = false;
 async function askChat(q) {
+  if (chBusy) return;
+  chBusy = true;
+  document.getElementById("chSend").disabled = true;
   document.getElementById("chSuggs").style.display = "none";
+  chRefreshAcct();
   appendMsg(q, "user");
-  const thinking = appendMsg("Thinking…", "bot");
+  const thinking = appendMsg("", "bot");
+  thinking.classList.add("typing");
+  thinking.innerHTML = '<span class="ch-typing"><i></i><i></i><i></i></span>';
+  thinking.style.padding = "0";
   try {
-    const r = await sbFn("ai-chat", { question: q, history: chatHistory });
+    const r = await sbFn("ai-chat", { question: q, history: chatHistory, active_ad_account_id: activeAccountId || null });
+    thinking.style.padding = "";
     if (r?.answer) {
-      thinking.textContent = r.answer;
+      chSetBot(thinking, r.answer);
       chatHistory.push({ role: "user", content: q }, { role: "assistant", content: r.answer });
       if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
+      appendProposalCards(r.proposals);
       appendQuickReplies(r.quick_replies);
       appendPendingPaymentCard(r.pending_payment);
     } else {
-      thinking.textContent = r?.error ? `Couldn't do that: ${r.error}` : "I couldn't get an answer just now — try again.";
+      chSetBot(thinking, r?.error ? `Couldn't do that: ${r.error}` : "I couldn't get an answer just now — try again.");
     }
   } catch {
-    thinking.textContent = "Connection error. Try again in a moment.";
+    thinking.style.padding = "";
+    chSetBot(thinking, "Connection error. Try again in a moment.");
   }
+  chBusy = false;
+  document.getElementById("chSend").disabled = false;
+  const m = document.getElementById("chMsgs"); m.scrollTop = m.scrollHeight;
 }
 
 function sendChat() {
   const inp = document.getElementById("chInput");
   const q   = inp.value.trim();
-  if (!q) return;
-  inp.value = "";
+  if (!q || chBusy) return;
+  inp.value = ""; inp.style.height = "auto";
   askChat(q);
 }
 
