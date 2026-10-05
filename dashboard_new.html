@@ -425,8 +425,10 @@ textarea{resize:vertical;min-height:80px;}
 .conv-thread:has(.empty){justify-content:center;align-items:center;}
 .conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;}
 .conv-msgs{padding:14px;display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;overflow-y:auto;}
-.conv-compose{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;}
-.conv-compose input{flex:1;min-width:0;font-size:13px;padding:9px 14px;border-radius:20px;}
+.conv-compose{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;align-items:flex-end;}
+.conv-compose input,.conv-compose textarea{flex:1;min-width:0;font-size:13px;padding:9px 14px;border-radius:20px;}
+/* Multi-line reply box: grows with the text (see bvAutoGrow) up to a cap, then scrolls. */
+.conv-compose textarea{resize:none;min-height:0;height:38px;max-height:140px;line-height:1.35;font-family:inherit;overflow-y:auto;display:block;}
 .conv-compose button{
   width:36px;height:36px;border-radius:50%;flex-shrink:0;padding:0;
   display:flex;align-items:center;justify-content:center;
@@ -522,10 +524,11 @@ textarea{resize:vertical;min-height:80px;}
   [data-theme="dark"] #convTabRoot .bubble-time{color:#8696a0;}
   #convTabRoot .day-divider span{background:#fff;color:#54656f;}
   [data-theme="dark"] #convTabRoot .day-divider span{background:#182229;color:#8696a0;}
-  #convTabRoot .conv-compose{align-items:center;background:#f0f2f5;border-top:none;padding:6px 8px calc(6px + env(safe-area-inset-bottom));}
+  #convTabRoot .conv-compose{align-items:flex-end;background:#f0f2f5;border-top:none;padding:6px 8px calc(6px + env(safe-area-inset-bottom));}
   [data-theme="dark"] #convTabRoot .conv-compose{background:#202c33;}
-  #convTabRoot .conv-compose input{font-size:16px;padding:9px 14px;border-radius:22px;background:#fff;border:1px solid transparent;}
-  [data-theme="dark"] #convTabRoot .conv-compose input{background:#2a3942;color:#e9edef;}
+  #convTabRoot .conv-compose input,#convTabRoot .conv-compose textarea{font-size:16px;padding:9px 14px;border-radius:22px;background:#fff;border:1px solid transparent;}
+  [data-theme="dark"] #convTabRoot .conv-compose input,[data-theme="dark"] #convTabRoot .conv-compose textarea{background:#2a3942;color:#e9edef;}
+  #convTabRoot .conv-compose textarea{max-height:120px;}
 }
 .agent-tag{font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--blue);margin-bottom:2px;text-transform:uppercase;}
 /* Whitespace is only preserved inside .bubble-text. The bubble itself used to be
@@ -4891,6 +4894,22 @@ function bvThreadHtml(msgs) {
   return html;
 }
 
+// The reply box is a <textarea> so pasted/typed line breaks survive (a
+// single-line <input> strips them, flattening a pasted message into one line).
+function bvAutoGrow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, parseInt(getComputedStyle(el).maxHeight) || 140) + "px";
+}
+
+// Enter sends and Shift+Enter adds a line on a computer; on a phone/tablet
+// Enter is a new line and the send button sends -- like WhatsApp.
+function bvReplyKey(e) {
+  if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+  if (window.matchMedia("(pointer: coarse)").matches) return;
+  e.preventDefault();
+  bvSendReply();
+}
+
 // Mic when the box is empty, send once there's text -- same as WhatsApp.
 function bvSyncComposeBtns() {
   const input = document.getElementById("convReplyInput");
@@ -5015,12 +5034,25 @@ function bvTicks(m) {
   return "";
 }
 
+// WhatsApp-style inline formatting: *bold*, _italic_, ~strike~, `code`.
+// Escapes first, so nothing from a customer's message can inject HTML.
+function bvFmtText(raw) {
+  let t = bvEscape(raw);
+  const wrap = (ch, tag) => {
+    const c = ch.replace(/[*_~]/g, "\\$&");
+    t = t.replace(new RegExp(`(^|[\\s(])${c}([^\\s${c}](?:[^${c}\\n]*[^\\s${c}])?)${c}(?=$|[\\s.,!?:;)])`, "g"), `$1<${tag}>$2</${tag}>`);
+  };
+  t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  wrap("*", "b"); wrap("_", "i"); wrap("~", "s");
+  return t;
+}
+
 function bvFmtMsg(m) {
   const t = m.message_type;
   const c = m.content || "";
-  if (t === "text" || t === "audio_transcript") return bvEscape(c);
-  if (t === "agent_text") return `<div class="agent-tag">Agent</div>${bvEscape(c)}`;
-  if (t === "agent_media") return c ? `<div class="agent-tag">Agent</div>${bvEscape(c)}` : `<div class="agent-tag">Agent</div>`;
+  if (t === "text" || t === "audio_transcript") return bvFmtText(c);
+  if (t === "agent_text") return `<div class="agent-tag">Agent</div>${bvFmtText(c)}`;
+  if (t === "agent_media") return c ? `<div class="agent-tag">Agent</div>${bvFmtText(c)}` : `<div class="agent-tag">Agent</div>`;
   // Inbound customer media that the webhook has downloaded (metadata.url) is
   // rendered by bvMediaThumb above the text -- only the caption goes here.
   if (m.direction === "inbound" && m.metadata?.url && ["image", "video", "audio", "sticker"].includes(t)) return bvEscape(c);
@@ -5233,7 +5265,7 @@ async function bvSelectConversation(id) {
           <button onclick="bvAttachMenuAction('template')">${icon("chat",14)} Send template (re-open after 24h)</button>
         </div>
       </div>
-      <input id="convReplyInput" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" oninput="bvSyncComposeBtns()" onkeydown="if(event.key==='Enter'){event.preventDefault();bvSendReply();}" onpaste="bvPasteMedia(event)">
+      <textarea id="convReplyInput" rows="1" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" oninput="bvAutoGrow(this);bvSyncComposeBtns()" onkeydown="bvReplyKey(event)" onpaste="bvPasteMedia(event)"></textarea>
       <div id="convRecording" class="conv-recording" style="display:none;">
         <span class="rec-dot"></span><span class="rec-time" id="convRecTime">0:00</span>
         <span class="rec-hint">Recording… tap ✓ to send</span>
@@ -5313,6 +5345,7 @@ async function bvSendReply() {
     }
 
     input.value = "";
+    bvAutoGrow(input);
     bvSyncComposeBtns();
     // The new bubble arrives via the realtime subscription (bvOnRealtimeMessage)
     // once send-whatsapp-message's insert lands -- no need to append it here too.
