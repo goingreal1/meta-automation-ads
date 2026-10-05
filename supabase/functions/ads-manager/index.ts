@@ -7,6 +7,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //
 //   POST { action: "list", ad_account_id, range }            -> rows at all 3 levels
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
+//   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
 //   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep (dry_run previews, pauses nothing)
 //
 // Authorization: the caller's JWT is used to read ad_accounts through RLS, so a
@@ -33,7 +34,7 @@ class HttpError extends Error {
   constructor(public status: number, msg: string) { super(msg); }
 }
 
-// ── Meta helpers ────────────────────────────────────────────────────────────
+// -- Meta helpers --
 async function graphGet(path: string, params: Record<string, string>, token: string) {
   const qs = new URLSearchParams({ ...params, access_token: token });
   const res = await fetch(`${GRAPH}/${path}?${qs}`);
@@ -97,8 +98,10 @@ function insightRow(r: any) {
     spend,
     impressions: num(r.impressions),
     reach: num(r.reach),
+    frequency: num(r.frequency),
     clicks: num(r.inline_link_clicks ?? r.clicks),
     ctr: num(r.ctr),
+    cpm: num(r.cpm),
     conversations,
     cost_per_conversation: conversations > 0 ? spend / conversations : null,
     purchases,
@@ -112,7 +115,7 @@ async function insightsByLevel(actId: string, level: "campaign" | "adset" | "ad"
   const idField = level === "ad" ? "ad_id" : level === "adset" ? "adset_id" : "campaign_id";
   const rows = await graphGetAll(`act_${actId}/insights`, {
     level,
-    fields: `${idField},spend,impressions,reach,clicks,inline_link_clicks,ctr,actions`,
+    fields: `${idField},spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,cpm,actions`,
     ...rangeParams(range),
   }, token);
   const map: Record<string, ReturnType<typeof insightRow>> = {};
@@ -134,7 +137,7 @@ function withResults(kind: string, m: ReturnType<typeof insightRow>) {
   return { results: null, cost_per_result: null, result_label: "" };
 }
 
-// ── kill-rule evaluation ────────────────────────────────────────────────────
+// -- kill-rule evaluation --
 interface Rule { kind: string; enabled: boolean; auto_kill: boolean; max_cost_per_result: number; min_spend: number; min_hours: number }
 
 function evaluateRule(rule: Rule | undefined, ad: any, life: ReturnType<typeof insightRow>): { kill: boolean; reason: string } | null {
@@ -156,7 +159,7 @@ function evaluateRule(rule: Rule | undefined, ad: any, life: ReturnType<typeof i
   return null;
 }
 
-// ── account access ──────────────────────────────────────────────────────────
+// -- account access --
 async function getUserContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader) throw new HttpError(401, "Not signed in.");
@@ -180,7 +183,7 @@ async function getAccount(userClient: any, adAccountId: string) {
   return { account, actId };
 }
 
-// ── list ────────────────────────────────────────────────────────────────────
+// -- list --
 async function loadAccountObjects(actId: string, token: string, range: string, needLifetimeAds: boolean) {
   const [campaigns, adsets, ads, cIns, sIns, aIns, aLife] = await Promise.all([
     graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time" }, token),
@@ -249,7 +252,40 @@ async function handleList(userClient: any, profile: any, body: any) {
   };
 }
 
-// ── set_status ──────────────────────────────────────────────────────────────
+// -- daily (Overview + Ad Spend & ROAS) --
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+async function handleDaily(userClient: any, body: any) {
+  const since = String(body.since ?? ""), until = String(body.until ?? "");
+  if (!DATE_RE.test(since) || !DATE_RE.test(until) || since > until) throw new HttpError(400, "since/until must be YYYY-MM-DD dates.");
+  if ((new Date(until).getTime() - new Date(since).getTime()) / 86400_000 > 92) throw new HttpError(400, "Range is limited to 92 days.");
+  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id").eq("status", "active");
+  if (body.ad_account_id) q = q.eq("id", body.ad_account_id);
+  const { data: accounts } = await q;
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const usable = (accounts ?? []).filter((a: any) => /^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+  const results = await Promise.allSettled(usable.map(async (a: any) => {
+    const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
+    const token = await resolveToken(admin, a);
+    const rows = await graphGetAll(`act_${actId}/insights`, {
+      level: "adset", time_increment: "1", time_range: JSON.stringify({ since, until }),
+      fields: "adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,cpc,cpm,actions",
+    }, token, 12);
+    return rows.map((r: any) => ({
+      date: r.date_start, account_id: a.id, media_buyer_id: a.media_buyer_id ?? null,
+      campaign_id: r.campaign_id, campaign_name: r.campaign_name, adset_id: r.adset_id, adset_name: r.adset_name,
+      ...insightRow(r), cpc: num(r.cpc),
+    }));
+  }));
+  const rows: any[] = [];
+  const info = usable.map((a: any, i: number) => {
+    const r = results[i];
+    if (r.status === "fulfilled") { rows.push(...r.value); return { id: a.id, name: a.nickname, media_buyer_id: a.media_buyer_id ?? null, rows: r.value.length }; }
+    return { id: a.id, name: a.nickname, media_buyer_id: a.media_buyer_id ?? null, error: String((r.reason as any)?.message ?? r.reason) };
+  });
+  return { ok: true, since, until, accounts: info, rows };
+}
+
+// -- set_status --
 async function pauseOrResume(admin: any, account: any, actId: string, token: string, level: string, objectId: string, status: string) {
   // The object must belong to this ad account -- never trust the id alone.
   const obj = await graphGet(objectId, { fields: "account_id,name,status,effective_status" }, token);
@@ -292,7 +328,7 @@ async function handleSetStatus(userClient: any, profile: any, body: any) {
   return { ok: true, ...result };
 }
 
-// ── scheduled auto-kill ─────────────────────────────────────────────────────
+// -- scheduled auto-kill --
 async function handleAutoKill(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const { data: ruleRows } = await admin.from("kill_rules").select("*").eq("enabled", true);
@@ -354,7 +390,7 @@ async function handleAutoKill(dryRun = false) {
   return { ok: true, paused: pauses, summary };
 }
 
-// ── entrypoint ──────────────────────────────────────────────────────────────
+// -- entrypoint --
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -370,6 +406,7 @@ Deno.serve(async (req: Request) => {
 
     const { userClient, profile } = await getUserContext(req);
     if (body.action === "list") return json(await handleList(userClient, profile, body));
+    if (body.action === "daily") return json(await handleDaily(userClient, body));
     if (body.action === "set_status") return json(await handleSetStatus(userClient, profile, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e: any) {
