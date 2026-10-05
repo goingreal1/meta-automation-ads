@@ -10,6 +10,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "set_ad_message", ad_account_id, ad_ids, greeting, prefill } -> change the WhatsApp greeting + pre-filled message on live ads
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
 //   POST { action: "set_budget", ad_account_id, level: "adset"|"campaign", object_id, daily_budget (Naira), reason? } -> scale a daily budget
+//   POST { action: "targeting_search", ad_account_id, kind: "interest"|"city", q } -> interests / Nigerian cities to target (builder search box)
+//   POST { action: "reach_estimate", ad_account_id, states?, cities?, age_min, age_max, gender, interests?, behaviors?, optimization_goal? } -> Meta's potential-audience estimate for a draft ad set
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
 //   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep every 5 min: auto-pauses where the owner turned auto-pause on,
 //        otherwise drops a kill suggestion into the AI inbox (+ push), and announces campaigns that just went live (dry_run previews, changes nothing)
@@ -473,6 +475,64 @@ async function handleSetBudget(userClient: any, profile: any, body: any) {
   return { ok: true, name: obj.name as string, previous_daily_budget: before, daily_budget: num(after.daily_budget) / 100 };
 }
 
+// -- targeting helpers (builder search box + live potential reach) --
+// Same targeting shape ai-auto-launch-tests sends, so the estimate matches what will really launch.
+async function resolveRegionKeys(names: string[], token: string): Promise<string[]> {
+  const keys = await Promise.all(names.slice(0, 40).map(async (name) => {
+    try {
+      const d = await graphGet("search", { type: "adgeolocation", location_types: JSON.stringify(["region"]), country_code: "NG", q: name, limit: "1" }, token);
+      return d?.data?.[0]?.key ? String(d.data[0].key) : null;
+    } catch { return null; }
+  }));
+  return keys.filter(Boolean) as string[];
+}
+
+async function handleTargetingSearch(userClient: any, body: any) {
+  const q = String(body.q ?? "").trim().slice(0, 60);
+  if (q.length < 2) return { ok: true, results: [] };
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const token = await resolveToken(createClient(SUPABASE_URL, SERVICE_KEY), account);
+  if (body.kind === "city") {
+    const d = await graphGet("search", { type: "adgeolocation", location_types: JSON.stringify(["city"]), country_code: "NG", q, limit: "8" }, token);
+    return { ok: true, results: (d.data ?? []).filter((x: any) => x.type === "city").map((x: any) => ({ key: String(x.key ?? x.id), name: x.name, region: x.region ?? "" })) };
+  }
+  const d = await graphGet("search", { type: "adinterest", q, limit: "10", locale: "en_US" }, token);
+  return { ok: true, results: (d.data ?? []).map((x: any) => ({ id: String(x.id), name: x.name, size_lower: x.audience_size_lower_bound ?? null, size_upper: x.audience_size_upper_bound ?? null, path: (x.path ?? []).join(" > ") })) };
+}
+
+const GENDER_CODES: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
+const REACH_GOALS = ["CONVERSATIONS", "OFFSITE_CONVERSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS"];
+async function handleReachEstimate(userClient: any, body: any) {
+  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const token = await resolveToken(createClient(SUPABASE_URL, SERVICE_KEY), account);
+  const states: string[] = Array.isArray(body.states) ? body.states.map(String) : [];
+  const cities: any[] = Array.isArray(body.cities) ? body.cities : [];
+  const geo: Record<string, any> = { location_types: ["frequently_in", "home", "recent"] };
+  const regionKeys = states.length ? await resolveRegionKeys(states, token) : [];
+  if (regionKeys.length) geo.regions = regionKeys.map((key) => ({ key }));
+  const cityList = cities.filter((c) => /^\d+$/.test(String(c?.key))).slice(0, 30).map((c) => ({ key: String(c.key), radius: Math.min(Math.max(Number(c.radius) || 17, 10), 80), distance_unit: "kilometer" }));
+  if (cityList.length) geo.cities = cityList;
+  if (!geo.regions && !geo.cities) geo.countries = ["NG"];
+  const ints = (Array.isArray(body.interests) ? body.interests : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name ?? "") }));
+  const behs = (Array.isArray(body.behaviors) ? body.behaviors : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name ?? "") }));
+  const spec: Record<string, any> = {
+    geo_locations: geo,
+    age_min: Math.min(Math.max(Number(body.age_min) || 18, 13), 65),
+    age_max: Math.min(Math.max(Number(body.age_max) || 65, 13), 65),
+    genders: GENDER_CODES[String(body.gender ?? "all")] ?? [1, 2],
+    publisher_platforms: ["facebook", "instagram"],
+  };
+  if (ints.length || behs.length) spec.flexible_spec = [{ ...(ints.length ? { interests: ints } : {}), ...(behs.length ? { behaviors: behs } : {}) }];
+  const goal = REACH_GOALS.includes(body.optimization_goal) ? body.optimization_goal : "CONVERSATIONS";
+  const d = await graphGet(`act_${actId}/delivery_estimate`, { optimization_goal: goal, targeting_spec: JSON.stringify(spec) }, token);
+  const row = d?.data?.[0];
+  return {
+    ok: true, ready: row?.estimate_ready !== false,
+    lower: row?.estimate_mau_lower_bound ?? null, upper: row?.estimate_mau_upper_bound ?? null,
+    states_resolved: regionKeys.length,
+  };
+}
+
 // -- AI inbox + push --
 // An inbox row is the AI speaking first: it shows up in the person's AI chat tab, and a push
 // tells them to look. The unique (profile_id, dedupe_key) index means each thing is announced once.
@@ -608,6 +668,8 @@ Deno.serve(async (req: Request) => {
     if (body.action === "set_ad_message") return json(await handleSetAdMessage(userClient, body));
     if (body.action === "set_status") return json(await handleSetStatus(userClient, profile, body));
     if (body.action === "set_budget") return json(await handleSetBudget(userClient, profile, body));
+    if (body.action === "targeting_search") return json(await handleTargetingSearch(userClient, body));
+    if (body.action === "reach_estimate") return json(await handleReachEstimate(userClient, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e: any) {
     const status = e instanceof HttpError ? e.status : 500;

@@ -552,19 +552,32 @@ async function buildTargetingFromConfig(config: any, destinationType: "website" 
     device_platforms: devicePlatforms.length ? devicePlatforms : basePlacements.device_platforms,
   };
 
+  // Where: states (Meta regions) and/or cities (with a radius). Nothing resolvable -> nationwide.
+  const geo: Record<string, any> = { location_types: ["frequently_in", "home", "recent"] };
   if (config.geo_type === "states" && config.states?.length) {
     const resolvedStates = await resolveStateRegionKeys(config.states);
-    if (resolvedStates.length) {
-      targeting.geo_locations = {
-        regions: resolvedStates.map((s) => ({ key: s.key })),
-        location_types: ["frequently_in", "home", "recent"],
-      };
-    } else {
-      console.warn(`Ad set "${config.label}" specified states but none resolved -- falling back to nationwide (NG).`);
-      targeting.geo_locations = { countries: ["NG"], location_types: ["frequently_in", "home", "recent"] };
-    }
-  } else {
-    targeting.geo_locations = { countries: ["NG"], location_types: ["frequently_in", "home", "recent"] };
+    if (resolvedStates.length) geo.regions = resolvedStates.map((s) => ({ key: s.key }));
+  }
+  if (config.geo_type === "states" && Array.isArray(config.cities) && config.cities.length) {
+    const cities = config.cities
+      .filter((c: any) => /^\d+$/.test(String(c?.key)))
+      .map((c: any) => ({ key: String(c.key), radius: Math.min(Math.max(Number(c.radius) || 17, 10), 80), distance_unit: "kilometer" }));
+    if (cities.length) geo.cities = cities;
+  }
+  if (!geo.regions && !geo.cities) {
+    if (config.geo_type === "states") console.warn(`Ad set "${config.label}" specified places but none resolved -- falling back to nationwide (NG).`);
+    geo.countries = ["NG"];
+  }
+  targeting.geo_locations = geo;
+
+  // Who: interests / behaviors (one OR-group, so "business owners + students" reaches either). Detailed
+  // targeting is only a hard filter when Advantage+ expansion is off, so it is switched off whenever
+  // any are chosen -- otherwise Meta may show the ad to anyone.
+  const pick = (arr: any) => (Array.isArray(arr) ? arr : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name ?? "") }));
+  const interests = pick(config.interests), behaviors = pick(config.behaviors);
+  if (interests.length || behaviors.length) {
+    targeting.flexible_spec = [{ ...(interests.length ? { interests } : {}), ...(behaviors.length ? { behaviors } : {}) }];
+    targeting.targeting_automation = { advantage_audience: 0 };
   }
 
   return targeting;
