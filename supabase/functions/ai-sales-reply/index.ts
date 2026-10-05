@@ -31,7 +31,8 @@ type Agent = {
   proof?: string | null; how_to_buy?: string | null; faqs?: string | null; rules?: string | null; opener?: string | null; system_prompt?: string | null;
 };
 type Turn = { role: "user" | "assistant"; content: string; image?: string };
-type Think = { messages: string[]; lead_type: string; stage: string; notify: "none" | "hot_lead" | "needs_human"; reason: string; stop: boolean };
+type Cta = { label: string; url: string };
+type Think = { messages: string[]; lead_type: string; stage: string; notify: "none" | "hot_lead" | "needs_human"; reason: string; stop: boolean; cta: Cta | null };
 
 // ── the brain ────────────────────────────────────────────────────────────────
 
@@ -52,8 +53,10 @@ Reply with ONLY a JSON object, keys in this order:
  "stage": "new" | "qualifying" | "interested" | "objection" | "ready_to_pay" | "paid" | "lost",
  "notify": "none" | "hot_lead" | "needs_human",
  "reason": "one short line for the team",
- "stop_replying": false
+ "stop_replying": false,
+ "cta": null | { "label": "button text, max 20 characters", "url": "https://..." }
 }
+When you send the purchase/website link, put it in "cta" instead of pasting it in the text: the customer then sees a tappable button. Use a link written in the business information exactly as given. Your last message should lead into the button (e.g. tell them what happens when they tap it). Otherwise leave "cta" null.
 Follow the guidance above on when to flag the team. "messages" may be [] only if the customer's message needs no reply at all.`;
 
 async function loadTemplate(admin: any, agent: Agent): Promise<string> {
@@ -127,6 +130,7 @@ async function think(template: string, agent: Agent, turns: Turn[], ctx: { name:
     notify: p.answer_is_in_business_info === false && notify === "none" ? "needs_human" : notify,
     reason: String(p.reason ?? "").slice(0, 200),
     stop: p.stop_replying === true,
+    cta: p.cta && typeof p.cta === "object" && /^https:\/\//i.test(String(p.cta.url ?? "")) ? { label: String(p.cta.label ?? "Open link").trim().slice(0, 20) || "Open link", url: String(p.cta.url).trim() } : null,
   };
 }
 
@@ -232,7 +236,8 @@ async function handleInbound(admin: any, messageId: string) {
       else push("user", text);
     } else {
       const text = (m.content || "").trim();
-      if (!text || ["template", "flow", "url_button"].includes(m.message_type)) { if (m.message_type === "template" || m.message_type === "flow") push("assistant", `[sent: ${text || m.message_type}]`); return; }
+      if (m.message_type === "url_button") { push("assistant", `${m.metadata?.body ?? ""} [button "${m.metadata?.label ?? "link"}" opening ${text}]`.trim()); return; }
+      if (!text || ["template", "flow"].includes(m.message_type)) { if (m.message_type === "template" || m.message_type === "flow") push("assistant", `[sent: ${text || m.message_type}]`); return; }
       push("assistant", text);
     }
   });
@@ -250,23 +255,45 @@ async function handleInbound(admin: any, messageId: string) {
   const source = conv.ad_id || conv.source === "ad" ? "came from a Facebook/Instagram ad (click-to-WhatsApp)" : "messaged directly (not from an ad)";
   const result: Think = await think(await loadTemplate(admin, agent), agent, turns, { name: conv.whatsapp_name || "", source, products, isFirst });
 
+  // a button may only open a link that is written in this business's own profile
+  const known = [agent.offer, agent.how_to_buy, agent.faqs, agent.rules, agent.proof, products].filter(Boolean).join("\n");
+  const cta = result.cta && known.includes(result.cta.url) ? result.cta : null;
+
   // send
-  const sentIds: string[] = [];
-  for (let i = 0; i < result.messages.length; i++) {
-    if (i > 0) await sleep(1200);
-    const text = result.messages[i];
+  const waSend = async (payload: any) => {
     const wa = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, type: "text", text: { body: text } }),
+      body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, ...payload }),
     });
-    const d = await wa.json();
-    if (!wa.ok) { console.error("WhatsApp send failed:", d); return { error: d?.error?.message || "WhatsApp send failed", sent: sentIds.length }; }
-    const waId = d?.messages?.[0]?.id ?? null;
+    return { ok: wa.ok, d: await wa.json() };
+  };
+  const sentIds: string[] = [];
+  const texts = [...result.messages];
+  if (cta && !texts.length) texts.push(cta.label); // a button needs a body line
+  const lastIdx = texts.length - 1;
+  for (let i = 0; i < texts.length; i++) {
+    if (i > 0) await sleep(1200);
+    const text = texts[i];
+    let r: { ok: boolean; d: any };
+    let rowType = "text", rowContent = text, rowMeta: any = { ai: true, stage: result.stage };
+    if (cta && i === lastIdx) {
+      r = await waSend({ type: "interactive", interactive: { type: "cta_url", body: { text }, action: { name: "cta_url", parameters: { display_text: cta.label, url: cta.url } } } });
+      if (r.ok) { rowType = "url_button"; rowContent = cta.url; rowMeta = { ai: true, stage: result.stage, body: text, label: cta.label }; }
+      else { // button refused: fall back to a plain message with the link
+        console.error("cta_url send failed:", r.d);
+        r = await waSend({ type: "text", text: { body: `${text}\n${cta.url}`, preview_url: true } });
+        rowContent = `${text}\n${cta.url}`;
+      }
+    } else {
+      r = await waSend({ type: "text", text: { body: text } });
+    }
+    if (!r.ok) { console.error("WhatsApp send failed:", r.d); return { error: r.d?.error?.message || "WhatsApp send failed", sent: sentIds.length }; }
+    const waId = r.d?.messages?.[0]?.id ?? null;
     sentIds.push(waId ?? "sent");
     await admin.from("messages").insert({
-      conversation_id: conv.id, direction: "outbound", message_type: "text", content: text,
-      wa_message_id: waId, status: "sent", company_id: conv.company_id, metadata: { ai: true, stage: result.stage },
+      conversation_id: conv.id, direction: "outbound", message_type: rowType, content: rowContent,
+      wa_message_id: waId, status: "sent", company_id: conv.company_id, metadata: rowMeta,
     });
   }
 

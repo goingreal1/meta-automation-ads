@@ -5283,6 +5283,7 @@ async function bvAiTestSend() {
     document.getElementById("aiTyping")?.remove();
     if (r.error) throw new Error(r.error);
     (r.messages || []).forEach(m => { bvAiTestHistory.push({ role: "assistant", content: m }); box.insertAdjacentHTML("beforeend", `<div class="ai-b bot">${escH(m)}</div>`); });
+    if (r.cta) box.insertAdjacentHTML("beforeend", `<div class="ai-b bot" style="padding:0;overflow:hidden;"><div style="padding:8px 14px;text-align:center;color:#1a7a5a;font-weight:600;font-size:13px;border-top:1px solid var(--border);">🔗 ${escH(r.cta.label)}</div></div>`);
     const note = r.notify === "hot_lead" ? "🔥 You'd get a hot-lead alert" : r.notify === "needs_human" ? "🙋 It would hand this chat to you" : r.stop ? "⛔ It would stop replying (not a buyer)" : "";
     if (note) box.insertAdjacentHTML("beforeend", `<div class="ai-note">${note}${r.reason ? " — " + escH(r.reason) : ""}</div>`);
     if (!(r.messages || []).length) box.insertAdjacentHTML("beforeend", `<div class="ai-note">(no reply needed)</div>`);
@@ -6029,6 +6030,17 @@ async function renderProducts(el) {
             </div>
           </div>
         </details>
+          <div style="margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:12px;">
+            <div style="font-weight:600;font-size:13px;">🏦 Bank transfer details <span style="font-weight:400;color:var(--muted);">- shown to the customer right after they submit the order form</span></div>
+            <div class="fg" style="margin-top:10px;">
+              <div class="field"><label>Bank</label><input id="p_bank_name" placeholder="e.g. GTBank, Opay, Kuda"></div>
+              <div class="field"><label>Account number</label><input id="p_bank_acct" inputmode="numeric" placeholder="10-digit account number"></div>
+            </div>
+            <div class="field" style="margin-top:11px;"><label>Account name</label><input id="p_bank_name_on" placeholder="Name on the account"></div>
+            <div class="field" style="margin-top:11px;"><label>Note to the customer <span style="font-weight:400;color:var(--muted);">(optional)</span></label><input id="p_pay_note" placeholder="e.g. Send your payment screenshot on WhatsApp after transferring"></div>
+            <label style="display:flex;gap:8px;align-items:center;margin-top:11px;font-size:12.5px;"><input type="checkbox" id="p_is_service"> This is a service (hide the delivery address on the order form)</label>
+          </div>
+
 
         <div class="field" style="margin-top:14px;">
           <label>Package options <span style="font-weight:400;color:var(--muted);">(optional — let customers pick between bundle sizes on the order form instead of a plain quantity count, e.g. "1 piece" / "3-piece bundle")</span></label>
@@ -6111,6 +6123,11 @@ async function renderProducts(el) {
       nafdac_reg_no: document.getElementById("p_nafdac").value || null,
       warmup_message: document.getElementById("p_warmup").value || null,
       order_form_url: document.getElementById("p_order_form_url").value || null,
+      bank_name: document.getElementById("p_bank_name").value.trim() || null,
+      bank_account_number: document.getElementById("p_bank_acct").value.replace(/\D/g, "") || null,
+      bank_account_name: document.getElementById("p_bank_name_on").value.trim() || null,
+      payment_note: document.getElementById("p_pay_note").value.trim() || null,
+      is_service: document.getElementById("p_is_service").checked,
     };
     try {
       if (editingId) {
@@ -6170,6 +6187,11 @@ function bvEditProduct(id) {
   document.getElementById("p_nafdac").value = p.nafdac_reg_no || "";
   document.getElementById("p_warmup").value = p.warmup_message || "";
   document.getElementById("p_order_form_url").value = p.order_form_url || "";
+  document.getElementById("p_bank_name").value = p.bank_name || "";
+  document.getElementById("p_bank_acct").value = p.bank_account_number || "";
+  document.getElementById("p_bank_name_on").value = p.bank_account_name || "";
+  document.getElementById("p_pay_note").value = p.payment_note || "";
+  document.getElementById("p_is_service").checked = !!p.is_service;
   document.getElementById("prodFormTitle").textContent = `Editing: ${p.product_name}`;
   document.getElementById("prodSubmitBtn").textContent = "Save changes";
   document.getElementById("prodCancelEdit").style.display = "";

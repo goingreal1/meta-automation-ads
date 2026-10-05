@@ -39,6 +39,7 @@ Deno.serve(async (req: Request) => {
         id, product_name, currency, default_order_value_naira, is_active,
         description, benefits, safety_notes, nafdac_reg_no, product_image_url,
         destination_type, whatsapp_number,
+        is_service, bank_name, bank_account_number, bank_account_name, payment_note,
         ad_accounts(meta_pixel_id)
       `)
       .eq("id", id)
@@ -69,6 +70,11 @@ Deno.serve(async (req: Request) => {
     product_image_url: product.product_image_url,
     destination_type: product.destination_type,
     whatsapp_number: product.whatsapp_number,
+    is_service: !!product.is_service,
+    bank_name: product.bank_name,
+    bank_account_number: product.bank_account_number,
+    bank_account_name: product.bank_account_name,
+    payment_note: product.payment_note,
     meta_pixel_id: (product as any).ad_accounts?.meta_pixel_id ?? null,
     tiers: tiers ?? [],
   });
