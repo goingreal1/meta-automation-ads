@@ -7,6 +7,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //
 //   POST { action: "list", ad_account_id, range }            -> rows at all 3 levels
 //   POST { action: "balances", ad_account_id? }              -> live prepaid balance per ad account
+//   POST { action: "set_ad_message", ad_account_id, ad_ids, greeting, prefill } -> change the WhatsApp greeting + pre-filled message on live ads
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
 //   POST { action: "daily", since, until, ad_account_id? }   -> per ad set per day, every account you can see
 //   POST { action: "auto_kill", dry_run? } + header x-cron-secret -> scheduled sweep (dry_run previews, pauses nothing)
@@ -184,12 +185,24 @@ async function getAccount(userClient: any, adAccountId: string) {
   return { account, actId };
 }
 
+// -- WhatsApp greeting + pre-filled message of a Click-to-WhatsApp ad --
+// Meta returns page_welcome_message as a JSON string.
+function readWaMessage(creative: any): { greeting: string; prefill: string } | null {
+  const raw = creative?.object_story_spec?.link_data?.page_welcome_message;
+  if (!raw) return null;
+  try {
+    const p = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const m = p?.text_format?.message;
+    return { greeting: String(m?.text ?? ""), prefill: String(m?.autofill_message?.content ?? "") };
+  } catch { return null; }
+}
+
 // -- list --
 async function loadAccountObjects(actId: string, token: string, range: string, needLifetimeAds: boolean) {
   const [campaigns, adsets, ads, cIns, sIns, aIns, aLife] = await Promise.all([
     graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time" }, token),
     graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,destination_type,created_time" }, token),
-    graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{thumbnail_url}" }, token),
+    graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,thumbnail_url,object_story_spec}" }, token),
     insightsByLevel(actId, "campaign", range, token),
     insightsByLevel(actId, "adset", range, token),
     insightsByLevel(actId, "ad", range, token),
@@ -242,6 +255,8 @@ async function handleList(userClient: any, profile: any, body: any) {
       id: a.id, name: a.name, adset_id: a.adset_id, campaign_id: a.campaign_id, status: a.status,
       effective_status: a.effective_status, kind, created_time: a.created_time,
       thumbnail_url: a.creative?.thumbnail_url ?? null,
+      wa_greeting: readWaMessage(a.creative)?.greeting ?? null,
+      wa_prefill: readWaMessage(a.creative)?.prefill ?? null,
       ...m, ...withResults(kind, m), suggestion,
     };
   });
@@ -322,6 +337,60 @@ async function handleBalances(userClient: any, body: any) {
     return r.status === "fulfilled" ? r.value : { id: a.id, name: a.nickname, error: String((r.reason as any)?.message ?? r.reason) };
   });
   return { ok: true, fetched_at: new Date().toISOString(), accounts: rows };
+}
+
+// -- set_ad_message --
+// A live ad's creative can't be edited in place, so each ad gets a fresh creative that is an exact copy of
+// its current one with only the WhatsApp greeting + pre-filled message replaced, then the ad is pointed at it.
+// Meta may re-review the ad afterwards (usually minutes). Verified against Meta with validate_only first.
+const MAX_ADS_PER_MESSAGE_EDIT = 20;
+async function handleSetAdMessage(userClient: any, body: any) {
+  const greeting = String(body.greeting ?? "").trim();
+  const prefill = String(body.prefill ?? "").trim();
+  if (!greeting || !prefill) throw new HttpError(400, "Type both the greeting and the pre-filled message.");
+  if (greeting.length > 300) throw new HttpError(400, "The greeting can be at most 300 characters (Meta's limit).");
+  if (prefill.length > 1000) throw new HttpError(400, "The pre-filled message can be at most 1000 characters.");
+  const adIds: string[] = Array.isArray(body.ad_ids) ? [...new Set(body.ad_ids.map(String))] as string[] : [];
+  if (!adIds.length || adIds.some((i) => !/^\d+$/.test(i))) throw new HttpError(400, "ad_ids must be a list of ad ids.");
+  if (adIds.length > MAX_ADS_PER_MESSAGE_EDIT) throw new HttpError(400, `Change at most ${MAX_ADS_PER_MESSAGE_EDIT} ads at a time.`);
+  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const token = await resolveToken(admin, account);
+
+  const welcome = {
+    type: "VISUAL_EDITOR", version: 2, landing_screen_type: "welcome_message", media_type: "text",
+    text_format: { customer_action_type: "autofill_message", message: { text: greeting, autofill_message: { content: prefill } } },
+  };
+  const results = await Promise.allSettled(adIds.map(async (adId) => {
+    const ad = await graphGet(adId, { fields: "account_id,name,creative{id,name,object_story_spec}" }, token);
+    if (String(ad.account_id ?? "").replace(/^act_/, "") !== actId) throw new HttpError(403, "That ad is not in this ad account.");
+    const spec = ad.creative?.object_story_spec;
+    if (!spec?.link_data || !spec.link_data.page_welcome_message) throw new HttpError(400, "This is not a Click-to-WhatsApp ad, so it has no WhatsApp message to change.");
+    const newSpec = structuredClone(spec);
+    delete newSpec.link_data.picture; // Meta rejects picture together with image_hash
+    newSpec.link_data.page_welcome_message = welcome;
+    const cRes = await fetch(`${GRAPH}/act_${actId}/adcreatives`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${String(ad.creative?.name ?? ad.name).slice(0, 150)}-msg-${Date.now()}`,
+        object_story_spec: newSpec, contextual_multi_ads: { enroll_status: "OPT_OUT" }, access_token: token,
+      }),
+    });
+    const cData = await cRes.json();
+    if (!cData.id) throw new HttpError(502, cData?.error?.error_user_msg || cData?.error?.message || "Meta could not create the new message.");
+    const uRes = await fetch(`${GRAPH}/${adId}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creative: { creative_id: cData.id }, access_token: token }),
+    });
+    const uData = await uRes.json();
+    if (!uRes.ok || uData.error || uData.success === false) throw new HttpError(502, uData?.error?.error_user_msg || uData?.error?.message || "Meta refused to update the ad.");
+    // Report what Meta says now.
+    const after = await graphGet(adId, { fields: "effective_status,creative{id,object_story_spec}" }, token);
+    const msg = readWaMessage(after.creative);
+    return { id: adId, name: ad.name, effective_status: after.effective_status, wa_greeting: msg?.greeting ?? null, wa_prefill: msg?.prefill ?? null };
+  }));
+  const out = results.map((r, i) => r.status === "fulfilled" ? { ok: true, ...r.value } : { ok: false, id: adIds[i], error: String((r.reason as any)?.message ?? r.reason) });
+  return { ok: out.every((x: any) => x.ok), results: out };
 }
 
 // -- set_status --
@@ -447,6 +516,7 @@ Deno.serve(async (req: Request) => {
     if (body.action === "list") return json(await handleList(userClient, profile, body));
     if (body.action === "daily") return json(await handleDaily(userClient, body));
     if (body.action === "balances") return json(await handleBalances(userClient, body));
+    if (body.action === "set_ad_message") return json(await handleSetAdMessage(userClient, body));
     if (body.action === "set_status") return json(await handleSetStatus(userClient, profile, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e: any) {

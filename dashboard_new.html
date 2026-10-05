@@ -825,6 +825,11 @@ html{-webkit-text-size-adjust:100%;}
 
 
 /* ── NAMES + VIEW ALL (builder) ─────────────────────────────────────────── */
+.bv-wa-box{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:12px;}
+.am-table.ads .am-row{grid-template-columns:34px 56px minmax(220px,1fr) 124px 270px 140px 150px 100px 86px 100px 112px 92px 70px;min-width:1640px;}
+.am-c-msg{display:flex;align-items:center;gap:8px;min-width:0;}
+.am-msg-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12.5px;min-width:0;}
+.am-msg-edit{cursor:pointer;color:var(--accent);font-weight:600;font-size:12px;white-space:nowrap;flex-shrink:0;}
 .bv-listrow{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;background:var(--panel);}
 .bv-listrow:hover{border-color:var(--accent);background:var(--accentBg);}
 .bv-listnum{width:26px;height:26px;border-radius:50%;background:var(--panel2);color:var(--muted);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -924,7 +929,7 @@ html{-webkit-text-size-adjust:100%;}
   .am-row{display:block;min-width:0;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel);}
   .am-row.flag{background:var(--warnBg);border-color:var(--warnBdr);}
   .am-head{display:none;}
-  .am-top{display:grid;grid-template-columns:auto auto 1fr;grid-template-areas:"chk sw name" ". . st";align-items:center;column-gap:10px;row-gap:4px;}
+  .am-top{display:grid;grid-template-columns:auto auto 1fr;grid-template-areas:"chk sw name" ". . st" "msg msg msg";align-items:center;column-gap:10px;row-gap:4px;}
   .am-c{padding:0;}
   .am-c-chk{grid-area:chk;}
   .am-c-sw{grid-area:sw;}
@@ -940,6 +945,10 @@ html{-webkit-text-size-adjust:100%;}
   .am-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
   .am-metrics .am-c::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px;}
   .am-metrics .am-c b{font-size:15px;}
+  .am-top .am-c-msg{grid-area:msg;flex-wrap:wrap;align-items:flex-start;margin-top:4px;}
+  .am-top .am-c-msg .am-msg-t{white-space:normal;}
+  .am-top .am-c-msg::before{content:attr(data-label);flex-basis:100%;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
+  .am-table.ads .am-row{min-width:0;}
   .am-flagline{padding:10px 0 0;}
   .am-foot .am-c-name{grid-area:name;}
   .kr-block .fg{grid-template-columns:1fr !important;}
@@ -2088,6 +2097,8 @@ function bvOnDestinationChange() {
   const ctaSelect = document.getElementById("f_cta");
   const ctaNote = document.getElementById("f_ctaNote");
   if (ctaSelect) ctaSelect.disabled = isWhatsapp;
+  const waBox = document.getElementById("f_waMsgBox");
+  if (waBox) waBox.style.display = isWhatsapp ? "" : "none";
   if (ctaNote) ctaNote.innerHTML = isWhatsapp ? `Ignored for WhatsApp ads — Meta uses its own "Send Message" button automatically.` : "";
   bvRenderAdSetRows();
   bvRenderBuilderSummary();
@@ -2395,7 +2406,14 @@ function bvOpenCampaignBuilder(presetObjective) {
               <div class="bv-section-card-title"><span class="bv-ico">✏️</span> Ad copy</div>
               <div class="field" style="margin-bottom:14px;"><label>Ad name <span style="font-weight:400;color:var(--muted);">(optional — shown on Meta exactly as you type it)</span></label>
                 <input id="f_ad_name" maxlength="120" placeholder="e.g. Mama Ngozi testimonial video"></div>
-              <div class="field"><label>Primary text (ad copy) *</label>
+              <div id="f_waMsgBox" class="bv-wa-box">
+                <div class="field"><label>WhatsApp greeting <span style="font-weight:400;color:var(--muted);">(what the customer sees when the chat opens · max 300)</span></label>
+                  <textarea id="f_wa_greeting" rows="2" maxlength="300" placeholder="e.g. Hi! 👋 Thanks for clicking our ad. Which package are you interested in?"></textarea></div>
+                <div class="field" style="margin-top:12px;"><label>Pre-filled message <span style="font-weight:400;color:var(--muted);">(already typed in the customer's message box · max 500)</span></label>
+                  <textarea id="f_wa_prefill" rows="2" maxlength="500" placeholder="e.g. Hi, I want to know more about your media buying service"></textarea></div>
+                <div style="font-size:11px;color:var(--muted);margin-top:6px;">Meta uses exactly what you type here. Left blank, a neutral line is used ("Hi, I saw your ad and I'd like to know more.") — never the campaign name.</div>
+              </div>
+              <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
                 <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
               </div>
               <div class="fg" style="margin-top:14px;">
@@ -2472,6 +2490,7 @@ function bvOpenCampaignBuilder(presetObjective) {
         file: currentFile || null,
         reuse_asset: bvReuseAsset,
         ad_name: document.getElementById("f_ad_name").value.trim(),
+        ...bvFormWa(),
         primary_text: currentPrimary,
         headline: document.getElementById("f_headline").value.trim(),
         description: document.getElementById("f_desc").value.trim(),
@@ -2556,6 +2575,11 @@ function bvOpenReviewModal(copies) {
         <div>${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} × ${copies.length} ad cop${copies.length === 1 ? "y" : "ies"} = <b>${totalAds} ad${totalAds === 1 ? "" : "s"}</b> total</div>
         <div>₦${totalBudget.toLocaleString()}/day total budget</div>
         <div style="color:var(--muted);">Ad sets: ${bvAdSetRows.map(r => escH(bvAdSetName(r)) + ((r.display_name || "").trim() ? "" : " <i>(auto)</i>")).join(" · ")}</div>
+        ${isWhatsapp ? (() => {
+          const g = [...new Set(copies.map(c => (c.wa_greeting || "").trim()))], p = [...new Set(copies.map(c => (c.wa_prefill || "").trim()))];
+          const show = (arr, dflt) => arr.length > 1 ? "<i>varies by ad</i>" : (arr[0] ? "“" + escH(arr[0]) + "”" : "<i>" + dflt + "</i>");
+          return `<div style="color:var(--muted);">Chat opens with: ${show(g, "neutral default greeting")}</div><div style="color:var(--muted);">Pre-filled message: ${show(p, "neutral default message")}</div>`;
+        })() : ""}
         <div style="color:var(--muted);">Ads: ${copies.map((c, n) => bvAdName(c) ? escH(bvAdName(c)) : `Ad ${n + 1} <i>(auto)</i>`).join(" · ")}</div>
       </div>
       <div class="field" style="margin-top:14px;"><label>Schedule for (optional)</label>
@@ -2614,7 +2638,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       // instead of N separate campaigns.
       const launchBatchId = copies.length > 1 ? crypto.randomUUID() : null;
       const assetIds = [];
-      const assetNames = [];
+      const assetExtras = [];
       for (const copy of copies) {
         if (copy.reuse_asset) {
           // Reusing an existing creative's media -- clone the storage
@@ -2638,7 +2662,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
             uploaded_at: new Date().toISOString(),
           }).select('id').single();
           if (cloneErr) throw new Error(`"${copy.reuse_asset.file_name}" (reused): ${cloneErr.message}`);
-          if (cloned?.id) { assetIds.push(cloned.id); assetNames.push((copy.ad_name || "").trim()); }
+          if (cloned?.id) { assetIds.push(cloned.id); assetExtras.push(copy); }
           continue;
         }
 
@@ -2660,14 +2684,22 @@ async function bvExecuteLaunch(copies, scheduledIso) {
         });
         const r = await res.json();
         if (r.error) throw new Error(`"${copy.file.name}": ${r.error}`);
-        if (r.asset?.id) { assetIds.push(r.asset.id); assetNames.push((copy.ad_name || "").trim()); }
+        if (r.asset?.id) { assetIds.push(r.asset.id); assetExtras.push(copy); }
       }
       if (!assetIds.length) throw new Error("No ad copies uploaded successfully.");
       // Names typed in the builder -- the launch uses them exactly as written.
+      // ...and so are the WhatsApp greeting / pre-filled message (WhatsApp ads only).
       for (let k = 0; k < assetIds.length; k++) {
-        if (!assetNames[k]) continue;
-        const { error: nameErr } = await supabaseClient.from('creative_assets').update({ ad_name: assetNames[k] }).eq('id', assetIds[k]);
-        if (nameErr) throw new Error(`Could not save the name "${assetNames[k]}": ${nameErr.message}`);
+        const c = assetExtras[k] || {};
+        const upd = {};
+        if ((c.ad_name || "").trim()) upd.ad_name = c.ad_name.trim();
+        if (isWhatsapp) {
+          if ((c.wa_greeting || "").trim()) upd.whatsapp_greeting = c.wa_greeting.trim();
+          if ((c.wa_prefill || "").trim()) upd.whatsapp_prefill = c.wa_prefill.trim();
+        }
+        if (!Object.keys(upd).length) continue;
+        const { error: nameErr } = await supabaseClient.from('creative_assets').update(upd).eq('id', assetIds[k]);
+        if (nameErr) throw new Error(`Could not save the names/messages for an ad: ${nameErr.message}`);
       }
 
       const endDate = document.getElementById("f_end_date").value;
@@ -2754,6 +2786,7 @@ function bvStageAdCopy() {
     file: file || null,
     reuse_asset: bvReuseAsset,
     ad_name: bvNextName(document.getElementById("f_ad_name")?.value.trim() || "", bvUsedAdNames().slice(0, -1)),
+    ...bvFormWa(),
     primary_text,
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -2852,6 +2885,7 @@ function bvConfirmDuplicateAd() {
     file: file || null,
     reuse_asset: bvReuseAsset,
     ad_name: document.getElementById("f_ad_name").value.trim(),
+    ...bvFormWa(),
     primary_text: document.getElementById("f_primary").value.trim(),
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -2894,6 +2928,7 @@ function bvQuickDuplicateAd() {
     file: file || null,
     reuse_asset: bvReuseAsset,
     ad_name: bvNextName(document.getElementById("f_ad_name").value.trim(), bvUsedAdNames()),
+    ...bvFormWa(),
     primary_text: primary,
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -3207,6 +3242,8 @@ function bvRefreshAdSetEdit() {
 
 // ── ad copies ──
 const bvAdName = c => (c.ad_name || "").trim();
+const bvIsWhatsappDest = () => document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+const bvFormWa = () => ({ wa_greeting: document.getElementById("f_wa_greeting")?.value.trim() || "", wa_prefill: document.getElementById("f_wa_prefill")?.value.trim() || "" });
 
 // The copy currently typed into the form (not staged yet), or null.
 function bvAdCurrentCopy() {
@@ -3217,6 +3254,7 @@ function bvAdCurrentCopy() {
     file: file || null,
     reuse_asset: bvReuseAsset,
     ad_name: document.getElementById("f_ad_name")?.value.trim() || "",
+    ...bvFormWa(),
     primary_text: primary,
     headline: document.getElementById("f_headline").value.trim(),
     description: document.getElementById("f_desc").value.trim(),
@@ -3287,6 +3325,13 @@ function bvOpenAdEdit(i) {
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">Pick a file only if you want to replace this ad's image or video.</div></div>
     <div class="field" style="margin-top:12px;"><label>Primary text</label>
       <textarea rows="5" oninput="bvUpdateStagedCopy(${i}, 'primary_text', this.value)">${escH(c.primary_text || "")}</textarea></div>
+    ${bvIsWhatsappDest() ? `
+    <div class="bv-wa-box" style="margin-top:12px;">
+      <div class="field"><label>WhatsApp greeting <span style="font-weight:400;color:var(--muted);">(max 300)</span></label>
+        <textarea rows="2" maxlength="300" oninput="bvUpdateStagedCopy(${i}, 'wa_greeting', this.value)">${escH(c.wa_greeting || "")}</textarea></div>
+      <div class="field" style="margin-top:12px;"><label>Pre-filled message <span style="font-weight:400;color:var(--muted);">(max 500)</span></label>
+        <textarea rows="2" maxlength="500" oninput="bvUpdateStagedCopy(${i}, 'wa_prefill', this.value)">${escH(c.wa_prefill || "")}</textarea></div>
+    </div>` : ""}
     <div class="fg" style="margin-top:12px;">
       <div class="field"><label>Headline</label><input value="${escH(c.headline || "")}" oninput="bvUpdateStagedCopy(${i}, 'headline', this.value)"></div>
       <div class="field"><label>Description</label><input value="${escH(c.description || "")}" oninput="bvUpdateStagedCopy(${i}, 'description', this.value)"></div>
@@ -3819,6 +3864,7 @@ function bvBackToCampaign() {
 // pauses/resumes on Meta itself (via the ads-manager edge function).
 const AM_RANGES = [["today", "Today"], ["yesterday", "Yesterday"], ["last3", "Last 3 days"], ["last7", "Last 7 days"], ["last30", "Last 30 days"], ["lifetime", "Lifetime"]];
 const AM_STALE_MS = 90 * 1000;
+const amAdById = id => am.data?.ads?.find(a => a.id === id);
 const AM_SINGULAR = { campaigns: "campaign", adsets: "adset", ads: "ad" };
 let am = {
   data: null, key: "", loading: false, error: null, at: 0, req: 0,
@@ -3962,6 +4008,9 @@ function amRowHtml(level, r) {
         <div class="am-c am-c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)"><span class="sw-track"></span></label></div>
         <div class="am-c am-c-name">${thumb}<div class="am-name">${next ? `<a class="am-link" onclick="amDrill('${level}','${r.id}')" title="${next}">${nameInner}</a>` : nameInner}</div></div>
         <div class="am-c am-c-st">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div>
+        ${level === "ads" ? `<div class="am-c am-c-msg" data-label="WhatsApp message">${r.wa_prefill != null
+          ? `<span class="am-msg-t" title="${escH("Greeting: " + (r.wa_greeting || "—") + "\nPre-filled: " + (r.wa_prefill || "—"))}">${escH(r.wa_prefill || "—")}</span><a class="am-msg-edit" onclick="amOpenMsgEdit('${r.id}')" title="Change the greeting and pre-filled message on Meta">✎ Edit</a>`
+          : `<span style="color:var(--muted);">—</span>`}</div>` : ""}
       </div>
       <div class="am-metrics">
         <div class="am-c am-c-res" data-label="${escH(r.result_label || "Results")}"><b>${amFmtResult(r)}</b></div>
@@ -4056,13 +4105,13 @@ function amDraw() {
     <div class="am-row am-head">
       <div class="am-top">
         <div class="am-c am-c-chk">${lvl !== "ads" ? `<input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('${lvl}',this.checked)" aria-label="Select all">` : ""}</div>
-        <div class="am-c am-c-sw"></div><div class="am-c am-c-name">${lvl === "campaigns" ? "Campaign" : lvl === "adsets" ? "Ad set" : "Ad"}</div><div class="am-c am-c-st">Delivery</div>
+        <div class="am-c am-c-sw"></div><div class="am-c am-c-name">${lvl === "campaigns" ? "Campaign" : lvl === "adsets" ? "Ad set" : "Ad"}</div><div class="am-c am-c-st">Delivery</div>${lvl === "ads" ? '<div class="am-c am-c-msg">WhatsApp message</div>' : ""}
       </div>
       <div class="am-metrics"><div class="am-c am-c-res">${escH(hl.res)}</div><div class="am-c am-c-cpr">${escH(hl.cpr)}</div><div class="am-c am-c-spend">Spent</div><div class="am-c am-c-reach">Reach</div><div class="am-c am-c-freq">Frequency</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
     </div>`;
   const foot = rows.length ? `
     <div class="am-row am-foot">
-      <div class="am-top"><div class="am-c am-c-chk"></div><div class="am-c am-c-sw"></div><div class="am-c am-c-name">Total · ${rows.length} ${lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad"}${rows.length === 1 ? "" : "s"}</div><div class="am-c am-c-st"></div></div>
+      <div class="am-top"><div class="am-c am-c-chk"></div><div class="am-c am-c-sw"></div><div class="am-c am-c-name">Total · ${rows.length} ${lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad"}${rows.length === 1 ? "" : "s"}</div><div class="am-c am-c-st"></div>${lvl === "ads" ? '<div class="am-c am-c-msg"></div>' : ""}</div>
       <div class="am-metrics">
         <div class="am-c am-c-res" data-label="${escH(tot.label || "Results")}"><b>${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</b></div>
         <div class="am-c am-c-cpr" data-label="${escH(hl.cpr)}"><b>${tot.cpr != null ? fN(tot.cpr) : "—"}</b></div>
@@ -4076,11 +4125,74 @@ function amDraw() {
     </div>` : "";
 
   const body = rows.length
-    ? `<div class="am-table">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
+    ? `<div class="am-table${lvl === "ads" ? " ads" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
     : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
 
   root.innerHTML = `${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${body}
     <div class="am-stamp">Live from Meta · updated ${ago(new Date(am.at).toISOString())} · switches pause/resume on Meta itself</div>`;
+}
+
+// ── change the WhatsApp greeting + pre-filled message of live ads ──
+function amOpenMsgEdit(adId) {
+  const ad = amAdById(adId); if (!ad) return;
+  const wa = am.data.ads.filter(a => a.wa_prefill != null);
+  const sameSet = wa.filter(a => a.adset_id === ad.adset_id);
+  const sameCamp = wa.filter(a => a.campaign_id === ad.campaign_id);
+  const sameMsg = wa.filter(a => a.wa_prefill === ad.wa_prefill && a.wa_greeting === ad.wa_greeting);
+  const opt = (v, label, n) => n > 1 || v === "one" ? `<option value="${v}">${label}${v === "one" ? "" : ` (${n})`}</option>` : "";
+  bvOpenSheet("amMsgOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('amMsgOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:4px;">WhatsApp message</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">${escH(ad.name)}</div>
+    <div class="field"><label>Greeting <span style="font-weight:400;color:var(--muted);">(what the customer sees when the chat opens · max 300)</span></label>
+      <textarea id="amMsgGreeting" rows="3" maxlength="300">${escH(ad.wa_greeting || "")}</textarea></div>
+    <div class="field" style="margin-top:12px;"><label>Pre-filled message <span style="font-weight:400;color:var(--muted);">(already typed in the customer's message box · max 1000)</span></label>
+      <textarea id="amMsgPrefill" rows="3" maxlength="1000">${escH(ad.wa_prefill || "")}</textarea></div>
+    <div class="field" style="margin-top:12px;"><label>Apply to</label>
+      <select id="amMsgScope">
+        ${opt("one", "Only this ad", 1)}${opt("set", "All WhatsApp ads in this ad set", sameSet.length)}${opt("camp", "All WhatsApp ads in this campaign", sameCamp.length)}${opt("same", "All ads with the same message as this one", sameMsg.length)}
+      </select></div>
+    <div style="font-size:11.5px;color:var(--warn);background:var(--warnBg);border:1px solid var(--warnBdr);border-radius:8px;padding:9px 11px;margin-top:12px;">
+      Meta can't edit a running ad's message in place, so each ad gets a new copy of itself with the new message. Meta may re-check the ad for a few minutes; its history and numbers stay on the same ad.</div>
+    <div id="amMsgResult" style="margin-top:10px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button type="button" class="btn btn-g" onclick="bvCloseSheet('amMsgOverlay')">Cancel</button>
+      <button type="button" class="btn btn-a" id="amMsgSave" onclick="amSaveMsg('${adId}')">Save on Meta</button>
+    </div>`, 560);
+}
+
+async function amSaveMsg(adId) {
+  const ad = amAdById(adId); if (!ad) return;
+  const greeting = document.getElementById("amMsgGreeting").value.trim();
+  const prefill = document.getElementById("amMsgPrefill").value.trim();
+  const out = document.getElementById("amMsgResult");
+  if (!greeting || !prefill) { out.innerHTML = `<div class="msg err" style="display:block;">Type both the greeting and the pre-filled message.</div>`; return; }
+  const scope = document.getElementById("amMsgScope").value;
+  const wa = am.data.ads.filter(a => a.wa_prefill != null);
+  const targets = scope === "set" ? wa.filter(a => a.adset_id === ad.adset_id)
+    : scope === "camp" ? wa.filter(a => a.campaign_id === ad.campaign_id)
+    : scope === "same" ? wa.filter(a => a.wa_prefill === ad.wa_prefill && a.wa_greeting === ad.wa_greeting)
+    : [ad];
+  if (targets.length > 20) { out.innerHTML = `<div class="msg err" style="display:block;">That is ${targets.length} ads — change at most 20 at a time.</div>`; return; }
+  const btn = document.getElementById("amMsgSave");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Saving…';
+  out.innerHTML = "";
+  const r = await amCall({ action: "set_ad_message", ad_account_id: activeAccountId, ad_ids: targets.map(t => t.id), greeting, prefill });
+  btn.disabled = false; btn.textContent = "Save on Meta";
+  if (!r || r.results == null) { out.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(r?.error || "Could not reach Meta.")}</div>`; return; }
+  for (const x of r.results) {
+    const row = amAdById(x.id);
+    if (x.ok && row) { row.wa_greeting = x.wa_greeting; row.wa_prefill = x.wa_prefill; row.effective_status = x.effective_status; }
+  }
+  const failed = r.results.filter(x => !x.ok);
+  amDraw();
+  if (!failed.length) {
+    bvCloseSheet("amMsgOverlay");
+    bvToast(`Message updated on Meta for ${r.results.length} ad${r.results.length === 1 ? "" : "s"}.`);
+    amQuietRefresh();
+  } else {
+    out.innerHTML = `<div class="msg err" style="display:block;">❌ ${failed.length} of ${r.results.length} ads could not be changed:<br>${failed.map(f => escH((amAdById(f.id)?.name || f.id) + " — " + f.error)).join("<br>")}</div>`;
+  }
 }
 
 function amSetLevel(l) { am.level = l; amDraw(); }
