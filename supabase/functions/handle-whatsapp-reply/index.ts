@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createPushFromEnv } from "./push.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -75,6 +76,37 @@ async function downloadInboundMedia(supabase: any, token: string, message: any) 
   }
   const { data } = supabase.storage.from("creative-vault").getPublicUrl(path);
   return { url: data?.publicUrl as string, media_type: folder, mime_type: mime, filename: media.filename };
+}
+
+// Phone notification (Web Push) for staff when a customer messages in. Goes to
+// the company's owners/admins/customer care plus the media buyer whose number
+// or ads the chat belongs to; each device can switch "messages" off.
+function pushPreview(type: string, content: string): string {
+  const c = (content || "").replace(/\s+/g, " ").trim();
+  if (type === "image") return "📷 " + (c || "Photo");
+  if (type === "video") return "🎥 " + (c || "Video");
+  if (type === "audio") return "🎤 Voice message";
+  if (type === "document") return "📄 " + (c || "Document");
+  if (type === "sticker") return "Sticker";
+  if (type === "button" || type === "interactive") return "👆 " + c;
+  return c || "New message";
+}
+
+const push = createPushFromEnv();
+
+function notifyInboundMessage(args: { companyId: string; mediaBuyerId: string | null; convId: string; title: string; type: string; content: string }) {
+  const p = push.toAudience(
+    { company_id: args.companyId, roles: ["owner", "admin", "customer_care"], media_buyer_id: args.mediaBuyerId },
+    "messages",
+    {
+      title: args.title,
+      body: pushPreview(args.type, args.content),
+      url: `/dashboard_new.html?open=conv:${args.convId}`,
+      tag: `conv-${args.convId}`,
+    },
+  ).catch((err) => console.error("push (inbound message) failed:", err));
+  // Keep the function alive until the push finishes, without delaying Meta's 200.
+  (globalThis as any).EdgeRuntime?.waitUntil?.(p);
 }
 
 // Any inbound message that isn't an APPROVE/REJECT admin command -- a real
@@ -211,7 +243,18 @@ async function logInboundMessage(supabase: any, change: any, message: any) {
     wa_message_id: message.id || null,
     company_id: numberRow.company_id,
   });
-  if (msgErr) console.error("Failed to insert inbound WhatsApp message:", msgErr);
+  if (msgErr) {
+    console.error("Failed to insert inbound WhatsApp message:", msgErr);
+    return;
+  }
+  notifyInboundMessage({
+    companyId: numberRow.company_id,
+    mediaBuyerId: numberRow.media_buyer_id ?? null,
+    convId: conv.id,
+    title: whatsappName || from,
+    type,
+    content,
+  });
 }
 
 // Receipts can arrive out of order (e.g. "read" before "delivered"), so a
@@ -245,6 +288,11 @@ async function applyStatusUpdates(supabase: any, statuses: any[]) {
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
+
+  // Staff push notifications (PWA): public key, test push, server-to-server sends.
+  // Claims only those requests; Meta's webhook traffic falls through untouched.
+  const pushResponse = await push.handle(req);
+  if (pushResponse) return pushResponse;
 
   // Meta webhook verification handshake (GET)
   if (req.method === "GET") {
