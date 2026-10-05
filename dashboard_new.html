@@ -308,6 +308,20 @@ a{color:inherit;}
 .bv-prevtab{padding:6px 12px;border-radius:16px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;cursor:pointer;color:var(--text2);}
 .bv-prevtab.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
 .bv-prevframe{display:flex;justify-content:center;padding:6px 0;overflow:auto;}
+.bv-prevwrap{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:#fff;}
+.bv-prevload{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:var(--muted);}
+.bv-prevtools{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:6px;}
+.bv-prevtools a{color:var(--accent);text-decoration:underline;}
+.bv-qp-tall{position:relative;width:240px;height:427px;border-radius:14px;overflow:hidden;background:#111;display:flex;align-items:center;justify-content:center;}
+.bv-qp-bg{position:absolute;inset:-20px;background-size:cover;background-position:center;filter:blur(18px) brightness(.7);}
+.bv-qp-tall img{position:relative;width:100%;max-height:100%;object-fit:contain;}
+.bv-qp-top{position:absolute;top:0;left:0;right:0;padding:12px 14px;color:#fff;font:600 13px sans-serif;background:linear-gradient(#0008,transparent);}
+.bv-qp-cta{position:absolute;bottom:14px;left:14px;right:14px;background:#fff;color:#111;border-radius:20px;padding:9px;text-align:center;font:600 13px sans-serif;}
+.bv-qp-feed{width:320px;max-width:100%;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;color:#111;font:13px sans-serif;}
+.bv-qp-hd{padding:10px 12px;font-weight:600;}
+.bv-qp-feed img{width:100%;display:block;aspect-ratio:4/5;object-fit:contain;background:#fff;}
+.bv-qp-cb{padding:10px 12px;border-top:1px solid #eee;display:flex;justify-content:space-between;}
+.bv-qp-tx{padding:0 12px 12px;color:#444;}
 .am-acts{display:flex;gap:10px;margin-top:3px;font-size:11.5px;}
 .am-acts a{color:var(--accent);cursor:pointer;font-weight:600;}
 .bv-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:14px;background:var(--accentBg);border:1px solid var(--accentBdr);font-size:12px;margin:5px 5px 0 0;color:var(--text);}
@@ -4455,7 +4469,8 @@ async function bvShowCreativeDetail(creativeId) {
 
 // ── PREVIEW: how it looks in each Meta placement (Meta's own preview) ──────────
 const BV_PREVIEW_LABELS = { MOBILE_FEED_STANDARD: "📱 Mobile feed", DESKTOP_FEED_STANDARD: "💻 Desktop feed", INSTAGRAM_STANDARD: "Instagram feed", INSTAGRAM_REELS: "Reels", INSTAGRAM_STORY: "Stories" };
-function bvShowPreviewSheet(title, previews, note) {
+function bvShowPreviewSheet(title, previews, note, ctx) {
+  window._bvPrevCtx = ctx || null;
   const ok = previews.filter(p => p.src);
   const want = window.matchMedia("(max-width: 760px)").matches ? "MOBILE_FEED_STANDARD" : "DESKTOP_FEED_STANDARD";
   const first = ok.find(p => p.format === want) || ok[0];
@@ -4465,6 +4480,7 @@ function bvShowPreviewSheet(title, previews, note) {
     <div style="font-size:12px;color:var(--muted);">${escH(title || "")}</div>
     <div class="bv-prevtabs">${previews.map(p => `<button type="button" class="bv-prevtab${first && p.format === first.format ? " on" : ""}" data-f="${p.format}" ${p.src ? "" : "disabled style=\"opacity:.45\""} onclick="bvPreviewTab('${p.format}')">${BV_PREVIEW_LABELS[p.format] || p.format}</button>`).join("")}</div>
     <div class="bv-prevframe" id="bvPrevFrame"></div>
+    <div class="bv-prevtools" id="bvPrevTools"></div>
     <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">This is Meta's own preview of the ad in that spot — what people will really see.${note ? " " + note : ""}</div>`, 560);
   window._bvPreviews = previews;
   if (first) bvPreviewTab(first.format);
@@ -4474,7 +4490,28 @@ function bvPreviewTab(f) {
   document.querySelectorAll("#bvPreviewOverlay .bv-prevtab").forEach(b => b.classList.toggle("on", b.dataset.f === f));
   const p = (window._bvPreviews || []).find(x => x.format === f);
   const box = document.getElementById("bvPrevFrame"); if (!box) return;
-  box.innerHTML = p?.src ? `<iframe src="${escH(p.src)}" width="${p.width}" height="${p.height}" scrolling="no" frameborder="0" style="border:1px solid var(--border);border-radius:12px;max-width:100%;background:#fff;"></iframe>` : `<div class="msg err" style="display:block;">${escH(p?.error || "No preview.")}</div>`;
+  if (!p?.src) { box.innerHTML = `<div class="msg err" style="display:block;">${escH(p?.error || "No preview.")}</div>`; return; }
+  window._bvPrevFmt = f;
+  const avail = Math.max(240, (box.clientWidth || 340) - 4), sc = Math.min(1, avail / p.width);
+  box.innerHTML = `<div class="bv-prevwrap" style="width:${Math.round(p.width * sc)}px;height:${Math.round(p.height * sc)}px;">
+    <div class="bv-prevload"><span class="spin"></span> Loading Meta's preview…</div>
+    <iframe src="${escH(p.src)}" width="${p.width}" height="${p.height}" scrolling="no" frameborder="0" referrerpolicy="no-referrer" onload="this.previousElementSibling.style.display='none'" style="transform:scale(${sc});transform-origin:0 0;border:0;background:#fff;position:relative;"></iframe></div>`;
+  const tools = document.getElementById("bvPrevTools");
+  if (tools) tools.innerHTML = `<span>Image missing or blank?</span>
+    <a href="#" onclick="bvPreviewTab('${f}');return false;">↻ Reload</a>
+    <a href="${escH(p.src)}" target="_blank" rel="noopener">Open Meta's preview in a new tab</a>
+    ${window._bvPrevCtx?.image ? `<a href="#" onclick="bvQuickPreview('${f}');return false;">Quick preview</a>` : ""}`;
+}
+// Our own drawing of the ad in a placement (used when Meta's preview iframe will not paint on a phone browser)
+function bvQuickPreview(f) {
+  const c = window._bvPrevCtx || {}, box = document.getElementById("bvPrevFrame"); if (!box || !c.image) return;
+  const img = escH(c.image), cta = escH(c.cta || "Chat on WhatsApp"), msg = escH((c.message || "").slice(0, 120));
+  const tall = f === "INSTAGRAM_REELS" || f === "INSTAGRAM_STORY";
+  box.innerHTML = tall
+    ? `<div class="bv-qp-tall"><div class="bv-qp-bg" style="background-image:url('${img}')"></div><img src="${img}" alt=""><div class="bv-qp-top">${f === "INSTAGRAM_REELS" ? "Reels" : "Sponsored"}</div><div class="bv-qp-cta">${cta}</div></div>`
+    : `<div class="bv-qp-feed"><div class="bv-qp-hd">Sponsored</div><img src="${img}" alt=""><div class="bv-qp-cb"><b>${cta}</b> ›</div><div class="bv-qp-tx">${msg}</div></div>`;
+  const tools = document.getElementById("bvPrevTools");
+  if (tools) tools.innerHTML = `<span>This is our own drawing, not Meta's.</span><a href="#" onclick="bvPreviewTab('${f}');return false;">Show Meta's preview again</a>`;
 }
 
 async function bvUploadFitted(file) {
@@ -4502,7 +4539,7 @@ async function bvOpenAdPreview() {
       image_url: url, ...src, destination: document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp",
       link: g("f_landing_url")?.value || "", cta: g("f_cta")?.value || "SHOP_NOW" } });
     if (!r?.ok) throw new Error(r?.error || "Meta could not draw a preview.");
-    bvShowPreviewSheet(g("f_campaign_name")?.value || "", r.previews, bvFitState && file.name === bvFitState.fitted.name ? "Your image was fitted so Meta shows all of it." : "");
+    bvShowPreviewSheet(g("f_campaign_name")?.value || "", r.previews, bvFitState && file.name === bvFitState.fitted.name ? "Your image was fitted so Meta shows all of it." : "", { image: url, message: src.message, cta: (document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp") === "whatsapp" ? "Chat on WhatsApp" : "Learn more" });
   } catch (e) {
     bvCloseSheet("bvPreviewOverlay");
     bvToast("Preview failed: " + e.message);
@@ -4514,7 +4551,7 @@ async function amPreviewAd(adId) {
   bvOpenSheet("bvPreviewOverlay", `<button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvPreviewOverlay')">✕</button><div class="ph-title">Preview</div><div class="empty" style="padding:30px;"><span class="spin"></span> Asking Meta to draw this ad…</div>`, 560);
   const r = await amCall({ action: "ad_preview", ad_account_id: activeAccountId, ad_id: adId });
   if (!r?.ok) { bvCloseSheet("bvPreviewOverlay"); bvToast("Preview failed: " + (r?.error || "Meta could not draw it.")); return; }
-  bvShowPreviewSheet(ad?.name || "", r.previews, "");
+  bvShowPreviewSheet(ad?.name || "", r.previews, "", ad?.picture_url ? { image: ad.picture_url, message: ad.primary_text || "", cta: "Chat on WhatsApp" } : null);
 }
 
 // Fix an already-live ad whose image Meta is cropping: re-fit the whole picture and point the ad at it.
