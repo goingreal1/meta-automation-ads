@@ -77,7 +77,6 @@
     ".rv-cd .b strong{display:block;font-family:var(--fh);font-size:30px;line-height:1.1}.rv-cd .b span{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bdb9ad}",
     ".rv-steps{counter-reset:s}.rv-step{position:relative;padding:0 0 0 64px;margin:0 0 26px}.rv-step::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;width:44px;height:44px;border-radius:50%;background:var(--p);color:#fff;font-weight:800;font-size:19px;display:flex;align-items:center;justify-content:center}",
     ".rv-stat{text-align:center}.rv-stat strong{display:block;font-family:var(--fh);font-size:clamp(30px,5vw,46px);font-weight:800;color:var(--p);line-height:1.1}.rv-stat span{color:var(--ink2);font-size:15px}",
-    ".rv-video{position:relative;padding-bottom:56.25%;height:0;border-radius:calc(var(--r) + 6px);overflow:hidden;background:#14130f}.rv-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}",
     ".rv-guar{display:flex;gap:18px;align-items:center;background:var(--pl);border-radius:calc(var(--r) + 6px);padding:26px;border:1px dashed var(--p)}.rv-guar .em{font-size:44px}",
     ".rv-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:14px;align-items:center;justify-content:space-between;box-shadow:0 -10px 30px -18px rgba(0,0,0,.25)}",
     ".rv-sticky b{font-size:15px}.rv-sticky .rv-btn{padding:12px 22px;font-size:15px}",
@@ -85,6 +84,23 @@
     ".rv-footer{background:#14130f;color:#bdb9ad;padding:44px 20px;text-align:center;font-size:14px}.rv-footer a{color:#fff}",
     ".rv-sp{height:48px}.rv-hr{border:0;border-top:1px solid var(--line);margin:0}",
     ".rv-hero-bg{background:linear-gradient(135deg,var(--pl),#fff 60%)}",
+    ".rv-video{position:relative;width:100%;aspect-ratio:16/9;border-radius:calc(var(--r) + 6px);overflow:hidden;background:#000}.rv-video iframe,.rv-video video{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}",
+    ".rv-video[data-ratio='9:16']{aspect-ratio:9/16;max-width:380px;margin-left:auto;margin-right:auto}.rv-video[data-ratio='1:1']{aspect-ratio:1/1;max-width:560px;margin-left:auto;margin-right:auto}.rv-video[data-ratio='4:3']{aspect-ratio:4/3}",
+    ".rv-map{position:relative;width:100%;height:380px;border-radius:calc(var(--r) + 6px);overflow:hidden;background:#e8e6df}.rv-map iframe{position:absolute;inset:0;width:100%;height:100%;border:0}",
+    ".rv-gal{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.rv-gal img{aspect-ratio:1/1;object-fit:cover;border-radius:var(--r);width:100%}",
+    ".rv-car{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:4px 2px 14px}.rv-car>*{flex:0 0 min(86%,380px);scroll-snap-align:start}.rv-car img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:calc(var(--r) + 4px)}",
+    ".rv-plan{text-align:center;position:relative}.rv-plan.hot{border:2px solid var(--p);transform:translateY(-6px)}.rv-plan .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--p);color:#fff;font-size:12px;font-weight:700;padding:4px 14px;border-radius:99px;white-space:nowrap}",
+    ".rv-plan .amt{font-family:var(--fh);font-size:40px;font-weight:800;color:var(--p);margin:6px 0 14px;line-height:1.1}.rv-plan .rv-list{text-align:left;display:inline-block}",
+    ".rv-logos{display:flex;flex-wrap:wrap;gap:22px 40px;align-items:center;justify-content:center;opacity:.75}.rv-logos span{font-family:var(--fh);font-weight:800;font-size:20px;color:var(--ink2);letter-spacing:.02em}",
+    ".rv-social{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}.rv-social a{width:44px;height:44px;border-radius:50%;background:var(--pl);color:var(--p);display:flex;align-items:center;justify-content:center;font-weight:800;text-decoration:none;font-size:15px}",
+    ".rv-contact{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.rv-contact .rv-btn{display:inline-flex;align-items:center;gap:8px}",
+    ".rv-note{padding:16px 20px;border-radius:var(--r);background:var(--pl);border-left:4px solid var(--p);color:var(--ink);font-size:15.5px}.rv-note.warn{background:#fff6e5;border-left-color:#f5a623}",
+    ".rv-bar{height:12px;border-radius:99px;background:#e9e6dd;overflow:hidden;margin:6px 0 14px}.rv-bar i{display:block;height:100%;background:var(--p);border-radius:99px}.rv-barl{display:flex;justify-content:space-between;font-weight:600;font-size:14px}",
+    ".rv-cmp{width:100%;border-collapse:separate;border-spacing:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#fff}.rv-cmp th,.rv-cmp td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--line);font-size:15px}.rv-cmp th{background:var(--pl);font-family:var(--fh)}.rv-cmp tr:last-child td{border-bottom:0}",
+    ".rv-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:relative}.rv-nav .logo{font-family:var(--fh);font-weight:800;font-size:21px;color:var(--ink);text-decoration:none}.rv-nav nav{display:flex;gap:22px;align-items:center}.rv-nav nav a{color:var(--ink2);text-decoration:none;font-weight:600;font-size:15px}.rv-nav nav .rv-btn{padding:10px 20px;font-size:15px;color:#fff}.rv-nav .rv-t{display:none}.rv-nav .rv-burger{display:none;font-size:26px;cursor:pointer;line-height:1}",
+    ".rv-hero-img{background:#222 center/cover no-repeat;color:#fff;position:relative}.rv-hero-img::before{content:'';position:absolute;inset:0;background:rgba(10,10,10,.55)}.rv-hero-img>*{position:relative}.rv-hero-img .rv-lead{color:#e5e2d8}",
+    ".rv-prod{text-align:center}.rv-prod .rv-img{aspect-ratio:1/1;margin-bottom:14px}",
+    "@media(max-width:767px){.rv-gal{grid-template-columns:repeat(2,1fr)}.rv-plan.hot{transform:none}.rv-nav nav{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;flex-direction:column;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--line);z-index:30;gap:14px}.rv-nav .rv-burger{display:block}.rv-nav .rv-t:checked~nav{display:flex}.rv-map{height:300px}}",
     "@media(max-width:767px){.rv-sec{padding:50px 18px}.rv-sec.tight{padding:32px 18px}.rv-cols.c2,.rv-cols.c3,.rv-cols.c4{grid-template-columns:1fr;gap:22px}.rv-cols.rev>:first-child{order:2}.rv-guar{flex-direction:column;text-align:center}.rv-btn{width:100%;display:block}.rv-sticky .rv-btn{width:auto;display:inline-block}.rv-cd .b{min-width:62px}}"
   ].join("\n");
 
@@ -119,6 +135,8 @@
     form: ic('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>'),
     bank: ic('<path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>'),
     check: ic('<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>'),
+    map: ic('<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>'),
+    code: ic('<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>'),
     megaphone: ic('<path d="M4 10v4l12 5V5zM16 9a3 3 0 010 6"/>')
   };
 
@@ -138,6 +156,39 @@
           }
           tick(); setInterval(tick, 1000);
         };
+
+
+  /* ---------- Video & map embeds ---------- */
+  function videoEmbed(url, o) {
+    o = o || {}; url = String(url || "").trim();
+    var auto = o.autoplay ? 1 : 0, mute = (o.mute || o.autoplay) ? 1 : 0, loop = o.loop ? 1 : 0, ctr = o.controls === false ? 0 : 1, m;
+    var attrs = ' allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen loading="lazy"';
+    if (!url) return '<iframe src="about:blank" title="Video"></iframe>';
+    var ifr = /^<iframe[\s\S]*?src=["']([^"']+)["']/i.exec(url); if (ifr) url = ifr[1];
+    if ((m = /(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/.exec(url)))
+      return '<iframe src="https://www.youtube-nocookie.com/embed/' + m[1] + "?rel=0&modestbranding=1&playsinline=1&autoplay=" + auto + "&mute=" + mute + "&controls=" + ctr + (loop ? "&loop=1&playlist=" + m[1] : "") + '" title="Video"' + attrs + "></iframe>";
+    if ((m = /vimeo\.com\/(?:video\/|channels\/\w+\/|groups\/\w+\/videos\/)?(\d+)/.exec(url)))
+      return '<iframe src="https://player.vimeo.com/video/' + m[1] + "?autoplay=" + auto + "&muted=" + mute + "&loop=" + loop + '&title=0&byline=0" title="Video"' + attrs + "></iframe>";
+    if (/facebook\.com\/.+\/(videos|reel)|fb\.watch|facebook\.com\/watch|facebook\.com\/reel/.test(url))
+      return '<iframe src="https://www.facebook.com/plugins/video.php?href=' + encodeURIComponent(url) + "&show_text=false&autoplay=" + auto + "&mute=" + mute + '" title="Video"' + attrs + "></iframe>";
+    if ((m = /tiktok\.com\/.*\/video\/(\d+)/.exec(url)))
+      return '<iframe src="https://www.tiktok.com/embed/v2/' + m[1] + '" title="Video"' + attrs + "></iframe>";
+    if ((m = /instagram\.com\/(reel|reels|p|tv)\/([\w-]+)/.exec(url)))
+      return '<iframe src="https://www.instagram.com/' + (m[1] === "reels" ? "reel" : m[1]) + "/" + m[2] + '/embed" title="Video"' + attrs + "></iframe>";
+    if ((m = /loom\.com\/(?:share|embed)\/(\w+)/.exec(url)))
+      return '<iframe src="https://www.loom.com/embed/' + m[1] + "?autoplay=" + auto + '" title="Video"' + attrs + "></iframe>";
+    if ((m = /wistia\.(?:com|net)\/(?:medias|embed\/iframe)\/(\w+)/.exec(url)))
+      return '<iframe src="https://fast.wistia.net/embed/iframe/' + m[1] + "?autoPlay=" + (auto ? "true" : "false") + '" title="Video"' + attrs + "></iframe>";
+    if ((m = /dailymotion\.com\/video\/(\w+)/.exec(url)))
+      return '<iframe src="https://www.dailymotion.com/embed/video/' + m[1] + "?autoplay=" + auto + '" title="Video"' + attrs + "></iframe>";
+    if ((m = /drive\.google\.com\/file\/d\/([\w-]+)/.exec(url)))
+      return '<iframe src="https://drive.google.com/file/d/' + m[1] + '/preview" title="Video"' + attrs + "></iframe>";
+    if (/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i.test(url))
+      return '<video src="' + esc(url) + '" playsinline preload="metadata"' + (ctr ? " controls" : "") + (auto ? " autoplay" : "") + (mute ? " muted" : "") + (loop ? " loop" : "") + "></video>";
+    return '<iframe src="' + esc(url) + '" title="Video"' + attrs + "></iframe>";
+  }
+  function videoRatioFor(url) { return /tiktok\.com|instagram\.com\/(reel|reels)|youtube\.com\/shorts|facebook\.com\/reel/.test(url || "") ? "9:16" : "16:9"; }
+  function mapEmbed(q) { return '<iframe src="https://maps.google.com/maps?q=' + encodeURIComponent(q || "Lagos, Nigeria") + '&output=embed" title="Map" loading="lazy"></iframe>'; }
 
   /* ---------- Blocks ---------- */
   // ctx: { product: 'Herbal Tea', price: '₦19,000', whatsapp: '2348012345678' }
@@ -161,7 +212,7 @@
     add("text", "Text", "Basic", I.text, '<p class="rv-p">Write something persuasive. Double-click to edit this text, select words to make them bold or add a link.</p>');
     add("image", "Image", "Basic", I.image, { type: "image", attributes: { src: PH, alt: "", class: "rv-img" }, activeOnRender: 0 });
     add("button", "Button", "Basic", I.button, '<a class="rv-btn" href="#order">Order now</a>');
-    add("video", "Video", "Basic", I.video, '<div class="rv-video"><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" allowfullscreen loading="lazy"></iframe></div>');
+    add("video", "Video", "Media", I.video, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-video" data-src="https://www.youtube.com/watch?v=dQw4w9WgXcQ" data-ratio="16:9">' + videoEmbed("https://www.youtube.com/watch?v=dQw4w9WgXcQ") + "</div></div></section>");
     add("checklist", "Checklist", "Basic", I.list, '<ul class="rv-list"><li>First benefit your customer gets</li><li>Second benefit that removes a doubt</li><li>Third benefit with a clear result</li></ul>');
 
     /* Sections */
@@ -199,6 +250,26 @@
     add("bank-card", "Bank transfer details", "Order & Payment", I.bank, { type: "rv-bank" });
     add("thanks-hero", "Thank-you message", "Order & Payment", I.check,
       '<section class="rv-sec rv-center"><div class="rv-wrap narrow"><div class="rv-ico" style="width:72px;height:72px;font-size:36px;border-radius:50%">✓</div><h1 class="rv-h2">Thank you, your order is in!</h1><p class="rv-lead">A team member will contact you shortly to confirm your order and delivery details.</p><div data-rv-bank="1"></div><p class="rv-sub">Reference: <b data-rv-ref="1"></b></p></div></section>');
+
+    /* Media */
+    add("video-vertical", "Video - vertical", "Media", I.video, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-video" data-src="https://www.youtube.com/shorts/aqz-KE-bpKQ" data-ratio="9:16">' + videoEmbed("https://www.youtube.com/shorts/aqz-KE-bpKQ") + "</div></div></section>");
+    add("gallery", "Image gallery", "Media", I.grid, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-center"><h2 class="rv-h2">Gallery</h2></div><div class="rv-gal">' + [1, 2, 3, 4, 5, 6].map(function () { return '<img src="' + PH + '" alt="">'; }).join("") + "</div></div></section>");
+    add("carousel", "Image slider", "Media", I.image, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-car">' + [1, 2, 3, 4, 5].map(function () { return '<div><img src="' + PH + '" alt=""></div>'; }).join("") + '</div><p class="rv-sub rv-center">Swipe to see more →</p></div></section>');
+    add("map", "Map", "Media", I.map, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-map" data-q="Ikeja, Lagos, Nigeria">' + mapEmbed("Ikeja, Lagos, Nigeria") + "</div></div></section>");
+    add("embed", "Custom HTML / embed", "Media", I.code, '<div class="rv-custom" data-rv-html="1"><div class="rv-note">Custom HTML area. Select it, then click “Edit code” on the right to paste your HTML, a widget, a form or any embed.</div></div>');
+
+    /* More sections */
+    add("navbar", "Header / menu", "Sections", I.bar, '<header class="rv-nav"><a class="logo" href="#">' + esc(ctx.siteName || "Your Brand") + '</a><input type="checkbox" id="rvnav" class="rv-t"><label for="rvnav" class="rv-burger">☰</label><nav><a href="#features">Features</a><a href="#reviews">Reviews</a><a href="#faq">FAQ</a><a class="rv-btn" href="#order">Order now</a></nav></header>');
+    add("hero-image", "Hero - image background", "Sections", I.hero, '<section class="rv-sec rv-hero-img rv-center" style="background-image:linear-gradient(135deg,#2b3a35,#0f1413);padding:120px 20px"><div class="rv-wrap narrow"><h1 class="rv-h1">A bold headline over your photo</h1><p class="rv-lead">Pick a background image in the Style tab &rarr; Background.</p><a class="rv-btn" href="#order">Order now &mdash; ' + esc(PRICE) + "</a></div></section>");
+    add("pricing", "Pricing table", "Sections", I.tag, '<section class="rv-sec alt"><div class="rv-wrap"><div class="rv-center"><span class="rv-eyebrow">Packages</span><h2 class="rv-h2">Choose your package</h2></div><div class="rv-cols c3 top"><div class="rv-card rv-plan"><h3 class="rv-h3">Starter</h3><div class="amt">₦19,000</div><ul class="rv-list"><li>1 piece</li><li>Pay on delivery</li></ul><a class="rv-btn block" href="#order">Order</a></div><div class="rv-card rv-plan hot"><span class="tag">Best value</span><h3 class="rv-h3">Family</h3><div class="amt">₦45,000</div><ul class="rv-list"><li>3 pieces</li><li>Free delivery</li><li>Pay on delivery</li></ul><a class="rv-btn block" href="#order">Order</a></div><div class="rv-card rv-plan"><h3 class="rv-h3">Business</h3><div class="amt">₦70,000</div><ul class="rv-list"><li>5 pieces</li><li>Free delivery</li><li>Priority support</li></ul><a class="rv-btn block" href="#order">Order</a></div></div></div></section>');
+    add("product-card", "Product showcase", "Sections", I.image, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-cols c3 top">' + [1, 2, 3].map(function (n) { return '<div class="rv-card rv-prod"><img class="rv-img" src="' + PH + '" alt=""><h3 class="rv-h3">Product ' + n + '</h3><p class="rv-p">Short description</p><div class="rv-price"><span class="now" style="font-size:28px">' + esc(PRICE) + '</span></div><a class="rv-btn block" href="#order">Order now</a></div>'; }).join("") + "</div></div></section>");
+    add("logos", "Logo / press strip", "Sections", I.stats, '<section class="rv-sec tight"><div class="rv-wrap"><p class="rv-sub rv-center" style="margin:0 0 16px">As seen on</p><div class="rv-logos"><span>BRAND ONE</span><span>Brand Two</span><span>BRAND THREE</span><span>Brand Four</span></div></div></section>');
+    add("compare", "Comparison table", "Sections", I.grid, '<section class="rv-sec"><div class="rv-wrap narrow"><div class="rv-center"><h2 class="rv-h2">Why choose us</h2></div><table class="rv-cmp"><tr><th></th><th>Us</th><th>Others</th></tr><tr><td>Pay on delivery</td><td>✅</td><td>❌</td></tr><tr><td>Fast delivery</td><td>✅</td><td>❌</td></tr><tr><td>Money-back promise</td><td>✅</td><td>❌</td></tr></table></div></section>');
+    add("progress", "Stock / progress bars", "Sections", I.stats, '<section class="rv-sec tight"><div class="rv-wrap narrow"><div class="rv-barl"><span>Stock left</span><span>Only 7 left</span></div><div class="rv-bar"><i style="width:18%"></i></div><div class="rv-barl"><span>Orders today</span><span>83%</span></div><div class="rv-bar"><i style="width:83%"></i></div></div></section>');
+    add("notice", "Notice box", "Basic", I.megaphone, '<section class="rv-sec tight"><div class="rv-wrap narrow"><div class="rv-note"><b>Good to know:</b> Delivery takes 24 to 48 hours in Lagos.</div></div></section>');
+    add("contact", "Contact buttons", "Sections", I.chat, '<section class="rv-sec tight rv-center"><div class="rv-wrap narrow"><h2 class="rv-h2">Questions? Talk to us</h2><div class="rv-contact"><a class="rv-btn" href="tel:+' + (wa || "234") + '">📞 Call us</a><a class="rv-btn ghost" href="' + waHref + '" target="_blank" rel="noopener">💬 WhatsApp</a><a class="rv-btn ghost" href="mailto:hello@example.com">✉️ Email</a></div></div></section>');
+    add("social", "Social icons", "Basic", I.chat, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-social"><a href="https://facebook.com" target="_blank" rel="noopener">f</a><a href="https://instagram.com" target="_blank" rel="noopener">ig</a><a href="https://tiktok.com" target="_blank" rel="noopener">tt</a><a href="https://youtube.com" target="_blank" rel="noopener">yt</a><a href="' + waHref + '" target="_blank" rel="noopener">wa</a></div></div></section>');
+    add("iconbox-row", "Icon boxes (4)", "Sections", I.grid, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-cols c4 top"><div class="rv-center"><div class="rv-ico">🚚</div><h3 class="rv-h3">Fast delivery</h3><p class="rv-p">Nationwide</p></div><div class="rv-center"><div class="rv-ico">💳</div><h3 class="rv-h3">Pay on delivery</h3><p class="rv-p">No risk</p></div><div class="rv-center"><div class="rv-ico">🔒</div><h3 class="rv-h3">Secure</h3><p class="rv-p">Private details</p></div><div class="rv-center"><div class="rv-ico">💬</div><h3 class="rv-h3">Support</h3><p class="rv-p">On WhatsApp</p></div></div></div></section>');
     return B;
   }
 
@@ -220,5 +291,5 @@
     return tpl.blocks.map(function (id) { var c = byId[id] && byId[id].content; return typeof c === "string" ? c : ""; }).join("\n");
   }
 
-  global.RVBlocks = { build: build, BASE_CSS: BASE_CSS, FONTS: FONTS, DEFAULT_THEME: DEFAULT_THEME, themeCss: themeCss, fontsUrl: fontsUrl, TEMPLATES: TEMPLATES, templateHtml: templateHtml, PLACEHOLDER: PH, countdownScript: countdownScript };
+  global.RVBlocks = { build: build, BASE_CSS: BASE_CSS, FONTS: FONTS, DEFAULT_THEME: DEFAULT_THEME, themeCss: themeCss, fontsUrl: fontsUrl, TEMPLATES: TEMPLATES, templateHtml: templateHtml, PLACEHOLDER: PH, countdownScript: countdownScript, videoEmbed: videoEmbed, videoRatioFor: videoRatioFor, mapEmbed: mapEmbed };
 })(window);

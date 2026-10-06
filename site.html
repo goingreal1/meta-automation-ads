@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Loading…</title>
+<script src="/rv/config.js"></script>
+<script>if(window.RV_SITE_ORIGIN&&location.origin!==window.RV_SITE_ORIGIN&&/^\/s\//.test(location.pathname))location.replace(window.RV_SITE_ORIGIN+location.pathname+location.search+location.hash);</script>
 <link rel="stylesheet" href="/rv/form.css">
 <script src="/rv/form.js"></script>
 <style id="rv-boot">
@@ -121,6 +123,7 @@ html,body{margin:0;padding:0;background:#fff;}
 
     var st = document.createElement("style"); st.id = "rv-page-css"; st.textContent = page.css || ""; document.head.appendChild(st);
 
+    if (seo.head_html) inject(document.head, seo.head_html);
     var snippets = d.snippets || [];
     snippets.filter(function (s) { return s.location === "head"; }).forEach(function (s) { inject(document.head, s.code); });
 

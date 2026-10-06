@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/rv/config.js"></script>
 <style>
 /* ── THEME TOKENS ── same system as index.html/order.html: white, enterprise,
    Fraunces for headlines/numbers, Inter for everything else. Dark stays as an
@@ -7491,7 +7492,7 @@ function bvWebSitesHtml() {
     const so = orders.filter(o => o.site_id === s.id);
     const rev = so.reduce((a, o) => a + (Number(o.order_value_naira) || 0), 0);
     const prod = products.find(p => p.id === s.product_id);
-    const url = `${location.origin}/s/${s.slug}`;
+    const url = window.RV_siteUrl(s.slug);
     return `<div class="ws-card">
       <div class="ws-top"><div class="ws-name">${escH(s.name)}</div><span class="ws-pill ${s.status === "published" ? "live" : ""}">${s.status === "published" ? "Live" : "Draft"}</span></div>
       <div class="ws-url">${escH(url)}</div>
@@ -7501,11 +7502,23 @@ function bvWebSitesHtml() {
         <button class="btn btn-a" onclick="bvWebEdit('${s.id}')">Edit</button>
         ${s.status === "published" ? `<a class="btn btn-g" href="${escH(url)}" target="_blank" rel="noopener" style="text-decoration:none;">View</a>` : ""}
         <button class="btn btn-g" onclick="bvWebCopy('${escH(url)}')">Copy link</button>
+        <button class="btn btn-g" onclick="bvWebAdvertise('${s.id}')" title="Run Meta ads that send people to this site">📣 Advertise</button>
         <button class="btn btn-g" onclick="bvWebDelete('${s.id}')" title="Delete">🗑</button>
       </div></div>`;
   }).join("")}</div>`;
 }
 function bvWebCopy(t) { try { navigator.clipboard.writeText(t); bvToast("Link copied"); } catch (e) { prompt("Copy this link", t); } }
+async function bvWebAdvertise(id) {
+  const s = bvWebData.sites.find(x => x.id === id); if (!s) return;
+  if (!s.product_id) return bvToast("Choose the product this site sells first (open the builder → Settings).", "err");
+  if (s.status !== "published") return bvToast("Publish the site first, then you can advertise it.", "err");
+  const url = window.RV_siteUrl(s.slug);
+  if (!confirm(`Send ad traffic to this site?\n\nNew website-purchase ads for this product will open:\n${url}\n\nThen you launch the ad from the Campaigns tab as usual.`)) return;
+  const { error } = await supabaseClient.from("products").update({ landing_page_url: url, destination_type: "website" }).eq("id", s.product_id);
+  if (error) return bvToast("Couldn't set the landing page: " + error.message, "err");
+  bvToast("Landing page set. Opening Campaigns…");
+  setTimeout(() => document.querySelector('[data-tab="campaigns"]')?.click(), 600);
+}
 function bvWebEdit(id) { location.href = "/builder.html?site=" + id; }
 
 function bvWebSlugify(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 38); }
@@ -7515,7 +7528,7 @@ function bvWebNew() {
     <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvWebOverlay')">✕</button>
     <div class="ph-title" style="margin-bottom:12px;">New website</div>
     <div class="ws-field"><label>Website name</label><input id="wsName" placeholder="e.g. Herbal Tea Store" oninput="document.getElementById('wsSlug').value=bvWebSlugify(this.value);bvWebSlugHint()"></div>
-    <div class="ws-field"><label>Address</label><div style="display:flex;align-items:center;gap:6px;"><span style="color:var(--muted);font-size:12.5px;white-space:nowrap;">${escH(location.host)}/s/</span><input id="wsSlug" placeholder="herbal-tea" oninput="bvWebSlugHint()"></div><small id="wsSlugHint">Lowercase letters, numbers and dashes.</small></div>
+    <div class="ws-field"><label>Address</label><div style="display:flex;align-items:center;gap:6px;"><span style="color:var(--muted);font-size:12.5px;white-space:nowrap;">${escH((window.RV_SITE_ORIGIN || location.origin).replace(/^https?:\/\//, ""))}/s/</span><input id="wsSlug" placeholder="herbal-tea" oninput="bvWebSlugHint()"></div><small id="wsSlugHint">Lowercase letters, numbers and dashes.</small></div>
     <div class="ws-field"><label>Product it sells</label><select id="wsProduct"><option value="">Choose later</option>${prods.map(p => `<option value="${p.id}">${escH(p.product_name)}${p.is_service ? " (service)" : ""}</option>`).join("")}</select><small>Its price, packages and bank details power the built-in order form.</small></div>
     <div id="wsErr"></div>
     <button class="btn btn-a" id="wsCreate" onclick="bvWebCreate()">Create &amp; open builder</button>`, 480);
@@ -7524,7 +7537,7 @@ function bvWebSlugHint() {
   const v = document.getElementById("wsSlug").value, h = document.getElementById("wsSlugHint");
   if (!h) return;
   if (!v) { h.textContent = "Lowercase letters, numbers and dashes."; return; }
-  h.textContent = /^[a-z0-9][a-z0-9-]{1,40}$/.test(v) ? "Your site will be at " + location.host + "/s/" + v : "Use 2–40 lowercase letters, numbers or dashes.";
+  h.textContent = /^[a-z0-9][a-z0-9-]{1,40}$/.test(v) ? "Your site will be at " + window.RV_siteUrl(v).replace(/^https?:\/\//, "") : "Use 2–40 lowercase letters, numbers or dashes.";
 }
 async function bvWebCreate() {
   const name = document.getElementById("wsName").value.trim();
