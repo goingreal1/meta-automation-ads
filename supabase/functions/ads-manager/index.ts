@@ -28,6 +28,7 @@ const SHARED_META_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const GRAPH = "https://graph.facebook.com/v21.0";
 const MSG_ACTION = "onsite_conversion.messaging_conversation_started_7d";
 const PURCHASE_ACTIONS = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
+const LPV_ACTIONS = ["landing_page_view", "omni_landing_page_view"]; // people whose browser actually loaded the page after clicking
 const MAX_AUTO_PAUSES_PER_RUN = 10;
 
 const cors = {
@@ -102,6 +103,7 @@ function insightRow(r: any) {
   const spend = num(r.spend);
   const conversations = actionValue(r.actions, [MSG_ACTION]);
   const purchases = actionValue(r.actions, PURCHASE_ACTIONS);
+  const landingPageViews = actionValue(r.actions, LPV_ACTIONS);
   return {
     spend,
     impressions: num(r.impressions),
@@ -114,6 +116,8 @@ function insightRow(r: any) {
     cost_per_conversation: conversations > 0 ? spend / conversations : null,
     purchases,
     cost_per_purchase: purchases > 0 ? spend / purchases : null,
+    landing_page_views: landingPageViews,
+    cost_per_landing_page_view: landingPageViews > 0 ? spend / landingPageViews : null,
   };
 }
 
@@ -301,7 +305,11 @@ async function handleDaily(userClient: any, body: any) {
       level: "adset", time_increment: "1", time_range: JSON.stringify({ since, until }),
       fields: "adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,cpc,cpm,actions",
     }, token, 12);
+    // which ad sets are website-purchase vs messaging, so the dashboard can total website numbers on their own
+    const adsetRows = await graphGetAll(`act_${actId}/adsets`, { fields: "id,optimization_goal,destination_type" }, token, 10).catch(() => []);
+    const kindById = new Map(adsetRows.map((x: any) => [String(x.id), adsetKind(x)]));
     return rows.map((r: any) => ({
+      kind: kindById.get(String(r.adset_id)) ?? "other",
       date: r.date_start, account_id: a.id, media_buyer_id: a.media_buyer_id ?? null,
       campaign_id: r.campaign_id, campaign_name: r.campaign_name, adset_id: r.adset_id, adset_name: r.adset_name,
       ...insightRow(r), cpc: num(r.cpc),

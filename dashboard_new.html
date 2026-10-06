@@ -920,6 +920,8 @@ html{-webkit-text-size-adjust:100%;}
 .bv-listgroup-h .bv-warn{color:var(--warn);}
 .bv-wa-box{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:12px;}
 .am-table.ads .am-row{grid-template-columns:34px 56px minmax(220px,1fr) 124px 270px 140px 150px 100px 86px 100px 112px 92px 70px;min-width:1640px;}
+.am-table.lpv .am-row{grid-template-columns:34px 56px minmax(230px,1fr) 124px 140px 150px 130px 130px 100px 86px 100px 112px 92px 70px;min-width:1600px;}
+.am-table.ads.lpv .am-row{grid-template-columns:34px 56px minmax(220px,1fr) 124px 270px 140px 150px 130px 130px 100px 86px 100px 112px 92px 70px;min-width:1900px;}
 .am-c-msg{display:flex;align-items:center;gap:8px;min-width:0;}
 .am-msg-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12.5px;min-width:0;}
 .am-msg-edit{cursor:pointer;color:var(--accent);font-weight:600;font-size:12px;white-space:nowrap;flex-shrink:0;}
@@ -1041,7 +1043,7 @@ html{-webkit-text-size-adjust:100%;}
   .am-top .am-c-msg{grid-area:msg;flex-wrap:wrap;align-items:flex-start;margin-top:4px;}
   .am-top .am-c-msg .am-msg-t{white-space:normal;}
   .am-top .am-c-msg::before{content:attr(data-label);flex-basis:100%;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
-  .am-table.ads .am-row{min-width:0;}
+  .am-table.ads .am-row,.am-table.lpv .am-row,.am-table.ads.lpv .am-row{min-width:0;}
   .am-flagline{padding:10px 0 0;}
   .am-foot .am-c-name{grid-area:name;}
   .kr-block .fg{grid-template-columns:1fr !important;}
@@ -1973,15 +1975,22 @@ async function fetchLiveDaily(since, until, force = false) {
 function liveByDay(rows) {
   const days = new Map();
   for (const r of rows || []) {
-    const d = days.get(r.date) ?? { date: r.date, spend: 0, conversations: 0, purchases: 0, clicks: 0, impressions: 0 };
+    const d = days.get(r.date) ?? { date: r.date, spend: 0, conversations: 0, purchases: 0, clicks: 0, impressions: 0, lpv: 0, webSpend: 0 };
     d.spend += r.spend; d.conversations += r.conversations; d.purchases += r.purchases; d.clicks += r.clicks; d.impressions += r.impressions;
+    d.lpv += r.landing_page_views || 0; if (r.kind === "purchase") d.webSpend += r.spend;
     days.set(r.date, d);
   }
   return days;
 }
 function liveSum(rows) {
-  const t = { spend: 0, conversations: 0, purchases: 0, clicks: 0, impressions: 0 };
-  for (const r of rows || []) { t.spend += r.spend; t.conversations += r.conversations; t.purchases += r.purchases; t.clicks += r.clicks; t.impressions += r.impressions; }
+  const t = { spend: 0, conversations: 0, purchases: 0, clicks: 0, impressions: 0, lpv: 0, webSpend: 0, webClicks: 0, webPurchases: 0 };
+  for (const r of rows || []) {
+    t.spend += r.spend; t.conversations += r.conversations; t.purchases += r.purchases; t.clicks += r.clicks; t.impressions += r.impressions;
+    t.lpv += r.landing_page_views || 0;
+    if (r.kind === "purchase") { t.webSpend += r.spend; t.webClicks += r.clicks; t.webPurchases += r.purchases; }
+  }
+  t.costPerLpv = t.lpv > 0 ? t.webSpend / t.lpv : null;
+  t.lpvRate = t.webClicks > 0 ? Math.min(100, t.lpv / t.webClicks * 100) : null;
   t.costPerConv = t.conversations > 0 ? t.spend / t.conversations : null;
   t.linkCtr = t.impressions > 0 ? t.clicks / t.impressions * 100 : null;
   return t;
@@ -2046,6 +2055,7 @@ async function renderOverview(el) {
   const chatToOrder = week.conversations > 0 ? Math.min(100, orders7 / week.conversations * 100) : null;
   const dash = "—";
   const hasPurchases = week.purchases > 0;
+  const hasWeb = week.lpv > 0 || week.webSpend > 0;
 
   el.innerHTML = `
     <div class="sh">
@@ -2090,6 +2100,13 @@ async function renderOverview(el) {
       </div>
     </div>` : ""}
 
+    ${canAds && hasWeb ? `<div class="g4">
+      <div class="kc"><div class="kc-lbl">Landing page views · 7 days</div><div class="kc-val a">${week.lpv.toLocaleString("en-NG")}</div><div class="kc-sub">website ads only</div></div>
+      <div class="kc"><div class="kc-lbl">Cost / landing page view</div><div class="kc-val">${week.costPerLpv != null ? fN(week.costPerLpv) : dash}</div><div class="kc-sub">website ad spend ÷ page views</div></div>
+      <div class="kc"><div class="kc-lbl">Clicks that loaded the page</div><div class="kc-val b">${week.lpvRate != null ? week.lpvRate.toFixed(0) + "%" : dash}</div><div class="kc-sub">page views ÷ link clicks</div></div>
+      <div class="kc"><div class="kc-lbl">Purchases · 7 days (Meta)</div><div class="kc-val">${week.webPurchases.toLocaleString("en-NG")}</div><div class="kc-sub">${week.webPurchases > 0 && week.webSpend > 0 ? fN(week.webSpend / week.webPurchases) + " each" : "from the website pixel"}</div></div>
+    </div>` : ""}
+
     <div class="g4">
       <div class="kc">
         <div class="kc-lbl">Orders · 7 days</div>
@@ -2123,18 +2140,19 @@ async function renderOverview(el) {
       ${!live.ok ? "" : !dayList.length
         ? `<div class="empty"><div class="empty-ico">📈</div>No ad spend in the last 7 days.</div>`
         : `<div class="tbl-wrap"><table>
-            <tr><th>Date</th><th>Spent</th><th>Conversations</th><th>Cost / conversation</th>${hasPurchases ? "<th>Purchases</th>" : ""}<th>Link clicks</th><th>Link CTR</th><th>Impressions</th></tr>
+            <tr><th>Date</th><th>Spent</th><th>Conversations</th><th>Cost / conversation</th>${hasPurchases ? "<th>Purchases</th>" : ""}${hasWeb ? "<th>Landing page views</th><th>Cost / page view</th>" : ""}<th>Link clicks</th><th>Link CTR</th><th>Impressions</th></tr>
             ${dayList.map(m => `<tr>
                 <td class="s">${m.date}</td>
                 <td>${fN(m.spend)}</td>
                 <td class="s">${m.conversations}</td>
                 <td class="s">${m.conversations > 0 ? fN(m.spend / m.conversations) : dash}</td>
                 ${hasPurchases ? `<td>${m.purchases}</td>` : ""}
+                ${hasWeb ? `<td>${m.lpv ? m.lpv.toLocaleString("en-NG") : dash}</td><td>${m.lpv > 0 && m.webSpend > 0 ? fN(m.webSpend / m.lpv) : dash}</td>` : ""}
                 <td>${m.clicks.toLocaleString("en-NG")}</td>
                 <td>${m.impressions > 0 ? (m.clicks / m.impressions * 100).toFixed(2) + "%" : dash}</td>
                 <td>${m.impressions.toLocaleString("en-NG")}</td>
               </tr>`).join("")}
-            <tr style="font-weight:700;background:var(--panel2);"><td>Total</td><td>${fN(week.spend)}</td><td>${week.conversations}</td><td>${fN(week.costPerConv)}</td>${hasPurchases ? `<td>${week.purchases}</td>` : ""}<td>${week.clicks.toLocaleString("en-NG")}</td><td>${week.linkCtr != null ? week.linkCtr.toFixed(2) + "%" : dash}</td><td>${week.impressions.toLocaleString("en-NG")}</td></tr>
+            <tr style="font-weight:700;background:var(--panel2);"><td>Total</td><td>${fN(week.spend)}</td><td>${week.conversations}</td><td>${fN(week.costPerConv)}</td>${hasPurchases ? `<td>${week.purchases}</td>` : ""}${hasWeb ? `<td>${week.lpv.toLocaleString("en-NG")}</td><td>${week.costPerLpv != null ? fN(week.costPerLpv) : dash}</td>` : ""}<td>${week.clicks.toLocaleString("en-NG")}</td><td>${week.linkCtr != null ? week.linkCtr.toFixed(2) + "%" : dash}</td><td>${week.impressions.toLocaleString("en-NG")}</td></tr>
           </table></div>`}
     </div>` : ""}
     <div id="actionResult"></div>`;
@@ -4858,6 +4876,8 @@ function amRowHtml(level, r) {
       <div class="am-metrics">
         <div class="am-c am-c-res" data-label="${escH(r.result_label || "Results")}"><b>${amFmtResult(r)}</b></div>
         <div class="am-c am-c-cpr" data-label="${escH(amCostLabel(r.kind))}"><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div>
+        ${am.showLpv ? `<div class="am-c am-c-lpv" data-label="Landing page views"><b>${r.kind === "purchase" ? Number(r.landing_page_views || 0).toLocaleString("en-NG") : "—"}</b></div>
+        <div class="am-c am-c-clpv" data-label="Cost / landing page view"><b>${r.kind === "purchase" && r.cost_per_landing_page_view != null ? fN(r.cost_per_landing_page_view) : "—"}</b></div>` : ""}
         <div class="am-c am-c-spend" data-label="Spent"><b>${fN(r.spend)}</b></div>
         <div class="am-c am-c-reach" data-label="Reach">${Number(r.reach).toLocaleString("en-NG")}</div>
         <div class="am-c am-c-freq" data-label="Frequency">${r.reach ? Number(r.frequency).toFixed(2) + "×" : "—"}</div>
@@ -4876,9 +4896,16 @@ function amTotals(rows) {
   const pick = msg.length ? msg : pur;
   const results = pick.reduce((s, r) => s + (r.results || 0), 0);
   const spend = pick.reduce((s, r) => s + r.spend, 0);
+  const lpv = pur.reduce((s, r) => s + (Number(r.landing_page_views) || 0), 0);
+  const webSpend = pur.reduce((s, r) => s + r.spend, 0);
+  const webClicks = pur.reduce((s, r) => s + (Number(r.clicks) || 0), 0);
+  const webPurchases = pur.reduce((s, r) => s + (Number(r.purchases) || 0), 0);
   return {
     spend: sum("spend"), imp: sum("impressions"), clk: sum("clicks"), results, label: msg.length ? "Conversations" : pur.length ? "Purchases" : "",
     cpr: results > 0 ? spend / results : null,
+    hasWeb: pur.length > 0, lpv, webSpend, webClicks, webPurchases,
+    cpl: lpv > 0 ? webSpend / lpv : null,
+    lpvRate: webClicks > 0 ? Math.min(100, lpv / webClicks * 100) : null,
   };
 }
 
@@ -4923,7 +4950,13 @@ function amDraw() {
       <div class="kc"><div class="kc-lbl">${t.label || "Results"}</div><div class="kc-val a">${t.results.toLocaleString("en-NG")}</div><div class="kc-sub">${t.label === "Conversations" ? "WhatsApp chats started" : ""}</div></div>
       <div class="kc"><div class="kc-lbl">Cost per ${t.label === "Purchases" ? "purchase" : "conversation"}</div><div class="kc-val">${t.cpr != null ? fN(t.cpr) : "—"}</div><div class="kc-sub">&nbsp;</div></div>
       <div class="kc"><div class="kc-lbl">Ads delivering</div><div class="kc-val b">${liveAds}</div><div class="kc-sub">of ${d.ads.length} ads</div></div>
-    </div>`;
+    </div>
+    ${t.hasWeb ? `<div class="g4 am-kpis">
+      <div class="kc"><div class="kc-lbl">Landing page views</div><div class="kc-val a">${t.lpv.toLocaleString("en-NG")}</div><div class="kc-sub">website ads only</div></div>
+      <div class="kc"><div class="kc-lbl">Cost / landing page view</div><div class="kc-val">${t.cpl != null ? fN(t.cpl) : "—"}</div><div class="kc-sub">website ad spend ÷ page views</div></div>
+      <div class="kc"><div class="kc-lbl">Clicks that loaded the page</div><div class="kc-val b">${t.lpvRate != null ? t.lpvRate.toFixed(0) + "%" : "—"}</div><div class="kc-sub">page views ÷ link clicks</div></div>
+      <div class="kc"><div class="kc-lbl">Page views → purchases</div><div class="kc-val">${t.lpv > 0 ? (t.webPurchases / t.lpv * 100).toFixed(1) + "%" : "—"}</div><div class="kc-sub">${t.webPurchases.toLocaleString("en-NG")} purchases</div></div>
+    </div>` : ""}`;
 
   const lvl = am.level;
   const counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
@@ -4942,6 +4975,7 @@ function amDraw() {
   }
 
   const rows = amRows(lvl);
+  am.showLpv = rows.some(r => r.kind === "purchase");
   const tot = amTotals(rows);
   const hl = amHeadLabels(rows);
   const allChecked = lvl !== "ads" && rows.length > 0 && rows.every(r => am.sel[lvl].has(r.id));
@@ -4951,7 +4985,7 @@ function amDraw() {
         <div class="am-c am-c-chk">${lvl !== "ads" ? `<input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('${lvl}',this.checked)" aria-label="Select all">` : ""}</div>
         <div class="am-c am-c-sw"></div><div class="am-c am-c-name">${lvl === "campaigns" ? "Campaign" : lvl === "adsets" ? "Ad set" : "Ad"}</div><div class="am-c am-c-st">Delivery</div>${lvl === "ads" ? '<div class="am-c am-c-msg">WhatsApp message</div>' : ""}
       </div>
-      <div class="am-metrics"><div class="am-c am-c-res">${escH(hl.res)}</div><div class="am-c am-c-cpr">${escH(hl.cpr)}</div><div class="am-c am-c-spend">Spent</div><div class="am-c am-c-reach">Reach</div><div class="am-c am-c-freq">Frequency</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
+      <div class="am-metrics"><div class="am-c am-c-res">${escH(hl.res)}</div><div class="am-c am-c-cpr">${escH(hl.cpr)}</div>${am.showLpv ? '<div class="am-c am-c-lpv">Landing page views</div><div class="am-c am-c-clpv">Cost / landing page view</div>' : ""}<div class="am-c am-c-spend">Spent</div><div class="am-c am-c-reach">Reach</div><div class="am-c am-c-freq">Frequency</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
     </div>`;
   const foot = rows.length ? `
     <div class="am-row am-foot">
@@ -4959,6 +4993,7 @@ function amDraw() {
       <div class="am-metrics">
         <div class="am-c am-c-res" data-label="${escH(tot.label || "Results")}"><b>${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</b></div>
         <div class="am-c am-c-cpr" data-label="${escH(hl.cpr)}"><b>${tot.cpr != null ? fN(tot.cpr) : "—"}</b></div>
+        ${am.showLpv ? `<div class="am-c am-c-lpv" data-label="Landing page views"><b>${tot.hasWeb ? tot.lpv.toLocaleString("en-NG") : "—"}</b></div><div class="am-c am-c-clpv" data-label="Cost / landing page view"><b>${tot.cpl != null ? fN(tot.cpl) : "—"}</b></div>` : ""}
         <div class="am-c am-c-spend" data-label="Spent"><b>${fN(tot.spend)}</b></div>
         <div class="am-c am-c-reach" data-label="Reach" title="Reach overlaps between rows, so it is not added up">—</div>
         <div class="am-c am-c-freq" data-label="Frequency">—</div>
@@ -4969,7 +5004,7 @@ function amDraw() {
     </div>` : "";
 
   const body = rows.length
-    ? `<div class="am-table${lvl === "ads" ? " ads" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
+    ? `<div class="am-table${lvl === "ads" ? " ads" : ""}${am.showLpv ? " lpv" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
     : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
 
   root.innerHTML = `${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${body}
@@ -5863,6 +5898,7 @@ async function renderPerformance(el, fromDate, toDate, force = false) {
   const rows = (live.rows || []).filter(r => !activeAccountId || r.account_id === activeAccountId)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.spend - a.spend)).slice(0, 500);
   const hasPurchases = rows.some(r => r.purchases > 0);
+  const hasWeb = rows.some(r => r.kind === "purchase");
 
   window._bvLastRoasExport = { fromDate, toDate, buyerList };
 
@@ -5918,7 +5954,7 @@ async function renderPerformance(el, fromDate, toDate, force = false) {
       ${!live.ok ? "" : !rows.length
         ? `<div class="empty"><div class="empty-ico">📊</div>No ad spend in this date range for this ad account.</div>`
         : `<div class="tbl-wrap"><table>
-          <tr><th>Date</th><th>Ad Set</th><th>Spend</th><th>Conversations</th><th>Cost / conversation</th>${hasPurchases ? "<th>Purchases</th>" : ""}<th>Impressions</th><th>Reach</th><th>Link clicks</th><th>CTR</th><th>CPC</th><th>CPM</th><th>Frequency</th></tr>
+          <tr><th>Date</th><th>Ad Set</th><th>Spend</th><th>Conversations</th><th>Cost / conversation</th>${hasPurchases ? "<th>Purchases</th>" : ""}${hasWeb ? "<th>Landing page views</th><th>Cost / page view</th>" : ""}<th>Impressions</th><th>Reach</th><th>Link clicks</th><th>CTR</th><th>CPC</th><th>CPM</th><th>Frequency</th></tr>
           ${rows.map(r => `<tr>
             <td class="n">${r.date}</td>
             <td class="s n" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.adset_name || "")}">${escH(r.adset_name || "—")}</td>
@@ -5926,6 +5962,7 @@ async function renderPerformance(el, fromDate, toDate, force = false) {
             <td class="s">${r.conversations}</td>
             <td>${r.cost_per_conversation != null ? fN(r.cost_per_conversation) : dash}</td>
             ${hasPurchases ? `<td>${r.purchases}</td>` : ""}
+            ${hasWeb ? `<td>${r.kind === "purchase" ? (r.landing_page_views || 0).toLocaleString("en-NG") : dash}</td><td>${r.kind === "purchase" && r.cost_per_landing_page_view != null ? fN(r.cost_per_landing_page_view) : dash}</td>` : ""}
             <td>${r.impressions.toLocaleString("en-NG")}</td>
             <td>${r.reach.toLocaleString("en-NG")}</td>
             <td>${r.clicks.toLocaleString("en-NG")}</td>
