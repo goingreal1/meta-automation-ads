@@ -6750,7 +6750,7 @@ async function renderOrders(el) {
         ${orders.map(o => `<tr>
           <td class="s n">${o.customer_id
             ? `<a href="javascript:void(0)" onclick="bvShowCustomerModal('${o.customer_id}')" style="color:var(--accent);text-decoration:none;">${escH(o.customer_name ?? "—")}</a>`
-            : escH(o.customer_name ?? "—")}</td>
+            : escH(o.customer_name ?? "—")}${o.form_data && typeof o.form_data === "object" ? `<div style="font-size:10.5px;color:var(--muted);font-weight:400;max-width:220px;">${Object.entries(o.form_data).map(([k, v]) => `${escH(k)}: ${escH(v)}`).join(" · ")}</div>` : ""}</td>
           <td class="n">${o.customer_phone
             ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${o.customer_phone}</a>`
             : "—"}</td>

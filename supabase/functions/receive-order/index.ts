@@ -56,6 +56,13 @@ Deno.serve(async (req: Request) => {
     const creative_id = payload.creative_id;
     const product_id = payload.product_id as string | undefined;
     const tier_id = payload.tier_id as string | undefined;
+    // Extra answers from custom fields built into a site's order form: small, flat, text-only.
+    let form_data: Record<string, string> | null = null;
+    if (payload.form_data && typeof payload.form_data === 'object' && !Array.isArray(payload.form_data)) {
+      const entries = Object.entries(payload.form_data as Record<string, unknown>).slice(0, 20)
+        .map(([k, v]) => [String(k).slice(0, 80), String(v ?? '').slice(0, 500)] as [string, string]).filter(([k, v]) => k && v);
+      if (entries.length) form_data = Object.fromEntries(entries);
+    }
     // Meta click/browser IDs for CAPI match quality — fbc can also be reconstructed from a bare fbclid
     const fbp = payload.fbp as string | undefined;
     const fbc = (payload.fbc as string | undefined) ??
@@ -394,6 +401,7 @@ Deno.serve(async (req: Request) => {
       ...(mediaBuyerId ? { media_buyer_id: mediaBuyerId } : {}),
       ...(siteRow ? { site_id: siteRow.id } : {}),
       ...(sitePageId ? { site_page_id: sitePageId } : {}),
+      ...(form_data ? { form_data } : {}),
       fbclid: payload.fbclid || null,
       meta_ad_id: payload.ad_id || payload.meta_ad_id || null,
       order_status: 'pending'
