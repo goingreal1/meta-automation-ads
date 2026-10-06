@@ -153,16 +153,27 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
           if (res.error) throw new Error(res.error);
-          if (site.purchase_event === "submit" && typeof global.fbq === "function") global.fbq("track", "Purchase", { value: value, currency: product.currency || "NGN" }, { eventID: eventId });
+          var fired = site.purchase_event === "submit" ? firePurchase(value, product.currency || "NGN", eventId, tier ? product.product_name + " (" + tier.label + ")" : product.product_name, tier ? tier.quantity : qty) : false;
           var ref = eventId.slice(0, 8).toUpperCase();
           sset("rv_last_ref", ref); sset("rv_last_value", String(value)); sset("rv_last_payment", payment);
-          if (site.thanks_slug != null) global.location.href = "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") + "?ref=" + ref;
+          if (site.thanks_slug != null) { var dest = "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") + "?ref=" + ref; if (fired) setTimeout(function () { global.location.href = dest; }, 350); else global.location.href = dest; }   // give the pixels a moment to send before leaving the page
           else showThanks(el, d, ref, value, payment);
         })
         .catch(function (err) { msg.textContent = "Something went wrong, please try again. (" + err.message + ")"; msg.classList.add("on"); btn.disabled = false; btn.textContent = old; });
     });
   }
 
+  // Tell every pixel the customer installed about the purchase. The value is the price of the package they picked.
+  function firePurchase(value, cur, eventId, name, qty) {
+    var any = false;
+    try { if (typeof global.fbq === "function") { global.fbq("track", "Purchase", { value: value, currency: cur, content_name: name, num_items: qty }, { eventID: eventId }); any = true; } } catch (e) {}
+    try { if (global.ttq && typeof global.ttq.track === "function") { global.ttq.track("CompletePayment", { value: value, currency: cur, content_type: "product", content_name: name, quantity: qty }, { event_id: eventId }); any = true; } } catch (e) {}
+    try { if (typeof global.gtag === "function") { global.gtag("event", "purchase", { transaction_id: eventId, value: value, currency: cur, items: [{ item_name: name, quantity: qty, price: value }] }); any = true; } } catch (e) {}
+    try { if (global.dataLayer && typeof global.dataLayer.push === "function") { global.dataLayer.push({ event: "purchase", ecommerce: { transaction_id: eventId, value: value, currency: cur, items: [{ item_name: name, quantity: qty }] } }); any = true; } } catch (e) {}
+    try { if (typeof global.clarity === "function") { global.clarity("event", "purchase"); any = true; } } catch (e) {}
+    try { if (typeof global.hj === "function") { global.hj("event", "purchase"); any = true; } } catch (e) {}
+    return any;
+  }
   function bankHtml(product, value, payment, ref) {
     if (!product || !product.bank_account_number || !/bank/i.test(payment || "")) return "";
     var wa = String(product.whatsapp_number || "").replace(/\D/g, "");

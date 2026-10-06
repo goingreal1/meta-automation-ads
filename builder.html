@@ -301,7 +301,7 @@ input,select,textarea{font:inherit}
       <div class="fld"><label>Site address</label><div class="copyrow"><input id="sUrl" readonly><button class="btn" id="sCopy">Copy</button></div><small id="sUrlNote">Your site goes live at this address when you publish.</small></div>
       <div class="fld"><label>Product this site sells</label><select id="sProduct"></select><small>The built-in order form uses this product's price, packages and payment details. Every order lands in your Orders tab.</small></div>
       <div class="fld"><label>Ad account &amp; pixel</label><select id="sAdAcct"></select><small id="sPixelNote">Pick the ad account whose Meta Pixel this site should use.</small></div>
-      <div class="fld"><label>Purchase tracking</label><select id="sPurchase"><option value="submit">Count a Purchase when the order form is submitted</option><option value="none">Do not send a Purchase event</option></select><small>Orders are always saved. This only controls the Meta Purchase event (browser pixel + server).</small></div>
+      <div class="fld"><label>Purchase tracking</label><select id="sPurchase"><option value="submit">Count a Purchase when the order form is submitted (Meta, TikTok, Google)</option><option value="none">Do not send a Purchase event</option></select><small>Orders are always saved. This controls the Purchase event sent to every pixel on the page, with the price of the package the customer picked (plus the server-side Meta event when an ad account is linked).</small></div>
       <div class="fld"><label><input type="checkbox" id="sCall" style="width:auto;margin-right:8px;vertical-align:middle">Place an AI confirmation call for orders from this site</label></div>
     </div>
     <div data-sp="design" style="display:none">
@@ -1033,7 +1033,9 @@ input,select,textarea{font:inherit}
 
   /* ================= Plugins: one-click tracking / analytics + header & footer code ================= */
   var PLUGINS = [
-    { key: "meta", name: "Meta Pixel", color: "#1877f2", logo: "f", tag: "Built in", desc: "Your ad account's pixel is already on every page, with Purchase events sent from the browser and the server. Change the account in Settings.", builtin: true },
+    { key: "meta", name: "Meta Pixel", color: "#1877f2", logo: "f", tag: "Built in", desc: "Linked an ad account? Its pixel is already on every page. No ad account linked? Add your own Pixel ID here. Either way the Purchase event fires with the price of the package the customer picked.", builtin: true },
+    { key: "metapx", hidden: true, name: "Meta Pixel (your own)", ask: "Meta Pixel ID", ph: "e.g. 1234567890123456", pat: /[^0-9]/g, loc: "head", paste: true, help: "Meta Events Manager → Data sources → your pixel → Pixel ID (a long number). You don't need to link an ad account.",
+      make: function (id) { return '<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version=\'2.0\';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,\'script\',\'https://connect.facebook.net/en_US/fbevents.js\');fbq(\'init\',\'' + id + '\');fbq(\'track\',\'PageView\');<\/script>\n<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=' + id + '&ev=PageView&noscript=1"/></noscript>'; } },
     { key: "clarity", name: "Microsoft Clarity", color: "#0078d4", logo: "C", tag: "Heatmaps & recordings", desc: "See where visitors tap and watch recordings of real visits. Free.", ask: "Clarity Project ID", ph: "e.g. k8x2abcd9z", pat: /[^A-Za-z0-9]/g, loc: "head", help: "clarity.microsoft.com → your project → Settings → Overview → Project ID.",
       make: function (id) { return '<script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","' + id + '");<\/script>'; } },
     { key: "ga4", name: "Google Analytics 4", color: "#e8710a", logo: "GA", tag: "Visitors & sales", desc: "Count visitors, see where they come from and what they do.", ask: "Measurement ID", ph: "G-XXXXXXXXXX", pat: /[^A-Za-z0-9-]/g, loc: "head", help: "analytics.google.com → Admin → Data streams → your stream → Measurement ID (starts with G-).",
@@ -1058,13 +1060,14 @@ input,select,textarea{font:inherit}
   function updatePluginBadge() { var n = PLUGINS.filter(function (p) { return !p.builtin && !p.custom && rowsFor(p.key).some(function (r) { return r.is_active && appliesHere(r); }); }).length + customRows().filter(function (r) { return r.is_active && appliesHere(r); }).length; var b = $("#bPlugins span"); if (b) b.textContent = n ? "Plugins · " + n : "Plugins"; }
   function openPlugins() {
     var acct = S.accounts.find(function (a) { return a.id === (S.site.ad_account_id || (S.product && S.product.ad_account_id)); });
-    $("#plGrid").innerHTML = PLUGINS.map(function (p) {
+    $("#plGrid").innerHTML = PLUGINS.filter(function (p) { return !p.hidden; }).map(function (p) {
+      var own = p.builtin ? rowsFor("metapx") : [], ownOn = own.some(function (r) { return r.is_active && appliesHere(r); });
       var rows = p.builtin || p.custom ? [] : rowsFor(p.key), on = rows.some(function (r) { return r.is_active && appliesHere(r); }), n = p.custom ? customRows().filter(appliesHere).length : 0;
-      var st = p.builtin ? (acct && acct.meta_pixel_id ? '<span class="st on">ON · ' + esc(acct.meta_pixel_id) + "</span>" : '<span class="st">No pixel yet</span>') : p.custom ? (n ? '<span class="st on">' + n + " snippet" + (n > 1 ? "s" : "") + "</span>" : '<span class="st">Empty</span>') : (on ? '<span class="st on">ON</span>' : rows.length ? '<span class="st">Off / other pages</span>' : '<span class="st">Not set up</span>');
-      var btn = p.builtin ? '<button class="btn sm" data-pl="settings">Change account</button>' : '<button class="btn sm' + (on ? "" : " pri") + '" data-pl="' + p.key + '">' + (p.custom ? "Manage code" : rows.length ? "Manage" : "Set up") + "</button>";
+      var st = p.builtin ? (ownOn ? '<span class="st on">ON · your own pixel</span>' : acct && acct.meta_pixel_id ? '<span class="st on">ON · ' + esc(acct.meta_pixel_id) + "</span>" : '<span class="st">No pixel yet</span>') : p.custom ? (n ? '<span class="st on">' + n + " snippet" + (n > 1 ? "s" : "") + "</span>" : '<span class="st">Empty</span>') : (on ? '<span class="st on">ON</span>' : rows.length ? '<span class="st">Off / other pages</span>' : '<span class="st">Not set up</span>');
+      var btn = p.builtin ? '<button class="btn sm' + (ownOn || (acct && acct.meta_pixel_id) ? "" : " pri") + '" data-pl="metapx">' + (own.length ? "Manage my pixel" : "Use my own Pixel ID") + '</button><button class="btn sm" data-pl="settings">Ad account</button>' : '<button class="btn sm' + (on ? "" : " pri") + '" data-pl="' + p.key + '">' + (p.custom ? "Manage code" : rows.length ? "Manage" : "Set up") + "</button>";
       return '<div class="plc"><div class="top"><div class="lg" style="background:' + p.color + '">' + esc(p.logo) + "</div><div><b>" + esc(p.name) + "</b><small>" + esc(p.tag) + "</small></div>" + st + "</div><p>" + esc(p.desc) + '</p><div class="row">' + btn + "</div></div>";
     }).join("");
-    $$("[data-pl]", $("#plGrid")).forEach(function (b) { b.onclick = function () { if (b.dataset.pl === "settings") { $("#ovPlugins").classList.remove("on"); openSettings("general"); } else if (b.dataset.pl === "custom") openCustomCode(); else openPluginSetup(b.dataset.pl); }; });
+    $$("[data-pl]", $("#plGrid")).forEach(function (b) { b.onclick = function () { if (b.dataset.pl === "settings") { $("#ovPlugins").classList.remove("on"); openSettings("general"); } else if (b.dataset.pl === "metapx") openPluginSetup("metapx"); else if (b.dataset.pl === "custom") openCustomCode(); else openPluginSetup(b.dataset.pl); }; });
     $("#ovPlugins").classList.add("on");
   }
   function scopeRadios(cur) {
@@ -1077,19 +1080,21 @@ input,select,textarea{font:inherit}
   var plCur = null;
   function openPluginSetup(key) {
     var p = PLUGINS.find(function (x) { return x.key === key; }), rows = rowsFor(key), ex = rows[0], m = ex && marker(ex.code);
+    var pasted = m && m.id === "custom" ? ex.code.replace(/^<!-- rv-plugin:[^>]*-->\n?/, "") : "";
     plCur = { p: p, rows: rows };
     $("#plgTitle").textContent = p.name;
-    $("#plgBody").innerHTML = '<div class="fld"><label>' + esc(p.ask) + '</label><input id="plId" value="' + esc(m ? m.id : "") + '" placeholder="' + esc(p.ph) + '" autocomplete="off" spellcheck="false"><small>' + esc(p.help) + "</small></div><div class=\"fld\"><label>Runs on</label>" + scopeRadios(ex ? (ex.scope === "all" ? "all" : ex.scope === "pages" ? "pages" : "sites") : "sites") + '</div><label class="fld" style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="plOn" style="width:auto"' + (!ex || ex.is_active ? " checked" : "") + "> Active</label>";
+    $("#plgBody").innerHTML = '<div class="fld"><label>' + esc(p.ask) + '</label><input id="plId" value="' + esc(m ? m.id : "") + '" placeholder="' + esc(p.ph) + '" autocomplete="off" spellcheck="false"><small>' + esc(p.help) + "</small></div>" + (p.paste ? '<div class="fld"><label>Or paste the whole pixel code instead (optional)</label><textarea id="plCode" spellcheck="false" style="min-height:90px;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="&lt;script&gt; … fbq(\'init\', \'…\') … &lt;/script&gt;">' + esc(pasted) + '</textarea><small>If you paste the code, the ID above is ignored. The Purchase event still fires automatically with the package price. Adding your own pixel replaces the ad account pixel on these pages so visitors are never counted twice.</small></div>' : "") + "<div class=\"fld\"><label>Runs on</label>" + scopeRadios(ex ? (ex.scope === "all" ? "all" : ex.scope === "pages" ? "pages" : "sites") : "sites") + '</div><label class="fld" style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="plOn" style="width:auto"' + (!ex || ex.is_active ? " checked" : "") + "> Active</label>";
     $("#plgFoot").innerHTML = (rows.length ? '<button class="btn" id="plDel" style="margin-right:auto;color:var(--danger)">Remove</button>' : "") + '<button class="btn" data-close>Cancel</button><button class="btn pri" id="plSave">Save</button>';
     wireScope(); $$("#plgFoot [data-close]").forEach(function (b) { b.onclick = function () { $("#ovPlug").classList.remove("on"); }; });
     $("#plSave").onclick = savePlugin; if ($("#plDel")) $("#plDel").onclick = removePlugin;
     $("#ovPlug").classList.add("on"); setTimeout(function () { $("#plId").focus(); }, 40);
   }
   async function savePlugin() {
-    var p = plCur.p, id = $("#plId").value.trim().replace(p.pat, ""), btn = $("#plSave");
-    if (!id) return toast("Paste the " + esc(p.ask) + " first");
+    var p = plCur.p, id = $("#plId").value.trim().replace(p.pat, ""), btn = $("#plSave"), pasteCode = p.paste && $("#plCode") ? $("#plCode").value.trim() : "";
+    if (pasteCode) { if (!/fbq\(/.test(pasteCode)) return toast("That doesn't look like a Meta Pixel code (it should contain fbq)"); id = "custom"; }
+    if (!id) return toast("Paste the " + esc(p.ask) + " or the full pixel code first");
     btn.disabled = true; var sc = scopeRow(scopeVal()), act = $("#plOn").checked, now = new Date().toISOString();
-    var specs = [{ k: p.key, loc: p.loc, code: p.make(id) }]; if (p.extra) specs.push({ k: p.key + "-ns", loc: p.extra.loc, code: p.extra.make(id) });
+    var specs = [{ k: p.key, loc: p.loc, code: pasteCode || p.make(id) }]; if (p.extra && !pasteCode) specs.push({ k: p.key + "-ns", loc: p.extra.loc, code: p.extra.make(id) });
     try {
       for (var i = 0; i < specs.length; i++) {
         var sp = specs[i], row = Object.assign({ name: "Plugin: " + p.name + (sp.k.slice(-3) === "-ns" ? " (no-script)" : ""), code: "<!-- rv-plugin:" + sp.k + " id=" + id + " -->\n" + sp.code, location: sp.loc, is_active: act, updated_at: now }, sc);
