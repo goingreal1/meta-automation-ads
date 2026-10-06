@@ -29,7 +29,11 @@
     return ":root{--p:" + t.primary + ";--r:" + (t.radius | 0) + "px;--fh:'" + t.heading + "',system-ui,sans-serif;--fb:'" + t.body + "',system-ui,sans-serif}\n";
   }
 
+  var CART_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49c.08-.14.12-.31.12-.48 0-.55-.45-1-1-1H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>';
+  var CART_URL = 'url("data:image/svg+xml,' + encodeURIComponent(CART_SVG) + '")';
+
   var BASE_CSS = [
+    ":root{--cart:" + CART_URL + "}",
     ":root{--pd:color-mix(in srgb,var(--p) 78%,#000);--pl:color-mix(in srgb,var(--p) 10%,#fff);--ink:#14130f;--ink2:#55524a;--line:#e7e3da}",
     "*{box-sizing:border-box}",
     "body{margin:0;font-family:var(--fb);color:var(--ink);background:#fff;-webkit-font-smoothing:antialiased;line-height:1.6;overflow-x:hidden}",
@@ -107,10 +111,23 @@
     ".rv-banner{background:var(--pd);color:#fff;text-align:center;padding:30px 16px}.rv-bh{font-family:var(--fh);font-size:clamp(26px,6.4vw,50px);font-weight:800;line-height:1.14;text-transform:uppercase;margin:0}",
     ".rv-big{font-family:var(--fh);font-size:clamp(26px,6vw,46px);font-weight:800;line-height:1.15;text-transform:uppercase;text-align:center;margin:0;color:#000}",
     ".rv-red{color:var(--p)}.rv-up{text-transform:uppercase}",
-    ".rv-story .rv-p{font-size:clamp(19px,4.4vw,22px);line-height:1.6;color:var(--ink);margin:0 0 20px}.rv-story .rv-h2{font-size:clamp(26px,6vw,40px);text-transform:uppercase;margin:0 0 22px}",
+    ".rv-story .rv-p{font-size:clamp(19px,4.4vw,22px);line-height:1.6;color:var(--ink);margin:0 0 20px}.rv-story .rv-h2{font-family:var(--fb);font-size:clamp(24px,6vw,40px);font-weight:800;text-transform:uppercase;margin:0 0 22px}",
     ".rv-vcard{background:#2f4b94;border-radius:var(--r);padding:18px;margin:0 0 18px}.rv-vcard .rv-stars{margin:0 0 6px}.rv-vcard .rv-h3{color:#fff;text-align:center;font-size:24px;margin:0 0 12px}.rv-vcard .rv-video{border-radius:calc(var(--r) - 4px)}",
-    ".rv-sticky.rv-float{background:none;border:0;box-shadow:none;padding:10px 16px 14px;justify-content:center}.rv-sticky.rv-float .rv-btn{width:100%;max-width:640px;display:block;box-shadow:0 12px 28px -12px rgba(0,0,0,.45)}",
+    ".rv-sticky.rv-float{background:none;border:0;box-shadow:none;padding:10px 16px 14px;justify-content:center}.rv-sticky.rv-float .rv-btn{width:min(86%,560px);display:block;border-radius:6px;font-size:clamp(15px,4.4vw,20px);font-weight:600;padding:14px 16px;text-transform:uppercase;box-shadow:0 12px 28px -12px rgba(0,0,0,.45)}",
     ".rv-top.stick{position:sticky;top:0;z-index:70}",
+    ".rv-btn.cart::before{content:'';display:inline-block;width:1.15em;height:1.15em;margin-right:.55em;vertical-align:-.2em;background:currentColor;-webkit-mask:var(--cart) center/contain no-repeat;mask:var(--cart) center/contain no-repeat}",
+    ".rv-btn.blue{background:linear-gradient(#3b56ff,#1b2cf0);border-radius:5px;box-shadow:none;font-weight:600;font-size:clamp(18px,5vw,23px);padding:17px 36px}.rv-btn.blue:hover{background:linear-gradient(#2e48f0,#1424d6);transform:none}",
+    ".rv-btn.pill{display:flex;align-items:center;justify-content:center;border-radius:999px;background:#e04040;box-shadow:none;font-size:clamp(21px,5.4vw,30px);padding:20px 26px;text-transform:uppercase;font-weight:600;line-height:1.15;width:100%}.rv-btn.pill:hover{background:#c93232;transform:none}",
+    ".rv-hc{font-family:var(--fh);font-weight:700;font-size:clamp(26px,7vw,40px);line-height:1.2;text-align:center;margin:0 0 16px;color:#000}.rv-hc.red{color:var(--p)}.rv-hc.up{text-transform:uppercase}.rv-hc.left{text-align:left}.rv-hc.sm{font-size:clamp(22px,5.8vw,32px)}.rv-hc.fb{font-family:var(--fb)}",
+    ".rv-redsec{background:#d04943;color:#fff}.rv-redsec .rv-hc{color:#fff}.rv-redsec .rv-list{margin:0 0 6px}.rv-redsec .rv-list li{color:#fff;font-size:clamp(18px,4.9vw,22px);line-height:1.5;padding:9px 0 9px 40px}",
+    ".rv-list.x li::before{content:'\\2715';background:none;color:#fff;width:24px;height:24px;top:11px;font-size:18px;font-weight:700}",
+    ".rv-darksec{background:#000;color:#fff;text-align:center}.rv-darksec .rv-hc{color:#fff}.rv-darksec .rv-img{border-radius:0;max-width:520px;margin:0 auto 10px}",
+    ".rv-pkg3{background:#fff;text-align:center;display:flex;flex-direction:column}.rv-pkg3 .bar{padding:4px 10px;font-family:var(--fh);font-weight:700;font-size:clamp(28px,7.4vw,38px);color:#2c4a35;text-transform:uppercase;line-height:1.2}",
+    ".rv-pkg3 .q{font-family:var(--fh);font-weight:700;font-size:clamp(20px,5.4vw,24px);color:#2c4a35;text-transform:uppercase;margin:6px 0 8px}.rv-pkg3 .rv-img{border-radius:0}",
+    ".rv-pkg3 ul{text-align:left;margin:14px 0 6px;padding-left:30px;font-size:clamp(18px,4.9vw,22px);line-height:1.5;color:#111}.rv-pkg3 .now{display:block;font-family:var(--fh);font-weight:700;font-size:clamp(40px,10.5vw,54px);color:#2e5e2e;line-height:1.1;margin:10px 0 0}",
+    ".rv-pkg3 .was{display:block;font-family:var(--fh);font-weight:700;font-size:clamp(26px,6.8vw,36px);color:#f00;text-decoration:line-through;margin:0 0 14px}",
+    ".rv-foot-dark{background:#000;color:#fff;text-align:center;padding:26px 18px}.rv-foot-dark p{margin:0 0 14px;font-size:clamp(16px,4.2vw,20px);line-height:1.35}.rv-foot-dark .rv-hc{color:var(--p);font-size:clamp(26px,7vw,34px);margin:0 0 12px}",
+    ".rv-formbox{background:#d04943;color:#fff;text-align:center;border-radius:7px;padding:26px 18px;font-size:clamp(17px,4.6vw,21px);line-height:2}.rv-formbox p{margin:0 0 18px}.rv-formbox p:last-child{margin:0}",
     ".rv-pkg{position:relative;background:#fff;border:2px solid #14130f;border-radius:var(--r);overflow:hidden;text-align:center;display:flex;flex-direction:column}.rv-pkg.hot{border-color:var(--p);box-shadow:0 22px 44px -22px var(--p)}",
     ".rv-pkg-h{background:var(--pd);color:#fff;padding:14px 10px}.rv-pkg-h b{display:block;font-family:var(--fh);font-size:30px;line-height:1.1;letter-spacing:.05em}.rv-pkg-h span{display:block;font-weight:700;font-size:17px}.rv-pkg-h small{display:block;opacity:.85;font-size:13px}",
     ".rv-pkg .rv-img{border-radius:0;aspect-ratio:4/3}.rv-pkg-b{padding:16px 16px 20px;display:flex;flex-direction:column;gap:10px;align-items:center}.rv-pkg-b .rv-price .now{font-size:40px}.rv-pkg-b .rv-btn{width:100%}",
@@ -121,7 +138,7 @@
     ".rv-sidetab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:65;background:var(--pd);color:#fff!important;font-weight:800;letter-spacing:.05em;padding:16px 22px;border-radius:99px 0 0 99px;text-decoration:none;box-shadow:0 10px 26px -8px rgba(0,0,0,.55);animation:rvbeat 1.4s infinite}@keyframes rvbeat{0%,45%,100%{transform:translateY(-50%) scale(1)}12%{transform:translateY(-50%) scale(1.1)}28%{transform:translateY(-50%) scale(1.04)}}",
     ".rv-popup.side{justify-content:flex-end;align-items:stretch;padding:0}.rv-popup.side .rv-popup-box{max-width:440px;height:100%;max-height:none;border-radius:0;text-align:left;padding:30px 22px;animation:rvslide .3s ease-out}@keyframes rvslide{from{transform:translateX(100%)}to{transform:none}}",
     "@media(max-width:767px){.rv-gal{grid-template-columns:repeat(2,1fr)}.rv-plan.hot{transform:none}.rv-nav nav{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;flex-direction:column;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--line);z-index:30;gap:14px}.rv-nav .rv-burger{display:block}.rv-nav .rv-t:checked~nav{display:flex}.rv-map{height:300px}}",
-    "@media(max-width:767px){.rv-sec{padding:50px 18px}.rv-sec.tight{padding:32px 18px}.rv-cols.c2,.rv-cols.c3,.rv-cols.c4,.rv-cols.c5,.rv-cols.c6{grid-template-columns:1fr;gap:22px}.rv-cols.rev>:first-child{order:2}.rv-guar{flex-direction:column;text-align:center}.rv-btn{width:100%;display:block}.rv-sticky .rv-btn{width:auto;display:inline-block}.rv-cd .b{min-width:62px}}"
+    "@media(max-width:767px){.rv-sec{padding:50px 18px}.rv-sec.tight{padding:32px 18px}.rv-cols.c2,.rv-cols.c3,.rv-cols.c4,.rv-cols.c5,.rv-cols.c6{grid-template-columns:1fr;gap:22px}.rv-cols.rev>:first-child{order:2}.rv-cols.keep{grid-template-columns:repeat(2,1fr)!important;gap:10px}.rv-btn.fit{width:auto;display:inline-block}.rv-guar{flex-direction:column;text-align:center}.rv-btn{width:100%;display:block}.rv-sticky .rv-btn{width:auto;display:inline-block}.rv-cd .b{min-width:62px}}"
   ].join("\n");
 
   /* ---------- Icons for the widget tiles ---------- */
@@ -249,6 +266,78 @@
   function videoRatioFor(url) { return /tiktok\.com|instagram\.com\/(reel|reels)|youtube\.com\/shorts|facebook\.com\/reel/.test(url || "") ? "9:16" : "16:9"; }
   function mapEmbed(q) { return '<iframe src="https://maps.google.com/maps?q=' + encodeURIComponent(q || "Lagos, Nigeria") + '&output=embed" title="Map" loading="lazy"></iframe>'; }
 
+  /* ---------- Labelled picture slots: a grey box that says which photo goes there ---------- */
+  function slot(label, w, h) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '"><rect width="' + w + '" height="' + h + '" fill="#ece9e0"/><g fill="none" stroke="#b9b4a4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" transform="translate(' + (w / 2 - 60) + "," + (h / 2 - 95) + ')"><rect width="120" height="84" rx="10"/><circle cx="34" cy="28" r="9"/><path d="M120 66L88 38 40 78"/></g><text x="' + w / 2 + '" y="' + (h / 2 + 52) + '" text-anchor="middle" font-family="Arial,sans-serif" font-size="' + Math.round(Math.min(w, h) / 24) + '" fill="#7d786a">' + esc(label) + "</text></svg>";
+    return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  }
+
+  /* ---------- Sales-page building pieces (shared by the widgets and the Zumifa template) ---------- */
+  var CTA_TXT = "Click here to order now !!!";
+  function zmBlue(label) { return '<section class="rv-sec tight rv-center" style="padding-top:22px;padding-bottom:22px"><div class="rv-wrap narrow"><a class="rv-btn blue cart fit" href="#order">' + label + "</a></div></section>"; }
+  function zmHead(cls, text) { return '<section class="rv-sec tight"><div class="rv-wrap narrow"><h2 class="rv-hc ' + cls + '">' + text + "</h2></div></section>"; }
+  function zmImg(label, w, h, st) { return '<section class="rv-sec tight" style="padding-top:8px;padding-bottom:8px"><div class="rv-wrap"><img class="rv-img" style="border-radius:0' + (st || "") + '" src="' + slot(label, w, h) + '" alt=""></div></section>'; }
+  function zmProblems() {
+    var items = ["Sensitivity to light: Bright lights cause discomfort, making you squint or struggle to keep your eyes open.", "Blurry vision: This can be a general haziness or a blurry area in the center of your vision.", "Double vision: Seeing double can be a sign of various underlying eye or neurological conditions.", "Cloudy or hazy vision: This can indicate a problem with the lens or other parts of the eye.", "Gradual loss of peripheral vision: if you notice that your side vision is shrinking, it may be a warning sign. Loss of peripheral vision can be an early sign of certain eye conditions.", "Halos around lights: Seeing rainbow-like rings around lights, especially at night, can indicate issues like cataract."];
+    return '<section class="rv-sec rv-redsec" style="padding:34px 18px"><div class="rv-wrap narrow"><h2 class="rv-hc" style="margin-bottom:18px">Are You Experiencing Any Of These Eye Problems?</h2><ul class="rv-list x">' + items.map(function (t) { return "<li>" + t + "</li>"; }).join("") + "</ul></div></section>";
+  }
+  function zmGuarantee() {
+    return '<section class="rv-sec rv-darksec" style="padding:30px 16px 36px"><div class="rv-wrap narrow"><h2 class="rv-hc up sm" style="font-weight:600">You are backed with our 30 days 100% money back guarantee if you are not satisfied with this product</h2><img class="rv-img" src="' + slot("Guarantee seal image (30 days money back)", 800, 800) + '" alt=""><h3 class="rv-hc sm">30-Day Money Back Guarantee! If you think you didn’t get value for your money</h3><p class="rv-hc up sm" style="font-weight:600;margin:0">Note: you will get refund if this product does not work for you as prescribed.</p></div></section>';
+  }
+  function zmCard(bar, barBg, qty, imgLabel, bullets, now, was, btn, idx) {
+    return '<div class="rv-pkg3"><div class="bar" style="background:' + barBg + '">' + bar + '</div><div class="q">' + qty + '</div><img class="rv-img" src="' + slot(imgLabel, 800, 800) + '" alt=""><ul>' + bullets.map(function (b) { return "<li>" + b + "</li>"; }).join("") + '</ul><span class="now">' + now + '</span><span class="was">' + was + '</span><a class="rv-btn pill cart" href="#order" data-rv-tier="' + idx + '">' + btn + "</a></div>";
+  }
+  function zmPackages() {
+    return '<section class="rv-sec tight" style="padding-top:18px"><div class="rv-wrap"><div class="rv-cols auto top" style="gap:44px">' +
+      zmCard("Starter Pack", "#d3d78f", "1 Bottle", "Card 1 image: 1 bottle", ["30 Capsules", "Good for first time customers", "Supports healthy vision", "Cash on delivery"], "₦21,000", "₦39,000", "Get the Starter Pack now", 1) +
+      zmCard("Most Popular", "#e8002d", "2 Bottles", "Card 2 image: buy 2 get 1 free", ["60 Capsules (2 BOTTLES)", "Comes with 1 free immune booster", "Free delivery", "Cash on delivery"], "₦33,500", "₦00,000", "Get the 2 Bottle deal", 2) +
+      zmCard("Best Value", "#eee84a", "4 Bottles", "Card 3 image: buy 4 get 2 free", ["120 Capsules (4 BOTTLES)", "Maximum savings", "Comes with 2 free immune boosters", "Free delivery"], "₦57,000", "₦120,000", "Get the Best Value deal", 3) + "</div></div></section>";
+  }
+  function zmForm() {
+    var fields = esc(JSON.stringify([{ label: "WhatsApp number", type: "tel", required: false, placeholder: "" }]));
+    return '<section class="rv-sec tight" id="order" style="padding-top:34px"><div class="rv-wrap narrow"><h2 class="rv-hc red fb up" style="font-weight:800;font-size:clamp(28px,7.6vw,40px);margin-bottom:22px">Fill this form to order</h2><div class="rv-formbox"><p>Please be sure you are FULLY ready for the package &amp; have the money to pay at the point of delivery.</p><p>Due to huge demand from our advert, we are officially running low on this product – place your order while supplies last!</p></div><div style="height:26px"></div><div data-rv-form="1" data-rv-title="" data-rv-subtitle="" data-rv-button="Submit Form" data-rv-accent="#3b82f6" data-rv-fields="' + fields + '"></div></div></section>';
+  }
+  function zmFooter() {
+    return '<footer class="rv-foot-dark" style="padding-bottom:96px"><p>Copyright © <span data-rv-year>2026</span> BEYCE WELLNESS Ltd. All rights reserved. Unauthorized use or reproduction of this content is prohibited.</p><h2 class="rv-hc">DISCLAIMER</h2><p style="margin:0">Not affiliated with or endorsed by Facebook/Meta. Facebook is a registered trademark of Meta Platforms, Inc.</p></footer>';
+  }
+  function zmStory() {
+    return '<section class="rv-sec" style="padding-top:34px"><div class="rv-wrap narrow rv-story"><h2 class="rv-h2">It starts with a little blurriness… then your eyes never feel the same again.</h2><p class="rv-p">Maybe you’ve noticed that your eyes get tired faster than they used to. You struggle to focus on small words, your vision sometimes feels blurry, your eyes become dry or irritated, or you find yourself rubbing them after spending hours on your phone or computer.</p><p class="rv-p">At first, it’s easy to brush these signs off as ordinary tiredness. But when the discomfort keeps coming back, reading becomes harder, screen time becomes uncomfortable, and even simple everyday activities can start feeling like a struggle.</p><p class="rv-p">Your eyes work for you every single day. Isn’t it time you started giving them the support they deserve?</p></div></section>';
+  }
+  function zumifaHtml() {
+    var blue = zmBlue("Click Here To Order");
+    var vcard = '<section class="rv-sec tight" style="padding-top:8px;padding-bottom:8px"><div class="rv-wrap"><div class="rv-vcard" style="border-radius:0;padding:16px 20px 22px"><div class="rv-stars">★★★★★</div><h3 class="rv-hc" style="color:#0b0b0b;font-size:clamp(26px,7vw,36px);margin:6px 0 14px">Happy customer</h3><div class="rv-video" data-src="" data-ratio="16:9" style="border-radius:0">' + videoEmbed("") + "</div></div></div></section>";
+    var shot = function (n, w, h) { return '<img class="rv-img" style="border-radius:0" src="' + slot("Testimonial screenshot " + n, w, h) + '" alt="">'; };
+    return [
+      '<section class="rv-banner" style="background:#a32a25;padding:30px 16px"><div class="rv-wrap narrow"><h1 class="rv-bh" style="color:#f2f2f2;font-weight:700">Struggling with blurry or tired eyes? Your eyes may need more than glasses</h1></div></section>',
+      zmHead("up", "Here is a 7 day remedy for all eye defect<br>Zumifa Eye<br>Herbal Capsule"),
+      zmImg("Hero image (product / patient photo)", 800, 800),
+      zmStory(), blue,
+      '<section class="rv-sec tight"><div class="rv-wrap"><h2 class="rv-hc red fb" style="margin-bottom:22px;font-weight:800">Check our customers honest review</h2><div class="rv-cols c2 keep top" style="gap:14px">' + shot(1, 600, 900) + shot(2, 600, 900) + "</div></div></section>",
+      '<section class="rv-sec tight"><div class="rv-wrap narrow"><p class="rv-hc red up sm" style="margin:0">Please stop gambling with your life, end eye issue now before it leads to blindness....</p></div></section>',
+      zmHead("", "Real Customer Experiences With Zumifa Herbal Capsules"), vcard, vcard,
+      '<section class="rv-sec tight"><div class="rv-wrap narrow"><p class="rv-hc sm" style="font-weight:500;color:#1f2937">You can now Achieve Perfect Vision Naturally, Without Ever Needing Glasses, Contact Lenses or Expensive Surgeries…</p></div></section>',
+      blue, zmProblems(),
+      zmHead("red", "If These Symptoms Sound Familiar, It’s Time To Discover ZUMIFA HERBAL CAPSULES"),
+      zmImg("Offer image: buy 2 bottles, get 1 free", 800, 800), blue,
+      zmHead("up", "Important details you need to know about this product.."),
+      zmImg("Product benefits image", 800, 800), blue,
+      zmHead("red up", "Hear from few more of our happy customers"),
+      '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-cols c2 keep top" style="gap:14px">' + shot(3, 600, 900) + shot(4, 600, 900) + shot(5, 600, 900) + shot(6, 600, 900) + "</div></div></section>",
+      blue,
+      zmImg("Product bottle image", 800, 800),
+      zmHead("", "Powerful Herbal Care, Safe for Everyday Use"),
+      zmImg("100% safe badge", 600, 600, ";max-width:300px;margin:0 auto"),
+      zmHead("left fb sm", "Sounds Like Something You Want To Give A Try?"),
+      zmGuarantee(), blue,
+      zmHead("red up", "How much is the eyes treatment cost ?"),
+      '<section class="rv-sec tight"><div class="rv-wrap narrow"><p class="rv-hc sm">Exclusive Launch SALES Promo Only For Just 5 People.</p><p class="rv-hc sm">(Promo Ends This Mid-Night)</p><p class="rv-hc sm">+ (EXCLUSIVE BONUSES WHEN YOU GET MORE THAN ONE BOTTLE OF ZUMIFA)</p></div></section>',
+      zmImg("Cash on delivery stamp", 800, 500, ";max-width:380px;margin:0 auto"),
+      '<section class="rv-sec tight"><div class="rv-wrap narrow"><p class="rv-hc red sm" style="margin:0">Please Order Only If You\'re Ready To Pay Upon Delivery. Our Stock is limited, and delivery takes less than 24 hours. NOTE - Don\'t have the money yet? Save this page and return when you\'re ready to place your order, we will be glad to serve you.</p></div></section>',
+      zmPackages(), zmForm(), zmFooter(),
+      '<div class="rv-sticky rv-float"><a class="rv-btn block cart" href="#order">' + CTA_TXT + "</a></div>"
+    ].join("\n");
+  }
+
   /* ---------- Blocks ---------- */
   // ctx: { product: 'Herbal Tea', price: '₦19,000', whatsapp: '2348012345678' }
   function build(ctx) {
@@ -344,6 +433,12 @@
     }
     add("sp-packages2", "Package cards - clean (any number)", "Offers", I.tag, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-center"><span class="rv-eyebrow">Special offer</span><h2 class="rv-h2">Choose your package</h2></div><div class="rv-cols auto top" style="gap:34px">' +
       pkg2("Starter pack", "1 Bottle", "📦 15-Day Introductory Care", "₦44,000", "₦20,000", "SAVE ₦24,000 (55% OFF)", "ORDER STARTER PACK", 1, false) + pkg2("Recommended pack", "2 Bottles", "🎁 2 Bottles + 1 FREE Booster", "₦93,000", "₦32,500", "SAVE ₦60,500 (65% OFF)", "ORDER RECOMMENDED PACK", 2, true) + pkg2("Recovery pack", "4 Bottles", "🎁 4 Bottles + 2 FREE Boosters", "₦181,000", "₦57,000", "SAVE ₦124,000 (68% OFF)", "ORDER RECOVERY PACK", 3, false) + "</div></div></section>");
+    add("sp-problems", "Problem list (red, ✕ icons)", "Sales page", I.list, zmProblems());
+    add("sp-guarantee-dark", "Money-back guarantee (dark, seal)", "Sales page", I.shield, zmGuarantee());
+    add("sp-packages3", "Package cards - flat bar + bullets", "Offers", I.tag, zmPackages());
+    add("sp-form", "Order form with red notice", "Sales page", I.form, zmForm());
+    add("sp-footer-dark", "Footer - dark, disclaimer", "Sales page", I.footer, zmFooter());
+    add("sp-blue-button", "Blue order button (cart icon)", "Sales page", I.button, zmBlue("Click Here To Order"));
     add("sp-offerbar", "Sticky offer bar (top)", "Offers", I.megaphone, '<div class="rv-top stick">🚚 FAST NATIONWIDE DELIVERY (24–48 HRS) &nbsp;|&nbsp; 100% PAYMENT ON DELIVERY &nbsp;|&nbsp; NAFDAC REG. NO.: ______</div>');
     add("sp-packages", "Package cards (any number)", "Offers", I.tag, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-center"><span class="rv-eyebrow">Buy more, save more</span><h2 class="rv-h2">Select your package</h2></div><div class="rv-cols auto top">' +
       pkg("", "STARTER", "15 Days Pack", "Less recommended", "₦44,000", "₦20,000", "SAVE ₦24,000", 1, false) + pkg("", "SILVER", "3 Months Pack", "Recommended", "₦93,000", "₦32,500", "SAVE ₦60,500", 2, true) + pkg("", "GOLD", "6 Months Pack", "Highly recommended", "₦126,000", "₦57,000", "SAVE ₦69,000", 3, false) + "</div></div></section>");
@@ -382,6 +477,7 @@
       blocks: ["sp-banner", "sp-headline", "sp-image", "sp-cta", "sp-story", "sp-cta", "sp-reviews", "sp-warning", "sp-video-card", "sp-video-card", "sp-cta", "order-form", "footer", "sp-float"] },
     { id: "offer-packages", name: "Offer page - packages & slide-in drawer", desc: "Sticky offer bar, story, video proof, reviews, guarantee, package cards that pick the package in the form, and a pulsing ORDER NOW tab with a slide-in drawer", kind: "page", theme: { primary: "#6d2a7f", heading: "Poppins", body: "Inter" },
       blocks: ["sp-offerbar", "sp-headline", "sp-image", "sp-delivery", "sp-cta", "sp-story", "sp-video-card", "sp-video-card", "iconbox-row", "testimonials", "guarantee", "sp-packages", "order-form", "faq", "footer", "sp-sidetab", "sp-drawer"] },
+    { id: "zumifa", name: "Zumifa eye capsules - full sales page", desc: "Red banner, story, review screenshots, video cards, symptoms list, guarantee, 3 flat offer cards, order form and floating order button", kind: "page", theme: { primary: "#e0301e", heading: "Roboto", body: "Montserrat" }, html: zumifaHtml },
     { id: "service", name: "Service - bank transfer", desc: "Sell a service: steps, proof, FAQ and a form that shows your bank details", kind: "page",
       blocks: ["announce", "hero-center", "steps", "features", "testimonials", "guarantee", "faq", "order-form", "footer", "whatsapp"] },
     { id: "thanks", name: "Thank-you page", desc: "Shown after an order; includes bank details when relevant", kind: "thanks",
@@ -390,6 +486,7 @@
   ];
 
   function templateHtml(tpl, ctx) {
+    if (typeof tpl.html === "function") return tpl.html(ctx);
     var byId = {}; build(ctx).forEach(function (b) { byId[b.id] = b; });
     return tpl.blocks.map(function (id) { var b = byId[id], c = b && b.content; if (typeof c !== "string") return ""; return b.widget ? '<section class="rv-sec tight"><div class="rv-wrap">' + c + "</div></section>" : c; }).join("\n");
   }

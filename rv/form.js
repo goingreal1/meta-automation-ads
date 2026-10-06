@@ -71,7 +71,7 @@
       (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") +
       (subtitle ? '<p class="rv-sub">' + esc(subtitle) + "</p>" : "") +
       (hasTiers
-        ? '<div class="rv-field"><label>Choose your package</label><div class="rv-tiers">' + product.tiers.map(function (t) {
+        ? '<div class="rv-field rv-pkgfield"><label>Choose your package</label><div class="rv-tiersum"><div><small>Your package</small><b class="rv-sumlabel"></b></div><button type="button" class="rv-change">Change</button></div><div class="rv-tiers">' + product.tiers.map(function (t) {
             return '<div class="rv-tier' + (t.id === selectedTier ? " on" : "") + '" data-tier="' + esc(t.id) + '"><div><b>' + esc(t.label) + "</b>" + (t.badge ? "<em>" + esc(t.badge) + "</em>" : "") + "</div><span>" + fmt(t.price_naira, product.currency) + "</span></div>";
           }).join("") + "</div></div>"
         : (isService ? "" : '<div class="rv-field"><label>Quantity</label><div class="rv-qty"><button type="button" data-q="-1" aria-label="Less">&minus;</button><b class="rv-qv">1</b><button type="button" data-q="1" aria-label="More">+</button></div></div>')) +
@@ -91,13 +91,21 @@
       "</form>";
 
     var form = el.querySelector("form"), tot = el.querySelector(".rv-tot");
+    function syncSummary() {
+      var t = hasTiers && product.tiers.find(function (x) { return x.id === selectedTier; }), sl = el.querySelector(".rv-sumlabel");
+      if (t && sl) sl.textContent = t.label + " \u00b7 " + fmt(t.price_naira, product.currency);
+    }
     el.querySelectorAll(".rv-tier").forEach(function (c) {
       c.addEventListener("click", function () {
         selectedTier = c.dataset.tier;
         el.querySelectorAll(".rv-tier").forEach(function (x) { x.classList.toggle("on", x.dataset.tier === selectedTier); });
-        tot.textContent = fmt(total(), product.currency);
+        tot.textContent = fmt(total(), product.currency); syncSummary();
+        // chosen from an offer card on the page -> show it as a one-line summary instead of asking again
+        if (c.__fromCard) { el.classList.add("rv-picked"); c.__fromCard = false; }
       });
     });
+    var chg = el.querySelector(".rv-change"); if (chg) chg.addEventListener("click", function () { el.classList.remove("rv-picked"); });
+    syncSummary();
     el.querySelectorAll("[data-q]").forEach(function (b) {
       b.addEventListener("click", function () {
         qty = Math.max(1, Math.min(20, qty + Number(b.dataset.q)));
@@ -212,7 +220,7 @@
         var form = document.querySelector("[data-rv-form]"); if (!form) return;
         var pick = String(t.getAttribute("data-rv-tier")), tiers = form.querySelectorAll(".rv-tier"), hit = null;
         if (/^\d+$/.test(pick)) hit = tiers[parseInt(pick, 10) - 1]; else tiers.forEach(function (x) { if (!hit && x.textContent.toLowerCase().indexOf(pick.toLowerCase()) > -1) hit = x; });
-        if (hit) hit.click();
+        if (hit) { hit.__fromCard = true; hit.click(); }
       });
     }
   }

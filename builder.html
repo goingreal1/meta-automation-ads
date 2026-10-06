@@ -660,7 +660,7 @@ input,select,textarea{font:inherit}
     var c = hv.c, el = c && c.getEl && c.getEl(), fe = S.editor.Canvas.getFrameEl();
     if (!el || !el.isConnected || !fe) return hideHandles();
     var fr = fe.getBoundingClientRect(), r = el.getBoundingClientRect(), cv = $("#canvas").getBoundingClientRect();
-    var cx = Math.min(Math.max(fr.left + r.left + r.width / 2, fr.left + 24), fr.right - 24);
+    var cx = Math.min(Math.max(fr.left + r.left + (r.width < 520 ? Math.max(30, r.width * 0.16) : r.width / 2), fr.left + 24), fr.right - 24);
     var top = fr.top + r.top, bot = fr.top + r.bottom;
     function put(btn, y) { var ok = y > cv.top + 2 && y < cv.bottom - 2; btn.classList.toggle("on", ok); btn.style.left = (cx - 13) + "px"; btn.style.top = (y - 13) + "px"; }
     put($("#hTop"), top); put($("#hBot"), bot);
@@ -796,8 +796,10 @@ input,select,textarea{font:inherit}
       if (kind === "link") {
         h += F("Link (where it goes)", '<input data-f="href" value="' + esc(a.href || "") + '" placeholder="https://…  or  #order">',
           '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' +
-          '<label class="chk"><input type="checkbox" data-f="blank"' + (a.target === "_blank" ? " checked" : "") + '>Open in a new tab</label>';
-        if (c.getClasses().indexOf("rv-btn") > -1) h += F("Button style", '<select data-f="bstyle"><option value="">Solid</option><option value="ghost"' + (c.getClasses().indexOf("ghost") > -1 ? " selected" : "") + '>Outline</option></select>') + '<label class="chk"><input type="checkbox" data-f="bblock"' + (c.getClasses().indexOf("block") > -1 ? " checked" : "") + ">Full width</label>";
+          '<label class="chk"><input type="checkbox" data-f="blank"' + (a.target === "_blank" ? " checked" : "") + '>Open in a new tab</label>'
+        var tiers = (S.product && S.product.tiers) || [], curT = String(a["data-rv-tier"] || "");
+        h += F("Package this button selects", '<select data-f="tier"><option value="">None (just a link)</option>' + (tiers.length ? tiers.map(function (t, i) { return '<option value="' + (i + 1) + '"' + (curT === String(i + 1) ? " selected" : "") + ">" + (i + 1) + " &middot; " + esc(t.label) + " (" + RV_fmt(t.price_naira, S.product.currency) + ")</option>"; }).join("") : [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="' + n + '"' + (curT === String(n) ? " selected" : "") + ">Package " + n + "</option>"; }).join("")) + "</select>", tiers.length ? "The order form below picks this package for the customer, so they don't choose twice." : "Add packages to your product, then pick one here. Package 1 is the first one listed on the product.");
+        if (c.getClasses().indexOf("rv-btn") > -1) h += F("Button style", '<select data-f="bstyle"><option value="">Solid</option><option value="ghost"' + (c.getClasses().indexOf("ghost") > -1 ? " selected" : "") + '>Outline</option></select>') + '<label class="chk"><input type="checkbox" data-f="bblock"' + (c.getClasses().indexOf("block") > -1 ? " checked" : "") + ">Full width</label>" + '<label class="chk"><input type="checkbox" data-f="bcart"' + (c.getClasses().indexOf("cart") > -1 ? " checked" : "") + '>Cart icon on the left</label>';
       }
     } else if (kind === "image") {
       var src = c.get("src") || a.src || "";
@@ -824,8 +826,10 @@ input,select,textarea{font:inherit}
     on('[data-f="text"]', "input", function (n) { var html = n.dataset.html === "1"; c.components(html ? n.value : esc(n.value).replace(/\n/g, "<br>")); });
     on('[data-f="level"]', "change", function (n) { c.set("tagName", n.value); c.set("name", "Heading"); ed.select(c); });
     on('[data-f="href"]', "input", function (n) { c.addAttributes({ href: n.value }); });
+    on('[data-f="tier"]', "change", function (n) { if (n.value) { c.addAttributes({ "data-rv-tier": n.value }); if (!clean(c.getAttributes().href || "")) c.addAttributes({ href: "#order" }); } else c.removeAttributes(["data-rv-tier"]); });
     on('[data-f="blank"]', "change", function (n) { if (n.checked) c.addAttributes({ target: "_blank", rel: "noopener" }); else c.removeAttributes(["target", "rel"]); });
     on('[data-f="bstyle"]', "change", function (n) { if (n.value) c.addClass("ghost"); else c.removeClass("ghost"); });
+    on('[data-f="bcart"]', "change", function (n) { if (n.checked) c.addClass("cart"); else c.removeClass("cart"); });
     on('[data-f="bblock"]', "change", function (n) { if (n.checked) c.addClass("block"); else c.removeClass("block"); });
     $$("[data-q]", box).forEach(function (b) {
       b.onclick = function () {
@@ -915,7 +919,7 @@ input,select,textarea{font:inherit}
       (k === "box" ? '<div class="hint2">Aligns everything inside this block.</div>' : "") + "</div>";
     // columns (any number of cards/columns in a row)
     var cl = c.getClasses();
-    if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^c[1-6]$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Duplicate a card with the toolbar to add more. They stack on phones.</div></div></div>'; }
+    if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^c[1-6]$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><label class="chk" style="margin:8px 0 0"><input type="checkbox" data-keep="1"' + (cl.indexOf("keep") > -1 ? " checked" : "") + '>Stay side by side on phones (2 per row)</label><div class="hint2">Duplicate a card with the toolbar to add more. Otherwise they stack on phones.</div></div></div>'; }
     // button size
     if (isBtn) h += '<div class="ss"><div class="sst">Button size</div><div class="seg">' + [["S", "Small"], ["M", "Medium"], ["L", "Large"], ["XL", "Extra large"]].map(function (b) { return '<button data-bsize="' + b[0] + '" title="' + b[1] + '">' + b[0] + "</button>"; }).join("") + "</div></div>";
     // colours
@@ -987,6 +991,7 @@ input,select,textarea{font:inherit}
     });
     box.addEventListener("change", function (e) {
       var n = e.target;
+      if (n.dataset.keep) { var kc = ed.getSelected(); if (n.checked) kc.addClass("keep"); else kc.removeClass("keep"); return; }
       if (n.dataset.cols) { var cc = ed.getSelected(); ["c1", "c2", "c3", "c4", "c5", "c6", "auto"].forEach(function (x) { cc.removeClass(x); }); cc.addClass(n.value); return; }
       if (n.dataset.s && n.dataset.k === "sel") { var o = {}; o[n.dataset.s] = n.value; sty(o); }
       if (n.dataset.wunit) { var w = $('[data-s="width"]', box); if (w.value) sty({ width: w.value + n.value }); }
@@ -1337,7 +1342,7 @@ input,select,textarea{font:inherit}
   }
   function applyTemplate(t) {
     var html = RB.templateHtml(t, blockCtx());
-    S.editor.setComponents(html); S.editor.setStyle("");
+    S.editor.setStyle(""); S.editor.setComponents(html);   // clear first: setStyle after setComponents would wipe the template's own inline styles
     if (t.theme) { Object.assign(S.theme, t.theme); applyCanvasTheme(); }
     if (t.kind === "thanks" && S.page.kind !== "thanks") { S.page.kind = "thanks"; sb.from("site_pages").update({ kind: "thanks" }).eq("id", S.page.id).then(function () {}); }
     S.editor.UndoManager.clear(); S.loadedProject = true; S.dirty = true; saveDraft();
