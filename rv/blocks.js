@@ -100,6 +100,9 @@
     ".rv-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;background:#fff;border-bottom:1px solid var(--line);position:relative}.rv-nav .logo{font-family:var(--fh);font-weight:800;font-size:21px;color:var(--ink);text-decoration:none}.rv-nav nav{display:flex;gap:22px;align-items:center}.rv-nav nav a{color:var(--ink2);text-decoration:none;font-weight:600;font-size:15px}.rv-nav nav .rv-btn{padding:10px 20px;font-size:15px;color:#fff}.rv-nav .rv-t{display:none}.rv-nav .rv-burger{display:none;font-size:26px;cursor:pointer;line-height:1}",
     ".rv-hero-img{background:#222 center/cover no-repeat;color:#fff;position:relative}.rv-hero-img::before{content:'';position:absolute;inset:0;background:rgba(10,10,10,.55)}.rv-hero-img>*{position:relative}.rv-hero-img .rv-lead{color:#e5e2d8}",
     ".rv-prod{text-align:center}.rv-prod .rv-img{aspect-ratio:1/1;margin-bottom:14px}",
+    ".rv-tabs{max-width:860px;margin:0 auto}.rv-tablist{display:flex;gap:6px;flex-wrap:wrap;border-bottom:2px solid var(--line);margin-bottom:22px}.rv-tablist button{background:none;border:0;padding:13px 20px;font:inherit;font-weight:700;font-size:16px;color:var(--ink2);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}.rv-tablist button.on{color:var(--p);border-bottom-color:var(--p)}.rv-tabpanel{display:none}.rv-tabpanel.on{display:block}",
+    ".rv-popup{position:fixed;inset:0;z-index:2000;background:rgba(10,10,10,.6);display:none;align-items:center;justify-content:center;padding:20px}.rv-popup.open{display:flex}.rv-popup-box{position:relative;background:#fff;border-radius:calc(var(--r) + 6px);padding:34px 28px;max-width:480px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.4);text-align:center}.rv-popup-x{position:absolute;top:10px;right:14px;background:none;border:0;font-size:28px;line-height:1;cursor:pointer;color:#8c887c}",
+    ".rv-waform{max-width:480px;margin:0 auto}.rv-waform input,.rv-waform textarea{width:100%;margin:0 0 12px;padding:14px;border:1.5px solid var(--line);border-radius:var(--r);font:inherit;font-size:16px}.rv-waform .rv-btn{width:100%;border:0;cursor:pointer;background:#25d366;box-shadow:0 10px 24px -12px #25d366}",
     "@media(max-width:767px){.rv-gal{grid-template-columns:repeat(2,1fr)}.rv-plan.hot{transform:none}.rv-nav nav{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;flex-direction:column;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--line);z-index:30;gap:14px}.rv-nav .rv-burger{display:block}.rv-nav .rv-t:checked~nav{display:flex}.rv-map{height:300px}}",
     "@media(max-width:767px){.rv-sec{padding:50px 18px}.rv-sec.tight{padding:32px 18px}.rv-cols.c2,.rv-cols.c3,.rv-cols.c4{grid-template-columns:1fr;gap:22px}.rv-cols.rev>:first-child{order:2}.rv-guar{flex-direction:column;text-align:center}.rv-btn{width:100%;display:block}.rv-sticky .rv-btn{width:auto;display:inline-block}.rv-cd .b{min-width:62px}}"
   ].join("\n");
@@ -157,6 +160,36 @@
           tick(); setInterval(tick, 1000);
         };
 
+
+
+  var tabsScript = function () {
+    var el = this, btns = el.querySelectorAll(".rv-tablist button"), panels = el.querySelectorAll(".rv-tabpanel");
+    for (var i = 0; i < btns.length; i++) (function (i) {
+      btns[i].addEventListener("click", function () {
+        for (var j = 0; j < btns.length; j++) { btns[j].classList.toggle("on", j === i); if (panels[j]) panels[j].classList.toggle("on", j === i); }
+      });
+    })(i);
+  };
+  var popupScript = function () {
+    var el = this, key = "rv_popup_" + location.pathname, delay = parseFloat(el.getAttribute("data-delay")), exit = el.getAttribute("data-exit") === "1", once = el.getAttribute("data-once") !== "0";
+    function seen() { try { return once && sessionStorage.getItem(key); } catch (e) { return false; } }
+    function open() { if (seen()) return; el.classList.add("open"); try { sessionStorage.setItem(key, "1"); } catch (e) {} }
+    function close() { el.classList.remove("open"); }
+    el.addEventListener("click", function (e) { if (e.target === el || (e.target.closest && e.target.closest(".rv-popup-x"))) close(); });
+    document.addEventListener("click", function (e) { var a = e.target.closest && e.target.closest('a[href="#rv-popup"]'); if (a) { e.preventDefault(); el.classList.add("open"); } });
+    if (delay >= 0) setTimeout(open, delay * 1000);
+    if (exit) document.addEventListener("mouseout", function (e) { if (e.clientY <= 0 && !e.relatedTarget) open(); });
+  };
+  var waformScript = function () {
+    var el = this, f = el.querySelector("form"); if (!f) return;
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var num = (el.getAttribute("data-number") || "").replace(/\D/g, ""), n = f.elements.name.value.trim(), p = f.elements.phone.value.trim(), m = f.elements.msg.value.trim();
+      if (!n || !p) return;
+      var text = "Hi, my name is " + n + " (" + p + "). " + (m || "I would like to know more.");
+      window.open("https://wa.me/" + num + "?text=" + encodeURIComponent(text), "_blank");
+    });
+  };
 
   /* ---------- Video & map embeds ---------- */
   function videoEmbed(url, o) {
@@ -270,6 +303,11 @@
     add("contact", "Contact buttons", "Sections", I.chat, '<section class="rv-sec tight rv-center"><div class="rv-wrap narrow"><h2 class="rv-h2">Questions? Talk to us</h2><div class="rv-contact"><a class="rv-btn" href="tel:+' + (wa || "234") + '">📞 Call us</a><a class="rv-btn ghost" href="' + waHref + '" target="_blank" rel="noopener">💬 WhatsApp</a><a class="rv-btn ghost" href="mailto:hello@example.com">✉️ Email</a></div></div></section>');
     add("social", "Social icons", "Basic", I.chat, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-social"><a href="https://facebook.com" target="_blank" rel="noopener">f</a><a href="https://instagram.com" target="_blank" rel="noopener">ig</a><a href="https://tiktok.com" target="_blank" rel="noopener">tt</a><a href="https://youtube.com" target="_blank" rel="noopener">yt</a><a href="' + waHref + '" target="_blank" rel="noopener">wa</a></div></div></section>');
     add("iconbox-row", "Icon boxes (4)", "Sections", I.grid, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-cols c4 top"><div class="rv-center"><div class="rv-ico">🚚</div><h3 class="rv-h3">Fast delivery</h3><p class="rv-p">Nationwide</p></div><div class="rv-center"><div class="rv-ico">💳</div><h3 class="rv-h3">Pay on delivery</h3><p class="rv-p">No risk</p></div><div class="rv-center"><div class="rv-ico">🔒</div><h3 class="rv-h3">Secure</h3><p class="rv-p">Private details</p></div><div class="rv-center"><div class="rv-ico">💬</div><h3 class="rv-h3">Support</h3><p class="rv-p">On WhatsApp</p></div></div></div></section>');
+
+    /* Interactive */
+    add("tabs", "Tabs", "Interactive", I.faq, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-tabs" data-rv-tabs="1"><div class="rv-tablist"><button class="on">Overview</button><button>Ingredients</button><button>How to use</button></div><div class="rv-tabpanel on"><h3 class="rv-h3">Overview</h3><p class="rv-p">Explain what the product is and who it is for.</p></div><div class="rv-tabpanel"><h3 class="rv-h3">Ingredients</h3><p class="rv-p">List what is inside and why it matters.</p></div><div class="rv-tabpanel"><h3 class="rv-h3">How to use</h3><p class="rv-p">Give simple, numbered steps.</p></div></div></div></section>');
+    add("popup", "Popup offer", "Interactive", I.megaphone, '<div class="rv-popup" data-rv-popup="1" data-delay="8" data-exit="1" data-once="1"><div class="rv-popup-box"><button class="rv-popup-x" aria-label="Close">×</button><span class="rv-badge">Wait! Special offer</span><h2 class="rv-h2">Get ' + esc(P) + ' today</h2><p class="rv-p">Order now and pay on delivery. Limited stock.</p><a class="rv-btn block" href="#order">Order now</a></div></div>');
+    add("wa-form", "WhatsApp quick form", "Interactive", I.chat, '<section class="rv-sec tight alt"><div class="rv-wrap narrow rv-center"><h2 class="rv-h2">Chat with us on WhatsApp</h2><div class="rv-waform" data-rv-waform="1" data-number="' + (wa || "234") + '"><form><input name="name" placeholder="Your name" required><input name="phone" type="tel" placeholder="Your phone number" required><textarea name="msg" rows="3" placeholder="How can we help?"></textarea><button type="submit" class="rv-btn">💬 Continue on WhatsApp</button></form></div></div></section>');
     return B;
   }
 
@@ -291,5 +329,5 @@
     return tpl.blocks.map(function (id) { var c = byId[id] && byId[id].content; return typeof c === "string" ? c : ""; }).join("\n");
   }
 
-  global.RVBlocks = { build: build, BASE_CSS: BASE_CSS, FONTS: FONTS, DEFAULT_THEME: DEFAULT_THEME, themeCss: themeCss, fontsUrl: fontsUrl, TEMPLATES: TEMPLATES, templateHtml: templateHtml, PLACEHOLDER: PH, countdownScript: countdownScript, videoEmbed: videoEmbed, videoRatioFor: videoRatioFor, mapEmbed: mapEmbed };
+  global.RVBlocks = { build: build, BASE_CSS: BASE_CSS, FONTS: FONTS, DEFAULT_THEME: DEFAULT_THEME, themeCss: themeCss, fontsUrl: fontsUrl, TEMPLATES: TEMPLATES, templateHtml: templateHtml, PLACEHOLDER: PH, countdownScript: countdownScript, tabsScript: tabsScript, popupScript: popupScript, waformScript: waformScript, videoEmbed: videoEmbed, videoRatioFor: videoRatioFor, mapEmbed: mapEmbed };
 })(window);

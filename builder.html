@@ -480,6 +480,22 @@ input,select,textarea{font:inherit}
       model: { defaults: { name: "Custom HTML", attributes: { "data-rv-html": "1" },
         traits: [{ type: "button", name: "editcode", label: "Code", text: "Edit code…", full: true, command: function (ed) { openCode(ed.getSelected()); } }] } }
     });
+    dc.addType("rv-tabs", {
+      isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-tabs") ? { type: "rv-tabs" } : false; },
+      model: { defaults: { name: "Tabs", script: RB.tabsScript } }
+    });
+    dc.addType("rv-popup", {
+      isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-popup") ? { type: "rv-popup" } : false; },
+      model: { defaults: { name: "Popup", script: RB.popupScript,
+        traits: [
+          { type: "number", name: "data-delay", label: "Show after (sec)", min: -1, max: 300, placeholder: "8" },
+          { type: "checkbox", name: "data-exit", label: "Also on exit intent", valueTrue: "1", valueFalse: "0" },
+          { type: "checkbox", name: "data-once", label: "Once per visit", valueTrue: "1", valueFalse: "0" }] } }
+    });
+    dc.addType("rv-waform", {
+      isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-waform") ? { type: "rv-waform" } : false; },
+      model: { defaults: { name: "WhatsApp form", script: RB.waformScript, traits: [{ type: "text", name: "data-number", label: "WhatsApp number", placeholder: "2348012345678" }] } }
+    });
     dc.addType("rv-countdown", {
       isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-countdown") ? { type: "rv-countdown" } : false; },
       model: { defaults: { name: "Countdown timer", script: RB.countdownScript, droppable: false,
@@ -539,7 +555,7 @@ input,select,textarea{font:inherit}
     S.page.seo = seo;
     var html = doc.body ? doc.body.innerHTML : raw;
     var ed = S.editor;
-    if (replace) { ed.setComponents(html); ed.setStyle(css); } else { ed.addComponents(html); ed.Css.addRules(css); }
+    if (replace) { ed.setStyle(css); ed.setComponents(html); } else { ed.Css.addRules(css); ed.addComponents(html); }
     nameAll(); applyCanvasTheme(); markDirty();
   }
   function wireImport() {
@@ -597,6 +613,7 @@ input,select,textarea{font:inherit}
   }
 
   /* ---- canvas theme (base design system + theme variables + custom css) ---- */
+  function themeForSave() { return Object.assign({}, S.theme, { fonts_url: RB.fontsUrl(S.theme) }); }
   function themeCssAll() { return RB.themeCss(S.theme) + RB.BASE_CSS; }
   function applyCanvasTheme() {
     var doc = S.editor && S.editor.Canvas.getDocument(); if (!doc) return;
@@ -612,7 +629,7 @@ input,select,textarea{font:inherit}
     cc.textContent = customCss;
     // editing aids
     var ea = doc.getElementById("rv-edit"); if (!ea) { ea = doc.createElement("style"); ea.id = "rv-edit"; doc.head.appendChild(ea); }
-    ea.textContent = ".rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}";
+    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}";
   }
   var customCss = "";
 
@@ -681,7 +698,7 @@ input,select,textarea{font:inherit}
       var r = await sb.from("site_pages").update(upd).eq("id", S.page.id).select("*").single();
       if (r.error) throw r.error;
       Object.assign(S.page, r.data);
-      var settings = Object.assign({}, S.site.settings || {}, { theme: S.theme });
+      var settings = Object.assign({}, S.site.settings || {}, { theme: themeForSave() });
       var sr = await sb.from("sites").update({ status: "published", settings: settings, updated_at: now }).eq("id", S.site.id).select("*").single();
       if (sr.error) throw sr.error;
       S.site = sr.data;
@@ -889,7 +906,7 @@ input,select,textarea{font:inherit}
   }
   async function saveSettings() {
     var s = S.site, p = S.page, btn = $("#sSave"); btn.disabled = true;
-    var settings = Object.assign({}, s.settings || {}, { theme: S.theme, confirmation_call: $("#sCall").checked });
+    var settings = Object.assign({}, s.settings || {}, { theme: themeForSave(), confirmation_call: $("#sCall").checked });
     var sUpd = { name: $("#sName").value.trim() || s.name, product_id: $("#sProduct").value || null, ad_account_id: $("#sAdAcct").value || null, purchase_event: $("#sPurchase").value, settings: settings, updated_at: new Date().toISOString() };
     var r1 = await sb.from("sites").update(sUpd).eq("id", s.id).select("*").single();
     var slug = p.slug === "" ? "" : slugify($("#pSlug").value) || p.slug;
