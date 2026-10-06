@@ -136,6 +136,8 @@ html,body{margin:0;padding:0;background:#fff;}
       fbq("track", "PageView");
     }
 
+    if (seo.body_class) document.body.className = (document.body.className + " " + seo.body_class).trim();
+    if (seo.body_style) document.body.style.cssText += ";" + seo.body_style;
     var root = document.getElementById("rv-root");
     root.innerHTML = page.html || "";
     runScripts(root);
