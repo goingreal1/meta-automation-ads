@@ -644,7 +644,7 @@ input,select,textarea{font:inherit}
       ed.loadProjectData(page.project);
       finishLoad();
     } else if (page.html) {
-      ed.setComponents(page.html); ed.setStyle(page.css || ""); finishLoad();
+      ed.setComponents(page.html); ed.setStyle(String(page.css || "").replace(/^:root\{--p:[^\n]*\n/, "")); finishLoad();
     } else {
       finishLoad();
       if (!noPicker) openTemplates(true);
@@ -686,7 +686,7 @@ input,select,textarea{font:inherit}
   }
   function exportCss() {
     var css = S.editor.getCss({ avoidProtected: true });
-    return themeCssAll() + css + "\n" + customCss;
+    return RB.themeCss(S.theme) + css + "\n" + customCss;   // the design system (RB.BASE_CSS) is added by the renderer
   }
 
   async function publish() {
@@ -930,7 +930,7 @@ input,select,textarea{font:inherit}
     var data = { site: siteLite(), page: { id: S.page.id }, product: S.product };
     var fonts = RB.fontsUrl(S.theme);
     var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-      (fonts ? '<link rel="stylesheet" href="' + fonts + '">' : "") + ((S.page.seo && S.page.seo.head_html) || "") + '<link rel="stylesheet" href="/rv/form.css"><style>' + css.replace(/<\/style/gi, "<\\/style") + "</style></head><body>" + html +
+      (fonts ? '<link rel="stylesheet" href="' + fonts + '">' : "") + ((S.page.seo && S.page.seo.head_html) || "") + '<link rel="stylesheet" href="/rv/form.css"><style>' + RB.BASE_CSS + '</style><style>' + css.replace(/<\/style/gi, "<\\/style") + "</style></head><body>" + html +
       '<script src="/rv/form.js"><\/script><script>RV.mountAll(document.body,' + JSON.stringify(data).replace(/</g, "\\u003c") + ',{preview:true});document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a");if(a){var h=a.getAttribute("href")||"";if(h.charAt(0)==="#"){e.preventDefault();var t=h.length>1&&document.getElementById(h.slice(1));if(t)t.scrollIntoView({behavior:"smooth"});}else e.preventDefault();}});<\/script></body></html>';
     $("#pvFrame").srcdoc = doc;
     $("#pv").classList.add("on");
