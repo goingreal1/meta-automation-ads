@@ -1,0 +1,180 @@
+/* Revora site runtime: built-in order form, bank card, thank-you. Shared by site.html (live pages)
+   and builder.html (editor canvas), so what you build is exactly what visitors get.
+   Orders are posted to receive-order -> they land in the Orders tab. */
+(function (global) {
+  var SUPABASE_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+  var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+  var STATES = ["Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno","Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","FCT (Abuja)","Gombe","Imo","Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa","Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba","Yobe","Zamfara"];
+
+  var STORE = null; try { STORE = global.sessionStorage; } catch (e) {}
+  function sget(k) { try { return STORE && STORE.getItem(k); } catch (e) { return null; } }
+  function sset(k, v) { try { STORE && STORE.setItem(k, v); } catch (e) {} }
+  var params = new URLSearchParams(global.location.search);
+  // Attribution survives page-to-page navigation inside a funnel
+  ["buyer", "asid", "crid", "fbclid", "ad_id"].forEach(function (k) { var v = params.get(k); if (v) sset("rv_" + k, v); });
+  function attr(k) { return params.get(k) || sget("rv_" + k) || undefined; }
+
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function fmt(n, cur) { try { return new Intl.NumberFormat("en-NG", { style: "currency", currency: cur || "NGN", maximumFractionDigits: 0 }).format(n || 0); } catch (e) { return (cur || "NGN") + " " + n; } }
+  function uuid() {
+    if (global.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) { var r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3) | 8).toString(16); });
+  }
+  function cookie(n) { var m = document.cookie.match(new RegExp("(?:^|; )" + n + "=([^;]*)")); return m ? decodeURIComponent(m[1]) : undefined; }
+
+  function mountForm(el, d, opts) {
+    opts = opts || {};
+    var site = d.site, product = d.product;
+    var ds = el.dataset;
+    el.classList.add("rv-form");
+    if (ds.rvAccent) {
+      el.style.setProperty("--rv-accent", ds.rvAccent);
+      el.style.setProperty("--rv-accent-dk", ds.rvAccent);
+      el.style.setProperty("--rv-accent-bg", ds.rvAccent + "1a");
+    }
+    if (ds.rvRadius) el.style.setProperty("--rv-radius", ds.rvRadius + "px");
+    if (!product) {
+      el.innerHTML = '<div class="rv-empty">Order form &mdash; choose a product for this site (Site settings) to show it here.</div>';
+      return;
+    }
+    var hasTiers = product.tiers && product.tiers.length;
+    var selectedTier = hasTiers ? (product.tiers.find(function (t) { return t.badge; }) || product.tiers[0]).id : null;
+    var qty = 1;
+    var isService = !!product.is_service;
+    var btnText = ds.rvButton || (isService ? "Submit & get payment details" : "Complete my order");
+    var title = ds.rvTitle != null ? ds.rvTitle : "Complete your order";
+    var subtitle = ds.rvSubtitle != null ? ds.rvSubtitle : (isService ? "Your payment details show right after you submit." : "Pay on delivery — a team member will call to confirm.");
+
+    function total() {
+      if (hasTiers) { var t = product.tiers.find(function (x) { return x.id === selectedTier; }); return t ? Number(t.price_naira) : 0; }
+      return Number(product.default_order_value_naira || 0) * qty;
+    }
+    var stateOpts = STATES.map(function (s) { return "<option>" + s + "</option>"; }).join("");
+
+    el.innerHTML =
+      '<form class="rv-card" novalidate>' +
+      (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") +
+      (subtitle ? '<p class="rv-sub">' + esc(subtitle) + "</p>" : "") +
+      (hasTiers
+        ? '<div class="rv-field"><label>Choose your package</label><div class="rv-tiers">' + product.tiers.map(function (t) {
+            return '<div class="rv-tier' + (t.id === selectedTier ? " on" : "") + '" data-tier="' + esc(t.id) + '"><div><b>' + esc(t.label) + "</b>" + (t.badge ? "<em>" + esc(t.badge) + "</em>" : "") + "</div><span>" + fmt(t.price_naira, product.currency) + "</span></div>";
+          }).join("") + "</div></div>"
+        : (isService ? "" : '<div class="rv-field"><label>Quantity</label><div class="rv-qty"><button type="button" data-q="-1" aria-label="Less">&minus;</button><b class="rv-qv">1</b><button type="button" data-q="1" aria-label="More">+</button></div></div>')) +
+      '<div class="rv-field"><label>Full name</label><input name="name" autocomplete="name" placeholder="Your full name" required></div>' +
+      '<div class="rv-field"><label>Phone number (WhatsApp)</label><input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="080..." required></div>' +
+      (isService
+        ? '<div class="rv-field"><label>State you want to advertise in</label><select name="state" required><option value="">Select state</option>' + stateOpts + "</select></div>"
+        : '<div class="rv-field"><label>Delivery address</label><input name="address" autocomplete="street-address" placeholder="House number, street" required></div>' +
+          '<div class="rv-row"><div class="rv-field"><label>City</label><input name="city" autocomplete="address-level2" placeholder="City" required></div>' +
+          '<div class="rv-field"><label>State</label><select name="state" required><option value="">Select state</option>' + stateOpts + "</select></div></div>" +
+          '<div class="rv-field"><label>Payment method</label><select name="payment"><option>Pay on delivery</option><option>Bank transfer</option></select></div>') +
+      '<div class="rv-total"><span>Order total</span><strong class="rv-tot">' + fmt(total(), product.currency) + "</strong></div>" +
+      '<button type="submit" class="rv-btn">' + esc(btnText) + "</button>" +
+      '<div class="rv-msg"></div>' +
+      '<div class="rv-note">🔒 Your details are kept private</div>' +
+      "</form>";
+
+    var form = el.querySelector("form"), tot = el.querySelector(".rv-tot");
+    el.querySelectorAll(".rv-tier").forEach(function (c) {
+      c.addEventListener("click", function () {
+        selectedTier = c.dataset.tier;
+        el.querySelectorAll(".rv-tier").forEach(function (x) { x.classList.toggle("on", x.dataset.tier === selectedTier); });
+        tot.textContent = fmt(total(), product.currency);
+      });
+    });
+    el.querySelectorAll("[data-q]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        qty = Math.max(1, Math.min(20, qty + Number(b.dataset.q)));
+        el.querySelector(".rv-qv").textContent = qty;
+        tot.textContent = fmt(total(), product.currency);
+      });
+    });
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var f = form.elements, msg = el.querySelector(".rv-msg"), btn = el.querySelector(".rv-btn");
+      msg.classList.remove("on");
+      var name = f.name.value.trim(), phone = f.phone.value.trim();
+      var address = isService ? "Service - no delivery" : f.address.value.trim();
+      var city = isService ? "-" : f.city.value.trim();
+      var state = f.state.value;
+      var payment = isService ? "Bank transfer" : f.payment.value;
+      if (!name || !phone || !address || !city || !state) { msg.textContent = "Please fill in every field."; msg.classList.add("on"); return; }
+      if (phone.replace(/\D/g, "").length < 10) { msg.textContent = "Please enter a valid phone number."; msg.classList.add("on"); return; }
+      if (opts.preview) { msg.textContent = "Preview mode — orders are not sent."; msg.classList.add("on"); return; }
+
+      var tier = hasTiers ? product.tiers.find(function (x) { return x.id === selectedTier; }) : null;
+      var eventId = uuid();
+      var value = total();
+      var payload = {
+        event_id: eventId, customer_name: name, phone: phone, customer_address: address, customer_city: city,
+        customer_state: state, customer_country: "NG", payment_method: payment,
+        product_id: product.id, tier_id: tier ? tier.id : undefined,
+        product_name: tier ? product.product_name + " (" + tier.label + ")" : product.product_name,
+        quantity: tier ? tier.quantity : qty, order_value_naira: value, currency: product.currency || "NGN",
+        site_id: site.id, site_page_id: d.page.id,
+        ad_set_id: attr("asid") || null, creative_id: attr("crid") || null, buyer: attr("buyer"),
+        fbclid: attr("fbclid"), ad_id: attr("ad_id"), fbp: cookie("_fbp"), fbc: cookie("_fbc")
+      };
+      btn.disabled = true; var old = btn.textContent; btn.textContent = "Submitting…";
+      fetch(SUPABASE_URL + "/functions/v1/receive-order", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + ANON }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res.error) throw new Error(res.error);
+          if (site.purchase_event === "submit" && typeof global.fbq === "function") global.fbq("track", "Purchase", { value: value, currency: product.currency || "NGN" }, { eventID: eventId });
+          var ref = eventId.slice(0, 8).toUpperCase();
+          sset("rv_last_ref", ref); sset("rv_last_value", String(value)); sset("rv_last_payment", payment);
+          if (site.thanks_slug != null) global.location.href = "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") + "?ref=" + ref;
+          else showThanks(el, d, ref, value, payment);
+        })
+        .catch(function (err) { msg.textContent = "Something went wrong, please try again. (" + err.message + ")"; msg.classList.add("on"); btn.disabled = false; btn.textContent = old; });
+    });
+  }
+
+  function bankHtml(product, value, payment, ref) {
+    if (!product || !product.bank_account_number || !/bank/i.test(payment || "")) return "";
+    var wa = String(product.whatsapp_number || "").replace(/\D/g, "");
+    return '<div class="rv-bank">' +
+      '<div class="r"><span>Amount</span><b>' + fmt(value, product.currency) + "</b></div>" +
+      (product.bank_name ? '<div class="r"><span>Bank</span><b>' + esc(product.bank_name) + "</b></div>" : "") +
+      '<div class="r"><span>Account number</span><b class="acct">' + esc(product.bank_account_number) + "</b></div>" +
+      (product.bank_account_name ? '<div class="r"><span>Account name</span><b>' + esc(product.bank_account_name) + "</b></div>" : "") +
+      '<div class="r"><span>Reference</span><b>' + esc(ref) + "</b></div>" +
+      (product.payment_note ? '<div style="font-size:13px;color:#6a675d;margin-top:6px">' + esc(product.payment_note) + "</div>" : "") +
+      '<button type="button" data-copy="' + esc(product.bank_account_number) + '">Copy account number</button>' +
+      (wa ? '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/' + wa + "?text=" + encodeURIComponent("Hi, I have paid. Reference " + ref) + '">Send payment proof on WhatsApp</a>' : "") +
+      "</div>";
+  }
+  function wireCopy(scope) {
+    scope.querySelectorAll("[data-copy]").forEach(function (b) {
+      b.addEventListener("click", function () { try { navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied ✓"; } catch (e) {} });
+    });
+  }
+  // Inline thank-you (used when the site has no thank-you page)
+  function showThanks(el, d, ref, value, payment) {
+    var bank = bankHtml(d.product, value, payment, ref);
+    el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>' + (bank ? "Almost done — make your payment" : "Order received!") + "</h2>" +
+      "<p>" + (bank ? "Transfer " + fmt(value, d.product.currency) + " to the account below, then send your payment screenshot on WhatsApp." : "Thank you. Our team will call you shortly to confirm your order and delivery details.") + "</p>" + bank + '<div class="rv-ref">Reference: ' + esc(ref) + "</div></div>";
+    wireCopy(el);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  // Bank card element on a thank-you page
+  function mountBank(el, d, opts) {
+    opts = opts || {};
+    var ref = params.get("ref") || sget("rv_last_ref") || (opts.preview ? "A1B2C3D4" : "");
+    var value = Number(sget("rv_last_value") || (d.product && d.product.default_order_value_naira) || 0);
+    var payment = sget("rv_last_payment") || (d.product && d.product.is_service ? "Bank transfer" : (opts.preview ? "Bank transfer" : ""));
+    el.innerHTML = bankHtml(d.product, value, payment, ref) || (opts.preview ? '<div class="rv-empty">Bank details card — shows when the customer pays by bank transfer.</div>' : "");
+    wireCopy(el);
+  }
+
+  // Mount every dynamic element inside a root
+  function mountAll(root, d, opts) {
+    root.querySelectorAll("[data-rv-form]").forEach(function (el) { mountForm(el, d, opts); });
+    root.querySelectorAll("[data-rv-bank]").forEach(function (el) { mountBank(el, d, opts); });
+    root.querySelectorAll("[data-rv-ref]").forEach(function (el) { el.textContent = sget("rv_last_ref") || (opts && opts.preview ? "A1B2C3D4" : ""); });
+    root.querySelectorAll("[data-rv-year]").forEach(function (el) { el.textContent = new Date().getFullYear(); });
+  }
+
+  global.RV = { SUPABASE_URL: SUPABASE_URL, ANON: ANON, esc: esc, fmt: fmt, mountForm: mountForm, mountBank: mountBank, mountAll: mountAll, sget: sget, sset: sset, params: params };
+})(window);
