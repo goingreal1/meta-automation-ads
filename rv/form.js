@@ -192,12 +192,29 @@
     wireCopy(el);
   }
 
+  var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  function fmtDate(f, off) {
+    var d = new Date(Date.now() + (off || 0) * 86400000), p2 = function (n) { return (n < 10 ? "0" : "") + n; }, h12 = d.getHours() % 12 || 12;
+    return String(f).replace(/[DlMFdjYHhiA]/g, function (c) { return { D: DAYS[d.getDay()].slice(0, 3), l: DAYS[d.getDay()], M: MONTHS[d.getMonth()].slice(0, 3), F: MONTHS[d.getMonth()], d: p2(d.getDate()), j: d.getDate(), Y: d.getFullYear(), H: p2(d.getHours()), h: p2(h12), i: p2(d.getMinutes()), A: d.getHours() < 12 ? "AM" : "PM" }[c]; });
+  }
   // Mount every dynamic element inside a root
   function mountAll(root, d, opts) {
     root.querySelectorAll("[data-rv-form]").forEach(function (el) { mountForm(el, d, opts); });
     root.querySelectorAll("[data-rv-bank]").forEach(function (el) { mountBank(el, d, opts); });
     root.querySelectorAll("[data-rv-ref]").forEach(function (el) { el.textContent = sget("rv_last_ref") || (opts && opts.preview ? "A1B2C3D4" : ""); });
     root.querySelectorAll("[data-rv-year]").forEach(function (el) { el.textContent = new Date().getFullYear(); });
+    root.querySelectorAll("[data-rv-date]").forEach(function (el) { el.textContent = fmtDate(el.getAttribute("data-rv-fmt") || "D, d M", parseInt(el.getAttribute("data-rv-date"), 10) || 0); });
+    // package buttons ([data-rv-tier="1" or a package name]) pre-select that package in the order form
+    if (!global.__rvTierWired) {
+      global.__rvTierWired = true;
+      document.addEventListener("click", function (e) {
+        var t = e.target.closest && e.target.closest("[data-rv-tier]"); if (!t) return;
+        var form = document.querySelector("[data-rv-form]"); if (!form) return;
+        var pick = String(t.getAttribute("data-rv-tier")), tiers = form.querySelectorAll(".rv-tier"), hit = null;
+        if (/^\d+$/.test(pick)) hit = tiers[parseInt(pick, 10) - 1]; else tiers.forEach(function (x) { if (!hit && x.textContent.toLowerCase().indexOf(pick.toLowerCase()) > -1) hit = x; });
+        if (hit) hit.click();
+      });
+    }
   }
 
   global.RV = { SUPABASE_URL: SUPABASE_URL, ANON: ANON, esc: esc, fmt: fmt, mountForm: mountForm, mountBank: mountBank, mountAll: mountAll, sget: sget, sset: sset, params: params };
