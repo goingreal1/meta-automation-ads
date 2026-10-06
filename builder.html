@@ -205,6 +205,7 @@ input,select,textarea{font:inherit}
     <span class="grow"></span>
     <span class="chip" id="status"><i></i><span>Saved</span></span>
     <button class="ib" id="bSettings" title="Site settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg><span>Settings</span></button>
+    <button class="ib" id="bImport" title="Import / paste your own HTML"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg><span>HTML</span></button>
     <button class="btn" id="bPreview">Preview</button>
     <button class="btn pri" id="bPublish">Publish</button>
   </header>
@@ -265,6 +266,25 @@ input,select,textarea{font:inherit}
   <div class="dbd"><div class="fld" id="tplNameRow" style="max-width:340px"><label>Page name</label><input id="tplName" value="New page"></div><div class="tgrid" id="tplGrid"></div></div>
 </div></div>
 
+
+<!-- Import HTML -->
+<div class="ov" id="ovImport"><div class="dlg wide">
+  <div class="dhd"><h3>Import your HTML</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="dbd">
+    <div class="fld"><label>Paste a full page or just a section of HTML (with its CSS)</label><textarea id="impCode" spellcheck="false" style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="&lt;!DOCTYPE html&gt; … or &lt;section&gt;…&lt;/section&gt;"></textarea><small>Or upload a file: <input type="file" id="impFile" accept=".html,.htm,.txt" style="width:auto;border:0;padding:0;display:inline"></small></div>
+    <div class="fld"><label><input type="radio" name="impMode" value="replace" checked style="width:auto;margin-right:8px">Replace this page</label><label><input type="radio" name="impMode" value="append" style="width:auto;margin-right:8px">Add to the end of this page</label></div>
+    <div class="rv-warn" style="font-size:12px;color:var(--tx3);line-height:1.6">Everything becomes editable: click any text or image to change it, drag sections to reorder. Use full <b>https://</b> links for images, fonts and scripts (files on your computer can't load). Your page's &lt;style&gt; and &lt;link&gt; tags are kept. Order forms: drop our <b>Order form</b> widget in so orders reach your Orders tab.</div>
+  </div>
+  <div class="dft"><button class="btn" data-close>Cancel</button><button class="btn pri" id="impGo">Import</button></div>
+</div></div>
+
+<!-- Edit custom code -->
+<div class="ov" id="ovCode"><div class="dlg wide">
+  <div class="dhd"><h3>Custom HTML</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="dbd"><div class="fld"><textarea id="codeBox" spellcheck="false" style="min-height:340px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px"></textarea><small>HTML, CSS (&lt;style&gt;) and scripts (&lt;script&gt;) are all allowed. Embeds from other sites (forms, chat widgets, countdowns, booking tools) work here.</small></div></div>
+  <div class="dft"><button class="btn" data-close>Cancel</button><button class="btn pri" id="codeApply">Apply</button></div>
+</div></div>
+
 <!-- Preview -->
 <div id="pv"><div class="bar"><b style="margin-right:10px">Preview</b>
   <button class="ib on" data-pdev="d" title="Desktop"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
@@ -277,6 +297,7 @@ input,select,textarea{font:inherit}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/vendor/grapesjs/grapes.min.js"></script>
+<script src="/rv/config.js"></script>
 <script src="/rv/blocks.js"></script>
 <script>
 (function () {
@@ -354,7 +375,7 @@ input,select,textarea{font:inherit}
         { id: "tablet", name: "Tablet", width: "768px", widthMedia: "1024px" },
         { id: "mobile", name: "Mobile", width: "390px", widthMedia: "767px" }
       ] },
-      blockManager: { appendTo: "#blocks", appendOnClick: true },
+      blockManager: { appendTo: "#blocks" },
       layerManager: { appendTo: "#layers" },
       selectorManager: { appendTo: "#classes", componentFirst: true },
       traitManager: { appendTo: "#traits" },
@@ -375,7 +396,7 @@ input,select,textarea{font:inherit}
     ed.on("component:add", function (c) { if (!c.get("name") && !c.get("custom-name")) { var n = friendlyName(c); if (n) c.set("name", n, { silent: true }); } });
     ed.on("update", markDirty);
     ed.on("undo redo update", syncUndo);
-    ed.on("component:selected", onSelect);
+    ed.on("component:selected", function (c) { addMoveTools(c); onSelect(); });
     ed.on("component:deselected", onSelect);
     ed.on("run:preview", function () {});
     ed.on("canvas:frame:load", applyCanvasTheme);
@@ -433,11 +454,104 @@ input,select,textarea{font:inherit}
       model: { defaults: { tagName: "div", name: "Bank details card", droppable: false, attributes: { "data-rv-bank": "1" }, traits: [] } },
       view: { onRender: function () { previewMount(this, "bank"); } }
     });
+    dc.addType("rv-video", {
+      isComponent: function (el) { return el.classList && el.classList.contains("rv-video") ? { type: "rv-video" } : false; },
+      model: { defaults: { name: "Video", droppable: false,
+        traits: [
+          { type: "text", name: "data-src", label: "Video link", placeholder: "YouTube, Vimeo, Facebook, TikTok, MP4…" },
+          { type: "select", name: "data-ratio", label: "Shape", options: [{ id: "16:9", name: "Wide 16:9" }, { id: "9:16", name: "Vertical 9:16" }, { id: "1:1", name: "Square" }, { id: "4:3", name: "Classic 4:3" }] },
+          { type: "checkbox", name: "data-autoplay", label: "Autoplay (muted)", valueTrue: "1", valueFalse: "" },
+          { type: "checkbox", name: "data-loop", label: "Loop", valueTrue: "1", valueFalse: "" },
+          { type: "checkbox", name: "data-nocontrols", label: "Hide controls", valueTrue: "1", valueFalse: "" }] },
+        init: function () { this.on("change:attributes:data-src change:attributes:data-autoplay change:attributes:data-loop change:attributes:data-nocontrols", this.rebuild); },
+        rebuild: function () {
+          var a = this.getAttributes();
+          if (this.__lastSrc !== a["data-src"]) { this.__lastSrc = a["data-src"]; var r = RB.videoRatioFor(a["data-src"]); if (r === "9:16" && a["data-ratio"] !== "9:16") this.addAttributes({ "data-ratio": "9:16" }); else if (r === "16:9" && a["data-ratio"] === "9:16") this.addAttributes({ "data-ratio": "16:9" }); }
+          this.components(RB.videoEmbed(a["data-src"], { autoplay: !!a["data-autoplay"], loop: !!a["data-loop"], controls: !a["data-nocontrols"] }));
+        } }
+    });
+    dc.addType("rv-map", {
+      isComponent: function (el) { return el.classList && el.classList.contains("rv-map") ? { type: "rv-map" } : false; },
+      model: { defaults: { name: "Map", droppable: false, traits: [{ type: "text", name: "data-q", label: "Address / place", placeholder: "e.g. Ikeja City Mall, Lagos" }] },
+        init: function () { this.on("change:attributes:data-q", function () { this.components(RB.mapEmbed(this.getAttributes()["data-q"])); }); } }
+    });
+    dc.addType("rv-html", {
+      isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-html") ? { type: "rv-html" } : false; },
+      model: { defaults: { name: "Custom HTML", attributes: { "data-rv-html": "1" },
+        traits: [{ type: "button", name: "editcode", label: "Code", text: "Edit code…", full: true, command: function (ed) { openCode(ed.getSelected()); } }] } }
+    });
     dc.addType("rv-countdown", {
       isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-countdown") ? { type: "rv-countdown" } : false; },
       model: { defaults: { name: "Countdown timer", script: RB.countdownScript, droppable: false,
         traits: [{ type: "number", name: "data-rv-countdown", label: "Hours", min: 1, max: 720, changeProp: false }] } }
     });
+  }
+
+
+
+  /* ---- click a widget = add it after the selected section (or at the end) ---- */
+  function addBlockByClick(label) {
+    var ed = S.editor, b = ed.Blocks.getAll().models.find(function (x) { return x.get("label") === label; });
+    if (!b) return;
+    var wrap = ed.getWrapper(), at = wrap.components().length, sel = ed.getSelected();
+    if (sel) { var top = sel; while (top && top.parent() && top.parent() !== wrap) top = top.parent(); if (top && top.parent() === wrap) at = top.index() + 1; }
+    var added = wrap.append(b.get("content"), { at: at });
+    var c = Array.isArray(added) ? added[0] : added;
+    if (c) { ed.select(c); setTimeout(function () { try { var el = c.getEl(); el && el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }, 60); }
+  }
+
+  /* ---- reorder: move up / down from the element toolbar ---- */
+  function moveSel(dir) {
+    var ed = S.editor, c = ed.getSelected(); if (!c) return;
+    var par = c.parent(); if (!par) return;
+    var i = c.index(), n = par.components().length, j = i + dir;
+    if (j < 0 || j >= n) { toast(dir < 0 ? "Already at the top" : "Already at the bottom"); return; }
+    c.move(par, { at: dir > 0 ? j + 1 : j });
+    ed.select(c);
+  }
+  function addMoveTools(c) {
+    var tb = c.get("toolbar"); if (!Array.isArray(tb) || tb.some(function (t) { return t.id === "rv-up"; })) return;
+    c.set("toolbar", [
+      { id: "rv-up", label: "▲", attributes: { title: "Move up" }, command: function () { moveSel(-1); } },
+      { id: "rv-down", label: "▼", attributes: { title: "Move down" }, command: function () { moveSel(1); } }
+    ].concat(tb));
+  }
+
+  /* ---- custom code editor + HTML import ---- */
+  var codeTarget = null;
+  function openCode(comp) {
+    codeTarget = comp; $("#codeBox").value = comp.getInnerHTML ? comp.getInnerHTML() : ""; $("#ovCode").classList.add("on");
+    if (/Custom HTML area\. Select it/.test($("#codeBox").value)) $("#codeBox").value = "";
+  }
+  function applyCode() {
+    if (!codeTarget) return;
+    codeTarget.components($("#codeBox").value || '<div class="rv-note">Empty custom HTML area</div>');
+    $("#ovCode").classList.remove("on"); S.editor.select(codeTarget);
+  }
+  function importHtml(raw, replace) {
+    var doc = new DOMParser().parseFromString(raw, "text/html"), css = "", head = "";
+    doc.querySelectorAll("style").forEach(function (st) { css += st.textContent + "\n"; st.remove(); });
+    doc.querySelectorAll("head link[rel~=stylesheet], head link[rel~=preconnect], head link[rel~=icon], head script").forEach(function (n) { head += n.outerHTML + "\n"; n.remove(); });
+    var seo = Object.assign({}, S.page.seo || {});
+    if (doc.title && !seo.title) seo.title = doc.title;
+    var md = doc.querySelector('meta[name="description"]'); if (md && md.content && !seo.description) seo.description = md.content;
+    if (head) seo.head_html = ((replace ? "" : (seo.head_html || "") + "\n") + head).trim();
+    S.page.seo = seo;
+    var html = doc.body ? doc.body.innerHTML : raw;
+    var ed = S.editor;
+    if (replace) { ed.setComponents(html); ed.setStyle(css); } else { ed.addComponents(html); ed.Css.addRules(css); }
+    nameAll(); applyCanvasTheme(); markDirty();
+  }
+  function wireImport() {
+    $("#bImport").onclick = function () { $("#impCode").value = ""; $("#ovImport").classList.add("on"); };
+    $("#impFile").onchange = function () { var f = this.files[0]; if (!f) return; var r = new FileReader(); r.onload = function () { $("#impCode").value = r.result; }; r.readAsText(f); };
+    $("#impGo").onclick = function () {
+      var raw = $("#impCode").value.trim(); if (!raw) return toast("Paste some HTML first");
+      var replace = ($('input[name="impMode"]:checked') || {}).value !== "append";
+      if (replace && S.editor.getWrapper().components().length && !confirm("Replace everything on this page with your HTML? You can undo with Ctrl+Z.")) return;
+      try { importHtml(raw, replace); $("#ovImport").classList.remove("on"); toast("Imported. Click anything to edit it."); } catch (e) { toast("Couldn't import: " + esc(e.message || e)); }
+    };
+    $("#codeApply").onclick = applyCode;
   }
 
   /* ---- friendly layer/badge names + extra content traits ---- */
@@ -491,11 +605,14 @@ input,select,textarea{font:inherit}
     st.textContent = themeCssAll();
     var url = RB.fontsUrl(S.theme), ln = doc.getElementById("rv-fonts");
     if (url) { if (!ln) { ln = doc.createElement("link"); ln.id = "rv-fonts"; ln.rel = "stylesheet"; doc.head.appendChild(ln); } if (ln.href !== url) ln.href = url; }
+    Array.prototype.slice.call(doc.querySelectorAll("[data-rvx]")).forEach(function (n) { n.remove(); });
+    var hh = (S.page && S.page.seo && S.page.seo.head_html) || "";
+    if (hh) { try { var fr = doc.createRange().createContextualFragment(hh); Array.prototype.slice.call(fr.children).forEach(function (n) { n.setAttribute("data-rvx", "1"); }); doc.head.appendChild(fr); } catch (e) {} }
     var cc = doc.getElementById("rv-custom"); if (!cc) { cc = doc.createElement("style"); cc.id = "rv-custom"; doc.head.appendChild(cc); }
     cc.textContent = customCss;
     // editing aids
     var ea = doc.getElementById("rv-edit"); if (!ea) { ea = doc.createElement("style"); ea.id = "rv-edit"; doc.head.appendChild(ea); }
-    ea.textContent = "[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}";
+    ea.textContent = ".rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}";
   }
   var customCss = "";
 
@@ -575,7 +692,7 @@ input,select,textarea{font:inherit}
     } catch (e) { toast("Couldn't publish: " + esc(e.message || e)); }
     btn.disabled = false; btn.textContent = "Publish";
   }
-  function liveUrl(p) { return location.origin + "/s/" + S.site.slug + (p && p.slug ? "/" + p.slug : ""); }
+  function liveUrl(p) { return window.RV_siteUrl(S.site.slug, p && p.slug); }
   function copy(t) { try { navigator.clipboard.writeText(t); } catch (e) {} }
 
   /* ---- image uploads -> Supabase storage (public bucket site-media) ---- */
@@ -616,6 +733,7 @@ input,select,textarea{font:inherit}
     $("#bSettings").onclick = function () { openSettings(); };
     $("#pageSel").onchange = function () { switchPage(this.value); };
     $("#bSearch").oninput = function () { filterBlocks(this.value); };
+    $("#blocks").addEventListener("click", function (e) { var el = e.target.closest(".gjs-block"); if (el) addBlockByClick($(".gjs-block-label", el).textContent.trim()); });
     $("#gateGo").onclick = function () { $("#gate").style.display = "none"; };
     $("#gateBack").onclick = function () { go("/dashboard_new.html?open=tab:websites"); };
     $$("[data-close]").forEach(function (b) { b.onclick = function () { b.closest(".ov").classList.remove("on"); }; });
@@ -636,6 +754,7 @@ input,select,textarea{font:inherit}
     $$("[data-pdev]").forEach(function (b) {
       b.onclick = function () { var pv = $("#pv"); pv.classList.remove("tab", "mob"); if (b.dataset.pdev === "t") pv.classList.add("tab"); if (b.dataset.pdev === "m") pv.classList.add("mob"); $$("[data-pdev]").forEach(function (x) { x.classList.toggle("on", x === b); }); };
     });
+    wireImport();
     syncUndo();
   }
   function setTab(side, t) {
@@ -716,6 +835,8 @@ input,select,textarea{font:inherit}
         if (forCurrent) applyTemplate(t); else await createPage(t, $("#tplName").value.trim() || "New page", kindFilter);
       };
     });
+    grid.insertAdjacentHTML("beforeend", '<button class="tcard" data-own="1"><div class="pv" style="align-items:center;justify-content:center;font:700 22px ui-monospace,monospace;color:#9a958a">&lt;/&gt;</div><b>Paste your own HTML</b><span>Bring a page you already have and keep editing it here</span></button>');
+    $('.tcard[data-own]', grid).onclick = function () { ov.classList.remove("on"); $("#bImport").click(); };
     ov.classList.add("on");
   }
   function applyTemplate(t) {
@@ -741,7 +862,7 @@ input,select,textarea{font:inherit}
   var COLORS = ["#1a7a5e", "#0f766e", "#2563eb", "#7c3aed", "#db2777", "#e11d48", "#ea580c", "#ca8a04", "#111827"];
   function openSettings(tab) {
     var s = S.site, p = S.page;
-    $("#sName").value = s.name; $("#sUrl").value = location.origin + "/s/" + s.slug;
+    $("#sName").value = s.name; $("#sUrl").value = window.RV_siteUrl(s.slug);
     $("#sProduct").innerHTML = '<option value="">— No product (just a page) —</option>' + S.products.map(function (x) { return '<option value="' + x.id + '"' + (x.id === s.product_id ? " selected" : "") + ">" + esc(x.product_name) + (x.is_service ? " (service)" : "") + "</option>"; }).join("");
     $("#sAdAcct").innerHTML = '<option value="">— Use the product\'s ad account —</option>' + S.accounts.map(function (a) { return '<option value="' + a.id + '"' + (a.id === s.ad_account_id ? " selected" : "") + ">" + esc(a.nickname || a.name || a.id.slice(0, 8)) + (a.meta_pixel_id ? " · pixel " + esc(a.meta_pixel_id) : " · no pixel") + "</option>"; }).join("");
     $("#sPurchase").value = s.purchase_event; $("#sCall").checked = !!(s.settings && s.settings.confirmation_call);
@@ -792,7 +913,7 @@ input,select,textarea{font:inherit}
     var data = { site: siteLite(), page: { id: S.page.id }, product: S.product };
     var fonts = RB.fontsUrl(S.theme);
     var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-      (fonts ? '<link rel="stylesheet" href="' + fonts + '">' : "") + '<link rel="stylesheet" href="/rv/form.css"><style>' + css.replace(/<\/style/gi, "<\\/style") + "</style></head><body>" + html +
+      (fonts ? '<link rel="stylesheet" href="' + fonts + '">' : "") + ((S.page.seo && S.page.seo.head_html) || "") + '<link rel="stylesheet" href="/rv/form.css"><style>' + css.replace(/<\/style/gi, "<\\/style") + "</style></head><body>" + html +
       '<script src="/rv/form.js"><\/script><script>RV.mountAll(document.body,' + JSON.stringify(data).replace(/</g, "\\u003c") + ',{preview:true});document.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a");if(a){var h=a.getAttribute("href")||"";if(h.charAt(0)==="#"){e.preventDefault();var t=h.length>1&&document.getElementById(h.slice(1));if(t)t.scrollIntoView({behavior:"smooth"});}else e.preventDefault();}});<\/script></body></html>';
     $("#pvFrame").srcdoc = doc;
     $("#pv").classList.add("on");
