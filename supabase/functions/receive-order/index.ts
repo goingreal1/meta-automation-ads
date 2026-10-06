@@ -185,6 +185,24 @@ Deno.serve(async (req: Request) => {
       const { data: adSetRow } = await supabase.from('ad_sets').select('ad_account_id').eq('id', ad_set_id).maybeSingle();
       resolvedAdAccountId = adSetRow?.ad_account_id ?? null;
     }
+    // Orders from a dashboard-built site (site.html) carry site_id/site_page_id. The site must
+    // belong to the resolved company (a tampered id is ignored); it can also supply the company
+    // when no product_id was sent, and decides whether this order gets a confirmation call / CAPI.
+    let siteRow: any = null;
+    let sitePageId: string | null = null;
+    const siteIdParam = payload.site_id as string | undefined;
+    if (siteIdParam) {
+      const { data: sRow } = await supabase.from('sites').select('id, company_id, ad_account_id, purchase_event, settings').eq('id', siteIdParam).maybeSingle();
+      if (sRow && (!companyId || sRow.company_id === companyId)) {
+        siteRow = sRow;
+        if (!companyId) companyId = sRow.company_id;
+        if (!resolvedAdAccountId) resolvedAdAccountId = sRow.ad_account_id ?? null;
+        if (payload.site_page_id) {
+          const { data: pg } = await supabase.from('site_pages').select('id').eq('id', payload.site_page_id).eq('site_id', sRow.id).maybeSingle();
+          sitePageId = pg?.id ?? null;
+        }
+      }
+    }
     if (!companyId) {
       console.error(`receive-order: could not resolve a company for event_id ${event_id} (product_id=${product_id ?? 'none'}, ad_set_id=${ad_set_id ?? 'none'}) -- order will be saved but invisible until this is fixed.`);
     }
@@ -243,7 +261,7 @@ Deno.serve(async (req: Request) => {
     let capiSuccess = false;
 
     // Send to Meta CAPI
-    if (capiAccessToken && capiPixelId) {
+    if (capiAccessToken && capiPixelId && siteRow?.purchase_event !== 'none') {
       const capiPayload = {
         data: [
           {
@@ -372,6 +390,8 @@ Deno.serve(async (req: Request) => {
       creative_id: finalCreativeId,
       ad_account_id: finalAdAccountId,
       ...(mediaBuyerId ? { media_buyer_id: mediaBuyerId } : {}),
+      ...(siteRow ? { site_id: siteRow.id } : {}),
+      ...(sitePageId ? { site_page_id: sitePageId } : {}),
       fbclid: payload.fbclid || null,
       meta_ad_id: payload.ad_id || payload.meta_ad_id || null,
       order_status: 'pending'
@@ -406,7 +426,7 @@ Deno.serve(async (req: Request) => {
     // (so checkout retries of the same event_id don't ring twice) and holds
     // it until calling hours if it's night in Lagos. Not awaited past the
     // request -- the customer's checkout shouldn't wait on telephony.
-    if (orderRow?.id) {
+    if (orderRow?.id && (!siteRow || siteRow.settings?.confirmation_call === true)) {
       const callRequest = fetch(`${SUPABASE_URL}/functions/v1/place-order-call`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },

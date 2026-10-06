@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading…</title>
+<link rel="stylesheet" href="/rv/form.css">
+<script src="/rv/form.js"></script>
+<style id="rv-boot">
+html,body{margin:0;padding:0;background:#fff;}
+#rv-boot-spin{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fff;z-index:99999;transition:opacity .2s;}
+#rv-boot-spin i{width:26px;height:26px;border-radius:50%;border:3px solid #e5e5e5;border-top-color:#444;animation:rvspin .7s linear infinite;}
+@keyframes rvspin{to{transform:rotate(360deg)}}
+.rv-err{max-width:420px;margin:18vh auto 0;padding:0 24px;text-align:center;font:16px/1.5 system-ui,sans-serif;color:#555;}
+</style>
+<style id="rv-form-css">
+.rv-form{--rv-accent:#1a7a5e;--rv-accent-dk:#125c46;--rv-accent-bg:#eaf4f0;--rv-text:#14130f;--rv-muted:#8c887c;--rv-border:#e1ddd2;--rv-radius:10px;
+  max-width:520px;margin:0 auto;text-align:left;font-family:inherit;color:var(--rv-text);box-sizing:border-box;}
+.rv-form *{box-sizing:border-box;}
+.rv-form .rv-card{background:#fff;border:1px solid var(--rv-border);border-radius:calc(var(--rv-radius) + 4px);padding:22px;box-shadow:0 1px 2px rgba(20,19,15,.04),0 18px 40px -22px rgba(20,19,15,.18);}
+.rv-form .rv-title{margin:0 0 4px;font-size:20px;font-weight:700;line-height:1.25;}
+.rv-form .rv-sub{margin:0 0 16px;font-size:14px;color:var(--rv-muted);}
+.rv-form .rv-field{margin-bottom:14px;}
+.rv-form label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:#4a473f;}
+.rv-form input,.rv-form select{width:100%;margin:0;background:#fff;border:1.5px solid var(--rv-border);color:var(--rv-text);border-radius:var(--rv-radius);padding:13px 14px;font:inherit;font-size:16px;line-height:1.3;transition:border-color .15s,box-shadow .15s;-webkit-appearance:none;appearance:none;}
+.rv-form select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238c887c' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px;}
+.rv-form input:focus,.rv-form select:focus{outline:none;border-color:var(--rv-accent);box-shadow:0 0 0 4px var(--rv-accent-bg);}
+.rv-form .rv-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media(max-width:420px){.rv-form .rv-row{grid-template-columns:1fr;gap:0}}
+.rv-form .rv-tiers{display:flex;flex-direction:column;gap:9px;}
+.rv-form .rv-tier{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border:1.5px solid var(--rv-border);border-radius:var(--rv-radius);cursor:pointer;background:#fff;transition:border-color .15s,background .15s;}
+.rv-form .rv-tier:hover{border-color:#cfc9ba;}
+.rv-form .rv-tier.on{border-color:var(--rv-accent);background:var(--rv-accent-bg);}
+.rv-form .rv-tier b{font-size:15px;font-weight:600;}
+.rv-form .rv-tier em{font-style:normal;font-size:10.5px;font-weight:700;color:var(--rv-accent-dk);background:#fff;border:1px solid var(--rv-accent);border-radius:20px;padding:2px 8px;margin-left:7px;}
+.rv-form .rv-tier span{font-weight:700;font-size:16px;white-space:nowrap;}
+.rv-form .rv-qty{display:flex;align-items:center;gap:12px;}
+.rv-form .rv-qty button{width:42px;height:42px;border-radius:var(--rv-radius);border:1.5px solid var(--rv-border);background:#fff;font-size:20px;cursor:pointer;color:var(--rv-text);}
+.rv-form .rv-qty b{min-width:34px;text-align:center;font-size:17px;}
+.rv-form .rv-total{display:flex;justify-content:space-between;align-items:baseline;padding:14px 2px 4px;margin-top:6px;border-top:1px dashed var(--rv-border);font-size:14px;color:#4a473f;font-weight:600;}
+.rv-form .rv-total strong{font-size:22px;color:var(--rv-text);}
+.rv-form .rv-btn{display:block;width:100%;margin-top:12px;padding:16px;border:0;border-radius:var(--rv-radius);background:var(--rv-accent);color:#fff;font:inherit;font-size:17px;font-weight:700;cursor:pointer;transition:background .15s,transform .05s;}
+.rv-form .rv-btn:hover{background:var(--rv-accent-dk);}
+.rv-form .rv-btn:active{transform:scale(.99);}
+.rv-form .rv-btn:disabled{opacity:.6;cursor:default;}
+.rv-form .rv-note{margin-top:12px;text-align:center;font-size:12.5px;color:var(--rv-muted);}
+.rv-form .rv-msg{display:none;margin-top:12px;padding:11px 13px;border-radius:8px;background:#fbeeec;color:#b4493c;font-size:13.5px;font-weight:500;border:1px solid #f0d9d4;}
+.rv-form .rv-msg.on{display:block;}
+.rv-form .rv-empty{padding:18px;text-align:center;color:var(--rv-muted);font-size:14px;border:1.5px dashed var(--rv-border);border-radius:var(--rv-radius);}
+.rv-thanks{max-width:440px;margin:0 auto;text-align:center;}
+.rv-thanks .rv-check{width:64px;height:64px;border-radius:50%;background:#eaf4f0;color:#1a7a5e;font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;}
+.rv-thanks h2{margin:0 0 8px;font-size:26px;}
+.rv-thanks p{margin:8px auto;color:#55524a;max-width:360px;}
+.rv-thanks .rv-ref{display:inline-block;margin-top:14px;padding:7px 14px;border-radius:8px;background:#f6f5f1;border:1px solid #e4e1d8;font:12px ui-monospace,Menlo,monospace;color:#8c887c;}
+.rv-bank{margin:18px auto 0;max-width:380px;text-align:left;background:#f6f5f1;border:1px solid #e4e1d8;border-radius:14px;padding:14px 18px;}
+.rv-bank .r{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #e4e1d8;font-size:14.5px;}
+.rv-bank .r:first-child{border-top:0}
+.rv-bank .r span{color:#6a675d}
+.rv-bank .acct{font-size:22px;font-weight:700;letter-spacing:.04em}
+.rv-bank button,.rv-bank a.wa{display:block;width:100%;margin-top:12px;padding:12px;border:0;border-radius:12px;background:#1a7a5e;color:#fff;font:600 15px/1.2 inherit;text-align:center;text-decoration:none;cursor:pointer;}
+.rv-bank a.wa{background:#25d366}
+</style>
+</head>
+<body>
+<div id="rv-boot-spin"><i></i></div>
+<div id="rv-root"></div>
+
+<script>
+(function () {
+  var RV = window.RV, esc = RV.esc;
+  // /s/<slug>[/<page>]
+  var parts = location.pathname.replace(/^\/+|\/+$/g, "").split("/");
+  var slug = parts[0] === "s" ? (parts[1] || "") : "";
+  var pageSlug = parts[0] === "s" ? (parts[2] || "") : "";
+  var preview = RV.params.get("preview") === "1";
+
+  function fail(msg) {
+    document.title = "Page not found";
+    document.getElementById("rv-root").innerHTML = '<div class="rv-err">' + esc(msg) + "</div>";
+    var s = document.getElementById("rv-boot-spin"); if (s) s.remove();
+  }
+  // Insert raw HTML (including <script> tags, which must be re-created to execute)
+  function inject(target, code, where) {
+    if (!code) return;
+    try {
+      var frag = document.createRange().createContextualFragment(code);
+      if (where === "start") target.insertBefore(frag, target.firstChild); else target.appendChild(frag);
+    } catch (e) { console.error("snippet failed", e); }
+  }
+  // innerHTML never runs <script>; re-create them so builder widgets (countdown, etc.) work
+  function runScripts(root) {
+    root.querySelectorAll("script").forEach(function (old) {
+      var n = document.createElement("script");
+      for (var i = 0; i < old.attributes.length; i++) n.setAttribute(old.attributes[i].name, old.attributes[i].value);
+      n.textContent = old.textContent;
+      old.parentNode.replaceChild(n, old);
+    });
+  }
+
+  if (!slug) return fail("This page doesn't exist.");
+
+  var headers = { apikey: RV.ANON, Authorization: "Bearer " + RV.ANON };
+  if (preview) { try { var t = localStorage.getItem("rv_preview_token"); if (t) headers.Authorization = "Bearer " + t; } catch (e) {} }
+
+  fetch(RV.SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(pageSlug) + (preview ? "&preview=1" : ""), { headers: headers })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (d.error) throw new Error(d.error); render(d); })
+    .catch(function () { fail("This page isn't available."); });
+
+  function render(d) {
+    var site = d.site, page = d.page, seo = page.seo || {};
+    document.title = seo.title || page.title || site.name;
+    function meta(attrs) { var m = document.createElement("meta"); for (var k in attrs) m.setAttribute(k, attrs[k]); document.head.appendChild(m); }
+    if (seo.description) { meta({ name: "description", content: seo.description }); meta({ property: "og:description", content: seo.description }); }
+    meta({ property: "og:title", content: seo.title || page.title || site.name });
+    if (seo.image) meta({ property: "og:image", content: seo.image });
+    if (seo.noindex || preview) meta({ name: "robots", content: "noindex" });
+    if (seo.favicon) { var l = document.createElement("link"); l.rel = "icon"; l.href = seo.favicon; document.head.appendChild(l); }
+    var fonts = (site.settings && site.settings.theme && site.settings.theme.fonts_url) || "";
+    if (fonts) { var fl = document.createElement("link"); fl.rel = "stylesheet"; fl.href = fonts; document.head.appendChild(fl); }
+
+    var st = document.createElement("style"); st.id = "rv-page-css"; st.textContent = page.css || ""; document.head.appendChild(st);
+
+    var snippets = d.snippets || [];
+    snippets.filter(function (s) { return s.location === "head"; }).forEach(function (s) { inject(document.head, s.code); });
+
+    // Built-in Meta Pixel for the site's ad account (skipped if a pasted snippet already created fbq)
+    if (d.pixel_id && !preview && !window.fbq) {
+      !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s); }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+      fbq("init", d.pixel_id);
+      fbq("track", "PageView");
+    }
+
+    var root = document.getElementById("rv-root");
+    root.innerHTML = page.html || "";
+    runScripts(root);
+    snippets.filter(function (s) { return s.location === "body_start"; }).forEach(function (s) { inject(document.body, s.code, "start"); });
+    RV.mountAll(root, d, { preview: preview });
+
+    // Smooth in-page anchors
+    root.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest('a[href^="#"]');
+      if (!a || a.getAttribute("href") === "#") return;
+      var t = document.getElementById(a.getAttribute("href").slice(1));
+      if (t) { e.preventDefault(); t.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    });
+
+    snippets.filter(function (s) { return s.location === "footer"; }).forEach(function (s) { inject(document.body, s.code); });
+
+    var sp = document.getElementById("rv-boot-spin"); if (sp) { sp.style.opacity = "0"; setTimeout(function () { sp.remove(); }, 200); }
+  }
+})();
+</script>
+</body>
+</html>
