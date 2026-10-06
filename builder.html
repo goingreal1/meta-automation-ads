@@ -552,6 +552,11 @@ input,select,textarea{font:inherit}
     if (doc.title && !seo.title) seo.title = doc.title;
     var md = doc.querySelector('meta[name="description"]'); if (md && md.content && !seo.description) seo.description = md.content;
     if (head) seo.head_html = ((replace ? "" : (seo.head_html || "") + "\n") + head).trim();
+    // <html>/<body> attributes can't live inside a component: keep them on the page (applied by the renderer)
+    var bStyle = [doc.documentElement.getAttribute("style"), doc.body && doc.body.getAttribute("style")].filter(Boolean).join(";");
+    var bClass = [doc.documentElement.className, doc.body && doc.body.className].join(" ").trim();
+    if (bStyle) seo.body_style = bStyle; else if (replace) delete seo.body_style;
+    if (bClass) seo.body_class = bClass; else if (replace) delete seo.body_class;
     S.page.seo = seo;
     var html = doc.body ? doc.body.innerHTML : raw;
     var ed = S.editor;
@@ -625,6 +630,10 @@ input,select,textarea{font:inherit}
     Array.prototype.slice.call(doc.querySelectorAll("[data-rvx]")).forEach(function (n) { n.remove(); });
     var hh = (S.page && S.page.seo && S.page.seo.head_html) || "";
     if (hh) { try { var fr = doc.createRange().createContextualFragment(hh); Array.prototype.slice.call(fr.children).forEach(function (n) { n.setAttribute("data-rvx", "1"); }); doc.head.appendChild(fr); } catch (e) {} }
+    var sp = (S.page && S.page.seo) || {};
+    doc.body.className = ((doc.body.className || "").replace(/\brv-bc\S*\s*/g, "") + " " + (sp.body_class || "")).trim();
+    var bs2 = doc.getElementById("rv-bodystyle"); if (!bs2) { bs2 = doc.createElement("style"); bs2.id = "rv-bodystyle"; doc.head.appendChild(bs2); }
+    bs2.textContent = sp.body_style ? "body{" + sp.body_style + "}" : "";
     var cc = doc.getElementById("rv-custom"); if (!cc) { cc = doc.createElement("style"); cc.id = "rv-custom"; doc.head.appendChild(cc); }
     cc.textContent = customCss;
     // editing aids

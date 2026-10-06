@@ -192,7 +192,7 @@ Deno.serve(async (req: Request) => {
     let sitePageId: string | null = null;
     const siteIdParam = payload.site_id as string | undefined;
     if (siteIdParam) {
-      const { data: sRow } = await supabase.from('sites').select('id, company_id, ad_account_id, purchase_event, settings').eq('id', siteIdParam).maybeSingle();
+      const { data: sRow } = await supabase.from('sites').select('id, company_id, ad_account_id, purchase_event, settings, media_buyer_id').eq('id', siteIdParam).maybeSingle();
       if (sRow && (!companyId || sRow.company_id === companyId)) {
         siteRow = sRow;
         if (!companyId) companyId = sRow.company_id;
@@ -363,6 +363,8 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       mediaBuyerId = buyerRow?.id ?? null;
     }
+    // A site's orders belong to the buyer who owns the site unless the ad link names another buyer.
+    if (!mediaBuyerId && siteRow?.media_buyer_id) mediaBuyerId = siteRow.media_buyer_id;
 
     const { data: orderRow, error: dbError } = await supabase.from('orders').upsert({
       company_id: companyId,
