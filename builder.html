@@ -305,7 +305,7 @@ input,select,textarea{font:inherit}
 <div class="ov" id="ovImport"><div class="dlg wide">
   <div class="dhd"><h3>Import your HTML</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="dbd">
-    <div class="fld"><label>Paste a full page or just a section of HTML (with its CSS)</label><textarea id="impCode" spellcheck="false" style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="&lt;!DOCTYPE html&gt; … or &lt;section&gt;…&lt;/section&gt;"></textarea><small>Or upload a file: <input type="file" id="impFile" accept=".html,.htm,.txt" style="width:auto;border:0;padding:0;display:inline"></small></div>
+    <div class="fld"><label>Paste HTML (a full page or one section, with its CSS) or an <b>Elementor template JSON</b></label><textarea id="impCode" spellcheck="false" style="min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="&lt;!DOCTYPE html&gt; … or &lt;section&gt;…&lt;/section&gt; … or {&quot;content&quot;:[…]} from Elementor → Export Template"></textarea><small>Or upload a file: <input type="file" id="impFile" accept=".html,.htm,.txt,.json" style="width:auto;border:0;padding:0;display:inline"></small></div>
     <div class="fld"><label><input type="radio" name="impMode" value="replace" checked style="width:auto;margin-right:8px">Replace this page</label><label><input type="radio" name="impMode" value="append" style="width:auto;margin-right:8px">Add to the end of this page</label></div>
     <div class="rv-warn" style="font-size:12px;color:var(--tx3);line-height:1.6">Everything becomes editable: click any text or image to change it, drag sections to reorder. Use full <b>https://</b> links for images, fonts and scripts (files on your computer can't load). Your page's &lt;style&gt; and &lt;link&gt; tags are kept. Order forms: drop our <b>Order form</b> widget in so orders reach your Orders tab.</div>
   </div>
@@ -326,6 +326,20 @@ input,select,textarea{font:inherit}
   <div class="dft"><button class="btn" data-close>Cancel</button><button class="btn pri" id="codeApply">Apply</button></div>
 </div></div>
 
+
+<!-- Form fields editor -->
+<div class="ov" id="ovFields"><div class="dlg wide">
+  <div class="dhd"><h3>Order form fields</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="dbd">
+    <p style="margin:0 0 12px;color:var(--tx3);font-size:12.5px">Name, phone and delivery details are always included. Add your own questions below. Answers are saved with the order and shown in your Orders tab.</p>
+    <div id="fldList"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" id="fldAdd">+ Add field</button>
+      <span style="color:var(--tx3);font-size:12px;align-self:center">Quick add:</span>
+      <button class="btn" data-preset="email">Email</button><button class="btn" data-preset="size">Size</button><button class="btn" data-preset="colour">Colour</button><button class="btn" data-preset="notes">Delivery notes</button><button class="btn" data-preset="source">How did you hear about us</button></div>
+  </div>
+  <div class="dft"><button class="btn" data-close>Cancel</button><button class="btn pri" id="fldSave">Save fields</button></div>
+</div></div>
+
 <!-- Preview -->
 <div id="pv"><div class="bar"><b style="margin-right:10px">Preview</b>
   <button class="ib on" data-pdev="d" title="Desktop"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
@@ -340,6 +354,7 @@ input,select,textarea{font:inherit}
 <script src="/vendor/grapesjs/grapes.min.js"></script>
 <script src="/rv/config.js"></script>
 <script src="/rv/blocks.js"></script>
+<script src="/rv/elementor.js"></script>
 <script>
 (function () {
   "use strict";
@@ -484,6 +499,7 @@ input,select,textarea{font:inherit}
       isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-form") ? { type: "rv-form" } : false; },
       model: { defaults: { tagName: "div", name: "Order form", droppable: false, attributes: { "data-rv-form": "1" },
         traits: [
+          { type: "button", name: "editfields", label: "Fields", text: "Edit form fields…", full: true, command: function (ed) { openFields(ed.getSelected()); } },
           { type: "text", name: "data-rv-title", label: "Title", placeholder: "Complete your order" },
           { type: "text", name: "data-rv-subtitle", label: "Subtitle", placeholder: "(automatic)" },
           { type: "text", name: "data-rv-button", label: "Button text", placeholder: "Complete my order" },
@@ -812,6 +828,37 @@ input,select,textarea{font:inherit}
     var code = $('[data-f="code"]', box); if (code) code.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); applyHtml(); } });
   }
 
+  /* ---- order form fields editor (Fluent-style custom questions) ---- */
+  var fldTarget = null, fldRows = [];
+  var FLD_PRESETS = { email: { label: "Email", type: "email", required: false }, size: { label: "Size", type: "select", options: "S, M, L, XL", required: true }, colour: { label: "Colour", type: "select", options: "Black, White, Red, Blue", required: false }, notes: { label: "Delivery notes", type: "textarea", required: false, placeholder: "Landmark, best time to call…" }, source: { label: "How did you hear about us", type: "select", options: "Facebook, Instagram, TikTok, Friend, Other", required: false } };
+  function drawFields() {
+    $("#fldList").innerHTML = fldRows.map(function (f, i) {
+      return '<div class="fld" style="display:grid;grid-template-columns:1.3fr 1fr 1.3fr auto auto;gap:8px;align-items:end;border:1px solid var(--line);border-radius:10px;padding:10px"><div><label>Label</label><input data-k="label" data-i="' + i + '" value="' + esc(f.label) + '"></div>' +
+        '<div><label>Type</label><select data-k="type" data-i="' + i + '">' + [["text", "Text"], ["email", "Email"], ["tel", "Phone"], ["number", "Number"], ["select", "Dropdown"], ["textarea", "Long text"], ["checkbox", "Checkbox"]].map(function (t) { return '<option value="' + t[0] + '"' + (f.type === t[0] ? " selected" : "") + ">" + t[1] + "</option>"; }).join("") + "</select></div>" +
+        '<div><label>' + (f.type === "select" ? "Options (comma separated)" : "Placeholder") + '</label><input data-k="' + (f.type === "select" ? "options" : "placeholder") + '" data-i="' + i + '" value="' + esc((f.type === "select" ? f.options : f.placeholder) || "") + '"></div>' +
+        '<div><label>Required</label><input type="checkbox" data-k="required" data-i="' + i + '"' + (f.required ? " checked" : "") + ' style="width:auto"></div>' +
+        '<div style="display:flex;gap:4px"><button class="ib" data-mv="-1" data-i="' + i + '" title="Up">▲</button><button class="ib" data-mv="1" data-i="' + i + '" title="Down">▼</button><button class="ib" data-rm="' + i + '" title="Remove">✕</button></div></div>';
+    }).join("") || '<div style="color:var(--tx3);padding:14px;text-align:center;border:1px dashed var(--line);border-radius:10px">No extra fields yet. Add one below.</div>';
+    $$("#fldList [data-k]").forEach(function (el) { el.onchange = el.oninput = function () { var f = fldRows[+el.dataset.i]; f[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value; if (el.dataset.k === "type") drawFields(); }; });
+    $$("#fldList [data-mv]").forEach(function (el) { el.onclick = function () { var i = +el.dataset.i, j = i + +el.dataset.mv; if (j < 0 || j >= fldRows.length) return; var t = fldRows[i]; fldRows[i] = fldRows[j]; fldRows[j] = t; drawFields(); }; });
+    $$("#fldList [data-rm]").forEach(function (el) { el.onclick = function () { fldRows.splice(+el.dataset.rm, 1); drawFields(); }; });
+  }
+  function openFields(comp) {
+    fldTarget = comp;
+    try { fldRows = JSON.parse(comp.getAttributes()["data-rv-fields"] || "[]") || []; } catch (e) { fldRows = []; }
+    drawFields(); $("#ovFields").classList.add("on");
+  }
+  function wireFields() {
+    $("#fldAdd").onclick = function () { fldRows.push({ label: "New question", type: "text", required: false }); drawFields(); };
+    $$("[data-preset]").forEach(function (b) { b.onclick = function () { if (fldRows.length < 12) { fldRows.push(Object.assign({}, FLD_PRESETS[b.dataset.preset])); drawFields(); } }; });
+    $("#fldSave").onclick = function () {
+      if (!fldTarget) return;
+      var clean = fldRows.filter(function (f) { return f.label && String(f.label).trim(); }).map(function (f) { return { label: String(f.label).trim(), type: f.type || "text", options: f.options || "", placeholder: f.placeholder || "", required: !!f.required }; });
+      fldTarget.addAttributes({ "data-rv-fields": clean.length ? JSON.stringify(clean) : "" });
+      $("#ovFields").classList.remove("on"); S.editor.select(fldTarget);
+    };
+  }
+
   /* ---- custom code editor + HTML import ---- */
   var codeTarget = null;
   function openCode(comp) {
@@ -831,6 +878,11 @@ input,select,textarea{font:inherit}
     if (doc.title && !seo.title) seo.title = doc.title;
     var md = doc.querySelector('meta[name="description"]'); if (md && md.content && !seo.description) seo.description = md.content;
     if (head) seo.head_html = ((replace ? "" : (seo.head_html || "") + "\n") + head).trim();
+    // <html>/<body> attributes can't live inside a component: keep them on the page (applied by the renderer)
+    var bStyle = [doc.documentElement.getAttribute("style"), doc.body && doc.body.getAttribute("style")].filter(Boolean).join(";");
+    var bClass = [doc.documentElement.className, doc.body && doc.body.className].join(" ").trim();
+    if (bStyle) seo.body_style = bStyle; else if (replace) delete seo.body_style;
+    if (bClass) seo.body_class = bClass; else if (replace) delete seo.body_class;
     S.page.seo = seo;
     var html = doc.body ? doc.body.innerHTML : raw;
     var ed = S.editor;
@@ -841,10 +893,19 @@ input,select,textarea{font:inherit}
     $("#bImport").onclick = function () { $("#impCode").value = ""; $("#ovImport").classList.add("on"); };
     $("#impFile").onchange = function () { var f = this.files[0]; if (!f) return; var r = new FileReader(); r.onload = function () { $("#impCode").value = r.result; }; r.readAsText(f); };
     $("#impGo").onclick = function () {
-      var raw = $("#impCode").value.trim(); if (!raw) return toast("Paste some HTML first");
+      var raw = $("#impCode").value.trim(); if (!raw) return toast("Paste some HTML or Elementor JSON first");
       var replace = ($('input[name="impMode"]:checked') || {}).value !== "append";
       if (replace && S.editor.getWrapper().components().length && !confirm("Replace everything on this page with your HTML? You can undo with Ctrl+Z.")) return;
-      try { importHtml(raw, replace); $("#ovImport").classList.remove("on"); toast("Imported. Click anything to edit it."); } catch (e) { toast("Couldn't import: " + esc(e.message || e)); }
+      try {
+        var msg = "Imported. Click anything to edit it.";
+        if (/^\s*[\[{]/.test(raw)) {
+          var res = window.RVElementor.convert(raw, RB);
+          raw = "<!DOCTYPE html><html><head><title>" + esc(res.title) + "</title>" + res.head + "<style>" + res.css + "</style></head><body>" + res.html + "</body></html>";
+          if (res.warnings.length) { msg = "Imported from Elementor. Check: " + res.warnings.slice(0, 3).join(" · "); }
+          else msg = "Imported from Elementor. Click anything to edit it.";
+        }
+        importHtml(raw, replace); $("#ovImport").classList.remove("on"); toast(msg, 7000);
+      } catch (e) { toast("Couldn't import: " + esc(e.message || e)); }
     };
     $("#codeApply").onclick = applyCode;
   }
@@ -897,6 +958,10 @@ input,select,textarea{font:inherit}
     Array.prototype.slice.call(doc.querySelectorAll("[data-rvx]")).forEach(function (n) { n.remove(); });
     var hh = (S.page && S.page.seo && S.page.seo.head_html) || "";
     if (hh) { try { var fr = doc.createRange().createContextualFragment(hh); Array.prototype.slice.call(fr.children).forEach(function (n) { n.setAttribute("data-rvx", "1"); }); doc.head.appendChild(fr); } catch (e) {} }
+    var sp = (S.page && S.page.seo) || {};
+    doc.body.className = ((doc.body.className || "").replace(/\brv-bc\S*\s*/g, "") + " " + (sp.body_class || "")).trim();
+    var bs2 = doc.getElementById("rv-bodystyle"); if (!bs2) { bs2 = doc.createElement("style"); bs2.id = "rv-bodystyle"; doc.head.appendChild(bs2); }
+    bs2.textContent = sp.body_style ? "body{" + sp.body_style + "}" : "";
     var cc = doc.getElementById("rv-custom"); if (!cc) { cc = doc.createElement("style"); cc.id = "rv-custom"; doc.head.appendChild(cc); }
     cc.textContent = customCss;
     // editing aids
@@ -1043,7 +1108,7 @@ input,select,textarea{font:inherit}
     $$("[data-pdev]").forEach(function (b) {
       b.onclick = function () { var pv = $("#pv"); pv.classList.remove("tab", "mob"); if (b.dataset.pdev === "t") pv.classList.add("tab"); if (b.dataset.pdev === "m") pv.classList.add("mob"); $$("[data-pdev]").forEach(function (x) { x.classList.toggle("on", x === b); }); };
     });
-    wireImport();
+    wireImport(); wireFields();
     syncUndo();
   }
   function setTab(side, t) {

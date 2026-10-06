@@ -45,6 +45,21 @@
     var title = ds.rvTitle != null ? ds.rvTitle : "Complete your order";
     var subtitle = ds.rvSubtitle != null ? ds.rvSubtitle : (isService ? "Your payment details show right after you submit." : "Pay on delivery — a team member will call to confirm.");
 
+    // Custom fields built in the editor (data-rv-fields = JSON array of {id,label,type,options,required,placeholder})
+    var custom = [];
+    try { custom = JSON.parse(ds.rvFields || "[]") || []; } catch (e) { custom = []; }
+    custom = custom.filter(function (f) { return f && f.label; }).slice(0, 12);
+    function customHtml() {
+      return custom.map(function (f, i) {
+        var nm = "cf_" + i, req = f.required ? " required" : "", ph = esc(f.placeholder || ""), lab = esc(f.label) + (f.required ? "" : ' <span style="font-weight:400;color:#8c887c">(optional)</span>');
+        var ctl;
+        if (f.type === "select") ctl = '<select name="' + nm + '"' + req + '><option value="">Select</option>' + String(f.options || "").split(",").map(function (o) { o = o.trim(); return o ? "<option>" + esc(o) + "</option>" : ""; }).join("") + "</select>";
+        else if (f.type === "textarea") ctl = '<textarea name="' + nm + '" rows="3" placeholder="' + ph + '"' + req + ' style="width:100%;border:1.5px solid var(--rv-border);border-radius:var(--rv-radius);padding:13px 14px;font:inherit;font-size:16px"></textarea>';
+        else if (f.type === "checkbox") return '<div class="rv-field"><label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" name="' + nm + '" style="width:auto"> ' + esc(f.label) + "</label></div>";
+        else ctl = '<input name="' + nm + '" type="' + (f.type === "email" ? "email" : f.type === "number" ? "number" : f.type === "tel" ? "tel" : "text") + '" placeholder="' + ph + '"' + req + ">";
+        return '<div class="rv-field"><label>' + lab + "</label>" + ctl + "</div>";
+      }).join("");
+    }
     function total() {
       if (hasTiers) { var t = product.tiers.find(function (x) { return x.id === selectedTier; }); return t ? Number(t.price_naira) : 0; }
       return Number(product.default_order_value_naira || 0) * qty;
@@ -62,6 +77,7 @@
         : (isService ? "" : '<div class="rv-field"><label>Quantity</label><div class="rv-qty"><button type="button" data-q="-1" aria-label="Less">&minus;</button><b class="rv-qv">1</b><button type="button" data-q="1" aria-label="More">+</button></div></div>')) +
       '<div class="rv-field"><label>Full name</label><input name="name" autocomplete="name" placeholder="Your full name" required></div>' +
       '<div class="rv-field"><label>Phone number (WhatsApp)</label><input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="080..." required></div>' +
+      customHtml() +
       (isService
         ? '<div class="rv-field"><label>State you want to advertise in</label><select name="state" required><option value="">Select state</option>' + stateOpts + "</select></div>"
         : '<div class="rv-field"><label>Delivery address</label><input name="address" autocomplete="street-address" placeholder="House number, street" required></div>' +
@@ -101,6 +117,14 @@
       var payment = isService ? "Bank transfer" : f.payment.value;
       if (!name || !phone || !address || !city || !state) { msg.textContent = "Please fill in every field."; msg.classList.add("on"); return; }
       if (phone.replace(/\D/g, "").length < 10) { msg.textContent = "Please enter a valid phone number."; msg.classList.add("on"); return; }
+      var formData = {}, emailVal;
+      for (var ci = 0; ci < custom.length; ci++) {
+        var cf = custom[ci], el2 = f["cf_" + ci]; if (!el2) continue;
+        var v = cf.type === "checkbox" ? (el2.checked ? "Yes" : "No") : String(el2.value || "").trim();
+        if (cf.required && !v) { msg.textContent = "Please fill in: " + cf.label; msg.classList.add("on"); return; }
+        if (v) formData[cf.label] = v.slice(0, 500);
+        if (cf.type === "email" && v) emailVal = v;
+      }
       if (opts.preview) { msg.textContent = "Preview mode — orders are not sent."; msg.classList.add("on"); return; }
 
       var tier = hasTiers ? product.tiers.find(function (x) { return x.id === selectedTier; }) : null;
@@ -112,7 +136,7 @@
         product_id: product.id, tier_id: tier ? tier.id : undefined,
         product_name: tier ? product.product_name + " (" + tier.label + ")" : product.product_name,
         quantity: tier ? tier.quantity : qty, order_value_naira: value, currency: product.currency || "NGN",
-        site_id: site.id, site_page_id: d.page.id,
+        site_id: site.id, site_page_id: d.page.id, form_data: Object.keys(formData).length ? formData : undefined, email: emailVal,
         ad_set_id: attr("asid") || null, creative_id: attr("crid") || null, buyer: attr("buyer"),
         fbclid: attr("fbclid"), ad_id: attr("ad_id"), fbp: cookie("_fbp"), fbc: cookie("_fbc")
       };

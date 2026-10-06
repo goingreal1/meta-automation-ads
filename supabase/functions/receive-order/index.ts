@@ -56,6 +56,13 @@ Deno.serve(async (req: Request) => {
     const creative_id = payload.creative_id;
     const product_id = payload.product_id as string | undefined;
     const tier_id = payload.tier_id as string | undefined;
+    // Extra answers from custom fields built into a site's order form: small, flat, text-only.
+    let form_data: Record<string, string> | null = null;
+    if (payload.form_data && typeof payload.form_data === 'object' && !Array.isArray(payload.form_data)) {
+      const entries = Object.entries(payload.form_data as Record<string, unknown>).slice(0, 20)
+        .map(([k, v]) => [String(k).slice(0, 80), String(v ?? '').slice(0, 500)] as [string, string]).filter(([k, v]) => k && v);
+      if (entries.length) form_data = Object.fromEntries(entries);
+    }
     // Meta click/browser IDs for CAPI match quality — fbc can also be reconstructed from a bare fbclid
     const fbp = payload.fbp as string | undefined;
     const fbc = (payload.fbc as string | undefined) ??
@@ -192,7 +199,7 @@ Deno.serve(async (req: Request) => {
     let sitePageId: string | null = null;
     const siteIdParam = payload.site_id as string | undefined;
     if (siteIdParam) {
-      const { data: sRow } = await supabase.from('sites').select('id, company_id, ad_account_id, purchase_event, settings').eq('id', siteIdParam).maybeSingle();
+      const { data: sRow } = await supabase.from('sites').select('id, company_id, ad_account_id, purchase_event, settings, media_buyer_id').eq('id', siteIdParam).maybeSingle();
       if (sRow && (!companyId || sRow.company_id === companyId)) {
         siteRow = sRow;
         if (!companyId) companyId = sRow.company_id;
@@ -363,6 +370,8 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       mediaBuyerId = buyerRow?.id ?? null;
     }
+    // A site's orders belong to the buyer who owns the site unless the ad link names another buyer.
+    if (!mediaBuyerId && siteRow?.media_buyer_id) mediaBuyerId = siteRow.media_buyer_id;
 
     const { data: orderRow, error: dbError } = await supabase.from('orders').upsert({
       company_id: companyId,
@@ -392,6 +401,7 @@ Deno.serve(async (req: Request) => {
       ...(mediaBuyerId ? { media_buyer_id: mediaBuyerId } : {}),
       ...(siteRow ? { site_id: siteRow.id } : {}),
       ...(sitePageId ? { site_page_id: sitePageId } : {}),
+      ...(form_data ? { form_data } : {}),
       fbclid: payload.fbclid || null,
       meta_ad_id: payload.ad_id || payload.meta_ad_id || null,
       order_status: 'pending'

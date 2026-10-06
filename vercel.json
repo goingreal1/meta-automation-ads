@@ -47,16 +47,40 @@
           "value": "public, max-age=86400"
         }
       ]
+    },
+    {
+      "source": "/rv/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300, stale-while-revalidate=86400"
+        }
+      ]
+    },
+    {
+      "source": "/vendor/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=604800, immutable"
+        }
+      ]
     }
   ],
   "rewrites": [
     {
       "source": "/s/:slug",
-      "destination": "/site.html"
+      "destination": "/api/site?slug=:slug"
     },
     {
       "source": "/s/:slug/:page",
-      "destination": "/site.html"
+      "destination": "/api/site?slug=:slug&page=:page"
     }
-  ]
+  ],
+  "functions": {
+    "api/site.js": {
+      "includeFiles": "rv/**",
+      "maxDuration": 15
+    }
+  }
 }
