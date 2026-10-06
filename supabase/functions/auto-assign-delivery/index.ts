@@ -40,6 +40,10 @@ function zoneMatches(zone: string | null, city: string | null, state: string | n
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  // Internal-only: callers send the service-role key.
+  if (!SUPABASE_SERVICE_ROLE_KEY || req.headers.get("Authorization") !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
+    return json({ error: "unauthorized" }, 401);
+  }
 
   try {
     const now = new Date();
