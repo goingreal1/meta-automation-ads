@@ -140,6 +140,38 @@ input,select,textarea{font:inherit}
 .gjs-rte-active{background:var(--acbg)!important;color:var(--ac)!important}
 .gjs-placeholder-int{background:var(--ac)!important}
 .gjs-resizer-h{border-color:var(--ac)!important}
+/* ---- hover + handles, picker, content forms ---- */
+.hplus{position:fixed;z-index:60;width:26px;height:26px;border-radius:50%;border:0;background:var(--ac);color:#04281e;font:700 19px/1 Inter,sans-serif;display:none;align-items:center;justify-content:center;padding:0;box-shadow:0 4px 14px rgba(0,0,0,.45);cursor:pointer}
+.hplus.on{display:flex}.hplus:hover{background:#2bc29a;transform:scale(1.12)}
+#emptyAdd{position:absolute;inset:0;display:none;align-items:center;justify-content:center;pointer-events:none;z-index:5}
+#emptyAdd.on{display:flex}
+#emptyAdd .card{pointer-events:auto;text-align:center;padding:30px 34px;border:2px dashed var(--line2);border-radius:16px;background:rgba(31,34,39,.92);max-width:320px}
+#emptyAdd .card b{display:block;font-size:15px;margin-bottom:6px}#emptyAdd .card span{display:block;color:var(--tx3);margin-bottom:16px}
+.pkbar{display:flex;gap:10px;align-items:center;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pkbar input{flex:1;min-width:180px;height:36px;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--tx);padding:0 12px}
+.pkbar input:focus{outline:none;border-color:var(--ac)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:7px 12px;color:var(--tx2);font-weight:600;font-size:12px}
+.seg button.on{background:var(--acbg);color:var(--ac)}
+.pkcat{margin:4px 0 8px;padding-bottom:7px;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3)}
+.pkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-bottom:16px}
+.pkt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:14px 6px 11px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--tx2);font-weight:600;font-size:11.5px;text-align:center;line-height:1.25}
+.pkt:hover,.pkt:focus{outline:none;border-color:var(--ac);background:var(--acbg);color:var(--ac)}
+.pkt svg{width:26px;height:26px;fill:none;stroke:currentColor}
+#rvContent{padding:6px 14px 4px}
+#rvContent .fld{margin-bottom:12px}
+#rvContent textarea{min-height:84px;resize:vertical}
+#rvContent .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:170px}
+#rvContent .addrow{display:flex;gap:6px;margin:10px 0 14px}
+#rvContent .addrow button{flex:1;height:32px;border-radius:8px;border:1px dashed var(--line2);background:transparent;color:var(--tx2);font-weight:600;font-size:12px}
+#rvContent .addrow button:hover{border-color:var(--ac);color:var(--ac);background:var(--acbg)}
+#rvContent .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+#rvContent .chips button{height:26px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:var(--panel2);color:var(--tx2);font-size:11.5px;font-weight:600}
+#rvContent .chips button:hover{border-color:var(--ac);color:var(--ac)}
+#rvContent .chk{display:flex;align-items:center;gap:8px;margin:0 0 9px;font-size:12.5px;color:var(--tx2)}
+#rvContent .chk input{width:auto}
+#rvContent .hint{color:var(--tx3);font-size:12px;line-height:1.55;margin:0 0 10px}
+.btn.sm{height:30px;padding:0 12px;font-size:12px}
 /* ---- overlays/modals (own) ---- */
 .ov{position:fixed;inset:0;background:rgba(8,9,11,.66);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;backdrop-filter:blur(2px)}
 .ov.on{display:flex}
@@ -199,6 +231,7 @@ input,select,textarea{font:inherit}
     <button class="ib" data-dev="Tablet" title="Tablet"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M11 18h2"/></svg></button>
     <button class="ib" data-dev="Mobile" title="Mobile"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></button>
     <span class="sep"></span>
+    <button class="ib" id="bAdd" title="Add widget"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Add</span></button>
     <button class="ib" id="bUndo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
     <button class="ib" id="bRedo" title="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
     <button class="ib" id="bGrid" title="Show element outlines"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"/></svg></button>
@@ -217,13 +250,14 @@ input,select,textarea{font:inherit}
     <div class="pane" data-pane="L-pages"><div class="plist" id="pageList"></div></div>
   </aside>
 
-  <main id="canvas"><div id="gjs"></div></main>
+  <main id="canvas"><div id="gjs"></div><div id="emptyAdd"><div class="card"><b>Start building</b><span>Add your first widget, or pick a ready-made template.</span><button class="btn pri" id="eaAdd">+ Add widget</button> <button class="btn" id="eaTpl">Templates</button></div></div></main>
+<button class="hplus" id="hTop" title="Add widget above">+</button><button class="hplus" id="hBot" title="Add widget below">+</button>
 
   <aside class="side" id="right">
     <div class="tabs" data-for="R"><button class="on" data-t="content">Content</button><button data-t="style">Style</button><button data-t="adv">Advanced</button></div>
     <div class="selhead" id="selHead" style="display:none"><div class="ni" id="selIcon">•</div><div><b id="selName">Element</b><small id="selSub"></small></div></div>
     <div class="devhint" id="devHint"></div>
-    <div class="pane on" data-pane="R-content"><div class="empty" id="emptySel"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6z"/></svg><h4>Select anything to edit it</h4><div>Click any text, image, button or section on the page. Drag widgets from the left to add them.</div></div><div id="traits"></div></div>
+    <div class="pane on" data-pane="R-content"><div class="empty" id="emptySel"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6z"/></svg><h4>Select anything to edit it</h4><div>Click any text, image, button or section on the page. Hover a block and press <b>+</b> to add a widget exactly where you want it.</div></div><div id="rvContent"></div><div id="traits"></div></div>
     <div class="pane" data-pane="R-style"><div id="styles"></div></div>
     <div class="pane" data-pane="R-adv"><div id="classes"></div><div class="fld" style="padding:0 14px"><label>Custom CSS for this page</label><textarea id="customCss" placeholder="/* advanced: runs on this page only */" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px;min-height:130px"></textarea><small>For designers: this CSS is added at the end of the page.</small></div></div>
   </aside>
@@ -276,6 +310,13 @@ input,select,textarea{font:inherit}
     <div class="rv-warn" style="font-size:12px;color:var(--tx3);line-height:1.6">Everything becomes editable: click any text or image to change it, drag sections to reorder. Use full <b>https://</b> links for images, fonts and scripts (files on your computer can't load). Your page's &lt;style&gt; and &lt;link&gt; tags are kept. Order forms: drop our <b>Order form</b> widget in so orders reach your Orders tab.</div>
   </div>
   <div class="dft"><button class="btn" data-close>Cancel</button><button class="btn pri" id="impGo">Import</button></div>
+</div></div>
+
+<!-- Widget picker -->
+<div class="ov" id="ovPick"><div class="dlg wide">
+  <div class="dhd"><h3>Add a widget</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="pkbar"><input id="pkSearch" placeholder="Search widgets… (heading, video, button, html)" autocomplete="off"><div class="seg" id="pkMode"><button data-m="before">Above</button><button data-m="after" class="on">Below</button><button data-m="inside">Inside</button></div><span class="chip" id="pkWhere"></span></div>
+  <div class="dbd" id="pkBody"></div>
 </div></div>
 
 <!-- Edit custom code -->
@@ -405,18 +446,19 @@ input,select,textarea{font:inherit}
     ed.on("load", function () {
       applyCanvasTheme();
       loadPage(S.page, true);
-      $("#boot").style.display = "none";
+      $("#boot").style.display = "none"; syncEmpty();
       var w = window.innerWidth; if (w < 900) { $("#gate").style.display = "flex"; }
     });
     ed.on("component:add", function (c) { if (!c.get("name") && !c.get("custom-name")) { var n = friendlyName(c); if (n) c.set("name", n, { silent: true }); } });
     ed.on("update", markDirty);
+    ed.on("update component:add component:remove", syncEmpty);
     ed.on("undo redo update", syncUndo);
     ed.on("component:selected", function (c) { addMoveTools(c); onSelect(); });
     ed.on("component:deselected", onSelect);
     ed.on("run:preview", function () {});
     ed.on("canvas:frame:load", applyCanvasTheme);
     ed.on("change:device", function () { onSelect(); });
-    wireUi();
+    wireUi(); wireHandles(); wirePicker();
   }
 
   function sectors() {
@@ -470,6 +512,9 @@ input,select,textarea{font:inherit}
       model: { defaults: { tagName: "div", name: "Bank details card", droppable: false, attributes: { "data-rv-bank": "1" }, traits: [] } },
       view: { onRender: function () { previewMount(this, "bank"); } }
     });
+    var focusField = function (e) { if (e && e.stopPropagation) e.stopPropagation(); setTab("R", "content"); var f = $("#rvContent [data-focus]"); if (f) { f.focus(); f.select && f.select(); } };
+    // keep embed iframes exactly as written (GrapesJS' built-in video type rewrites YouTube/Vimeo URLs and drops mute / controls / loop options)
+    dc.addType("rv-frame", { isComponent: function (el) { return el.tagName === "IFRAME" ? { type: "rv-frame" } : false; }, model: { defaults: { tagName: "iframe", name: "Embed", droppable: false, void: false } } });
     dc.addType("rv-video", {
       isComponent: function (el) { return el.classList && el.classList.contains("rv-video") ? { type: "rv-video" } : false; },
       model: { defaults: { name: "Video", droppable: false,
@@ -484,17 +529,19 @@ input,select,textarea{font:inherit}
           var a = this.getAttributes();
           if (this.__lastSrc !== a["data-src"]) { this.__lastSrc = a["data-src"]; var r = RB.videoRatioFor(a["data-src"]); if (r === "9:16" && a["data-ratio"] !== "9:16") this.addAttributes({ "data-ratio": "9:16" }); else if (r === "16:9" && a["data-ratio"] === "9:16") this.addAttributes({ "data-ratio": "16:9" }); }
           this.components(RB.videoEmbed(a["data-src"], { autoplay: !!a["data-autoplay"], loop: !!a["data-loop"], controls: !a["data-nocontrols"] }));
-        } }
+        } },
+      view: { onActive: focusField }
     });
     dc.addType("rv-map", {
       isComponent: function (el) { return el.classList && el.classList.contains("rv-map") ? { type: "rv-map" } : false; },
       model: { defaults: { name: "Map", droppable: false, traits: [{ type: "text", name: "data-q", label: "Address / place", placeholder: "e.g. Ikeja City Mall, Lagos" }] },
-        init: function () { this.on("change:attributes:data-q", function () { this.components(RB.mapEmbed(this.getAttributes()["data-q"])); }); } }
+        init: function () { this.on("change:attributes:data-q", function () { this.components(RB.mapEmbed(this.getAttributes()["data-q"])); }); } },
+      view: { onActive: focusField }
     });
     dc.addType("rv-html", {
       isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-html") ? { type: "rv-html" } : false; },
-      model: { defaults: { name: "Custom HTML", attributes: { "data-rv-html": "1" },
-        traits: [{ type: "button", name: "editcode", label: "Code", text: "Edit code…", full: true, command: function (ed) { openCode(ed.getSelected()); } }] } }
+      model: { defaults: { name: "Custom HTML", attributes: { "data-rv-html": "1" }, traits: [] } },
+      view: { onActive: function (e) { if (e && e.stopPropagation) e.stopPropagation(); openCode(this.model); } }
     });
     dc.addType("rv-tabs", {
       isComponent: function (el) { return el.hasAttribute && el.hasAttribute("data-rv-tabs") ? { type: "rv-tabs" } : false; },
@@ -521,18 +568,153 @@ input,select,textarea{font:inherit}
 
 
 
-  /* ---- click a widget = add it after the selected section (or at the end) ---- */
-  function addBlockByClick(label) {
-    var ed = S.editor, b = ed.Blocks.getAll().models.find(function (x) { return x.get("label") === label; });
-    if (!b) return;
-    var wrap = ed.getWrapper(), at = wrap.components().length, sel = ed.getSelected();
-    if (sel) { var top = sel; while (top && top.parent() && top.parent() !== wrap) top = top.parent(); if (top && top.parent() === wrap) at = top.index() + 1; }
-    var added = wrap.append(b.get("content"), { at: at });
+  /* ================= placing widgets (Elementor-style) ================= */
+  var INLINE = /^(span|b|strong|i|em|u|small|mark|sup|sub|br|label|abbr|code)$/;
+  var FLOW = /^(body|div|section|header|footer|main|article|aside|nav|form)$/;
+  var CONTAINER = /^(div|section|header|footer|main|article|aside|nav)$/;
+  var tagOf = function (c) { return ((c && c.get && c.get("tagName")) || "").toLowerCase(); };
+  function isTextNode(c) { return c.is && c.is("textnode"); }
+  function blockByLabel(label) { return S.editor.Blocks.getAll().models.find(function (x) { return x.get("label") === label; }); }
+
+  // the nearest block-level element around c that accepts siblings (what the + handles attach to)
+  function placeable(c) {
+    var w = S.editor.getWrapper();
+    while (c && c !== w) {
+      var p = c.parent();
+      if (p && !isTextNode(c) && !INLINE.test(tagOf(c)) && (p === w || FLOW.test(tagOf(p)))) return c;
+      c = p;
+    }
+    return null;
+  }
+  function canInside(c) { return !!c && CONTAINER.test(tagOf(c)) && c.get("droppable") !== false && !c.is("rv-form") && !c.is("rv-bank") && !c.is("rv-video") && !c.is("rv-map") && !c.is("rv-html"); }
+
+  // put block b before / after / inside ref (ref null = end of the page). Widgets dropped at page level get their own section;
+  // full-width sections never end up nested inside a column.
+  function insertBlock(b, ref, mode) {
+    var ed = S.editor, w = ed.getWrapper(), content = b.get("content"), parent, at;
+    if (!ref || ref === w) { parent = w; at = w.components().length; }
+    else if (mode === "inside") { parent = ref; at = ref.components().length; }
+    else { parent = ref.parent() || w; at = ref.index() + (mode === "before" ? 0 : 1); }
+    if (b.get("top") && parent !== w) {
+      var t = parent; while (t.parent() && t.parent() !== w) t = t.parent();
+      at = t.index() + (mode === "before" ? 0 : 1); parent = w;
+    }
+    var added;
+    if (b.get("widget") && parent === w) {
+      var sec = w.append('<section class="rv-sec tight"><div class="rv-wrap"></div></section>', { at: at });
+      sec = Array.isArray(sec) ? sec[0] : sec;
+      added = sec.components().at(0).append(content);
+    } else added = parent.append(content, { at: at });
     var c = Array.isArray(added) ? added[0] : added;
-    if (c) { ed.select(c); setTimeout(function () { try { var el = c.getEl(); el && el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {} }, 60); }
+    if (c) afterInsert(c);
+    return c;
+  }
+  function afterInsert(c) {
+    var ed = S.editor; ed.select(c);
+    setTimeout(function () { try { var el = c.getEl(); el && el.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {} }, 60);
+    if (c.is("rv-html")) return openCode(c);
+    setTab("R", "content");
+    setTimeout(function () { var f = $("#rvContent [data-focus]"); if (f) { f.focus(); if (f.select) f.select(); } }, 120);
+  }
+  // widget dragged in from the left panel: apply the same placement rules
+  function fixDrop(c, b) {
+    if (!c || !b) return;
+    var ed = S.editor, w = ed.getWrapper(), p = c.parent();
+    if (b.get("widget") && p === w) {
+      var sec = w.append('<section class="rv-sec tight"><div class="rv-wrap"></div></section>', { at: c.index() });
+      sec = Array.isArray(sec) ? sec[0] : sec; c.move(sec.components().at(0), { at: 0 });
+    } else if (b.get("top") && p && p !== w) {
+      var t = p; while (t.parent() && t.parent() !== w) t = t.parent();
+      c.move(w, { at: t.index() + 1 });
+    }
+    afterInsert(c);
+  }
+  // click a widget tile in the left panel: add right after what you selected (or at the end of the page)
+  function addBlockByClick(label) {
+    var b = blockByLabel(label); if (!b) return;
+    var sel = S.editor.getSelected(), ref = sel && placeable(sel);
+    insertBlock(b, ref, "after");
   }
 
-  /* ---- reorder: move up / down from the element toolbar ---- */
+  /* ---- hover "+" handles on every block ---- */
+  var hv = { c: null, t: null };
+  function hideHandles() { hv.c = null; $("#hTop").classList.remove("on"); $("#hBot").classList.remove("on"); }
+  function placeHandles() {
+    var c = hv.c, el = c && c.getEl && c.getEl(), fe = S.editor.Canvas.getFrameEl();
+    if (!el || !el.isConnected || !fe) return hideHandles();
+    var fr = fe.getBoundingClientRect(), r = el.getBoundingClientRect(), cv = $("#canvas").getBoundingClientRect();
+    var cx = Math.min(Math.max(fr.left + r.left + r.width / 2, fr.left + 24), fr.right - 24);
+    var top = fr.top + r.top, bot = fr.top + r.bottom;
+    function put(btn, y) { var ok = y > cv.top + 2 && y < cv.bottom - 2; btn.classList.toggle("on", ok); btn.style.left = (cx - 13) + "px"; btn.style.top = (y - 13) + "px"; }
+    put($("#hTop"), top); put($("#hBot"), bot);
+  }
+  function showHandles(c) {
+    var t = c && placeable(c);
+    if (!t) return hideHandles();
+    hv.c = t; placeHandles();
+  }
+  function scheduleHide() {
+    clearTimeout(hv.t);
+    hv.t = setTimeout(function () { var s = S.editor.getSelected(); if (s) showHandles(s); else hideHandles(); }, 350);
+  }
+  function wireHandles() {
+    var ed = S.editor;
+    ed.on("component:hover", function (c) { clearTimeout(hv.t); showHandles(c); });
+    ed.on("component:unhover", scheduleHide);
+    ed.on("component:selected", function (c) { clearTimeout(hv.t); showHandles(c); });
+    ed.on("component:deselected component:remove", hideHandles);
+    ed.on("canvas:frame:load", function () { try { ed.Canvas.getWindow().addEventListener("scroll", hideHandles, true); } catch (e) {} });
+    window.addEventListener("resize", hideHandles);
+    ["#hTop", "#hBot"].forEach(function (id) {
+      var b = $(id);
+      b.onmouseenter = function () { clearTimeout(hv.t); };
+      b.onmouseleave = scheduleHide;
+      b.onclick = function () { var c = hv.c; if (c) openPicker(c, id === "#hTop" ? "before" : "after"); };
+    });
+  }
+
+  /* ---- widget picker ---- */
+  var pk = { ref: null, mode: "after" };
+  function openPicker(ref, mode) {
+    pk.ref = ref || null; pk.mode = ref ? (mode || "after") : "after";
+    var seg = $("#pkMode");
+    $$("button", seg).forEach(function (b) { b.style.display = !ref ? "none" : (b.dataset.m === "inside" && !canInside(ref) ? "none" : ""); });
+    seg.style.display = ref ? "" : "none";
+    $("#pkWhere").textContent = ref ? "" : "Adds to the end of the page";
+    syncPkMode();
+    var cats = [], by = {};
+    S.editor.Blocks.getAll().models.forEach(function (b) { var k = b.get("category"); k = (k && (k.id || k.label)) || String(k || "Other"); if (!by[k]) { by[k] = []; cats.push(k); } by[k].push(b); });
+    $("#pkBody").innerHTML = cats.map(function (k) {
+      return '<div class="pkcat" data-cat="' + esc(k) + '">' + esc(k) + '</div><div class="pkgrid">' + by[k].map(function (b) { return '<button class="pkt" data-label="' + esc(b.get("label")) + '">' + (b.get("media") || "") + "<span>" + esc(b.get("label")) + "</span></button>"; }).join("") + "</div>";
+    }).join("");
+    $$(".pkt", $("#pkBody")).forEach(function (t) { t.onclick = function () { pickWidget(t.dataset.label); }; });
+    $("#pkSearch").value = ""; $("#ovPick").classList.add("on");
+    setTimeout(function () { $("#pkSearch").focus(); }, 30);
+  }
+  function syncPkMode() { $$("#pkMode button").forEach(function (b) { b.classList.toggle("on", b.dataset.m === pk.mode); }); }
+  function pickWidget(label) {
+    var b = blockByLabel(label); if (!b) return;
+    $("#ovPick").classList.remove("on");
+    insertBlock(b, pk.ref, pk.mode);
+  }
+  function filterPicker(q) {
+    q = q.trim().toLowerCase();
+    $$("#pkBody .pkt").forEach(function (t) { t.style.display = !q || t.textContent.toLowerCase().indexOf(q) > -1 ? "" : "none"; });
+    $$("#pkBody .pkgrid").forEach(function (g) { var any = $$(".pkt", g).some(function (t) { return t.style.display !== "none"; }); g.style.display = any ? "" : "none"; g.previousElementSibling.style.display = any ? "" : "none"; });
+  }
+  function wirePicker() {
+    $("#pkSearch").oninput = function () { filterPicker(this.value); };
+    $("#pkSearch").onkeydown = function (e) { if (e.key === "Enter") { var f = $$("#pkBody .pkt").find(function (t) { return t.style.display !== "none"; }); if (f) f.click(); } };
+    $$("#pkMode button").forEach(function (b) { b.onclick = function () { pk.mode = b.dataset.m; syncPkMode(); }; });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") { $$(".ov.on").forEach(function (o) { o.classList.remove("on"); }); } });
+    $("#bAdd").onclick = function () { var s = S.editor.getSelected(); openPicker(s && placeable(s), "after"); };
+    $("#eaAdd").onclick = function () { openPicker(null); };
+    $("#eaTpl").onclick = function () { openTemplates(true); };
+    S.editor.on("block:drag:stop", fixDrop);
+  }
+  function syncEmpty() { var w = S.editor && S.editor.getWrapper(); $("#emptyAdd").classList.toggle("on", !!w && w.components().length === 0 && $("#boot").style.display === "none"); }
+
+  /* ---- reorder + add from the element toolbar ---- */
   function moveSel(dir) {
     var ed = S.editor, c = ed.getSelected(); if (!c) return;
     var par = c.parent(); if (!par) return;
@@ -544,11 +726,107 @@ input,select,textarea{font:inherit}
   function addMoveTools(c) {
     var tb = c.get("toolbar"); if (!Array.isArray(tb) || tb.some(function (t) { return t.id === "rv-up"; })) return;
     c.set("toolbar", [
+      { id: "rv-add", label: "+", attributes: { title: "Add a widget below" }, command: function () { var s = S.editor.getSelected(); openPicker(s && placeable(s), "after"); } },
       { id: "rv-up", label: "▲", attributes: { title: "Move up" }, command: function () { moveSel(-1); } },
       { id: "rv-down", label: "▼", attributes: { title: "Move down" }, command: function () { moveSel(1); } }
     ].concat(tb));
   }
 
+  /* ================= Content tab: real fields for text, links, images, video, HTML ================= */
+  function kindOf(c) {
+    if (!c) return "";
+    var t = c.get("type"), tag = tagOf(c);
+    if (t === "image") return "image";
+    if (t === "rv-video") return "video";
+    if (t === "rv-map") return "map";
+    if (t === "rv-html") return "html";
+    if (/^rv-/.test(t)) return "traits";
+    if (tag === "a") return "link";
+    if (c.components().length === 0 && /^(h[1-6]|p|span|li|summary|button|b|strong|em|small|label|td|th)$/.test(tag)) return "text";
+    if (isTextual(c)) return "text";
+    return "box";
+  }
+  function isTextual(c) {
+    var cs = c.components(); if (!cs.length) return false;
+    return cs.models.every(function (m) { return isTextNode(m) || INLINE.test(tagOf(m)) || (tagOf(m) === "a" && !m.components().some(function (x) { return !isTextNode(x); })); });
+  }
+  function readText(c) {
+    var html = c.getInnerHTML(), tmp = document.createElement("div"); tmp.innerHTML = html;
+    if (tmp.querySelector("*:not(br)")) return { v: html, html: true };
+    $$("br", tmp).forEach(function (b) { b.replaceWith("\n"); });
+    return { v: tmp.textContent, html: false };
+  }
+  function F(label, inner, hint) { return '<div class="fld"><label>' + label + "</label>" + inner + (hint ? "<small>" + hint + "</small>" : "") + "</div>"; }
+  function addRow(c) {
+    return '<div class="addrow"><button data-add="before">+ Above</button><button data-add="after">+ Below</button>' + (canInside(c) ? '<button data-add="inside">+ Inside</button>' : "") + "</div>";
+  }
+  function renderContent() {
+    var ed = S.editor, c = ed.getSelected(), box = $("#rvContent"), kind = kindOf(c);
+    box.innerHTML = "";
+    $("#traits").style.display = c && kind === "traits" ? "" : "none";
+    if (!c) return;
+    var h = addRow(c), a = c.getAttributes();
+    if (kind === "text" || kind === "link") {
+      if (isTextual(c) || (kind === "text") || c.components().length === 0) {
+        var t = readText(c), lvl = /^h[1-6]$/.test(tagOf(c));
+        h += F(lvl ? "Heading text" : (kind === "link" ? "Button / link text" : "Text"), '<textarea data-focus="1" data-f="text" data-html="' + (t.html ? 1 : 0) + '" rows="' + (lvl ? 3 : 5) + '">' + esc(t.v) + "</textarea>", t.html ? "This text has formatting (bold, links). HTML tags are kept." : "Or double-click the text on the page to edit it in place.");
+        if (lvl) h += F("Heading level", '<select data-f="level">' + [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="h' + n + '"' + (tagOf(c) === "h" + n ? " selected" : "") + ">H" + n + (n === 1 ? " (page title)" : "") + "</option>"; }).join("") + "</select>");
+      }
+      if (kind === "link") {
+        h += F("Link (where it goes)", '<input data-f="href" value="' + esc(a.href || "") + '" placeholder="https://…  or  #order">',
+          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' +
+          '<label class="chk"><input type="checkbox" data-f="blank"' + (a.target === "_blank" ? " checked" : "") + '>Open in a new tab</label>';
+        if (c.getClasses().indexOf("rv-btn") > -1) h += F("Button style", '<select data-f="bstyle"><option value="">Solid</option><option value="ghost"' + (c.getClasses().indexOf("ghost") > -1 ? " selected" : "") + '>Outline</option></select>') + '<label class="chk"><input type="checkbox" data-f="bblock"' + (c.getClasses().indexOf("block") > -1 ? " checked" : "") + ">Full width</label>";
+      }
+    } else if (kind === "image") {
+      var src = c.get("src") || a.src || "";
+      h += F("Image link", '<input data-focus="1" data-f="src" value="' + esc(/^data:/.test(src) ? "" : src) + '" placeholder="Paste an image link (https://…)">', "Or upload from your computer:") + '<div style="margin:-6px 0 12px"><button class="btn sm" data-act="pick">Choose or upload…</button></div>' + F("Description (for Google &amp; screen readers)", '<input data-f="alt" value="' + esc(a.alt || "") + '" placeholder="e.g. Woman holding the product">');
+    } else if (kind === "video") {
+      h += F("Video link", '<input data-focus="1" data-f="vsrc" value="' + esc(a["data-src"] || "") + '" placeholder="Paste a YouTube, Vimeo, Facebook, TikTok or MP4 link">', "The video shows right here on the page as soon as you paste the link.") +
+        F("Shape", '<select data-f="vratio">' + [["16:9", "Wide 16:9"], ["9:16", "Vertical 9:16"], ["1:1", "Square"], ["4:3", "Classic 4:3"]].map(function (o) { return '<option value="' + o[0] + '"' + ((a["data-ratio"] || "16:9") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>") +
+        [["data-autoplay", "Autoplay (muted)"], ["data-loop", "Loop"], ["data-nocontrols", "Hide controls"]].map(function (o) { return '<label class="chk"><input type="checkbox" data-f="vopt" data-n="' + o[0] + '"' + (a[o[0]] ? " checked" : "") + ">" + o[1] + "</label>"; }).join("");
+    } else if (kind === "map") {
+      h += F("Address or place", '<input data-focus="1" data-f="mq" value="' + esc(a["data-q"] || "") + '" placeholder="e.g. Ikeja City Mall, Lagos">', "The map updates as you type.");
+    } else if (kind === "html") {
+      var code = c.getInnerHTML(); if (/Custom HTML area\./.test(code)) code = "";
+      h += F("HTML code", '<textarea class="mono" data-focus="1" data-f="code" spellcheck="false" placeholder="Paste your HTML, embed code, form or script here…">' + esc(code) + "</textarea>", "HTML, CSS (&lt;style&gt;) and scripts all work. Press Apply to show it on the page.") + '<div style="display:flex;gap:8px;margin:-4px 0 12px"><button class="btn pri sm" data-act="apply">Apply</button><button class="btn sm" data-act="big">Bigger editor</button></div>';
+    } else if (kind === "box") {
+      h += '<p class="hint">This is a ' + esc((c.getName() || "block").toLowerCase()) + ". Click any text, image or button inside it to edit that, or use the + buttons to add a widget.</p>";
+    }
+    box.innerHTML = h;
+    wireContent(box, c, kind);
+  }
+  function wireContent(box, c, kind) {
+    var ed = S.editor, deb;
+    $$("[data-add]", box).forEach(function (b) { b.onclick = function () { openPicker(placeable(c) && b.dataset.add !== "inside" ? placeable(c) : c, b.dataset.add); }; });
+    function on(sel, ev, fn) { $$(sel, box).forEach(function (n) { n.addEventListener(ev, function () { fn(n); }); }); }
+    on('[data-f="text"]', "input", function (n) { var html = n.dataset.html === "1"; c.components(html ? n.value : esc(n.value).replace(/\n/g, "<br>")); });
+    on('[data-f="level"]', "change", function (n) { c.set("tagName", n.value); c.set("name", "Heading"); ed.select(c); });
+    on('[data-f="href"]', "input", function (n) { c.addAttributes({ href: n.value }); });
+    on('[data-f="blank"]', "change", function (n) { if (n.checked) c.addAttributes({ target: "_blank", rel: "noopener" }); else c.removeAttributes(["target", "rel"]); });
+    on('[data-f="bstyle"]', "change", function (n) { if (n.value) c.addClass("ghost"); else c.removeClass("ghost"); });
+    on('[data-f="bblock"]', "change", function (n) { if (n.checked) c.addClass("block"); else c.removeClass("block"); });
+    $$("[data-q]", box).forEach(function (b) {
+      b.onclick = function () {
+        var wa = String(blockCtx().whatsapp || "").replace(/\D/g, ""), q = b.dataset.q;
+        var v = q === "order" ? "#order" : q === "popup" ? "#rv-popup" : q === "wa" ? "https://wa.me/" + (wa || "234") : "tel:+" + (wa || "234");
+        if ((q === "wa" || q === "tel") && !wa) toast("Add a WhatsApp number to your product to fill this in automatically.");
+        c.addAttributes({ href: v }); $('[data-f="href"]', box).value = v;
+        if (q === "wa") { c.addAttributes({ target: "_blank", rel: "noopener" }); $('[data-f="blank"]', box).checked = true; }
+      };
+    });
+    on('[data-f="src"]', "input", function (n) { var v = n.value.trim(); if (v) { c.set("src", v); c.addAttributes({ src: v }); } });
+    on('[data-f="alt"]', "input", function (n) { c.addAttributes({ alt: n.value }); });
+    on('[data-act="pick"]', "click", function () { ed.runCommand("open-assets", { target: c, types: ["image"], accept: "image/*" }); });
+    on('[data-f="vsrc"]', "input", function (n) { clearTimeout(deb); deb = setTimeout(function () { c.addAttributes({ "data-src": n.value.trim() }); var r = c.getAttributes()["data-ratio"]; var sel = $('[data-f="vratio"]', box); if (sel && sel.value !== r) sel.value = r || "16:9"; }, 350); });
+    on('[data-f="vratio"]', "change", function (n) { c.addAttributes({ "data-ratio": n.value }); });
+    on('[data-f="vopt"]', "change", function (n) { var o = {}; o[n.dataset.n] = n.checked ? "1" : ""; c.addAttributes(o); });
+    on('[data-f="mq"]', "input", function (n) { clearTimeout(deb); deb = setTimeout(function () { c.addAttributes({ "data-q": n.value }); }, 450); });
+    function applyHtml() { c.components($('[data-f="code"]', box).value || '<div class="rv-note">Empty custom HTML area</div>'); toast("HTML applied"); }
+    on('[data-act="apply"]', "click", applyHtml);
+    on('[data-act="big"]', "click", function () { openCode(c); });
+    var code = $('[data-f="code"]', box); if (code) code.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); applyHtml(); } });
+  }
 
   /* ---- order form fields editor (Fluent-style custom questions) ---- */
   var fldTarget = null, fldRows = [];
@@ -585,12 +863,12 @@ input,select,textarea{font:inherit}
   var codeTarget = null;
   function openCode(comp) {
     codeTarget = comp; $("#codeBox").value = comp.getInnerHTML ? comp.getInnerHTML() : ""; $("#ovCode").classList.add("on");
-    if (/Custom HTML area\. Select it/.test($("#codeBox").value)) $("#codeBox").value = "";
+    if (/Custom HTML area\./.test($("#codeBox").value)) $("#codeBox").value = "";
   }
   function applyCode() {
     if (!codeTarget) return;
     codeTarget.components($("#codeBox").value || '<div class="rv-note">Empty custom HTML area</div>');
-    $("#ovCode").classList.remove("on"); S.editor.select(codeTarget);
+    $("#ovCode").classList.remove("on"); S.editor.select(codeTarget); renderContent();
   }
   function importHtml(raw, replace) {
     var doc = new DOMParser().parseFromString(raw, "text/html"), css = "", head = "";
@@ -658,18 +936,11 @@ input,select,textarea{font:inherit}
   function nameAll() {
     S.editor.getWrapper().find("*").forEach(function (c) { if (!c.get("name") && !c.get("custom-name")) { var n = friendlyName(c); if (n) c.set("name", n, { silent: true }); } });
   }
-  function extraTraits(sel) {
-    if (!sel || sel.__rvTraits) return; sel.__rvTraits = true;
-    var tag = (sel.get("tagName") || "").toLowerCase();
-    if (/^h[1-6]$/.test(tag)) sel.addTrait({ type: "select", name: "tagName", label: "Heading level", changeProp: true, options: ["h1", "h2", "h3", "h4", "h5", "h6"].map(function (h) { return { id: h, name: h.toUpperCase() }; }) }, { at: 0 });
-    if (sel.get("type") === "image") sel.addTrait({ type: "button", name: "pick", label: "Image", text: "Choose or upload…", full: true, command: function (ed) { ed.runCommand("open-assets", { target: ed.getSelected(), types: ["image"], accept: "image/*" }); } }, { at: 0 });
-  }
-
   function refreshBlocks() {
     var bm = S.editor.Blocks;
     bm.getAll().reset();
     RB.build(blockCtx()).forEach(function (b) {
-      var o = { label: b.label, category: b.category, media: b.media, content: b.content, select: true };
+      var o = { label: b.label, category: b.category, media: b.media, content: b.content, select: true, widget: !!b.widget, top: !!b.top };
       bm.add(b.id, o);
     });
   }
@@ -695,7 +966,7 @@ input,select,textarea{font:inherit}
     cc.textContent = customCss;
     // editing aids
     var ea = doc.getElementById("rv-edit"); if (!ea) { ea = doc.createElement("style"); ea.id = "rv-edit"; doc.head.appendChild(ea); }
-    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}";
+    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}.rv-video:not([data-src])::before,.rv-video[data-src=\"\"]::before{content:\"▶  Paste a video link in the panel on the right\";position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#cfd4da;font:600 15px/1.4 system-ui,sans-serif}";
   }
   var customCss = "";
 
@@ -718,7 +989,7 @@ input,select,textarea{font:inherit}
   }
   function finishLoad() {
     nameAll(); S.loadedProject = true; S.dirty = false;
-    applyCanvasTheme(); syncUndo(); renderPages(); renderPageSel(); onSelect();
+    applyCanvasTheme(); syncUndo(); renderPages(); renderPageSel(); onSelect(); syncEmpty();
     status("", pageStatusText());
     history.replaceState({}, "", "?site=" + S.site.id + "&page=" + S.page.id);
   }
@@ -859,9 +1130,8 @@ input,select,textarea{font:inherit}
   /* ---- selection header ---- */
   function onSelect() {
     var sel = S.editor.getSelected();
-    extraTraits(sel);
     $("#emptySel").style.display = sel ? "none" : "";
-    $("#traits").style.display = sel ? "" : "none";
+    renderContent();
     updateSelHead();
     var dev = S.editor.getDevice();
     var hint = $("#devHint");
