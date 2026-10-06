@@ -172,6 +172,23 @@ input,select,textarea{font:inherit}
 #rvContent .chk input{width:auto}
 #rvContent .hint{color:var(--tx3);font-size:12px;line-height:1.55;margin:0 0 10px}
 .btn.sm{height:30px;padding:0 12px;font-size:12px}
+/* ---- Style tab ---- */
+#rvStyle{padding:4px 14px 6px}
+.ss{padding:12px 0 6px;border-bottom:1px solid var(--line)}.ss:last-child{border-bottom:0}
+.sst{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3);margin-bottom:9px;display:flex;justify-content:space-between;align-items:center}
+.sst .lnk{text-transform:none;letter-spacing:0;font-weight:600;color:var(--ac);cursor:pointer;font-size:11.5px}
+.sf{margin-bottom:11px;min-width:0}.sf label{display:block;font-size:12px;color:var(--tx2);margin-bottom:5px}
+.sf select,.nf input,.cf input[type=text],.pad4 input{width:100%;height:32px;background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--tx);padding:0 9px}
+.sf select:focus,.nf input:focus,.cf input[type=text]:focus,.pad4 input:focus{outline:none;border-color:var(--ac)}
+.nf{display:flex;align-items:center;gap:6px}.nf span{color:var(--tx3);font-size:12px}.nf select{width:62px;padding:0 4px}
+.cf{display:flex;gap:6px;align-items:center}.cf input[type=color]{width:38px;height:32px;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--bg);flex:none;cursor:pointer}
+.cx{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--tx3);flex:none;line-height:1}.cx:hover{color:var(--danger);border-color:var(--danger)}
+.sw2{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}.sw2 i{width:20px;height:20px;border-radius:50%;border:1px solid rgba(255,255,255,.25);cursor:pointer;display:block}.sw2 i:hover{transform:scale(1.15);border-color:#fff}
+.seg.al{display:flex}.seg.al button{flex:1;height:34px}
+.chips2{display:flex;gap:6px;margin-top:7px}.chips2 button{flex:1;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--tx2);font-size:11.5px;font-weight:600}.chips2 button:hover{border-color:var(--ac);color:var(--ac)}
+.pad4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.pad4 small{display:block;text-align:center;color:var(--tx3);font-size:10.5px;margin-top:3px}.pad4 input{padding:0 4px;text-align:center}
+.hint2{color:var(--tx3);font-size:11.5px;line-height:1.5;margin:6px 0 4px}
+#moreStyle{border-top:1px solid var(--line);margin-top:6px}#moreStyle summary{cursor:pointer;padding:13px 14px;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3)}#moreStyle summary:hover{color:var(--tx)}
 /* ---- overlays/modals (own) ---- */
 .ov{position:fixed;inset:0;background:rgba(8,9,11,.66);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;backdrop-filter:blur(2px)}
 .ov.on{display:flex}
@@ -258,7 +275,7 @@ input,select,textarea{font:inherit}
     <div class="selhead" id="selHead" style="display:none"><div class="ni" id="selIcon">•</div><div><b id="selName">Element</b><small id="selSub"></small></div></div>
     <div class="devhint" id="devHint"></div>
     <div class="pane on" data-pane="R-content"><div class="empty" id="emptySel"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6z"/></svg><h4>Select anything to edit it</h4><div>Click any text, image, button or section on the page. Hover a block and press <b>+</b> to add a widget exactly where you want it.</div></div><div id="rvContent"></div><div id="traits"></div></div>
-    <div class="pane" data-pane="R-style"><div id="styles"></div></div>
+    <div class="pane" data-pane="R-style"><div id="rvStyle"></div><details id="moreStyle"><summary>More style options</summary><div id="styles"></div></details></div>
     <div class="pane" data-pane="R-adv"><div id="classes"></div><div class="fld" style="padding:0 14px"><label>Custom CSS for this page</label><textarea id="customCss" placeholder="/* advanced: runs on this page only */" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px;min-height:130px"></textarea><small>For designers: this CSS is added at the end of the page.</small></div></div>
   </aside>
 </div>
@@ -458,7 +475,7 @@ input,select,textarea{font:inherit}
     ed.on("run:preview", function () {});
     ed.on("canvas:frame:load", applyCanvasTheme);
     ed.on("change:device", function () { onSelect(); });
-    wireUi(); wireHandles(); wirePicker();
+    wireUi(); wireHandles(); wirePicker(); wireStyle();
   }
 
   function sectors() {
@@ -729,7 +746,11 @@ input,select,textarea{font:inherit}
       { id: "rv-add", label: "+", attributes: { title: "Add a widget below" }, command: function () { var s = S.editor.getSelected(); openPicker(s && placeable(s), "after"); } },
       { id: "rv-up", label: "▲", attributes: { title: "Move up" }, command: function () { moveSel(-1); } },
       { id: "rv-down", label: "▼", attributes: { title: "Move down" }, command: function () { moveSel(1); } }
-    ].concat(tb));
+    ].concat(tb.map(function (t) {
+      var names = { "tlb-move": "Drag to move it anywhere", "tlb-clone": "Duplicate", "tlb-delete": "Delete", "core:component-delete": "Delete", "core:copy": "Duplicate", "select-parent": "Select the block around this" };
+      var cmd = typeof t.command === "string" ? t.command : "";
+      return names[cmd] ? Object.assign({}, t, { attributes: Object.assign({}, t.attributes || {}, { title: names[cmd] }) }) : t;
+    })));
   }
 
   /* ================= Content tab: real fields for text, links, images, video, HTML ================= */
@@ -857,6 +878,123 @@ input,select,textarea{font:inherit}
       fldTarget.addAttributes({ "data-rv-fields": clean.length ? JSON.stringify(clean) : "" });
       $("#ovFields").classList.remove("on"); S.editor.select(fldTarget);
     };
+  }
+
+  /* ================= Style tab: simple, live controls (align, colours, size, spacing) ================= */
+  function sty(o) { S.editor.StyleManager.addStyleTargets(o); }
+  function ownStyle() { var t = S.editor.StyleManager.getSelected(); return (t && t.getStyle && t.getStyle()) || {}; }
+  function clean(v) { return String(v == null ? "" : v).replace(/\s*!important/i, "").trim(); }
+  function toHex(v) {
+    var m = /rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)(?:[ ,/]+([\d.]+))?/.exec(v || ""); if (!m) return /^#[0-9a-f]{6}$/i.test(v || "") ? v : (/^#[0-9a-f]{3}$/i.test(v || "") ? "#" + v[1] + v[1] + v[2] + v[2] + v[3] + v[3] : "#ffffff");
+    if (m[4] !== undefined && +m[4] === 0) return "#ffffff";
+    return "#" + [m[1], m[2], m[3]].map(function (n) { return ("0" + (+n).toString(16)).slice(-2); }).join("");
+  }
+  function px(v) { var n = parseFloat(v); return isNaN(n) ? "" : Math.round(n * 10) / 10; }
+  var SWATCH = [["var(--p)", "Brand"], ["#ffffff", "White"], ["#14130f", "Black"], ["#55524a", "Grey"], ["#f7f6f2", "Light"], ["#f5a623", "Gold"], ["#e5484d", "Red"], ["#25d366", "Green"], ["#2563eb", "Blue"]];
+
+  function sfColor(label, prop, cs, own) {
+    var declared = clean(own[prop]), shown = declared || toHex(cs[prop]);
+    return '<div class="sf"><label>' + label + '</label><div class="cf"><input type="color" data-s="' + prop + '" data-k="color" value="' + toHex(shown) + '"><input type="text" data-s="' + prop + '" data-k="color" value="' + esc(declared) + '" placeholder="' + esc(toHex(cs[prop])) + '" spellcheck="false">' + (declared ? '<button class="cx" data-clear="' + prop + '" title="Reset to default">&times;</button>' : "") + "</div>" +
+      '<div class="sw2">' + SWATCH.map(function (s) { return '<i data-sw="' + prop + '" data-v="' + s[0] + '" title="' + s[1] + '" style="background:' + (s[0] === "var(--p)" ? S.theme.primary : s[0]) + '"></i>'; }).join("") + "</div></div>";
+  }
+  function sfNum(label, prop, cs, own, unit, extra) {
+    var declared = clean(own[prop]), shown = declared ? px(declared) : "";
+    return '<div class="sf"><label>' + label + '</label><div class="nf"><input type="number" step="1" data-s="' + prop + '" data-k="num" data-u="' + unit + '" value="' + shown + '" placeholder="' + px(cs[prop]) + '"><span>' + unit + "</span>" + (declared ? '<button class="cx" data-clear="' + prop + '" title="Reset to default">&times;</button>' : "") + "</div>" + (extra || "") + "</div>";
+  }
+  function renderStyle() {
+    var ed = S.editor, c = ed.getSelected(), box = $("#rvStyle"); if (!box) return;
+    var el = c && c.getEl && c.getEl();
+    if (!c || !el) { box.innerHTML = '<div class="empty" style="padding:26px 18px"><h4>Select anything to style it</h4><div>Click a text, button, image or section on the page.</div></div>'; return; }
+    var cs = el.ownerDocument.defaultView.getComputedStyle(el), own = ownStyle(), k = kindOf(c), isBtn = c.getClasses().indexOf("rv-btn") > -1;
+    var textual = k === "text" || k === "link" || k === "box" || k === "traits";
+    var isMedia = k === "image" || k === "video" || k === "map";
+    var h = "";
+    // alignment
+    var cur = currentAlign(c, el, cs, own), AL = { left: "M4 6h16M4 12h10M4 18h14", center: "M4 6h16M7 12h10M5 18h14", right: "M4 6h16M10 12h10M6 18h14", justify: "M4 6h16M4 12h16M4 18h16" };
+    h += '<div class="ss"><div class="sst">Alignment</div><div class="seg al">' + ["left", "center", "right"].concat(k === "text" || k === "box" ? ["justify"] : []).map(function (d) { return '<button data-al="' + d + '" class="' + (cur === d ? "on" : "") + '" title="Align ' + d + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="' + AL[d] + '"/></svg></button>'; }).join("") + "</div>" +
+      (k === "box" ? '<div class="hint2">Aligns everything inside this block.</div>' : "") + "</div>";
+    // button size
+    if (isBtn) h += '<div class="ss"><div class="sst">Button size</div><div class="seg">' + [["S", "Small"], ["M", "Medium"], ["L", "Large"], ["XL", "Extra large"]].map(function (b) { return '<button data-bsize="' + b[0] + '" title="' + b[1] + '">' + b[0] + "</button>"; }).join("") + "</div></div>";
+    // colours
+    h += '<div class="ss"><div class="sst">Colour</div>';
+    if (textual) h += sfColor(isBtn ? "Button text colour" : "Text colour", "color", cs, own);
+    if (k !== "image") h += sfColor(isBtn ? "Button colour" : "Background colour", "background-color", cs, own);
+    h += "</div>";
+    // text
+    if (textual) h += '<div class="ss"><div class="sst">Text</div><div class="row2">' + sfNum("Size", "font-size", cs, own, "px") + '<div class="sf"><label>Weight</label><select data-s="font-weight" data-k="sel">' + [["", "Default"], ["400", "Normal"], ["500", "Medium"], ["600", "Semi-bold"], ["700", "Bold"], ["800", "Extra bold"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["font-weight"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div></div>";
+    // size
+    var wDecl = clean(own.width), wUnit = /%$/.test(wDecl) ? "%" : "px";
+    h += '<div class="ss"><div class="sst">Size</div><div class="sf"><label>Width</label><div class="nf"><input type="number" step="1" min="0" data-s="width" data-k="num" data-wu="1" value="' + (wDecl && !/fit|auto/.test(wDecl) ? px(wDecl) : "") + '" placeholder="' + px(cs.width) + '"><select data-wunit="1"><option' + (wUnit === "px" ? " selected" : "") + '>px</option><option' + (wUnit === "%" ? " selected" : "") + ">%</option></select>" + (wDecl ? '<button class="cx" data-clear="width" title="Reset to default">&times;</button>' : "") + '</div><div class="chips2">' + ["25%", "50%", "75%", "100%"].map(function (w) { return '<button data-wchip="' + w + '">' + w + "</button>"; }).join("") + "</div></div>";
+    if (k === "image") h += '<div class="row2">' + sfNum("Height", "height", cs, own, "px") + '<div class="sf"><label>Image fit</label><select data-s="object-fit" data-k="sel">' + [["", "Default"], ["cover", "Fill (crop)"], ["contain", "Fit inside"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["object-fit"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div>";
+    h += "</div>";
+    // spacing
+    var pv = ["top", "right", "bottom", "left"].map(function (s) { return px(cs["padding" + s[0].toUpperCase() + s.slice(1)]); });
+    if (!S.padTouched) S.padLink = pv.every(function (v) { return v === pv[0]; });
+    h += '<div class="ss"><div class="sst">Padding <span class="lnk" id="padLink" title="Change all sides together">' + (S.padLink ? "linked" : "separate") + '</span></div><div class="pad4">' + ["top", "right", "bottom", "left"].map(function (s, i) { return '<div><input type="number" min="0" data-pad="' + s + '" value="' + pv[i] + '"><small>' + s + "</small></div>"; }).join("") + "</div></div>";
+    h += '<div class="ss"><div class="sst">Space around</div><div class="row2"><div class="sf"><label>Above</label><div class="nf"><input type="number" data-mar="top" value="' + px(cs.marginTop) + '"><span>px</span></div></div><div class="sf"><label>Below</label><div class="nf"><input type="number" data-mar="bottom" value="' + px(cs.marginBottom) + '"><span>px</span></div></div></div></div>';
+    // shape
+    h += '<div class="ss"><div class="sst">Shape</div><div class="row2">' + sfNum("Rounded corners", "border-radius", cs, own, "px") + '<div class="sf"><label>Shadow</label><select data-s="box-shadow" data-k="sel">' + [["", "Default"], ["none", "None"], ["0 6px 18px -8px rgba(0,0,0,.35)", "Soft"], ["0 18px 40px -14px rgba(0,0,0,.5)", "Strong"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["box-shadow"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div></div>";
+    // nudge
+    var tr = /translate\(\s*(-?[\d.]+)px\s*,\s*(-?[\d.]+)px/.exec(clean(own.transform)) || [];
+    h += '<div class="ss"><div class="sst">Nudge position</div><div class="row2"><div class="sf"><label>Left / right</label><div class="nf"><input type="number" data-nudge="x" value="' + (tr[1] || "") + '" placeholder="0"><span>px</span></div></div><div class="sf"><label>Up / down</label><div class="nf"><input type="number" data-nudge="y" value="' + (tr[2] || "") + '" placeholder="0"><span>px</span></div></div></div><div class="hint2">To move an element somewhere else on the page, drag it with the ✥ handle on its toolbar.</div></div>';
+    box.innerHTML = h;
+  }
+  function currentAlign(c, el, cs, own) {
+    var k = kindOf(c), inl = /^inline/.test(cs.display), isBtn = c.getClasses().indexOf("rv-btn") > -1;
+    if ((k === "text" && !inl && !isBtn) || k === "box" || k === "traits") { var t = cs.textAlign; return t === "center" || t === "right" || t === "justify" ? t : "left"; }
+    var par = el.parentElement; if (!par) return "";
+    var r = el.getBoundingClientRect(), p = par.getBoundingClientRect(), l = r.left - p.left, rr = p.right - r.right;
+    if (Math.abs(l - rr) < 3) return "center"; return l < rr ? "left" : "right";
+  }
+  function setAlign(dir) {
+    var ed = S.editor, c = ed.getSelected(); if (!c) return;
+    var el = c.getEl(), cs = el.ownerDocument.defaultView.getComputedStyle(el), own = ownStyle(), k = kindOf(c), inl = /^inline/.test(cs.display), isBtn = c.getClasses().indexOf("rv-btn") > -1;
+    if ((k === "text" && !inl && !isBtn) || k === "box" || k === "traits") return sty({ "text-align": dir });
+    if (inl && !isBtn && tagOf(c) === "a") return toast("Select the whole text block to align a link inside it.");
+    var o = {};
+    if (inl || /^inline/.test(cs.display)) o.display = "block";
+    if (k === "link" || isBtn) { if (!clean(own.width) && c.getClasses().indexOf("block") < 0) o.width = "fit-content"; }
+    else if (el.parentElement && el.offsetWidth >= el.parentElement.clientWidth - 2 && !clean(own.width) && !clean(own["max-width"])) { o.width = "50%"; toast("Width set to 50% so you can see the alignment. Change it under Size."); }
+    if (own.margin) { o.margin = ""; o["margin-top"] = cs.marginTop; o["margin-bottom"] = cs.marginBottom; }
+    o["margin-left"] = dir === "left" ? "0" : "auto"; o["margin-right"] = dir === "right" ? "0" : "auto";
+    sty(o);
+  }
+  var BSIZE = { S: ["10px", "22px", "14px"], M: ["14px", "30px", "16px"], L: ["18px", "42px", "18px"], XL: ["22px", "56px", "21px"] };
+  function wireStyle() {
+    var box = $("#rvStyle"), ed = S.editor;
+    function val(n) {
+      var p = n.dataset.s, v = n.value, kind = n.dataset.k;
+      if (kind === "color") { if (v && !(window.CSS && CSS.supports("color", v))) return null; return v ? v + " !important" : ""; }
+      if (kind === "num") { if (v === "") return ""; var u = n.dataset.wu ? ($('[data-wunit]', box) || {}).value : n.dataset.u; if (u === "%" && +v > 100) { v = "100"; n.value = v; } return v + (u || "px"); }
+      return v;
+    }
+    box.addEventListener("input", function (e) {
+      var n = e.target, p = n.dataset && n.dataset.s;
+      if (p) {
+        var v = val(n); if (v === null) return;
+        var o = {}; o[p] = v; sty(o);
+        if (n.dataset.k === "color") { $$('[data-s="' + p + '"]', box).forEach(function (x) { if (x !== n && x.type === "color") x.value = toHex(n.value); else if (x !== n && x.type === "text") x.value = n.value; }); }
+        return;
+      }
+      if (n.dataset.pad) { var side = n.dataset.pad, o2 = {}, sides = S.padLink ? ["top", "right", "bottom", "left"] : [side], own = ownStyle(); if (own.padding) { var el = ed.getSelected().getEl(), cs = el.ownerDocument.defaultView.getComputedStyle(el); o2.padding = ""; ["top", "right", "bottom", "left"].forEach(function (s) { o2["padding-" + s] = cs["padding" + s[0].toUpperCase() + s.slice(1)]; }); }
+        sides.forEach(function (s) { o2["padding-" + s] = (n.value === "" ? 0 : n.value) + "px"; }); sty(o2); if (S.padLink) $$("[data-pad]", box).forEach(function (x) { x.value = n.value; }); return; }
+      if (n.dataset.mar) { var o3 = {}, own3 = ownStyle(); if (own3.margin) { var el3 = ed.getSelected().getEl(), cs3 = el3.ownerDocument.defaultView.getComputedStyle(el3); o3.margin = ""; o3["margin-left"] = cs3.marginLeft; o3["margin-right"] = cs3.marginRight; o3["margin-top"] = cs3.marginTop; o3["margin-bottom"] = cs3.marginBottom; } o3["margin-" + n.dataset.mar] = (n.value === "" ? 0 : n.value) + "px"; sty(o3); return; }
+      if (n.dataset.nudge) { var x = ($('[data-nudge="x"]', box).value || 0), y = ($('[data-nudge="y"]', box).value || 0); sty({ transform: (+x || +y) ? "translate(" + (+x) + "px, " + (+y) + "px)" : "" }); }
+    });
+    box.addEventListener("change", function (e) {
+      var n = e.target;
+      if (n.dataset.s && n.dataset.k === "sel") { var o = {}; o[n.dataset.s] = n.value; sty(o); }
+      if (n.dataset.wunit) { var w = $('[data-s="width"]', box); if (w.value) sty({ width: w.value + n.value }); }
+    });
+    box.addEventListener("click", function (e) {
+      var n = e.target.closest("[data-al],[data-bsize],[data-sw],[data-clear],[data-wchip],#padLink"); if (!n) return;
+      if (n.dataset.al) { setAlign(n.dataset.al); return renderStyle(); }
+      if (n.dataset.bsize) { var b = BSIZE[n.dataset.bsize]; sty({ "padding-top": b[0], "padding-bottom": b[0], "padding-left": b[1], "padding-right": b[1], "font-size": b[2] }); return renderStyle(); }
+      if (n.dataset.sw) { var o = {}; o[n.dataset.sw] = n.dataset.v + " !important"; sty(o); return renderStyle(); }
+      if (n.dataset.clear) { var o2 = {}; o2[n.dataset.clear] = ""; sty(o2); return renderStyle(); }
+      if (n.dataset.wchip) { sty({ width: n.dataset.wchip }); return renderStyle(); }
+      if (n.id === "padLink") { S.padLink = !S.padLink; S.padTouched = true; n.textContent = S.padLink ? "linked" : "separate"; }
+    });
   }
 
   /* ---- custom code editor + HTML import ---- */
@@ -1115,7 +1253,7 @@ input,select,textarea{font:inherit}
     var tabs = $('.tabs[data-for="' + side + '"]');
     $$("button", tabs).forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
     $$('[data-pane^="' + side + '-"]').forEach(function (p) { p.classList.toggle("on", p.dataset.pane === side + "-" + t); });
-    if (side === "R") updateSelHead();
+    if (side === "R") { updateSelHead(); if (t === "style") renderStyle(); }
   }
   function syncUndo() {
     var um = S.editor && S.editor.UndoManager; if (!um) return;
@@ -1131,7 +1269,7 @@ input,select,textarea{font:inherit}
   function onSelect() {
     var sel = S.editor.getSelected();
     $("#emptySel").style.display = sel ? "none" : "";
-    renderContent();
+    renderContent(); renderStyle();
     updateSelHead();
     var dev = S.editor.getDevice();
     var hint = $("#devHint");
