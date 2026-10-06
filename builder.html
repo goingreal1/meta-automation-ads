@@ -294,7 +294,7 @@ input,select,textarea{font:inherit}
 
   function toast(html, ms) { var t = $("#toast"); t.innerHTML = html; t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(function () { t.classList.remove("on"); }, ms || 3500); }
   function status(kind, text) { var c = $("#status"); c.className = "chip " + (kind || ""); $("span", c).textContent = text; }
-  function fatal(msg) { $("#boot").innerHTML = '<div style="max-width:360px;text-align:center"><b style="color:var(--tx);font-size:16px">' + esc(msg) + '</b><p style="margin:12px 0 18px">Go back to the dashboard and try again.</p><a class="btn" style="display:inline-block;line-height:32px;text-decoration:none" href="/dashboard_new.html">Back to dashboard</a></div>'; }
+  function fatal(msg) { $("#boot").innerHTML = '<div style="max-width:360px;text-align:center"><b style="color:var(--tx);font-size:16px">' + esc(msg) + '</b><p style="margin:12px 0 18px">Go back to the dashboard and try again.</p><a class="btn" style="display:inline-block;line-height:32px;text-decoration:none" href="/dashboard_new.html?open=tab:websites">Back to dashboard</a></div>'; }
   function go(url) { location.href = url; }
 
   /* ================= boot ================= */
@@ -302,7 +302,7 @@ input,select,textarea{font:inherit}
     var ses = (await sb.auth.getSession()).data.session;
     if (!ses) return go("/login.html?next=" + encodeURIComponent(location.pathname + location.search));
     var siteId = qs.get("site");
-    if (!siteId) return go("/dashboard_new.html");
+    if (!siteId) return go("/dashboard_new.html?open=tab:websites");
 
     var r = await sb.from("sites").select("*").eq("id", siteId).maybeSingle();
     if (r.error || !r.data) return fatal("We couldn't open this site.");
@@ -610,14 +610,14 @@ input,select,textarea{font:inherit}
     $("#bUndo").onclick = function () { ed.UndoManager.undo(); };
     $("#bRedo").onclick = function () { ed.UndoManager.redo(); };
     $("#bGrid").onclick = function () { var on = ed.Commands.isActive("sw-visibility"); ed.Commands[on ? "stop" : "run"]("sw-visibility"); this.classList.toggle("on", !on); };
-    $("#bBack").onclick = async function () { await flush(); go("/dashboard_new.html"); };
+    $("#bBack").onclick = async function () { await flush(); go("/dashboard_new.html?open=tab:websites"); };
     $("#bPublish").onclick = publish;
     $("#bPreview").onclick = openPreview;
     $("#bSettings").onclick = function () { openSettings(); };
     $("#pageSel").onchange = function () { switchPage(this.value); };
     $("#bSearch").oninput = function () { filterBlocks(this.value); };
     $("#gateGo").onclick = function () { $("#gate").style.display = "none"; };
-    $("#gateBack").onclick = function () { go("/dashboard_new.html"); };
+    $("#gateBack").onclick = function () { go("/dashboard_new.html?open=tab:websites"); };
     $$("[data-close]").forEach(function (b) { b.onclick = function () { b.closest(".ov").classList.remove("on"); }; });
     $$(".ov").forEach(function (o) { o.addEventListener("mousedown", function (e) { if (e.target === o) o.classList.remove("on"); }); });
     $("#customCss").oninput = function () { customCss = this.value; applyCanvasTheme(); markDirty(); };

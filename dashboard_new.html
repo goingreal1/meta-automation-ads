@@ -363,6 +363,34 @@ tr.bv-clickable-row:hover{background:var(--panel2);}
 /* ── SECTION HEADER ────────────────────────────────────────────────────────── */
 .sh{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px;}
 .sh-title{font-family:'Fraunces',Georgia,serif;font-size:24px;font-weight:600;letter-spacing:-.01em;}
+
+/* ── Websites tab ── */
+.ws-sub{display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);}
+.ws-sub button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font:inherit;font-weight:600;font-size:13px;color:var(--muted);cursor:pointer;margin-bottom:-1px;}
+.ws-sub button.on{color:var(--text);border-bottom-color:var(--accent);}
+.ws-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;}
+.ws-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.ws-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.ws-name{font-weight:700;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ws-pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--panel2,#2a2e34);color:var(--muted);white-space:nowrap;}
+.ws-pill.live{background:rgba(31,163,124,.16);color:var(--accent);}
+.ws-url{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted);word-break:break-all;}
+.ws-meta{display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap;}
+.ws-meta b{color:var(--text);font-weight:700;}
+.ws-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
+.ws-act .btn{width:auto;padding:7px 13px;font-size:12.5px;}
+.ws-field{margin-bottom:12px;}
+.ws-field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--text2,var(--muted));}
+.ws-field small{display:block;margin-top:4px;color:var(--muted);font-size:11.5px;}
+.ws-code{font-family:ui-monospace,Menlo,monospace;font-size:12px;min-height:150px;width:100%;}
+.ws-checks{display:flex;flex-direction:column;gap:6px;max-height:190px;overflow-y:auto;padding:8px 10px;border:1px solid var(--border);border-radius:9px;}
+.ws-checks label{display:flex;align-items:center;gap:8px;font-weight:500;margin:0;font-size:13px;}
+.ws-checks input{width:auto;}
+.ws-radio{display:flex;flex-direction:column;gap:8px;}
+.ws-radio label{display:flex;gap:9px;align-items:flex-start;padding:10px 12px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin:0;font-weight:600;}
+.ws-radio label.on{border-color:var(--accent);background:rgba(31,163,124,.08);}
+.ws-radio input{width:auto;margin-top:3px;}
+.ws-radio span{font-weight:400;color:var(--muted);font-size:12px;display:block;}
 .sh-actions{display:flex;gap:9px;flex-wrap:wrap;}
 
 /* ── TABLES ────────────────────────────────────────────────────────────────── */
@@ -1134,6 +1162,7 @@ html{-webkit-text-size-adjust:100%;}
     <div class="tab-btn" data-tab="products"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span class="tab-label">Products</span></div>
     <div class="tab-btn" data-tab="shop"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 11a2 2 0 0 1-2 1.7H7.5a2 2 0 0 1-2-1.7L4 7z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg></span><span class="tab-label">Shop</span></div>
     <div class="tab-btn" data-tab="conversations"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="tab-label">Conversations</span></div>
+    <div class="tab-btn" data-tab="websites"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h8"/></svg></span><span class="tab-label">Websites</span></div>
     <div class="tab-btn" data-tab="website-leads"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></span><span class="tab-label">Website Leads</span></div>
     <div class="tab-btn" data-tab="approvals"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span><span class="tab-label">Approvals</span> <span class="tab-badge" id="approvalBadge">0</span></div>
     <div class="tab-btn" data-tab="earnings"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span><span class="tab-label">Earnings</span></div>
@@ -1262,8 +1291,8 @@ async function init() {
   // it) RLS leaves empty anyway. Hide what's not theirs instead of leaving
   // them to discover that the hard way.
   const HIDDEN_TABS_BY_ROLE = {
-    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "conversations", "website-leads", "approvals", "earnings"],
-    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "approvals", "earnings"],
+    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "conversations", "websites", "website-leads", "approvals", "earnings"],
+    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "websites", "approvals", "earnings"],
   };
   for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
     document.querySelector(`[data-tab="${tab}"]`)?.style.setProperty("display", "none");
@@ -1931,6 +1960,7 @@ async function render() {
     else if (activeTab === "riders")    await renderRiders(c);
     else if (activeTab === "forms")     await renderForms(c);
     else if (activeTab === "conversations") await renderConversations(c);
+    else if (activeTab === "websites") await renderWebsites(c);
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
@@ -6657,14 +6687,16 @@ async function renderOrders(el) {
   // page of rows actually rendered -- sbCount reads Content-Range instead of
   // fetching every row, so paging doesn't skew "Total orders"/"Delivery rate"
   // and large tables don't get silently under-counted by PostgREST's row cap.
-  const [tot, deliv, ret, pend, orders, flagged] = await Promise.all([
+  const [tot, deliv, ret, pend, orders, flagged, siteRows] = await Promise.all([
     sbCount("orders"),
     sbCount("orders", "order_status=eq.delivered"),
     sbCount("orders", "order_status=eq.returned"),
     sbCount("orders", "order_status=eq.pending"),
     sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at),payments(status,amount_naira,paid_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
     sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
+    sbQuery("sites", "select=id,name", { allAccounts: true }).catch(() => []),
   ]);
+  const siteNameById = Object.fromEntries((siteRows || []).map(x => [x.id, x.name]));
   (orders || []).forEach(o => {
     // voice_calls comes back as an array (reverse FK) -- there's at most one
     // call per order in practice, but take the most recent if that ever changes.
@@ -6721,7 +6753,7 @@ async function renderOrders(el) {
           <td class="n">${o.customer_phone
             ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${o.customer_phone}</a>`
             : "—"}</td>
-          <td class="n">${o.product_name ?? "—"}</td>
+          <td class="n">${o.product_name ?? "—"}${o.site_id ? `<div style="font-size:10.5px;color:var(--muted);">🌐 ${escH(siteNameById[o.site_id] || "Website")}</div>` : ""}</td>
           <td>${fN(o.order_value_naira)}</td>
           <td class="n">${o.media_buyers ? `${escH(o.media_buyers.code)}` : `<span style="color:var(--muted);">—</span>`}</td>
           <td>${bvOrderCallCell(o)}</td>
@@ -7412,6 +7444,218 @@ async function renderWebsiteLeads(el) {
       } catch(err) { alert("Update failed: " + err.message); }
     });
   });
+}
+
+// ── TAB: WEBSITES (sites built in the drag-and-drop builder + HFCM-style tracking codes) ─────────
+// Every order placed on a built site goes through receive-order, so it lands in the Orders tab
+// (tagged with its site) - not in Website Leads.
+let bvWebSub = "sites";
+let bvWebData = { sites: [], pages: [], snippets: [], orders: [], products: [] };
+
+async function renderWebsites(el) {
+  const [sites, pages, snippets, orders, products] = await Promise.all([
+    sbQuery("sites", "select=*&order=created_at.desc", { allAccounts: true }),
+    sbQuery("site_pages", "select=id,site_id,title,slug,kind,published_at,updated_at&order=created_at.asc"),
+    sbQuery("tracking_snippets", "select=*&order=created_at.desc"),
+    sbQuery("orders", "select=site_id,order_value_naira,order_status&site_id=not.is.null&limit=5000"),
+    sbQuery("products", "select=id,product_name,is_service&is_active=eq.true&order=product_name", { allAccounts: true }),
+  ]);
+  bvWebData = { sites: sites || [], pages: pages || [], snippets: snippets || [], orders: orders || [], products: products || [] };
+  bvWebDraw(el);
+}
+
+function bvWebDraw(el) {
+  const host = el || document.getElementById("mainContent");
+  if (!host) return;
+  host.innerHTML = `
+    <div class="sh"><div class="sh-title">Websites</div><div class="sh-actions">
+      ${bvWebSub === "sites" ? `<button class="btn btn-a" onclick="bvWebNew()">+ New website</button>` : `<button class="btn btn-a" onclick="bvWebSnippet()">+ Add tracking code</button>`}
+    </div></div>
+    <div class="ws-sub"><button class="${bvWebSub === "sites" ? "on" : ""}" onclick="bvWebSwitch('sites')">My websites</button><button class="${bvWebSub === "codes" ? "on" : ""}" onclick="bvWebSwitch('codes')">Tracking codes</button></div>
+    <div id="wsBody">${bvWebSub === "sites" ? bvWebSitesHtml() : bvWebCodesHtml()}</div>`;
+  bvWebHost = host;
+}
+let bvWebHost = null;
+function bvWebSwitch(t) { bvWebSub = t; bvWebDraw(bvWebHost); }
+async function bvWebReload() { await renderWebsites(bvWebHost); }
+
+function bvWebSitesHtml() {
+  const { sites, pages, orders, products } = bvWebData;
+  if (!sites.length) return `<div class="panel"><div class="empty"><div class="empty-ico">🌐</div>
+    <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Build your first sales website</div>
+    <div style="max-width:420px;margin:0 auto 14px;">Drag-and-drop pages with a built-in order form. Every order lands in your Orders tab, and your Meta pixel is already connected.</div>
+    <button class="btn btn-a" style="width:auto;" onclick="bvWebNew()">+ New website</button></div></div>`;
+  return `<div class="ws-grid">${sites.map(s => {
+    const mine = pages.filter(p => p.site_id === s.id);
+    const live = mine.filter(p => p.published_at).length;
+    const so = orders.filter(o => o.site_id === s.id);
+    const rev = so.reduce((a, o) => a + (Number(o.order_value_naira) || 0), 0);
+    const prod = products.find(p => p.id === s.product_id);
+    const url = `${location.origin}/s/${s.slug}`;
+    return `<div class="ws-card">
+      <div class="ws-top"><div class="ws-name">${escH(s.name)}</div><span class="ws-pill ${s.status === "published" ? "live" : ""}">${s.status === "published" ? "Live" : "Draft"}</span></div>
+      <div class="ws-url">${escH(url)}</div>
+      <div class="ws-meta"><span><b>${mine.length}</b> page${mine.length === 1 ? "" : "s"}${live ? ` (${live} live)` : ""}</span><span><b>${so.length}</b> order${so.length === 1 ? "" : "s"}</span><span><b>${fN(rev)}</b></span></div>
+      <div class="ws-meta"><span>${prod ? "Sells: <b>" + escH(prod.product_name) + "</b>" : "⚠️ No product selected yet"}</span></div>
+      <div class="ws-act">
+        <button class="btn btn-a" onclick="bvWebEdit('${s.id}')">Edit</button>
+        ${s.status === "published" ? `<a class="btn btn-g" href="${escH(url)}" target="_blank" rel="noopener" style="text-decoration:none;">View</a>` : ""}
+        <button class="btn btn-g" onclick="bvWebCopy('${escH(url)}')">Copy link</button>
+        <button class="btn btn-g" onclick="bvWebDelete('${s.id}')" title="Delete">🗑</button>
+      </div></div>`;
+  }).join("")}</div>`;
+}
+function bvWebCopy(t) { try { navigator.clipboard.writeText(t); bvToast("Link copied"); } catch (e) { prompt("Copy this link", t); } }
+function bvWebEdit(id) { location.href = "/builder.html?site=" + id; }
+
+function bvWebSlugify(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 38); }
+function bvWebNew() {
+  const prods = bvWebData.products;
+  bvOpenSheet("bvWebOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvWebOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:12px;">New website</div>
+    <div class="ws-field"><label>Website name</label><input id="wsName" placeholder="e.g. Herbal Tea Store" oninput="document.getElementById('wsSlug').value=bvWebSlugify(this.value);bvWebSlugHint()"></div>
+    <div class="ws-field"><label>Address</label><div style="display:flex;align-items:center;gap:6px;"><span style="color:var(--muted);font-size:12.5px;white-space:nowrap;">${escH(location.host)}/s/</span><input id="wsSlug" placeholder="herbal-tea" oninput="bvWebSlugHint()"></div><small id="wsSlugHint">Lowercase letters, numbers and dashes.</small></div>
+    <div class="ws-field"><label>Product it sells</label><select id="wsProduct"><option value="">Choose later</option>${prods.map(p => `<option value="${p.id}">${escH(p.product_name)}${p.is_service ? " (service)" : ""}</option>`).join("")}</select><small>Its price, packages and bank details power the built-in order form.</small></div>
+    <div id="wsErr"></div>
+    <button class="btn btn-a" id="wsCreate" onclick="bvWebCreate()">Create &amp; open builder</button>`, 480);
+}
+function bvWebSlugHint() {
+  const v = document.getElementById("wsSlug").value, h = document.getElementById("wsSlugHint");
+  if (!h) return;
+  if (!v) { h.textContent = "Lowercase letters, numbers and dashes."; return; }
+  h.textContent = /^[a-z0-9][a-z0-9-]{1,40}$/.test(v) ? "Your site will be at " + location.host + "/s/" + v : "Use 2–40 lowercase letters, numbers or dashes.";
+}
+async function bvWebCreate() {
+  const name = document.getElementById("wsName").value.trim();
+  const slug = bvWebSlugify(document.getElementById("wsSlug").value);
+  const product_id = document.getElementById("wsProduct").value || null;
+  const err = document.getElementById("wsErr"), btn = document.getElementById("wsCreate");
+  if (!name) { err.innerHTML = `<div class="msg err">Give your website a name.</div>`; return; }
+  if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) { err.innerHTML = `<div class="msg err">Pick an address of 2–40 letters, numbers or dashes.</div>`; return; }
+  btn.disabled = true; btn.textContent = "Creating…"; err.innerHTML = "";
+  try {
+    const ac = (typeof activeAccountId !== "undefined" && activeAccountId) ? activeAccountId : null;
+    let ad_account_id = null;
+    if (product_id) { const pr = (await sbQuery("products", `select=ad_account_id&id=eq.${product_id}`, { allAccounts: true }))?.[0]; ad_account_id = pr?.ad_account_id || ac; }
+    const { data, error } = await supabaseClient.from("sites").insert({ name, slug, product_id, ad_account_id }).select("id").single();
+    if (error) throw error;
+    await supabaseClient.from("site_pages").insert({ site_id: data.id, slug: "", title: "Home" });
+    location.href = "/builder.html?site=" + data.id;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Create & open builder";
+    err.innerHTML = `<div class="msg err">${/duplicate|unique/i.test(e.message) ? "That address is already taken. Try another." : escH(e.message)}</div>`;
+  }
+}
+async function bvWebDelete(id) {
+  const s = bvWebData.sites.find(x => x.id === id); if (!s) return;
+  if (!confirm(`Delete "${s.name}" and all its pages? Orders already received stay in your Orders tab.`)) return;
+  const { error } = await supabaseClient.from("sites").delete().eq("id", id);
+  if (error) return bvToast("Couldn't delete: " + error.message, "err");
+  bvToast("Website deleted"); bvWebReload();
+}
+
+/* ---- Tracking codes (HFCM-style) ---- */
+const BV_WEB_LOC = { head: "Header (<head>)", body_start: "Start of <body>", footer: "Footer (end of <body>)" };
+function bvWebScopeText(sn) {
+  const { sites, pages } = bvWebData;
+  if (sn.scope === "all") return "All my websites";
+  if (sn.scope === "sites") { const n = (sn.site_ids || []).map(id => sites.find(s => s.id === id)?.name).filter(Boolean); return n.length ? n.join(", ") : "No websites selected"; }
+  const n = (sn.page_ids || []).map(id => { const p = pages.find(x => x.id === id); const s = p && sites.find(x => x.id === p.site_id); return p ? `${s?.name || "?"} › ${p.title}` : null; }).filter(Boolean);
+  return n.length ? n.join(", ") : "No pages selected";
+}
+function bvWebCodesHtml() {
+  const { snippets } = bvWebData;
+  const intro = `<div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;max-width:640px;">Add your Meta Pixel, Google Analytics, TikTok pixel or any script here once, and choose where it runs: every website, specific websites, or only certain pages. Your ad account's Meta Pixel is already loaded automatically on every site.</div>`;
+  if (!snippets.length) return intro + `<div class="panel"><div class="empty"><div class="empty-ico">🏷️</div>No tracking codes yet.<div style="margin-top:12px;"><button class="btn btn-a" style="width:auto;" onclick="bvWebSnippet()">+ Add tracking code</button></div></div></div>`;
+  return intro + `<div class="panel"><div class="tbl-wrap"><table>
+    <tr><th>Name</th><th>Placed in</th><th>Runs on</th><th>Active</th><th></th></tr>
+    ${snippets.map(sn => `<tr>
+      <td class="s n">${escH(sn.name)}</td>
+      <td class="n">${escH(BV_WEB_LOC[sn.location] || sn.location)}</td>
+      <td style="max-width:300px;">${escH(bvWebScopeText(sn))}</td>
+      <td><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" ${sn.is_active ? "checked" : ""} onchange="bvWebToggleSnippet('${sn.id}', this.checked)" style="width:auto;"></label></td>
+      <td style="white-space:nowrap;"><button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:12px;" onclick="bvWebSnippet('${sn.id}')">Edit</button> <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:12px;" onclick="bvWebDeleteSnippet('${sn.id}')">🗑</button></td>
+    </tr>`).join("")}</table></div></div>`;
+}
+async function bvWebToggleSnippet(id, on) {
+  const { error } = await supabaseClient.from("tracking_snippets").update({ is_active: on, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) return bvToast("Couldn't update: " + error.message, "err");
+  const sn = bvWebData.snippets.find(x => x.id === id); if (sn) sn.is_active = on;
+  bvToast(on ? "Code turned on" : "Code turned off");
+}
+async function bvWebDeleteSnippet(id) {
+  const sn = bvWebData.snippets.find(x => x.id === id);
+  if (!confirm(`Delete "${sn?.name}"? It will stop running on your websites.`)) return;
+  const { error } = await supabaseClient.from("tracking_snippets").delete().eq("id", id);
+  if (error) return bvToast("Couldn't delete: " + error.message, "err");
+  bvToast("Code deleted"); bvWebReload();
+}
+const BV_WEB_PRESETS = {
+  meta: { name: "Meta Pixel", location: "head", ask: "Pixel ID", ph: "e.g. 1234567890123456", make: id => `<!-- Meta Pixel -->\n<script>\n!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');\nfbq('init','${id}');\nfbq('track','PageView');\n<\/script>` },
+  ga: { name: "Google Analytics", location: "head", ask: "Measurement ID", ph: "G-XXXXXXXXXX", make: id => `<script async src="https://www.googletagmanager.com/gtag/js?id=${id}"><\/script>\n<script>\nwindow.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}\ngtag('js',new Date());gtag('config','${id}');\n<\/script>` },
+  tiktok: { name: "TikTok Pixel", location: "head", ask: "Pixel ID", ph: "e.g. C1234567890", make: id => `<script>\n!function (w, d, t) {w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};ttq.load('${id}');ttq.page();}(window, document, 'ttq');\n<\/script>` },
+};
+function bvWebPreset(k) {
+  const pr = BV_WEB_PRESETS[k]; if (!pr) return;
+  const id = prompt(`${pr.name} — ${pr.ask}`, "");
+  if (!id || !id.trim()) return;
+  const clean = id.trim().replace(/[^A-Za-z0-9_-]/g, "");
+  if (!clean) return bvToast("That ID doesn't look right", "err");
+  document.getElementById("snCode").value = pr.make(clean);
+  if (!document.getElementById("snName").value) document.getElementById("snName").value = pr.name;
+  document.getElementById("snLoc").value = pr.location;
+}
+function bvWebSnippet(id) {
+  const sn = id ? bvWebData.snippets.find(x => x.id === id) : null;
+  const { sites, pages } = bvWebData;
+  const scope = sn?.scope || "all";
+  const siteSel = new Set(sn?.site_ids || []), pageSel = new Set(sn?.page_ids || []);
+  const opt = (v, t, sub) => `<label class="${scope === v ? "on" : ""}"><input type="radio" name="snScope" value="${v}" ${scope === v ? "checked" : ""} onchange="bvWebScopeChange()"><div>${t}<span>${sub}</span></div></label>`;
+  bvOpenSheet("bvWebOverlay", `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvWebOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:12px;">${sn ? "Edit tracking code" : "Add tracking code"}</div>
+    ${sn ? "" : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"><span style="font-size:11.5px;color:var(--muted);">Quick add:</span>
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('meta')">Meta Pixel</button>
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('tiktok')">TikTok Pixel</button>
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('ga')">Google Analytics</button></div>`}
+    <div class="ws-field"><label>Name</label><input id="snName" value="${escH(sn?.name || "")}" placeholder="e.g. TikTok pixel - Herbal Tea"></div>
+    <div class="ws-field"><label>Code</label><textarea id="snCode" class="ws-code" spellcheck="false" placeholder="Paste your script or HTML here">${escH(sn?.code || "")}</textarea></div>
+    <div class="ws-field"><label>Where on the page</label><select id="snLoc">${Object.entries(BV_WEB_LOC).map(([k, t]) => `<option value="${k}" ${sn?.location === k ? "selected" : ""}>${escH(t)}</option>`).join("")}</select></div>
+    <div class="ws-field"><label>Runs on</label><div class="ws-radio">
+      ${opt("all", "All my websites", "Every page, including new sites you build later")}
+      ${opt("sites", "Specific websites", "Pick which websites run it")}
+      ${opt("pages", "Specific pages", "Only the pages you choose, e.g. the thank-you page")}
+    </div></div>
+    <div id="snSitesBox" class="ws-field" style="display:none;"><div class="ws-checks">${sites.map(s => `<label><input type="checkbox" class="snSite" value="${s.id}" ${siteSel.has(s.id) ? "checked" : ""}>${escH(s.name)}</label>`).join("") || `<span style="color:var(--muted);font-size:12px;">No websites yet.</span>`}</div></div>
+    <div id="snPagesBox" class="ws-field" style="display:none;"><div class="ws-checks">${pages.map(p => { const s = sites.find(x => x.id === p.site_id); return `<label><input type="checkbox" class="snPage" value="${p.id}" ${pageSel.has(p.id) ? "checked" : ""}>${escH(s?.name || "?")} › ${escH(p.title)}${p.kind === "thanks" ? " (thank-you)" : ""}</label>`; }).join("") || `<span style="color:var(--muted);font-size:12px;">No pages yet.</span>`}</div></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;"><input type="checkbox" id="snActive" ${sn ? (sn.is_active ? "checked" : "") : "checked"} style="width:auto;"> Active</label>
+    <div id="snErr"></div>
+    <button class="btn btn-a" id="snSave" onclick="bvWebSaveSnippet('${sn?.id || ""}')">Save tracking code</button>`, 560);
+  bvWebScopeChange();
+}
+function bvWebScopeChange() {
+  const v = document.querySelector('input[name="snScope"]:checked')?.value || "all";
+  document.querySelectorAll(".ws-radio label").forEach(l => l.classList.toggle("on", l.querySelector("input").value === v));
+  const a = document.getElementById("snSitesBox"), b = document.getElementById("snPagesBox");
+  if (a) a.style.display = v === "sites" ? "" : "none";
+  if (b) b.style.display = v === "pages" ? "" : "none";
+}
+async function bvWebSaveSnippet(id) {
+  const name = document.getElementById("snName").value.trim(), code = document.getElementById("snCode").value;
+  const err = document.getElementById("snErr"), btn = document.getElementById("snSave");
+  const scope = document.querySelector('input[name="snScope"]:checked')?.value || "all";
+  const site_ids = scope === "sites" ? [...document.querySelectorAll(".snSite:checked")].map(x => x.value) : [];
+  const page_ids = scope === "pages" ? [...document.querySelectorAll(".snPage:checked")].map(x => x.value) : [];
+  if (!name) { err.innerHTML = `<div class="msg err">Give this code a name.</div>`; return; }
+  if (!code.trim()) { err.innerHTML = `<div class="msg err">Paste the code first.</div>`; return; }
+  if (scope === "sites" && !site_ids.length) { err.innerHTML = `<div class="msg err">Choose at least one website.</div>`; return; }
+  if (scope === "pages" && !page_ids.length) { err.innerHTML = `<div class="msg err">Choose at least one page.</div>`; return; }
+  btn.disabled = true; btn.textContent = "Saving…"; err.innerHTML = "";
+  const row = { name, code, location: document.getElementById("snLoc").value, scope, site_ids, page_ids, is_active: document.getElementById("snActive").checked, updated_at: new Date().toISOString() };
+  const { error } = id ? await supabaseClient.from("tracking_snippets").update(row).eq("id", id) : await supabaseClient.from("tracking_snippets").insert(row);
+  if (error) { btn.disabled = false; btn.textContent = "Save tracking code"; err.innerHTML = `<div class="msg err">${escH(error.message)}</div>`; return; }
+  bvCloseSheet("bvWebOverlay"); bvToast("Tracking code saved"); bvWebReload();
 }
 
 // ── TAB: CONVERSATIONS (WhatsApp leads, any buyer's number) ────────────────────
