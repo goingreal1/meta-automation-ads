@@ -55,6 +55,7 @@
     ".rv-cols{display:grid;gap:32px;align-items:center}",
     ".rv-cols.c2{grid-template-columns:1fr 1fr}.rv-cols.c3{grid-template-columns:repeat(3,1fr)}.rv-cols.c4{grid-template-columns:repeat(4,1fr)}",
     ".rv-cols.top{align-items:start}",
+    ".rv-cols.c1{grid-template-columns:1fr}.rv-cols.c5{grid-template-columns:repeat(5,1fr)}.rv-cols.c6{grid-template-columns:repeat(6,1fr)}.rv-cols.auto{grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}",
     ".rv-card{background:#fff;border:1px solid var(--line);border-radius:calc(var(--r) + 4px);padding:26px;box-shadow:0 1px 2px rgba(20,19,15,.04),0 18px 40px -26px rgba(20,19,15,.25)}",
     ".rv-ico{width:50px;height:50px;border-radius:14px;background:var(--pl);display:flex;align-items:center;justify-content:center;font-size:25px;margin:0 0 14px}",
     ".rv-center .rv-ico{margin-left:auto;margin-right:auto}",
@@ -109,8 +110,15 @@
     ".rv-story .rv-p{font-size:clamp(19px,4.4vw,22px);line-height:1.6;color:var(--ink);margin:0 0 20px}.rv-story .rv-h2{font-size:clamp(26px,6vw,40px);text-transform:uppercase;margin:0 0 22px}",
     ".rv-vcard{background:#2f4b94;border-radius:var(--r);padding:18px;margin:0 0 18px}.rv-vcard .rv-stars{margin:0 0 6px}.rv-vcard .rv-h3{color:#fff;text-align:center;font-size:24px;margin:0 0 12px}.rv-vcard .rv-video{border-radius:calc(var(--r) - 4px)}",
     ".rv-sticky.rv-float{background:none;border:0;box-shadow:none;padding:10px 16px 14px;justify-content:center}.rv-sticky.rv-float .rv-btn{width:100%;max-width:640px;display:block;box-shadow:0 12px 28px -12px rgba(0,0,0,.45)}",
+    ".rv-top.stick{position:sticky;top:0;z-index:70}",
+    ".rv-pkg{position:relative;background:#fff;border:2px solid #14130f;border-radius:var(--r);overflow:hidden;text-align:center;display:flex;flex-direction:column}.rv-pkg.hot{border-color:var(--p);box-shadow:0 22px 44px -22px var(--p)}",
+    ".rv-pkg-h{background:var(--pd);color:#fff;padding:14px 10px}.rv-pkg-h b{display:block;font-family:var(--fh);font-size:30px;line-height:1.1;letter-spacing:.05em}.rv-pkg-h span{display:block;font-weight:700;font-size:17px}.rv-pkg-h small{display:block;opacity:.85;font-size:13px}",
+    ".rv-pkg .rv-img{border-radius:0;aspect-ratio:4/3}.rv-pkg-b{padding:16px 16px 20px;display:flex;flex-direction:column;gap:10px;align-items:center}.rv-pkg-b .rv-price .now{font-size:40px}.rv-pkg-b .rv-btn{width:100%}",
+    ".rv-save{display:inline-block;background:#fde8e5;color:#b3261e;font-weight:800;padding:5px 14px;border-radius:99px;font-size:13px}.rv-pkg .tag{position:absolute;top:10px;right:-34px;transform:rotate(38deg);background:var(--p);color:#fff;font-size:11px;font-weight:800;padding:4px 40px;letter-spacing:.06em}",
+    ".rv-sidetab{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:65;background:var(--pd);color:#fff!important;font-weight:800;letter-spacing:.05em;padding:16px 22px;border-radius:99px 0 0 99px;text-decoration:none;box-shadow:0 10px 26px -8px rgba(0,0,0,.55);animation:rvbeat 1.4s infinite}@keyframes rvbeat{0%,45%,100%{transform:translateY(-50%) scale(1)}12%{transform:translateY(-50%) scale(1.1)}28%{transform:translateY(-50%) scale(1.04)}}",
+    ".rv-popup.side{justify-content:flex-end;align-items:stretch;padding:0}.rv-popup.side .rv-popup-box{max-width:440px;height:100%;max-height:none;border-radius:0;text-align:left;padding:30px 22px;animation:rvslide .3s ease-out}@keyframes rvslide{from{transform:translateX(100%)}to{transform:none}}",
     "@media(max-width:767px){.rv-gal{grid-template-columns:repeat(2,1fr)}.rv-plan.hot{transform:none}.rv-nav nav{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;flex-direction:column;align-items:flex-start;padding:16px 20px;border-bottom:1px solid var(--line);z-index:30;gap:14px}.rv-nav .rv-burger{display:block}.rv-nav .rv-t:checked~nav{display:flex}.rv-map{height:300px}}",
-    "@media(max-width:767px){.rv-sec{padding:50px 18px}.rv-sec.tight{padding:32px 18px}.rv-cols.c2,.rv-cols.c3,.rv-cols.c4{grid-template-columns:1fr;gap:22px}.rv-cols.rev>:first-child{order:2}.rv-guar{flex-direction:column;text-align:center}.rv-btn{width:100%;display:block}.rv-sticky .rv-btn{width:auto;display:inline-block}.rv-cd .b{min-width:62px}}"
+    "@media(max-width:767px){.rv-sec{padding:50px 18px}.rv-sec.tight{padding:32px 18px}.rv-cols.c2,.rv-cols.c3,.rv-cols.c4,.rv-cols.c5,.rv-cols.c6{grid-template-columns:1fr;gap:22px}.rv-cols.rev>:first-child{order:2}.rv-guar{flex-direction:column;text-align:center}.rv-btn{width:100%;display:block}.rv-sticky .rv-btn{width:auto;display:inline-block}.rv-cd .b{min-width:62px}}"
   ].join("\n");
 
   /* ---------- Icons for the widget tiles ---------- */
@@ -151,6 +159,15 @@
 
   var PH = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="#ece9e0"/><g fill="none" stroke="#b9b4a4" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"><rect x="300" y="230" width="200" height="140" rx="14"/><circle cx="360" cy="285" r="16"/><path d="M500 345l-60-60-90 85"/></g><text x="400" y="430" font-family="Arial,sans-serif" font-size="26" fill="#9a958a" text-anchor="middle">Double-click to add your image</text></svg>');
 
+  var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  function rvDate(fmt, off) {
+    var d = new Date(Date.now() + (off || 0) * 86400000), p2 = function (n) { return (n < 10 ? "0" : "") + n; }, h12 = d.getHours() % 12 || 12;
+    return String(fmt || "D, d M").replace(/[DlMFdjYHhiA]/g, function (c) {
+      return { D: DAYS[d.getDay()].slice(0, 3), l: DAYS[d.getDay()], M: MONTHS[d.getMonth()].slice(0, 3), F: MONTHS[d.getMonth()], d: p2(d.getDate()), j: d.getDate(), Y: d.getFullYear(), H: p2(d.getHours()), h: p2(h12), i: p2(d.getMinutes()), A: d.getHours() < 12 ? "AM" : "PM" }[c];
+    });
+  }
+  global.RVDate = rvDate;
+
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 
   var countdownScript = function () {
@@ -181,7 +198,7 @@
     function seen() { try { return once && sessionStorage.getItem(key); } catch (e) { return false; } }
     function open() { if (seen()) return; el.classList.add("open"); try { sessionStorage.setItem(key, "1"); } catch (e) {} }
     function close() { el.classList.remove("open"); }
-    el.addEventListener("click", function (e) { if (e.target === el || (e.target.closest && e.target.closest(".rv-popup-x"))) close(); });
+    el.addEventListener("click", function (e) { if (e.target === el || (e.target.closest && e.target.closest(".rv-popup-x, [data-rv-tier]"))) close(); });
     document.addEventListener("click", function (e) { var a = e.target.closest && e.target.closest('a[href="#rv-popup"]'); if (a) { e.preventDefault(); el.classList.add("open"); } });
     if (delay >= 0) setTimeout(open, delay * 1000);
     if (exit) document.addEventListener("mouseout", function (e) { if (e.clientY <= 0 && !e.relatedTarget) open(); });
@@ -240,7 +257,7 @@
     function add(id, label, cat, icon, content, extra) {
       // widget = a bare element that can sit inside any column (the builder wraps it in a section when dropped at page level)
       // top = a full-width section / fixed bar that only ever lives at page level
-      var top = !(extra && extra.widget) && typeof content === "string" && /^\s*<(section|header|footer)\b|^\s*<div class="rv-(top|sticky|popup)|^\s*<a class="rv-wa/.test(content);
+      var top = !(extra && extra.widget) && typeof content === "string" && /^\s*<(section|header|footer)\b|^\s*<div class="rv-(top|sticky|popup)|^\s*<a class="rv-(wa|sidetab)/.test(content);
       B.push(Object.assign({ id: id, label: label, category: cat, media: icon, content: content, widget: false, top: top }, extra || {}));
     }
 
@@ -314,6 +331,19 @@
     add("sp-video-card", "Video testimonial card", "Sales page", I.video, '<section class="rv-sec tight"><div class="rv-wrap narrow"><div class="rv-vcard"><div class="rv-stars">★★★★★</div><h3 class="rv-h3">Happy customer</h3><div class="rv-video" data-src="" data-ratio="16:9">' + videoEmbed("") + "</div></div></div></section>");
     add("sp-float", "Floating order button", "Sales page", I.bar, '<div class="rv-sticky rv-float"><a class="rv-btn block" href="#order">' + CTA + "</a></div>");
 
+    /* Offers: package cards, side order tab + slide-in package drawer, sticky offer bar, delivery date */
+    var d1 = rvDate("D, d M", 1);
+    function pkg(tag, name, pack, note, was, now, save, idx, hot) {
+      return '<div class="rv-pkg' + (hot ? " hot" : "") + '">' + (hot ? '<span class="tag">POPULAR</span>' : "") + '<div class="rv-pkg-h"><b>' + name + "</b><span>" + pack + "</span><small>" + note + '</small></div><img class="rv-img" src="' + PH + '" alt=""><div class="rv-pkg-b"><div class="rv-price"><span class="was">' + was + '</span><span class="now">' + now + '</span></div><span class="rv-save">' + save + '</span><a class="rv-btn block" href="#order" data-rv-tier="' + idx + '">Click to buy now</a></div></div>';
+    }
+    add("sp-offerbar", "Sticky offer bar (top)", "Offers", I.megaphone, '<div class="rv-top stick">🚚 FAST NATIONWIDE DELIVERY (24–48 HRS) &nbsp;|&nbsp; 100% PAYMENT ON DELIVERY &nbsp;|&nbsp; NAFDAC REG. NO.: ______</div>');
+    add("sp-packages", "Package cards (any number)", "Offers", I.tag, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-center"><span class="rv-eyebrow">Buy more, save more</span><h2 class="rv-h2">Select your package</h2></div><div class="rv-cols auto top">' +
+      pkg("", "STARTER", "15 Days Pack", "Less recommended", "₦44,000", "₦20,000", "SAVE ₦24,000", 1, false) + pkg("", "SILVER", "3 Months Pack", "Recommended", "₦93,000", "₦32,500", "SAVE ₦60,500", 2, true) + pkg("", "GOLD", "6 Months Pack", "Highly recommended", "₦126,000", "₦57,000", "SAVE ₦69,000", 3, false) + "</div></div></section>");
+    add("sp-delivery", "Delivery date line", "Offers", I.clock, '<p class="rv-p rv-center" style="font-size:18px;color:var(--ink)">🚚 Order now &amp; get it by <b><u data-rv-date="1" data-rv-fmt="D, d M">' + d1 + '</u></b><br><b>Want FREE delivery?</b> Order before 11:59pm today</p>', { widget: true });
+    add("sp-sidetab", "Side ORDER NOW tab (pulsing)", "Offers", I.chat, '<a class="rv-sidetab" href="#rv-popup">ORDER NOW</a>');
+    add("sp-drawer", "Package drawer (slides in)", "Offers", I.bar, '<div class="rv-popup side" data-rv-popup="1" data-delay="-1" data-exit="0" data-once="0"><div class="rv-popup-box"><button class="rv-popup-x" aria-label="Close">×</button><span class="rv-badge">Special offer</span><h2 class="rv-h2" style="font-size:26px">Choose your package</h2><p class="rv-p">Pick a package and place your order today.</p>' +
+      [["STARTER · 15 days", "₦44,000", "₦20,000", 1], ["SILVER · 3 months", "₦93,000", "₦32,500", 2], ["GOLD · 6 months", "₦181,000", "₦57,000", 3]].map(function (q) { return '<div class="rv-card" style="margin-bottom:14px;padding:18px;text-align:center"><b>' + q[0] + '</b><div class="rv-price"><span class="was">' + q[1] + '</span><span class="now" style="font-size:34px">' + q[2] + '</span></div><a class="rv-btn block" href="#order" data-rv-tier="' + q[3] + '">Order now</a></div>'; }).join("") + "</div></div>");
+
     /* More sections */
     add("navbar", "Header / menu", "Sections", I.bar, '<header class="rv-nav"><a class="logo" href="#">' + esc(ctx.siteName || "Your Brand") + '</a><input type="checkbox" id="rvnav" class="rv-t"><label for="rvnav" class="rv-burger">☰</label><nav><a href="#features">Features</a><a href="#reviews">Reviews</a><a href="#faq">FAQ</a><a class="rv-btn" href="#order">Order now</a></nav></header>');
     add("hero-image", "Hero - image background", "Sections", I.hero, '<section class="rv-sec rv-hero-img rv-center" style="background-image:linear-gradient(135deg,#2b3a35,#0f1413);padding:120px 20px"><div class="rv-wrap narrow"><h1 class="rv-h1">A bold headline over your photo</h1><p class="rv-lead">Pick a background image in the Style tab &rarr; Background.</p><a class="rv-btn" href="#order">Order now &mdash; ' + esc(PRICE) + "</a></div></section>");
@@ -342,6 +372,8 @@
       blocks: ["announce", "hero-center", "features", "testimonials", "order-form", "footer", "sticky"] },
     { id: "bold-sales", name: "Bold sales page", desc: "Red headline banner, big image, story, review screenshots, video testimonials and a floating order button", kind: "page", theme: { primary: "#e03a24", heading: "Roboto", body: "Montserrat" },
       blocks: ["sp-banner", "sp-headline", "sp-image", "sp-cta", "sp-story", "sp-cta", "sp-reviews", "sp-warning", "sp-video-card", "sp-video-card", "sp-cta", "order-form", "footer", "sp-float"] },
+    { id: "offer-packages", name: "Offer page - packages & slide-in drawer", desc: "Sticky offer bar, story, video proof, reviews, guarantee, package cards that pick the package in the form, and a pulsing ORDER NOW tab with a slide-in drawer", kind: "page", theme: { primary: "#6d2a7f", heading: "Poppins", body: "Inter" },
+      blocks: ["sp-offerbar", "sp-headline", "sp-image", "sp-delivery", "sp-cta", "sp-story", "sp-video-card", "sp-video-card", "iconbox-row", "testimonials", "guarantee", "sp-packages", "order-form", "faq", "footer", "sp-sidetab", "sp-drawer"] },
     { id: "service", name: "Service - bank transfer", desc: "Sell a service: steps, proof, FAQ and a form that shows your bank details", kind: "page",
       blocks: ["announce", "hero-center", "steps", "features", "testimonials", "guarantee", "faq", "order-form", "footer", "whatsapp"] },
     { id: "thanks", name: "Thank-you page", desc: "Shown after an order; includes bank details when relevant", kind: "thanks",
@@ -351,7 +383,7 @@
 
   function templateHtml(tpl, ctx) {
     var byId = {}; build(ctx).forEach(function (b) { byId[b.id] = b; });
-    return tpl.blocks.map(function (id) { var c = byId[id] && byId[id].content; return typeof c === "string" ? c : ""; }).join("\n");
+    return tpl.blocks.map(function (id) { var b = byId[id], c = b && b.content; if (typeof c !== "string") return ""; return b.widget ? '<section class="rv-sec tight"><div class="rv-wrap">' + c + "</div></section>" : c; }).join("\n");
   }
 
   global.RVBlocks = { build: build, BASE_CSS: BASE_CSS, FONTS: FONTS, DEFAULT_THEME: DEFAULT_THEME, themeCss: themeCss, fontsUrl: fontsUrl, TEMPLATES: TEMPLATES, templateHtml: templateHtml, PLACEHOLDER: PH, countdownScript: countdownScript, tabsScript: tabsScript, popupScript: popupScript, waformScript: waformScript, videoEmbed: videoEmbed, videoRatioFor: videoRatioFor, mapEmbed: mapEmbed };

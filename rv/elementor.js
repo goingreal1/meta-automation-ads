@@ -11,6 +11,37 @@
     var content = Array.isArray(data) ? data : (data.content || (data.data && data.data.content) || []);
     var title = data.title || "";
 
+    // Elementor titles/descriptions may hold inline HTML (<b>, <br>, <span style>, emoji <img>). Keep the safe formatting, drop the rest.
+    function rich(html) {
+      html = String(html == null ? "" : html); if (html.indexOf("<") < 0 && html.indexOf("&") < 0) return dateTokens(html);
+      var KEEP = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, SMALL: 1, BR: 1, MARK: 1, SUP: 1, SUB: 1 };
+      var root = new DOMParser().parseFromString("<body>" + html + "</body>", "text/html").body;
+      function walkN(n) {
+        var out = "";
+        n.childNodes.forEach(function (c) {
+          if (c.nodeType === 3) out += dateTokens(c.nodeValue);
+          else if (c.nodeType === 1) {
+            var t = c.tagName;
+            if (t === "IMG") out += esc(c.getAttribute("alt") || "");
+            else if (t === "SCRIPT" || t === "STYLE") out += "";
+            else if (KEEP[t]) out += t === "BR" ? "<br>" : "<" + t.toLowerCase() + ">" + walkN(c) + "</" + t.toLowerCase() + ">";
+            else if (t === "SPAN" && /font-weight:\s*(bold|[6-9]00)/i.test(c.getAttribute("style") || "")) out += "<b>" + walkN(c) + "</b>";
+            else out += walkN(c);
+          }
+        });
+        return out;
+      }
+      return walkN(root);
+    }
+    // WordPress "date" shortcodes ([wpdts-custom format="D, d M" days="+1"]) become live date spans (the page fills in the real date when it loads)
+    function dateTokens(raw) {
+      var re = /\[wpdts-custom([^\]]*)\]/g, out = "", last = 0, m;
+      while ((m = re.exec(raw))) {
+        var f = /format="([^"]*)"/.exec(m[1]), dd = /days="([^"]*)"/.exec(m[1]), fmt = f ? f[1] : "D, d M", n = dd ? parseInt(dd[1], 10) : 0; if (isNaN(n)) n = 0;
+        out += esc(raw.slice(last, m.index)) + '<span data-rv-date="' + n + '" data-rv-fmt="' + esc(fmt) + '">' + (global.RVDate ? esc(global.RVDate(fmt, n)) : "") + "</span>"; last = m.index + m[0].length;
+      }
+      return out + esc(raw.slice(last));
+    }
     function size(v, dflt) { if (v == null || v === "") return dflt || ""; if (typeof v !== "object") return /^-?[\d.]+$/.test(String(v)) ? v + "px" : String(v); if (v.size === "" || v.size == null) return dflt || ""; var u = v.unit === "custom" ? "" : (v.unit || "px"); return v.size + u; }
     function dims(v) { if (!v || typeof v !== "object" || v.top === undefined) return ""; if ([v.top, v.right, v.bottom, v.left].every(function (x) { return x === "" || x == null; })) return ""; var u = v.unit || "px"; return [v.top, v.right, v.bottom, v.left].map(function (x) { return (x === "" || x == null ? 0 : x) + (x === 0 || x === "0" || x === "" || x == null ? "" : u); }).join(" "); }
     function color(v) { return v && typeof v === "string" ? v : ""; }
@@ -77,7 +108,7 @@
           var tag = /^h[1-6]$/.test(s.header_size) ? s.header_size : "h2", fnt = fontCss(s, "typography");
           var defSize = { h1: "44px", h2: "34px", h3: "28px", h4: "22px", h5: "18px", h6: "16px" }[tag];
           var st = ["margin:0", "color:" + (color(s.title_color) || "inherit"), fnt.some(function (x) { return /^font-size/.test(x); }) ? "" : "font-size:" + defSize, "line-height:1.2", "font-weight:700"].concat(fnt).concat(s.text_shadow_text_shadow ? [] : []);
-          var inner = esc(s.title || "").replace(/&lt;br\s*\/?&gt;/g, "<br>"); var l = link(s.link);
+          var inner = rich(s.title || ""); var l = link(s.link);
           if (l) inner = '<a href="' + esc(l.href) + '"' + (l.ext ? ' target="_blank" rel="noopener"' : "") + ' style="color:inherit;text-decoration:none">' + inner + "</a>";
           return open([al]) + "<" + tag + ' style="' + esc(st.filter(Boolean).join(";")) + '">' + inner + "</" + tag + "></div>";
         }
@@ -115,11 +146,11 @@
         }
         case "image-box": case "icon-box": {
           var topImg = t === "image-box" ? (url(s.image) ? '<img src="' + esc(url(s.image)) + '" alt="" style="max-width:100%;height:auto;margin-bottom:14px">' : "") : '<div style="font-size:' + (size(s.primary_color) ? "40px" : "40px") + ';margin-bottom:12px;color:' + (color(s.primary_color) || "inherit") + '">' + pickIcon(s.selected_icon) + "</div>";
-          return open([al || "text-align:center"]) + topImg + '<h3 style="margin:0 0 8px;font-size:' + (fontCss(s, "title_typography").join(";").match(/font-size:([^;]+)/) || [0, "20px"])[1] + ';color:' + (color(s.title_color) || "inherit") + '">' + esc(s.title_text || "") + '</h3><p style="margin:0;color:' + (color(s.description_color) || "inherit") + '">' + esc(s.description_text || "") + "</p></div>";
+          return open([al || "text-align:center"]) + topImg + '<h3 style="margin:0 0 8px;font-size:' + (fontCss(s, "title_typography").join(";").match(/font-size:([^;]+)/) || [0, "20px"])[1] + ';color:' + (color(s.title_color) || "inherit") + '">' + rich(s.title_text || "") + '</h3><p style="margin:0;color:' + (color(s.description_color) || "inherit") + '">' + esc(s.description_text || "") + "</p></div>";
         }
         case "testimonial": return open([]) + '<div style="padding:24px;border:1px solid #e5e5e5;border-radius:14px;background:#fff"><p style="margin:0 0 16px;font-size:17px;line-height:1.6">“' + esc(s.testimonial_content || "") + '”</p><div style="display:flex;gap:12px;align-items:center">' + (url(s.testimonial_image) ? '<img src="' + esc(url(s.testimonial_image)) + '" style="width:48px;height:48px;border-radius:50%;object-fit:cover" alt="">' : "") + "<div><b>" + esc(s.testimonial_name || "") + '</b><div style="font-size:13px;opacity:.7">' + esc(s.testimonial_job || "") + "</div></div></div></div></div>";
         case "accordion": case "toggle": {
-          var rows = (s.tabs || []).map(function (tb) { return '<details style="border:1px solid #e5e5e5;border-radius:10px;margin-bottom:10px;background:#fff"><summary style="cursor:pointer;font-weight:700;padding:16px 20px">' + esc(tb.tab_title || "") + '</summary><div style="padding:0 20px 18px">' + (tb.tab_content || "") + "</div></details>"; }).join("");
+          var rows = (s.tabs || []).filter(function (tb) { return String(tb.tab_title || "").trim().toLowerCase() !== "default" || String(tb.tab_content || "").trim(); }).map(function (tb) { return '<details style="border:1px solid #e5e5e5;border-radius:10px;margin-bottom:10px;background:#fff"><summary style="cursor:pointer;font-weight:700;padding:16px 20px">' + esc(tb.tab_title || "") + '</summary><div style="padding:0 20px 18px">' + (tb.tab_content || "") + "</div></details>"; }).join("");
           return open([]) + rows + "</div>";
         }
         case "tabs": {
@@ -133,7 +164,21 @@
         case "image-gallery": case "gallery": return open([]) + '<div style="display:grid;grid-template-columns:repeat(' + (Number(s.gallery_columns) || 3) + ',1fr);gap:10px">' + (s.wp_gallery || s.gallery || []).map(function (g) { return '<img src="' + esc(g.url || "") + '" alt="" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px">'; }).join("") + "</div></div>";
         case "google_maps": return open([]) + '<div class="rv-map" data-q="' + esc(s.address || "") + '">' + (RB ? RB.mapEmbed(s.address || "") : "") + "</div></div>";
         case "html": return open([]) + '<div class="rv-custom" data-rv-html="1">' + (s.html || "") + "</div></div>";
-        case "shortcode": warnings.push("A shortcode (" + String(s.shortcode || "").slice(0, 40) + ") can't run outside WordPress"); return open([]) + '<div class="rv-note warn">WordPress shortcode removed: ' + esc(String(s.shortcode || "").slice(0, 60)) + "</div></div>";
+        case "shortcode": {
+          var sc = String(s.shortcode || ""), left = sc.replace(/\[wpdts-custom[^\]]*\]/g, "").replace(/<[^>]+>/g, "");
+          if (/\[\w[^\]]*\]/.test(left)) { warnings.push("A WordPress shortcode (" + left.match(/\[\w[^\]]*\]/)[0].slice(0, 30) + ") can't run outside WordPress and was removed"); sc = sc.replace(/\[(?!wpdts-custom)\w[^\]]*\]/g, ""); }
+          return open([al]) + '<div style="line-height:1.6">' + rich(sc) + "</div></div>";
+        }
+        case "e-youtube": {
+          var yv = s.source && typeof s.source === "object" ? (s.source.value || "") : (s.source || "");
+          if (!yv) { warnings.push("A YouTube widget without a link was skipped"); return ""; }
+          return open([]) + '<div class="rv-video" data-src="' + esc(yv) + '" data-ratio="' + (RB ? RB.videoRatioFor(yv) : "16:9") + '">' + (RB ? RB.videoEmbed(yv) : '<iframe src="' + esc(yv) + '"></iframe>') + "</div></div>";
+        }
+        case "rating": case "star-rating-v2": return open([al || "text-align:left"]) + '<span style="color:#f5a623;letter-spacing:3px;font-size:22px">★★★★★</span></div>';
+        case "nested-accordion": {
+          var its = s.items || [], kids2 = w.elements || [];
+          return open([]) + its.map(function (it, i) { return '<details style="border:1px solid #e5e5e5;border-radius:10px;margin-bottom:10px;background:#fff"><summary style="cursor:pointer;font-weight:700;padding:16px 20px">' + rich(it.item_title || "") + '</summary><div style="padding:0 20px 16px">' + (kids2[i] ? node(kids2[i], true) : "") + "</div></details>"; }).join("") + "</div>";
+        }
         case "menu-anchor": return '<span id="' + esc(s.anchor || "") + '"></span>';
         case "form": case "woocommerce-checkout-page": case "wpforms": warnings.push("An Elementor form was replaced by the built-in Order form (orders go to your Orders tab)"); return open([]) + '<div data-rv-form="1"></div></div>';
         default: unsupported[t] = (unsupported[t] || 0) + 1; return open([]) + '<div class="rv-note warn">Elementor widget “' + esc(t) + "” isn't supported yet. Replace it with a builder widget.</div></div>";
@@ -144,7 +189,7 @@
       var s = c.settings || {}, cls = "rvx" + (++uid), pct = Number(s._column_size) || 100; var w = s._inline_size ? Number(s._inline_size) : pct;
       var st = ["flex:0 0 calc(" + w + "% - " + 0 + "px)", "max-width:" + w + "%", "min-width:0", "box-sizing:border-box", "padding:" + (dims(s.padding) || gapPx + "px"), "display:flex", "flex-direction:column", "justify-content:" + ({ top: "flex-start", middle: "center", bottom: "flex-end" }[s.content_vertical_align] || (s.content_position === "center" ? "center" : s.content_position === "bottom" ? "flex-end" : "flex-start"))].concat(bgCss(s), borderCss(s), s.margin ? ["margin:" + dims(s.margin)] : []);
       var rs = responsive(s, cls, { mobile: ["flex-basis:100%!important", "max-width:100%!important"], tablet: [] });
-      var kids = (c.elements || []).map(node).join("");
+      var kids = (c.elements || []).map(function (x) { return node(x, true); }).join("");
       return "<div" + attrs(s, st, "rvx-col " + cls) + ">" + kids + "</div>";
     }
 
@@ -184,13 +229,30 @@
       var boxed = !nested && s.content_width !== "full", maxW = boxed ? (s.boxed_width && s.boxed_width.size ? size(s.boxed_width) : "1140px") : "";
       var m = dir === "row" || dir === "row-reverse";
       var mobile = m ? ["flex-direction:column!important"] : []; responsive(s, cls, { mobile: mobile });
-      var ov = overlay(s), kids = (c.elements || []).map(node).join("");
+      var ov = overlay(s), kids = (c.elements || []).map(function (x) { return node(x, true); }).join("");
       if (boxed) { st.push("align-items:center"); return "<section" + attrs(s, boxStyleFrom(s).concat(["position:relative", "box-sizing:border-box"]), cls) + ">" + ov + '<div style="max-width:' + maxW + ";margin:0 auto;display:flex;flex-direction:" + dir + (wrap ? ";flex-wrap:wrap" : "") + (gap ? ";gap:" + gap : "") + (s.flex_justify_content ? ";justify-content:" + s.flex_justify_content : "") + (s.flex_align_items ? ";align-items:" + s.flex_align_items : "") + ';position:relative" class="' + (m ? "rvx-row " : "") + cls + '-in">' + kids + "</div></section>"; }
       return "<div" + attrs(s, st, (m ? "rvx-row " : "") + cls) + ">" + ov + kids + "</div>";
     }
 
+    // Elementor's newer "Flexbox" element keeps its layout in a styles map instead of settings; read the bits that matter.
+    function flexSettings(n) {
+      var out = { flex_direction: "column" };
+      Object.keys(n.styles || {}).forEach(function (k) {
+        ((n.styles[k] || {}).variants || []).forEach(function (v) {
+          if (v.meta && v.meta.breakpoint && v.meta.breakpoint !== "desktop") return;
+          var p = v.props || {}, val = function (x) { return x && typeof x === "object" && "value" in x ? x.value : x; };
+          if (p["flex-direction"]) out.flex_direction = val(p["flex-direction"]);
+          if (p["flex-wrap"]) out.flex_wrap = val(p["flex-wrap"]);
+          if (p["justify-content"]) out.flex_justify_content = val(p["justify-content"]);
+          if (p["align-items"]) out.flex_align_items = val(p["align-items"]);
+          var g = val(p.gap); if (g && typeof g === "object" && g.size != null) out.flex_gap = { size: g.size, unit: g.unit || "px" };
+        });
+      });
+      return out;
+    }
     function node(n, nested) {
       if (!n) return "";
+      if (n.elType === "e-flexbox") return container(Object.assign({}, n, { settings: flexSettings(n) }), nested || n.isInner);
       if (n.elType === "section") return section(n);
       if (n.elType === "container") return container(n, nested || n.isInner);
       if (n.elType === "column") return column(n, 10);

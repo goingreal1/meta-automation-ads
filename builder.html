@@ -913,6 +913,9 @@ input,select,textarea{font:inherit}
     var cur = currentAlign(c, el, cs, own), AL = { left: "M4 6h16M4 12h10M4 18h14", center: "M4 6h16M7 12h10M5 18h14", right: "M4 6h16M10 12h10M6 18h14", justify: "M4 6h16M4 12h16M4 18h16" };
     h += '<div class="ss"><div class="sst">Alignment</div><div class="seg al">' + ["left", "center", "right"].concat(k === "text" || k === "box" ? ["justify"] : []).map(function (d) { return '<button data-al="' + d + '" class="' + (cur === d ? "on" : "") + '" title="Align ' + d + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="' + AL[d] + '"/></svg></button>'; }).join("") + "</div>" +
       (k === "box" ? '<div class="hint2">Aligns everything inside this block.</div>' : "") + "</div>";
+    // columns (any number of cards/columns in a row)
+    var cl = c.getClasses();
+    if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^c[1-6]$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Duplicate a card with the toolbar to add more. They stack on phones.</div></div></div>'; }
     // button size
     if (isBtn) h += '<div class="ss"><div class="sst">Button size</div><div class="seg">' + [["S", "Small"], ["M", "Medium"], ["L", "Large"], ["XL", "Extra large"]].map(function (b) { return '<button data-bsize="' + b[0] + '" title="' + b[1] + '">' + b[0] + "</button>"; }).join("") + "</div></div>";
     // colours
@@ -984,6 +987,7 @@ input,select,textarea{font:inherit}
     });
     box.addEventListener("change", function (e) {
       var n = e.target;
+      if (n.dataset.cols) { var cc = ed.getSelected(); ["c1", "c2", "c3", "c4", "c5", "c6", "auto"].forEach(function (x) { cc.removeClass(x); }); cc.addClass(n.value); return; }
       if (n.dataset.s && n.dataset.k === "sel") { var o = {}; o[n.dataset.s] = n.value; sty(o); }
       if (n.dataset.wunit) { var w = $('[data-s="width"]', box); if (w.value) sty({ width: w.value + n.value }); }
     });
@@ -1105,7 +1109,7 @@ input,select,textarea{font:inherit}
     cc.textContent = customCss;
     // editing aids
     var ea = doc.getElementById("rv-edit"); if (!ea) { ea = doc.createElement("style"); ea.id = "rv-edit"; doc.head.appendChild(ea); }
-    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}.rv-video:not([data-src])::before,.rv-video[data-src=\"\"]::before{content:\"▶  Paste a video link in the panel on the right\";position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#cfd4da;font:600 15px/1.4 system-ui,sans-serif}";
+    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.rv-sidetab{position:relative!important;right:auto!important;top:auto!important;transform:none!important;animation:none!important;display:inline-block;border-radius:99px!important;margin:8px}.rv-top.stick{position:relative!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}.rv-video:not([data-src])::before,.rv-video[data-src=\"\"]::before{content:\"▶  Paste a video link in the panel on the right\";position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#cfd4da;font:600 15px/1.4 system-ui,sans-serif}";
   }
   var customCss = "";
 
