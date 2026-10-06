@@ -18,6 +18,19 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const OFFER_TIMEOUT_MINUTES = 5;
 
+// A service-role token can be a different (but equally valid) string from the
+// env key -- pg_cron stores its own copy -- so besides the exact match, prove
+// the token by asking the Auth admin API, which only a service-role key can use.
+async function isServiceCaller(req: Request): Promise<boolean> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return false;
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return true;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1`, { headers: { apikey: token, Authorization: `Bearer ${token}` } });
+    return r.status === 200;
+  } catch { return false; }
+}
+
 function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -41,9 +54,7 @@ function zoneMatches(zone: string | null, city: string | null, state: string | n
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   // Internal-only: callers send the service-role key.
-  if (!SUPABASE_SERVICE_ROLE_KEY || req.headers.get("Authorization") !== `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`) {
-    return json({ error: "unauthorized" }, 401);
-  }
+  if (!(await isServiceCaller(req))) return json({ error: "unauthorized" }, 401);
 
   try {
     const now = new Date();
