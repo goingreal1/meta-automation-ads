@@ -189,6 +189,16 @@ input,select,textarea{font:inherit}
 .pad4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.pad4 small{display:block;text-align:center;color:var(--tx3);font-size:10.5px;margin-top:3px}.pad4 input{padding:0 4px;text-align:center}
 .hint2{color:var(--tx3);font-size:11.5px;line-height:1.5;margin:6px 0 4px}
 #moreStyle{border-top:1px solid var(--line);margin-top:6px}#moreStyle summary{cursor:pointer;padding:13px 14px;font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--tx3)}#moreStyle summary:hover{color:var(--tx)}
+/* ---- Plugins panel ---- */
+.plgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.plc{border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:14px;display:flex;flex-direction:column;gap:8px}
+.plc .top{display:flex;gap:10px;align-items:center}.plc .lg{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;flex:none}
+.plc b{font-size:14px}.plc small{display:block;color:var(--tx3);font-size:11.5px}.plc p{margin:0;color:var(--tx2);font-size:12.5px;line-height:1.5;flex:1}
+.plc .st{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:#33373e;color:var(--tx2);margin-left:auto;white-space:nowrap}.plc .st.on{background:rgba(34,176,138,.18);color:var(--ac)}
+.plc .row{display:flex;gap:8px;align-items:center}
+.plnote{font-size:12px;color:var(--tx3);line-height:1.55;margin:0 0 14px}
+.pllist{border:1px solid var(--line);border-radius:10px;margin:10px 0}.pllist .it{display:flex;gap:8px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px}.pllist .it:last-child{border-bottom:0}.pllist .it b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rdo{display:flex;flex-direction:column;gap:6px}.rdo label{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line);border-radius:9px;cursor:pointer;font-weight:500;color:var(--tx);margin:0}.rdo label.on{border-color:var(--ac);background:var(--acbg)}.rdo input{width:auto;margin-top:3px}.rdo span{display:block;font-size:11.5px;color:var(--tx3);font-weight:400}
 /* ---- overlays/modals (own) ---- */
 .ov{position:fixed;inset:0;background:rgba(8,9,11,.66);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;backdrop-filter:blur(2px)}
 .ov.on{display:flex}
@@ -256,6 +266,7 @@ input,select,textarea{font:inherit}
     <span class="chip" id="status"><i></i><span>Saved</span></span>
     <button class="ib" id="bSettings" title="Site settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg><span>Settings</span></button>
     <button class="ib" id="bImport" title="Import / paste your own HTML"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg><span>HTML</span></button>
+    <button class="ib" id="bPlugins" title="Plugins & integrations (tracking, analytics, custom code)"><svg viewBox="0 0 24 24"><path d="M9 3h6v4h3a2 2 0 012 2v3h-2a2 2 0 100 4h2v3a2 2 0 01-2 2h-3v-2a2 2 0 10-4 0v2H6a2 2 0 01-2-2v-3h2a2 2 0 100-4H4V9a2 2 0 012-2h3z"/></svg><span>Plugins</span></button>
     <button class="btn" id="bPreview">Preview</button>
     <button class="btn pri" id="bPublish">Publish</button>
   </header>
@@ -334,6 +345,17 @@ input,select,textarea{font:inherit}
   <div class="dhd"><h3>Add a widget</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
   <div class="pkbar"><input id="pkSearch" placeholder="Search widgets… (heading, video, button, html)" autocomplete="off"><div class="seg" id="pkMode"><button data-m="before">Above</button><button data-m="after" class="on">Below</button><button data-m="inside">Inside</button></div><span class="chip" id="pkWhere"></span></div>
   <div class="dbd" id="pkBody"></div>
+</div></div>
+
+<!-- Plugins -->
+<div class="ov" id="ovPlugins"><div class="dlg wide">
+  <div class="dhd"><h3>Plugins &amp; integrations</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="dbd"><p class="plnote">Turn tools on for this website in one click: just paste the ID from the tool. They run on your <b>published pages only</b> (not in the editor or preview), and they start working straight away, with no need to publish again. Anything else can go in <b>Header &amp; footer code</b>.</p><div class="plgrid" id="plGrid"></div></div>
+</div></div>
+<div class="ov" id="ovPlug"><div class="dlg">
+  <div class="dhd"><h3 id="plgTitle">Plugin</h3><button class="ib" data-close><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="dbd" id="plgBody"></div>
+  <div class="dft" id="plgFoot"></div>
 </div></div>
 
 <!-- Edit custom code -->
@@ -418,6 +440,7 @@ input,select,textarea{font:inherit}
     S.page = S.pages.find(function (p) { return p.id === want; }) || S.pages.find(function (p) { return p.slug === ""; }) || S.pages[0];
     await loadProduct();
     initEditor();
+    loadSnips().catch(function () {});
   }
 
   async function loadProduct() {
@@ -1007,6 +1030,104 @@ input,select,textarea{font:inherit}
     });
   }
 
+
+  /* ================= Plugins: one-click tracking / analytics + header & footer code ================= */
+  var PLUGINS = [
+    { key: "meta", name: "Meta Pixel", color: "#1877f2", logo: "f", tag: "Built in", desc: "Your ad account's pixel is already on every page, with Purchase events sent from the browser and the server. Change the account in Settings.", builtin: true },
+    { key: "clarity", name: "Microsoft Clarity", color: "#0078d4", logo: "C", tag: "Heatmaps & recordings", desc: "See where visitors tap and watch recordings of real visits. Free.", ask: "Clarity Project ID", ph: "e.g. k8x2abcd9z", pat: /[^A-Za-z0-9]/g, loc: "head", help: "clarity.microsoft.com → your project → Settings → Overview → Project ID.",
+      make: function (id) { return '<script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","' + id + '");<\/script>'; } },
+    { key: "ga4", name: "Google Analytics 4", color: "#e8710a", logo: "GA", tag: "Visitors & sales", desc: "Count visitors, see where they come from and what they do.", ask: "Measurement ID", ph: "G-XXXXXXXXXX", pat: /[^A-Za-z0-9-]/g, loc: "head", help: "analytics.google.com → Admin → Data streams → your stream → Measurement ID (starts with G-).",
+      make: function (id) { return '<script async src="https://www.googletagmanager.com/gtag/js?id=' + id + '"><\/script>\n<script>\nwindow.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}\ngtag(\'js\',new Date());gtag(\'config\',\'' + id + '\');\n<\/script>'; } },
+    { key: "gtm", name: "Google Tag Manager", color: "#4285f4", logo: "GTM", tag: "All your tags in one place", desc: "Load Google Ads, GA4 and other tags from your Tag Manager container.", ask: "Container ID", ph: "GTM-XXXXXXX", pat: /[^A-Za-z0-9-]/g, loc: "head", help: "tagmanager.google.com → your container → the ID at the top (starts with GTM-).",
+      make: function (id) { return '<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({\'gtm.start\':new Date().getTime(),event:\'gtm.js\'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!=\'dataLayer\'?\'&l=\'+l:\'\';j.async=true;j.src=\'https://www.googletagmanager.com/gtm.js?id=\'+i+dl;f.parentNode.insertBefore(j,f);})(window,document,\'script\',\'dataLayer\',\'' + id + '\');<\/script>'; },
+      extra: { loc: "body_start", make: function (id) { return '<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=' + id + '" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>'; } } },
+    { key: "tiktok", name: "TikTok Pixel", color: "#111111", logo: "♪", tag: "TikTok ads", desc: "Track visitors and orders from your TikTok ads.", ask: "TikTok Pixel ID", ph: "e.g. C1234567890", pat: /[^A-Za-z0-9]/g, loc: "head", help: "TikTok Ads Manager → Assets → Events → your pixel → Pixel ID.",
+      make: function (id) { return '<script>!function (w, d, t) {w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};ttq.load(\'' + id + '\');ttq.page();}(window, document, \'ttq\');<\/script>'; } },
+    { key: "hotjar", name: "Hotjar", color: "#fd3a5c", logo: "H", tag: "Heatmaps & recordings", desc: "Heatmaps, recordings and feedback polls.", ask: "Hotjar Site ID", ph: "e.g. 1234567", pat: /[^0-9]/g, loc: "head", help: "insights.hotjar.com → Sites & Organizations → your site ID (numbers).",
+      make: function (id) { return '<script>(function(h,o,t,j,a,r){h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};h._hjSettings={hjid:' + id + ',hjsv:6};a=o.getElementsByTagName(\'head\')[0];r=o.createElement(\'script\');r.async=1;r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;a.appendChild(r);})(window,document,\'https://static.hotjar.com/c/hotjar-\',\'.js?sv=\');<\/script>'; } },
+    { key: "custom", name: "Header & footer code", color: "#6b7280", logo: "</>", tag: "Like the HFCM plugin", desc: "Add any script or HTML to the header, the start of the page or the footer, for this page, this website or all your websites.", custom: true }
+  ];
+  var LOCS = { head: "Header (<head>)", body_start: "Start of the page", footer: "Footer (end of the page)" };
+  S.snips = [];
+  async function loadSnips() { var r = await sb.from("tracking_snippets").select("*").order("created_at", { ascending: false }); S.snips = r.data || []; updatePluginBadge(); }
+  function marker(code) { var m = /rv-plugin:([a-z0-9-]+)(?: id=([\w-]*))?/.exec(code || ""); return m ? { key: m[1], id: m[2] || "" } : null; }
+  function rowsFor(key) { return S.snips.filter(function (r) { var m = marker(r.code); return m && (m.key === key || m.key === key + "-ns"); }); }
+  function customRows() { return S.snips.filter(function (r) { return !marker(r.code); }); }
+  function appliesHere(r) { return r.scope === "all" || (r.scope === "sites" && (r.site_ids || []).indexOf(S.site.id) > -1) || (r.scope === "pages" && (r.page_ids || []).indexOf(S.page.id) > -1); }
+  function scopeLabel(r) { return r.scope === "all" ? "All my websites" : r.scope === "sites" ? ((r.site_ids || []).indexOf(S.site.id) > -1 ? "This website" + ((r.site_ids || []).length > 1 ? " + others" : "") : "Other websites") : ((r.page_ids || []).indexOf(S.page.id) > -1 ? "This page" + ((r.page_ids || []).length > 1 ? " + others" : "") : "Other pages"); }
+  function updatePluginBadge() { var n = PLUGINS.filter(function (p) { return !p.builtin && !p.custom && rowsFor(p.key).some(function (r) { return r.is_active && appliesHere(r); }); }).length + customRows().filter(function (r) { return r.is_active && appliesHere(r); }).length; var b = $("#bPlugins span"); if (b) b.textContent = n ? "Plugins · " + n : "Plugins"; }
+  function openPlugins() {
+    var acct = S.accounts.find(function (a) { return a.id === (S.site.ad_account_id || (S.product && S.product.ad_account_id)); });
+    $("#plGrid").innerHTML = PLUGINS.map(function (p) {
+      var rows = p.builtin || p.custom ? [] : rowsFor(p.key), on = rows.some(function (r) { return r.is_active && appliesHere(r); }), n = p.custom ? customRows().filter(appliesHere).length : 0;
+      var st = p.builtin ? (acct && acct.meta_pixel_id ? '<span class="st on">ON · ' + esc(acct.meta_pixel_id) + "</span>" : '<span class="st">No pixel yet</span>') : p.custom ? (n ? '<span class="st on">' + n + " snippet" + (n > 1 ? "s" : "") + "</span>" : '<span class="st">Empty</span>') : (on ? '<span class="st on">ON</span>' : rows.length ? '<span class="st">Off / other pages</span>' : '<span class="st">Not set up</span>');
+      var btn = p.builtin ? '<button class="btn sm" data-pl="settings">Change account</button>' : '<button class="btn sm' + (on ? "" : " pri") + '" data-pl="' + p.key + '">' + (p.custom ? "Manage code" : rows.length ? "Manage" : "Set up") + "</button>";
+      return '<div class="plc"><div class="top"><div class="lg" style="background:' + p.color + '">' + esc(p.logo) + "</div><div><b>" + esc(p.name) + "</b><small>" + esc(p.tag) + "</small></div>" + st + "</div><p>" + esc(p.desc) + '</p><div class="row">' + btn + "</div></div>";
+    }).join("");
+    $$("[data-pl]", $("#plGrid")).forEach(function (b) { b.onclick = function () { if (b.dataset.pl === "settings") { $("#ovPlugins").classList.remove("on"); openSettings("general"); } else if (b.dataset.pl === "custom") openCustomCode(); else openPluginSetup(b.dataset.pl); }; });
+    $("#ovPlugins").classList.add("on");
+  }
+  function scopeRadios(cur) {
+    var o = [["pages", "Only this page", "Just " + esc(S.page.title)], ["sites", "This whole website", esc(S.site.name) + ", every page"], ["all", "All my websites", "Every page of every site, including new ones"]];
+    return '<div class="rdo" id="plScope">' + o.map(function (x) { return '<label class="' + (cur === x[0] ? "on" : "") + '"><input type="radio" name="plsc" value="' + x[0] + '"' + (cur === x[0] ? " checked" : "") + "><div>" + x[1] + "<span>" + x[2] + "</span></div></label>"; }).join("") + "</div>";
+  }
+  function wireScope() { $$('#plScope input').forEach(function (i) { i.onchange = function () { $$('#plScope label').forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }; }); }
+  function scopeVal() { var c = $('#plScope input:checked'); return c ? c.value : "sites"; }
+  function scopeRow(sc) { return { scope: sc, site_ids: sc === "sites" ? [S.site.id] : [], page_ids: sc === "pages" ? [S.page.id] : [] }; }
+  var plCur = null;
+  function openPluginSetup(key) {
+    var p = PLUGINS.find(function (x) { return x.key === key; }), rows = rowsFor(key), ex = rows[0], m = ex && marker(ex.code);
+    plCur = { p: p, rows: rows };
+    $("#plgTitle").textContent = p.name;
+    $("#plgBody").innerHTML = '<div class="fld"><label>' + esc(p.ask) + '</label><input id="plId" value="' + esc(m ? m.id : "") + '" placeholder="' + esc(p.ph) + '" autocomplete="off" spellcheck="false"><small>' + esc(p.help) + "</small></div><div class=\"fld\"><label>Runs on</label>" + scopeRadios(ex ? (ex.scope === "all" ? "all" : ex.scope === "pages" ? "pages" : "sites") : "sites") + '</div><label class="fld" style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="plOn" style="width:auto"' + (!ex || ex.is_active ? " checked" : "") + "> Active</label>";
+    $("#plgFoot").innerHTML = (rows.length ? '<button class="btn" id="plDel" style="margin-right:auto;color:var(--danger)">Remove</button>' : "") + '<button class="btn" data-close>Cancel</button><button class="btn pri" id="plSave">Save</button>';
+    wireScope(); $$("#plgFoot [data-close]").forEach(function (b) { b.onclick = function () { $("#ovPlug").classList.remove("on"); }; });
+    $("#plSave").onclick = savePlugin; if ($("#plDel")) $("#plDel").onclick = removePlugin;
+    $("#ovPlug").classList.add("on"); setTimeout(function () { $("#plId").focus(); }, 40);
+  }
+  async function savePlugin() {
+    var p = plCur.p, id = $("#plId").value.trim().replace(p.pat, ""), btn = $("#plSave");
+    if (!id) return toast("Paste the " + esc(p.ask) + " first");
+    btn.disabled = true; var sc = scopeRow(scopeVal()), act = $("#plOn").checked, now = new Date().toISOString();
+    var specs = [{ k: p.key, loc: p.loc, code: p.make(id) }]; if (p.extra) specs.push({ k: p.key + "-ns", loc: p.extra.loc, code: p.extra.make(id) });
+    try {
+      for (var i = 0; i < specs.length; i++) {
+        var sp = specs[i], row = Object.assign({ name: "Plugin: " + p.name + (sp.k.slice(-3) === "-ns" ? " (no-script)" : ""), code: "<!-- rv-plugin:" + sp.k + " id=" + id + " -->\n" + sp.code, location: sp.loc, is_active: act, updated_at: now }, sc);
+        var ex = plCur.rows.find(function (r) { return marker(r.code).key === sp.k; });
+        var res = ex ? await sb.from("tracking_snippets").update(row).eq("id", ex.id) : await sb.from("tracking_snippets").insert(row);
+        if (res.error) throw res.error;
+      }
+      await loadSnips(); $("#ovPlug").classList.remove("on"); openPlugins(); toast("Saved. " + esc(p.name) + " now runs on your live pages. No need to publish again.");
+    } catch (e) { toast("Couldn't save: " + esc(e.message || e)); }
+    btn.disabled = false;
+  }
+  async function removePlugin() {
+    if (!confirm("Remove " + plCur.p.name + " from your websites?")) return;
+    for (var i = 0; i < plCur.rows.length; i++) { var r = await sb.from("tracking_snippets").delete().eq("id", plCur.rows[i].id); if (r.error) return toast("Couldn't remove: " + esc(r.error.message)); }
+    await loadSnips(); $("#ovPlug").classList.remove("on"); openPlugins(); toast(esc(plCur.p.name) + " removed.");
+  }
+  /* header & footer code (HFCM-style) */
+  function openCustomCode(editId) {
+    var rows = customRows(), ed = editId && S.snips.find(function (r) { return r.id === editId; });
+    $("#plgTitle").textContent = "Header & footer code";
+    var list = rows.length ? '<div class="pllist">' + rows.map(function (r) { return '<div class="it"><b title="' + esc(r.name) + '">' + esc(r.name) + '</b><span style="color:var(--tx3)">' + esc(LOCS[r.location] || r.location) + " · " + esc(scopeLabel(r)) + '</span><input type="checkbox" data-ct="' + r.id + '" style="width:auto"' + (r.is_active ? " checked" : "") + ' title="Active"><button class="btn sm" data-ce="' + r.id + '">Edit</button><button class="btn sm" data-cd="' + r.id + '" title="Delete">🗑</button></div>'; }).join("") + "</div>" : '<p class="plnote">Nothing here yet. Add your first snippet below.</p>';
+    $("#plgBody").innerHTML = list + '<div class="fld"><label>' + (ed ? "Edit snippet" : "Add a snippet") + '</label><input id="ccName" placeholder="Name, e.g. Chat widget" value="' + esc(ed ? ed.name : "") + '"></div><div class="fld"><textarea id="ccCode" spellcheck="false" style="min-height:130px;font-family:ui-monospace,Menlo,monospace;font-size:12px" placeholder="Paste your script or HTML here">' + esc(ed ? ed.code : "") + '</textarea></div><div class="row2"><div class="fld"><label>Place it in</label><select id="ccLoc">' + Object.keys(LOCS).map(function (k) { return '<option value="' + k + '"' + (ed && ed.location === k ? " selected" : "") + ">" + esc(LOCS[k]) + "</option>"; }).join("") + '</select></div><div class="fld"><label>&nbsp;</label><label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0"><input type="checkbox" id="ccOn" style="width:auto"' + (!ed || ed.is_active ? " checked" : "") + "> Active</label></div></div><div class=\"fld\"><label>Runs on</label>" + scopeRadios(ed ? (ed.scope === "all" ? "all" : ed.scope === "pages" ? "pages" : "sites") : "sites") + "</div>";
+    $("#plgFoot").innerHTML = '<button class="btn" data-close>Close</button><button class="btn pri" id="ccSave">' + (ed ? "Save changes" : "Add snippet") + "</button>";
+    wireScope(); $$("#plgFoot [data-close]").forEach(function (b) { b.onclick = function () { $("#ovPlug").classList.remove("on"); openPlugins(); }; });
+    $$("[data-ce]", $("#plgBody")).forEach(function (b) { b.onclick = function () { openCustomCode(b.dataset.ce); }; });
+    $$("[data-cd]", $("#plgBody")).forEach(function (b) { b.onclick = async function () { if (!confirm("Delete this snippet?")) return; var r = await sb.from("tracking_snippets").delete().eq("id", b.dataset.cd); if (r.error) return toast("Couldn't delete: " + esc(r.error.message)); await loadSnips(); openCustomCode(); }; });
+    $$("[data-ct]", $("#plgBody")).forEach(function (b) { b.onchange = async function () { var r = await sb.from("tracking_snippets").update({ is_active: b.checked, updated_at: new Date().toISOString() }).eq("id", b.dataset.ct); if (r.error) toast("Couldn't update: " + esc(r.error.message)); else await loadSnips(); }; });
+    $("#ccSave").onclick = async function () {
+      var name = $("#ccName").value.trim(), code = $("#ccCode").value; if (!name) return toast("Give the snippet a name"); if (!code.trim()) return toast("Paste the code first");
+      if (marker(code)) return toast("That code is managed by a plugin above");
+      var row = Object.assign({ name: name, code: code, location: $("#ccLoc").value, is_active: $("#ccOn").checked, updated_at: new Date().toISOString() }, scopeRow(scopeVal()));
+      var res = ed ? await sb.from("tracking_snippets").update(row).eq("id", ed.id) : await sb.from("tracking_snippets").insert(row);
+      if (res.error) return toast("Couldn't save: " + esc(res.error.message));
+      await loadSnips(); toast("Saved. It runs on your live pages. No need to publish again."); openCustomCode();
+    };
+    $("#ovPlug").classList.add("on");
+  }
+
   /* ---- custom code editor + HTML import ---- */
   var codeTarget = null;
   function openCode(comp) {
@@ -1233,6 +1354,7 @@ input,select,textarea{font:inherit}
     $("#bPublish").onclick = publish;
     $("#bPreview").onclick = openPreview;
     $("#bSettings").onclick = function () { openSettings(); };
+    $("#bPlugins").onclick = openPlugins;
     $("#pageSel").onchange = function () { switchPage(this.value); };
     $("#bSearch").oninput = function () { filterBlocks(this.value); };
     $("#blocks").addEventListener("click", function (e) { var el = e.target.closest(".gjs-block"); if (el) addBlockByClick($(".gjs-block-label", el).textContent.trim()); });
