@@ -231,7 +231,12 @@
     var wa = String(ctx.whatsapp || "").replace(/\D/g, "");
     var waHref = wa ? "https://wa.me/" + wa : "https://wa.me/234";
     var B = [];
-    function add(id, label, cat, icon, content, extra) { B.push(Object.assign({ id: id, label: label, category: cat, media: icon, content: content }, extra || {})); }
+    function add(id, label, cat, icon, content, extra) {
+      // widget = a bare element that can sit inside any column (the builder wraps it in a section when dropped at page level)
+      // top = a full-width section / fixed bar that only ever lives at page level
+      var top = !(extra && extra.widget) && typeof content === "string" && /^\s*<(section|header|footer)\b|^\s*<div class="rv-(top|sticky|popup)|^\s*<a class="rv-wa/.test(content);
+      B.push(Object.assign({ id: id, label: label, category: cat, media: icon, content: content, widget: false, top: top }, extra || {}));
+    }
 
     /* Layout */
     add("section", "Section", "Layout", I.section, '<section class="rv-sec"><div class="rv-wrap"><h2 class="rv-h2">Section title</h2><p class="rv-p">Drop widgets here or edit this text.</p></div></section>');
@@ -241,12 +246,12 @@
     add("divider", "Divider", "Layout", I.hr, '<hr class="rv-hr">');
 
     /* Basic */
-    add("heading", "Heading", "Basic", I.heading, '<h2 class="rv-h2">Your heading goes here</h2>');
-    add("text", "Text", "Basic", I.text, '<p class="rv-p">Write something persuasive. Double-click to edit this text, select words to make them bold or add a link.</p>');
-    add("image", "Image", "Basic", I.image, { type: "image", attributes: { src: PH, alt: "", class: "rv-img" }, activeOnRender: 0 });
-    add("button", "Button", "Basic", I.button, '<a class="rv-btn" href="#order">Order now</a>');
-    add("video", "Video", "Media", I.video, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-video" data-src="https://www.youtube.com/watch?v=dQw4w9WgXcQ" data-ratio="16:9">' + videoEmbed("https://www.youtube.com/watch?v=dQw4w9WgXcQ") + "</div></div></section>");
-    add("checklist", "Checklist", "Basic", I.list, '<ul class="rv-list"><li>First benefit your customer gets</li><li>Second benefit that removes a doubt</li><li>Third benefit with a clear result</li></ul>');
+    add("heading", "Heading", "Basic", I.heading, '<h2 class="rv-h2">Your heading goes here</h2>', { widget: true });
+    add("text", "Text", "Basic", I.text, '<p class="rv-p">Write something persuasive. Double-click to edit this text, select words to make them bold or add a link.</p>', { widget: true });
+    add("image", "Image", "Basic", I.image, { type: "image", attributes: { src: PH, alt: "", class: "rv-img" }, activeOnRender: 0 }, { widget: true });
+    add("button", "Button", "Basic", I.button, '<a class="rv-btn" href="#order">Order now</a>', { widget: true });
+    add("video", "Video", "Media", I.video, '<div class="rv-video" data-src="" data-ratio="16:9">' + videoEmbed("") + "</div>", { widget: true });
+    add("checklist", "Checklist", "Basic", I.list, '<ul class="rv-list"><li>First benefit your customer gets</li><li>Second benefit that removes a doubt</li><li>Third benefit with a clear result</li></ul>', { widget: true });
 
     /* Sections */
     add("announce", "Announcement bar", "Sections", I.megaphone, '<div class="rv-top">🔥 Pay on delivery &middot; Free delivery in Lagos &middot; Limited stock</div>');
@@ -279,17 +284,17 @@
     /* Order & payment (these connect to your Orders tab) */
     add("order-form", "Order form", "Order & Payment", I.form,
       '<section class="rv-sec alt" id="order"><div class="rv-wrap narrow"><div class="rv-center"><span class="rv-eyebrow">Order now</span><h2 class="rv-h2">Get ' + esc(P) + ' delivered</h2></div><div data-rv-form="1"></div></div></section>');
-    add("order-form-only", "Order form (only)", "Order & Payment", I.form, { type: "rv-form" });
-    add("bank-card", "Bank transfer details", "Order & Payment", I.bank, { type: "rv-bank" });
+    add("order-form-only", "Order form (only)", "Order & Payment", I.form, { type: "rv-form" }, { widget: true });
+    add("bank-card", "Bank transfer details", "Order & Payment", I.bank, { type: "rv-bank" }, { widget: true });
     add("thanks-hero", "Thank-you message", "Order & Payment", I.check,
       '<section class="rv-sec rv-center"><div class="rv-wrap narrow"><div class="rv-ico" style="width:72px;height:72px;font-size:36px;border-radius:50%">✓</div><h1 class="rv-h2">Thank you, your order is in!</h1><p class="rv-lead">A team member will contact you shortly to confirm your order and delivery details.</p><div data-rv-bank="1"></div><p class="rv-sub">Reference: <b data-rv-ref="1"></b></p></div></section>');
 
     /* Media */
-    add("video-vertical", "Video - vertical", "Media", I.video, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-video" data-src="https://www.youtube.com/shorts/aqz-KE-bpKQ" data-ratio="9:16">' + videoEmbed("https://www.youtube.com/shorts/aqz-KE-bpKQ") + "</div></div></section>");
-    add("gallery", "Image gallery", "Media", I.grid, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-center"><h2 class="rv-h2">Gallery</h2></div><div class="rv-gal">' + [1, 2, 3, 4, 5, 6].map(function () { return '<img src="' + PH + '" alt="">'; }).join("") + "</div></div></section>");
-    add("carousel", "Image slider", "Media", I.image, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-car">' + [1, 2, 3, 4, 5].map(function () { return '<div><img src="' + PH + '" alt=""></div>'; }).join("") + '</div><p class="rv-sub rv-center">Swipe to see more →</p></div></section>');
-    add("map", "Map", "Media", I.map, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-map" data-q="Ikeja, Lagos, Nigeria">' + mapEmbed("Ikeja, Lagos, Nigeria") + "</div></div></section>");
-    add("embed", "Custom HTML / embed", "Media", I.code, '<div class="rv-custom" data-rv-html="1"><div class="rv-note">Custom HTML area. Select it, then click “Edit code” on the right to paste your HTML, a widget, a form or any embed.</div></div>');
+    add("video-vertical", "Video - vertical", "Media", I.video, '<div class="rv-video" data-src="" data-ratio="9:16">' + videoEmbed("") + "</div>", { widget: true });
+    add("gallery", "Image gallery", "Media", I.grid, '<div class="rv-gal">' + [1, 2, 3, 4, 5, 6].map(function () { return '<img src="' + PH + '" alt="">'; }).join("") + "</div>", { widget: true });
+    add("carousel", "Image slider", "Media", I.image, '<div class="rv-car">' + [1, 2, 3, 4, 5].map(function () { return '<div><img src="' + PH + '" alt=""></div>'; }).join("") + "</div>", { widget: true });
+    add("map", "Map", "Media", I.map, '<div class="rv-map" data-q="Ikeja, Lagos, Nigeria">' + mapEmbed("Ikeja, Lagos, Nigeria") + "</div>", { widget: true });
+    add("embed", "Custom HTML / embed", "Media", I.code, '<div class="rv-custom" data-rv-html="1"><div class="rv-note">Custom HTML area. Paste your HTML, a form, a widget or any embed in the “HTML code” box on the right.</div></div>', { widget: true });
 
     /* More sections */
     add("navbar", "Header / menu", "Sections", I.bar, '<header class="rv-nav"><a class="logo" href="#">' + esc(ctx.siteName || "Your Brand") + '</a><input type="checkbox" id="rvnav" class="rv-t"><label for="rvnav" class="rv-burger">☰</label><nav><a href="#features">Features</a><a href="#reviews">Reviews</a><a href="#faq">FAQ</a><a class="rv-btn" href="#order">Order now</a></nav></header>');
@@ -299,9 +304,9 @@
     add("logos", "Logo / press strip", "Sections", I.stats, '<section class="rv-sec tight"><div class="rv-wrap"><p class="rv-sub rv-center" style="margin:0 0 16px">As seen on</p><div class="rv-logos"><span>BRAND ONE</span><span>Brand Two</span><span>BRAND THREE</span><span>Brand Four</span></div></div></section>');
     add("compare", "Comparison table", "Sections", I.grid, '<section class="rv-sec"><div class="rv-wrap narrow"><div class="rv-center"><h2 class="rv-h2">Why choose us</h2></div><table class="rv-cmp"><tr><th></th><th>Us</th><th>Others</th></tr><tr><td>Pay on delivery</td><td>✅</td><td>❌</td></tr><tr><td>Fast delivery</td><td>✅</td><td>❌</td></tr><tr><td>Money-back promise</td><td>✅</td><td>❌</td></tr></table></div></section>');
     add("progress", "Stock / progress bars", "Sections", I.stats, '<section class="rv-sec tight"><div class="rv-wrap narrow"><div class="rv-barl"><span>Stock left</span><span>Only 7 left</span></div><div class="rv-bar"><i style="width:18%"></i></div><div class="rv-barl"><span>Orders today</span><span>83%</span></div><div class="rv-bar"><i style="width:83%"></i></div></div></section>');
-    add("notice", "Notice box", "Basic", I.megaphone, '<section class="rv-sec tight"><div class="rv-wrap narrow"><div class="rv-note"><b>Good to know:</b> Delivery takes 24 to 48 hours in Lagos.</div></div></section>');
+    add("notice", "Notice box", "Basic", I.megaphone, '<div class="rv-note"><b>Good to know:</b> Delivery takes 24 to 48 hours in Lagos.</div>', { widget: true });
     add("contact", "Contact buttons", "Sections", I.chat, '<section class="rv-sec tight rv-center"><div class="rv-wrap narrow"><h2 class="rv-h2">Questions? Talk to us</h2><div class="rv-contact"><a class="rv-btn" href="tel:+' + (wa || "234") + '">📞 Call us</a><a class="rv-btn ghost" href="' + waHref + '" target="_blank" rel="noopener">💬 WhatsApp</a><a class="rv-btn ghost" href="mailto:hello@example.com">✉️ Email</a></div></div></section>');
-    add("social", "Social icons", "Basic", I.chat, '<section class="rv-sec tight"><div class="rv-wrap"><div class="rv-social"><a href="https://facebook.com" target="_blank" rel="noopener">f</a><a href="https://instagram.com" target="_blank" rel="noopener">ig</a><a href="https://tiktok.com" target="_blank" rel="noopener">tt</a><a href="https://youtube.com" target="_blank" rel="noopener">yt</a><a href="' + waHref + '" target="_blank" rel="noopener">wa</a></div></div></section>');
+    add("social", "Social icons", "Basic", I.chat, '<div class="rv-social"><a href="https://facebook.com" target="_blank" rel="noopener">f</a><a href="https://instagram.com" target="_blank" rel="noopener">ig</a><a href="https://tiktok.com" target="_blank" rel="noopener">tt</a><a href="https://youtube.com" target="_blank" rel="noopener">yt</a><a href="' + waHref + '" target="_blank" rel="noopener">wa</a></div>', { widget: true });
     add("iconbox-row", "Icon boxes (4)", "Sections", I.grid, '<section class="rv-sec"><div class="rv-wrap"><div class="rv-cols c4 top"><div class="rv-center"><div class="rv-ico">🚚</div><h3 class="rv-h3">Fast delivery</h3><p class="rv-p">Nationwide</p></div><div class="rv-center"><div class="rv-ico">💳</div><h3 class="rv-h3">Pay on delivery</h3><p class="rv-p">No risk</p></div><div class="rv-center"><div class="rv-ico">🔒</div><h3 class="rv-h3">Secure</h3><p class="rv-p">Private details</p></div><div class="rv-center"><div class="rv-ico">💬</div><h3 class="rv-h3">Support</h3><p class="rv-p">On WhatsApp</p></div></div></div></section>');
 
     /* Interactive */
