@@ -4,6 +4,20 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+// Caller must be the service role (internal) or a signed-in dashboard user --
+// the public anon key alone is not enough.
+type Caller = { service: boolean; company_id: string | null; role: string | null };
+async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  const { data } = await admin.auth.getUser(token);
+  if (!data?.user) return null;
+  const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
+  if (!p?.company_id) return null;
+  return { service: false, company_id: p.company_id, role: p.role };
+}
+
 Deno.serve(async (req: Request) => {
   // CORS Preflight
   if (req.method === 'OPTIONS') {
@@ -25,6 +39,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const caller = await getCaller(req, supabase);
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not signed in' }), { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+    }
     
     // Parse multipart form data
     const formData = await req.formData();
@@ -67,6 +85,18 @@ Deno.serve(async (req: Request) => {
     const safeStem = file.name.replace(/[^a-z0-9.]/gi, '-');
     const filename = `${timestamp}-${random}-${safeStem}`;
     const bucketPath = `creative-assets/${assetType}s/${filename}`;
+
+    // Tenant check: the ad account (and product, if given) must belong to the caller's company.
+    const { data: ownAcct } = await supabase.from('ad_accounts').select('company_id').eq('id', adAccountId).maybeSingle();
+    if (!ownAcct || (!caller.service && ownAcct.company_id !== caller.company_id)) {
+      return new Response(JSON.stringify({ error: 'Ad account not found' }), { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+    }
+    if (productId) {
+      const { data: ownProd } = await supabase.from('products').select('company_id').eq('id', productId).maybeSingle();
+      if (!ownProd || (!caller.service && ownProd.company_id !== caller.company_id)) {
+        return new Response(JSON.stringify({ error: 'Product not found' }), { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+    }
 
     // Upload to Supabase Storage
     const arrayBuffer = await file.arrayBuffer();

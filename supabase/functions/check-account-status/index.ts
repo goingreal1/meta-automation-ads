@@ -4,6 +4,20 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+// Caller must be the service role (internal) or a signed-in dashboard user --
+// the public anon key alone is not enough.
+type Caller = { service: boolean; company_id: string | null; role: string | null };
+async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  const { data } = await admin.auth.getUser(token);
+  if (!data?.user) return null;
+  const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
+  if (!p?.company_id) return null;
+  return { service: false, company_id: p.company_id, role: p.role };
+}
 const META_GRAPH_BASE = "https://graph.facebook.com/v20.0";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -32,11 +46,13 @@ Deno.serve(async (req: Request) => {
   if (!META_ACCESS_TOKEN) return json({ error: "META_ACCESS_TOKEN secret is not set yet in Supabase." }, 500);
 
   try {
+    const caller = await getCaller(req, supabase);
+    if (!caller) return json({ error: "Not signed in" }, 401);
     const body = await req.json().catch(() => ({}));
     if (!body.ad_account_id) return json({ error: "Missing ad_account_id in request body." }, 400);
 
     const { data: accountRow } = await supabase.from("ad_accounts").select("*").eq("id", body.ad_account_id).maybeSingle();
-    if (!accountRow) return json({ error: `No ad_accounts row found for id ${body.ad_account_id}` }, 404);
+    if (!accountRow || (!caller.service && accountRow.company_id !== caller.company_id)) return json({ error: `No ad_accounts row found for id ${body.ad_account_id}` }, 404);
 
     const metaAdAccountId = String(accountRow.meta_ad_account_id).replace(/^act_/, "");
     const fields = "account_id,name,balance,amount_spent,spend_cap,currency,funding_source_details,account_status";
