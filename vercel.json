@@ -48,5 +48,15 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/s/:slug",
+      "destination": "/site.html"
+    },
+    {
+      "source": "/s/:slug/:page",
+      "destination": "/site.html"
+    }
   ]
 }
