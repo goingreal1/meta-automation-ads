@@ -921,7 +921,8 @@ input,select,textarea{font:inherit}
     if (k !== "image") h += sfColor(isBtn ? "Button colour" : "Background colour", "background-color", cs, own);
     h += "</div>";
     // text
-    if (textual) h += '<div class="ss"><div class="sst">Text</div><div class="row2">' + sfNum("Size", "font-size", cs, own, "px") + '<div class="sf"><label>Weight</label><select data-s="font-weight" data-k="sel">' + [["", "Default"], ["400", "Normal"], ["500", "Medium"], ["600", "Semi-bold"], ["700", "Bold"], ["800", "Extra bold"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["font-weight"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div></div>";
+    if (textual) h += '<div class="ss"><div class="sst">Text</div><div class="row2">' + sfNum("Size", "font-size", cs, own, "px") + '<div class="sf"><label>Weight</label><select data-s="font-weight" data-k="sel">' + [["", "Default"], ["400", "Normal"], ["500", "Medium"], ["600", "Semi-bold"], ["700", "Bold"], ["800", "Extra bold"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["font-weight"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div>" +
+      '<div class="row2"><div class="sf"><label>Capitals</label><select data-s="text-transform" data-k="sel">' + [["", "Default"], ["uppercase", "UPPERCASE"], ["capitalize", "Capitalize Words"], ["none", "As typed"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["text-transform"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select></div><div class="sf"><label>Font</label><select data-s="font-family" data-k="sel">' + [["", "Default"], ["var(--fh)", "Heading font"], ["var(--fb)", "Body font"]].map(function (o) { return '<option value="' + o[0] + '"' + (clean(own["font-family"]) === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div></div></div>";
     // size
     var wDecl = clean(own.width), wUnit = /%$/.test(wDecl) ? "%" : "px";
     h += '<div class="ss"><div class="sst">Size</div><div class="sf"><label>Width</label><div class="nf"><input type="number" step="1" min="0" data-s="width" data-k="num" data-wu="1" value="' + (wDecl && !/fit|auto/.test(wDecl) ? px(wDecl) : "") + '" placeholder="' + px(cs.width) + '"><select data-wunit="1"><option' + (wUnit === "px" ? " selected" : "") + '>px</option><option' + (wUnit === "%" ? " selected" : "") + ">%</option></select>" + (wDecl ? '<button class="cx" data-clear="width" title="Reset to default">&times;</button>' : "") + '</div><div class="chips2">' + ["25%", "50%", "75%", "100%"].map(function (w) { return '<button data-wchip="' + w + '">' + w + "</button>"; }).join("") + "</div></div>";
@@ -1333,6 +1334,7 @@ input,select,textarea{font:inherit}
   function applyTemplate(t) {
     var html = RB.templateHtml(t, blockCtx());
     S.editor.setComponents(html); S.editor.setStyle("");
+    if (t.theme) { Object.assign(S.theme, t.theme); applyCanvasTheme(); }
     if (t.kind === "thanks" && S.page.kind !== "thanks") { S.page.kind = "thanks"; sb.from("site_pages").update({ kind: "thanks" }).eq("id", S.page.id).then(function () {}); }
     S.editor.UndoManager.clear(); S.loadedProject = true; S.dirty = true; saveDraft();
   }
