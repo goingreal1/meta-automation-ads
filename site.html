@@ -8,6 +8,7 @@
 <script>if(window.RV_SITE_ORIGIN&&location.origin!==window.RV_SITE_ORIGIN&&/^\/s\//.test(location.pathname))location.replace(window.RV_SITE_ORIGIN+location.pathname+location.search+location.hash);</script>
 <link rel="stylesheet" href="/rv/form.css">
 <script src="/rv/form.js"></script>
+<script src="/rv/blocks.js"></script>
 <style id="rv-boot">
 html,body{margin:0;padding:0;background:#fff;}
 #rv-boot-spin{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fff;z-index:99999;transition:opacity .2s;}
@@ -121,6 +122,7 @@ html,body{margin:0;padding:0;background:#fff;}
     var fonts = (site.settings && site.settings.theme && site.settings.theme.fonts_url) || "";
     if (fonts) { var fl = document.createElement("link"); fl.rel = "stylesheet"; fl.href = fonts; document.head.appendChild(fl); }
 
+    if (window.RVBlocks) { var bs = document.createElement("style"); bs.id = "rv-base-css"; bs.textContent = window.RVBlocks.BASE_CSS; document.head.appendChild(bs); }
     var st = document.createElement("style"); st.id = "rv-page-css"; st.textContent = page.css || ""; document.head.appendChild(st);
 
     if (seo.head_html) inject(document.head, seo.head_html);
