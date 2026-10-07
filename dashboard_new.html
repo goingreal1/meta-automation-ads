@@ -7831,7 +7831,7 @@ async function renderWebsites(el) {
     sbQuery("tracking_snippets", "select=*&order=created_at.desc"),
     sbQuery("orders", "select=site_id,order_value_naira,order_status&site_id=not.is.null&limit=5000"),
     sbQuery("products", "select=id,product_name,is_service&is_active=eq.true&order=product_name", { allAccounts: true }),
-    sbQuery("site_domains", "select=hostname,site_id,status").catch(() => []),
+    sbQuery("site_domains", "select=id,hostname,site_id,status&order=created_at.asc").catch(() => []),
   ]);
   bvWebData = { sites: sites || [], pages: pages || [], snippets: snippets || [], orders: orders || [], products: products || [], domains: domains || [] };
   bvWebDraw(el);
@@ -7875,11 +7875,51 @@ function bvWebSitesHtml() {
       <div class="ws-act">
         <button class="btn btn-a" onclick="bvWebEdit('${s.id}')">Edit</button>
         ${s.status === "published" ? `<a class="btn btn-g" href="${escH(url)}" target="_blank" rel="noopener" style="text-decoration:none;">View</a>` : ""}
-        <button class="btn btn-g" onclick="bvWebCopy('${escH(url)}')">Copy link</button>
+        <button class="btn btn-g" onclick="bvWebLinks('${s.id}')" title="Links to every page, on your domain or ours">🔗 Links</button>
         <button class="btn btn-g" onclick="bvWebAdvertise('${s.id}')" title="Run Meta ads that send people to this site">📣 Advertise</button>
         <button class="btn btn-g" onclick="bvWebDelete('${s.id}')" title="Delete">🗑</button>
       </div></div>`;
   }).join("")}</div>`;
+}
+
+// Links to every page of a site, on the platform address or any of the company's domains.
+let bvLinkKey = "";
+function bvWebLinkUrl(site, slug, domId) {
+  const d = domId ? (bvWebData.domains || []).find(x => x.id === domId) : null;
+  if (!d) return window.RV_siteUrl(site.slug, slug);
+  if (d.site_id === site.id) return "https://" + d.hostname + (slug ? "/" + slug : "");
+  return "https://" + d.hostname + "/s/" + site.slug + (slug ? "/" + slug : "");
+}
+function bvWebLinks(id, keepKey) {
+  const s = bvWebData.sites.find(x => x.id === id); if (!s) return;
+  const doms = bvWebData.domains || [];
+  if (!keepKey) bvLinkKey = (doms.find(d => d.site_id === s.id && d.status === "active") || {}).id || "";
+  const d = doms.find(x => x.id === bvLinkKey);
+  const pgs = bvWebData.pages.filter(p => p.site_id === s.id).sort((a, b) => (a.slug === "" ? -1 : b.slug === "" ? 1 : 0));
+  const body = `
+    <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvWebOverlay')">✕</button>
+    <div class="ph-title" style="margin-bottom:4px;">${escH(s.name)} · links</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Copy the link of any page. Pick an address first: ours, or one of your own domains.</div>
+    <div class="ws-field"><label>Address</label><select id="wlAddr" onchange="bvLinkKey=this.value;bvWebLinks('${s.id}',true)">
+      <option value="">${escH((window.RV_SITE_ORIGIN || location.origin).replace(/^https?:\/\//, ""))} (platform address)</option>
+      ${doms.map(x => `<option value="${x.id}" ${x.id === bvLinkKey ? "selected" : ""}>${escH(x.hostname)}${x.status === "active" ? "" : " (not live yet)"}${x.site_id === s.id ? " — main site" : ""}</option>`).join("")}
+    </select></div>
+    ${!doms.length ? `<div style="font-size:11.5px;color:var(--muted);margin:-4px 0 10px;">No domain connected yet. Add one in <a href="javascript:void(0)" onclick="bvCloseSheet('bvWebOverlay');bvSetupGo('settings','domains')" style="color:var(--accent);">Settings → Domains</a>.</div>` : ""}
+    ${d && d.status !== "active" ? `<div class="msg err" style="display:block;margin-bottom:10px;">This domain isn't live yet. Finish its DNS record in Settings → Domains and press Check.</div>` : ""}
+    ${d && d.site_id !== s.id ? `<div style="margin-bottom:12px;"><button class="btn btn-a" id="wlMain" style="width:auto;" onclick="bvWebMakeMain('${s.id}','${d.id}')">Make this the main site on ${escH(d.hostname)}</button>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${d.site_id ? "Another site is the main one there now. " : ""}Until then this site opens at ${escH(d.hostname)}/s/${escH(s.slug)}.</div></div>` : ""}
+    ${d && d.site_id === s.id ? `<div style="color:var(--accent);font-size:12px;margin-bottom:10px;">✓ ${escH(d.hostname)} opens this site at its root.</div>` : ""}
+    ${pgs.map(p => { const u = bvWebLinkUrl(s, p.slug, bvLinkKey); return `<div style="margin-bottom:10px;">
+      <div style="font-size:12.5px;font-weight:700;">${escH(p.title)}${p.kind === "thanks" ? " · thank-you" : ""} ${p.published_at ? "" : `<span style="color:var(--warn);font-weight:500;">(draft: publish to open)</span>`}</div>
+      <div style="display:flex;gap:6px;margin-top:3px;"><input readonly value="${escH(u)}" style="flex:1;min-width:0;" onclick="this.select()"><button class="btn btn-g" style="width:auto;" onclick="bvWebCopy('${escH(u)}')">Copy</button>${p.published_at ? `<a class="btn btn-g" style="width:auto;text-decoration:none;" href="${escH(u)}" target="_blank" rel="noopener">Open</a>` : ""}</div></div>`; }).join("")}`;
+  bvOpenSheet("bvWebOverlay", body, 520);
+}
+async function bvWebMakeMain(siteId, domId) {
+  const btn = document.getElementById("wlMain"); if (btn) btn.disabled = true;
+  const r = await sbFn("manage-domain", { action: "assign", id: domId, site_id: siteId });
+  if (r.error) { bvToast(r.error, "err"); if (btn) btn.disabled = false; return; }
+  const d = bvWebData.domains.find(x => x.id === domId); if (d) d.site_id = siteId;
+  bvToast("Done. The domain now opens this site."); bvWebLinks(siteId, true); bvWebDraw(bvWebHost);
 }
 function bvWebCopy(t) { try { navigator.clipboard.writeText(t); bvToast("Link copied"); } catch (e) { prompt("Copy this link", t); } }
 async function bvWebAdvertise(id) {

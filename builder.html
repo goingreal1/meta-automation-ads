@@ -328,7 +328,12 @@ input,select,textarea{font:inherit}
   <div class="dbd">
     <div data-sp="general">
       <div class="fld"><label>Site name</label><input id="sName"></div>
-      <div class="fld"><label>Site address</label><div class="copyrow"><input id="sUrl" readonly><button class="btn" id="sCopy">Copy</button></div><small id="sUrlNote">Your site goes live at this address when you publish.</small></div>
+      <div class="fld"><label>Site address</label>
+        <select id="sAddr"></select>
+        <div class="copyrow" style="margin-top:8px"><input id="sUrl" readonly><button class="btn" id="sCopy">Copy</button></div>
+        <small id="sUrlNote">Your site goes live at this address when you publish.</small>
+        <div id="sMain" style="margin-top:8px"></div>
+        <div id="sLinks" style="margin-top:10px"></div></div>
       <div class="fld"><label>Product this site sells</label><select id="sProduct"></select><small>The built-in order form uses this product's price, packages and payment details. Every order lands in your Orders tab.</small></div>
       <div class="fld"><label>Ad account &amp; pixel</label><select id="sAdAcct"></select><small id="sPixelNote">Pick the ad account whose Meta Pixel this site should use.</small></div>
       <div class="fld"><label>Purchase tracking</label><select id="sPurchase"><option value="submit">Count a Purchase after the customer orders: on your thank-you page if you have one (Meta, TikTok, Google)</option><option value="none">Do not send a Purchase event</option></select><small>Orders are always saved. This controls the Purchase event sent to every pixel on the page, with the price of the package the customer picked (plus the server-side Meta event when an ad account is linked).</small></div>
@@ -465,7 +470,7 @@ input,select,textarea{font:inherit}
       sb.from("ad_accounts").select("id,name,nickname,meta_pixel_id").order("created_at")
     ]);
     S.pages = pg.data || []; S.products = pr.data || []; S.accounts = ac.data || [];
-    try { var dm = await sb.from("site_domains").select("hostname,site_id,status").eq("status", "active"); S.domains = dm.data || []; } catch (e) { S.domains = []; }
+    try { var dm = await sb.from("site_domains").select("id,hostname,site_id,status").order("created_at"); S.domains = dm.data || []; } catch (e) { S.domains = []; }
     if (!S.pages.length) {
       var ins = await sb.from("site_pages").insert({ site_id: siteId, slug: "", title: "Home" }).select("*").single();
       if (ins.error) return fatal("Couldn't create the first page.");
@@ -1977,13 +1982,24 @@ input,select,textarea{font:inherit}
     } catch (e) { toast("Couldn't publish: " + esc(e.message || e)); }
     btn.disabled = false; btn.textContent = "Publish";
   }
-  // A live custom domain that shows this site is its main address; any other live domain of the company serves it at /s/<slug>.
+  // Which address the links in the builder use: the platform address, or one of the company's domains.
+  // A domain whose "main site" is this one serves it at the root; any other site of the company lives at <domain>/s/<slug>.
   function siteDomain() { return (S.domains || []).find(function (d) { return d.site_id === S.site.id; }) || null; }
-  function liveUrl(p) {
-    var d = siteDomain();
-    if (d) return "https://" + d.hostname + (p && p.slug ? "/" + p.slug : "");
-    return window.RV_siteUrl(S.site.slug, p && p.slug);
+  function addrKey() {
+    var k = null;
+    try { k = localStorage.getItem("rv_addr_" + S.site.id); } catch (e) {}
+    if (k !== null && (k === "" || (S.domains || []).some(function (d) { return d.id === k; }))) return k;
+    var d = siteDomain(); return d && d.status === "active" ? d.id : "";
   }
+  function setAddrKey(k) { try { localStorage.setItem("rv_addr_" + S.site.id, k); } catch (e) {} }
+  function urlFor(slug, key) {
+    key = key === undefined ? addrKey() : key;
+    var d = key ? (S.domains || []).find(function (x) { return x.id === key; }) : null;
+    if (!d) return window.RV_siteUrl(S.site.slug, slug);
+    if (d.site_id === S.site.id) return "https://" + d.hostname + (slug ? "/" + slug : "");
+    return "https://" + d.hostname + "/s/" + S.site.slug + (slug ? "/" + slug : "");
+  }
+  function liveUrl(p) { return urlFor(p && p.slug); }
   function copy(t) { try { navigator.clipboard.writeText(t); } catch (e) {} }
 
   /* ---- image uploads -> Supabase storage (public bucket site-media) ---- */
@@ -2041,6 +2057,7 @@ input,select,textarea{font:inherit}
     });
     $("#sSave").onclick = saveSettings;
     $("#sCopy").onclick = function () { copy($("#sUrl").value); toast("Link copied"); };
+    $("#sAddr").onchange = function () { setAddrKey($("#sAddr").value); renderAddress(); renderPages(); };
     // preview
     $("#pvClose").onclick = function () { $("#pv").classList.remove("on"); $("#pvFrame").srcdoc = ""; };
     $$("[data-pdev]").forEach(function (b) {
@@ -2096,7 +2113,7 @@ input,select,textarea{font:inherit}
     var el = $("#pageList"), h = "";
     S.pages.forEach(function (p) {
       var st = !p.published_at ? ["Draft", ""] : (new Date(p.updated_at) - new Date(p.published_at) > 2000 ? ["Changes", "chg"] : ["Live", "live"]);
-      h += '<div class="prow' + (p.id === S.page.id ? " on" : "") + '" data-id="' + p.id + '"><div style="flex:1;min-width:0"><div class="nm">' + esc(p.title) + (p.kind === "thanks" ? " ·  thank-you" : "") + '</div><div class="sl">/s/' + esc(S.site.slug) + (p.slug ? "/" + esc(p.slug) : "") + '</div></div><span class="st ' + st[1] + '">' + st[0] + "</span></div>";
+      h += '<div class="prow' + (p.id === S.page.id ? " on" : "") + '" data-id="' + p.id + '"><div style="flex:1;min-width:0"><div class="nm">' + esc(p.title) + (p.kind === "thanks" ? " ·  thank-you" : "") + '</div><div class="sl">' + esc(urlFor(p.slug).replace(/^https?:\/\//, "")) + '</div></div><button class="ib" data-copy="' + esc(urlFor(p.slug)) + '" title="Copy this page\'s link" style="flex:none"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></svg></button><span class="st ' + st[1] + '">' + st[0] + "</span></div>";
     });
     var thp = S.pages.filter(function (x) { return x.kind === "thanks"; }), live = thp.filter(function (x) { return x.published_at; });
     var cfg = (S.site && S.site.settings) || {};
@@ -2105,6 +2122,7 @@ input,select,textarea{font:inherit}
     h += '<button class="btn addp" id="addPage">+ Add page</button><button class="btn addp" id="addThanks" style="margin-top:8px">+ Add thank-you page</button>';
     el.innerHTML = h;
     $$(".prow", el).forEach(function (r) { r.onclick = function () { switchPage(r.dataset.id); }; });
+    $$("[data-copy]", el).forEach(function (b) { b.onclick = function (e) { e.stopPropagation(); copy(b.dataset.copy); toast("Link copied"); }; });
     $("#addPage").onclick = function () { openTemplates(false, "page"); };
     $("#addThanks").onclick = function () { openTemplates(false, "thanks"); };
   }
@@ -2156,10 +2174,35 @@ input,select,textarea{font:inherit}
 
   /* ---- settings ---- */
   var COLORS = ["#1a7a5e", "#0f766e", "#2563eb", "#7c3aed", "#db2777", "#e11d48", "#ea580c", "#ca8a04", "#111827"];
+  function renderAddress() {
+    var s = S.site, key = addrKey(), doms = S.domains || [];
+    $("#sAddr").innerHTML = '<option value="">' + esc(window.RV_siteUrl("x").replace(/^https?:\/\//, "").replace(/\/s\/x$/, "")) + ' (platform address)</option>' + doms.map(function (d) { return '<option value="' + d.id + '"' + (d.id === key ? " selected" : "") + ">" + esc(d.hostname) + (d.status === "active" ? "" : " (not live yet)") + (d.site_id === s.id ? " — main site" : "") + "</option>"; }).join("");
+    $("#sAddr").value = key;
+    $("#sUrl").value = urlFor("");
+    var d = key ? doms.find(function (x) { return x.id === key; }) : null, main = $("#sMain");
+    $("#sUrlNote").textContent = !doms.length ? "Your site goes live at this address when you publish. Connect your own domain in the dashboard under Settings → Domains, then pick it here." : d ? (d.status === "active" ? "Pick which address to copy links from." : "This domain isn't live yet. Finish its DNS record in Settings → Domains, then press Check there.") : "Pick one of your own domains to get links on it.";
+    main.innerHTML = "";
+    if (d) {
+      if (d.site_id === s.id) main.innerHTML = '<span style="color:#22b08a;font-size:12px">✓ ' + esc(d.hostname) + ' opens this site at its root.</span>';
+      else main.innerHTML = '<button class="btn" id="sMakeMain">Make this the main site on ' + esc(d.hostname) + '</button><div style="font-size:11.5px;color:var(--tx2);margin-top:4px">' + (d.site_id ? "Another site is currently the main site there. This site stays reachable at " + esc(d.hostname) + "/s/" + esc(s.slug) + "." : "Without this, the site is reachable at " + esc(d.hostname) + "/s/" + esc(s.slug) + ".") + "</div>";
+      var mm = $("#sMakeMain");
+      if (mm) mm.onclick = async function () {
+        mm.disabled = true;
+        var r = await sb.functions.invoke("manage-domain", { body: { action: "assign", id: d.id, site_id: s.id } });
+        if (r.error || (r.data && r.data.error)) { toast((r.data && r.data.error) || "Couldn't set it. Try again."); mm.disabled = false; return; }
+        S.domains.forEach(function (x) { if (x.id === d.id) x.site_id = s.id; });
+        toast("Done. " + d.hostname + " now opens this site."); renderAddress(); renderPages();
+      };
+    }
+    $("#sLinks").innerHTML = '<label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px">Page links</label>' + S.pages.map(function (p) {
+      var u = urlFor(p.slug);
+      return '<div class="copyrow" style="margin-bottom:6px;align-items:center"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">' + esc(p.title) + (p.kind === "thanks" ? " · thank-you" : "") + (p.published_at ? "" : ' <span style="color:#e0a030;font-weight:500">(draft: publish to open)</span>') + '</div><input readonly value="' + esc(u) + '" style="margin-top:2px"></div><button class="btn" data-lc="' + esc(u) + '">Copy</button></div>';
+    }).join("");
+    $$("[data-lc]", $("#sLinks")).forEach(function (b) { b.onclick = function () { copy(b.dataset.lc); toast("Link copied"); }; });
+  }
   function openSettings(tab) {
     var s = S.site, p = S.page;
-    $("#sName").value = s.name; $("#sUrl").value = liveUrl();
-    $("#sUrlNote").textContent = siteDomain() ? "Live on your own domain. Manage domains in the dashboard under Settings → Domains." : ((S.domains || []).length ? "Tip: choose which of your domains shows this site in Settings → Domains." : "Your site goes live at this address when you publish. You can connect your own domain in Settings → Domains.");
+    $("#sName").value = s.name; renderAddress();
     $("#sProduct").innerHTML = '<option value="">— No product (just a page) —</option>' + S.products.map(function (x) { return '<option value="' + x.id + '"' + (x.id === s.product_id ? " selected" : "") + ">" + esc(x.product_name) + (x.is_service ? " (service)" : "") + "</option>"; }).join("");
     $("#sAdAcct").innerHTML = '<option value="">— Use the product\'s ad account —</option>' + S.accounts.map(function (a) { return '<option value="' + a.id + '"' + (a.id === s.ad_account_id ? " selected" : "") + ">" + esc(a.nickname || a.name || a.id.slice(0, 8)) + (a.meta_pixel_id ? " · pixel " + esc(a.meta_pixel_id) : " · no pixel") + "</option>"; }).join("");
     $("#sPurchase").value = s.purchase_event; $("#sCall").checked = !!(s.settings && s.settings.confirmation_call);
