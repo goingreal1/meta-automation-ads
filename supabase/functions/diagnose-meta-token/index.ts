@@ -1,40 +1,35 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Scratch diagnostic -- generic Graph API proxy using the server-side
-// META_ACCESS_TOKEN, for ad-hoc lookups that don't have a dedicated function
-// yet (e.g. "what ads exist under this ad set id"). Not for production use.
+// Read-only Graph API lookup using the shared META_ACCESS_TOKEN, for owners/admins only.
+//   GET ?path=<graph path, e.g. 120248136860460710/ads>&fields=...
+// (This used to be an open proxy that also forwarded writes. Anyone on the internet could call it.)
 
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-function json(obj: any, status = 200) {
-  return new Response(JSON.stringify(obj, null, 2), {
-    status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-  });
-}
+const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info" };
+const json = (obj: unknown, status = 200) =>
+  new Response(JSON.stringify(obj, null, 2), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "content-type" } });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method !== "GET") return json({ error: "Read-only: use GET." }, 405);
+
+  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: u } = jwt ? await admin.auth.getUser(jwt) : { data: null };
+  if (!u?.user) return json({ error: "Sign in first." }, 401);
+  const { data: p } = await admin.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
+  if (!p || !["owner", "admin"].includes(p.role)) return json({ error: "Owners and admins only." }, 403);
 
   const url = new URL(req.url);
-  const path = url.searchParams.get("path") || "";
+  const path = (url.searchParams.get("path") || "").replace(/^\/+/, "");
   const fields = url.searchParams.get("fields") || "";
-  if (!path) return json({ error: "pass ?path=<graph api path, e.g. 120248136860460710/ads>" }, 400);
-
-  if (req.method === "POST") {
-    // POST body forwarded as-is (JSON object of form params) plus access_token --
-    // used for one-off writes with no dedicated function yet (e.g. creating a
-    // custom audience). Still scratch/diagnostic, not for production use.
-    const body = await req.json().catch(() => ({}));
-    const params = new URLSearchParams({ ...body, access_token: META_ACCESS_TOKEN });
-    const graphUrl = `https://graph.facebook.com/v21.0/${path}`;
-    const res = await fetch(graphUrl, { method: "POST", body: params });
-    const data = await res.json();
-    return json({ status: res.status, data });
-  }
-
-  const graphUrl = `https://graph.facebook.com/v21.0/${path}${path.includes("?") ? "&" : "?"}${fields ? `fields=${fields}&` : ""}access_token=${META_ACCESS_TOKEN}`;
-  const res = await fetch(graphUrl);
-  const data = await res.json();
-  return json({ status: res.status, data });
+  if (!path || /[?#\\]|\.\./.test(path)) return json({ error: "pass ?path=<graph api path>" }, 400);
+  const q = new URLSearchParams({ access_token: META_ACCESS_TOKEN });
+  if (fields) q.set("fields", fields);
+  const res = await fetch(`https://graph.facebook.com/v21.0/${path}?${q}`);
+  return json({ status: res.status, data: await res.json() });
 });
