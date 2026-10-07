@@ -41,7 +41,7 @@ function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
 }
 
-async function sendTemplate(toPhone: string, templateName: string, bodyParams: string[]) {
+async function sendTemplate(toPhone: string, templateName: string, bodyParams: string[], quickReplyPayload?: string) {
   const res = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
@@ -52,7 +52,11 @@ async function sendTemplate(toPhone: string, templateName: string, bodyParams: s
       template: {
         name: templateName,
         language: { code: "en" },
-        components: [{ type: "body", parameters: bodyParams.map((p) => ({ type: "text", text: p })) }],
+        components: [
+          { type: "body", parameters: bodyParams.map((p) => ({ type: "text", text: p })) },
+          // Templates ending in _v2 carry an "I've paid" quick-reply button; its payload tells us which order it is.
+          ...(quickReplyPayload ? [{ type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: quickReplyPayload }] }] : []),
+        ],
       },
     }),
   });
@@ -92,7 +96,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: order } = await supabase
       .from("orders")
-      .select("id, customer_name, customer_phone, order_value_naira, payment_narration_code, media_buyer_id, delivery_agent_id, media_buyers(name, dedicated_account_number, dedicated_account_bank)")
+      .select("id, order_status, customer_name, customer_phone, order_value_naira, payment_narration_code, media_buyer_id, delivery_agent_id, media_buyers(name, dedicated_account_number, dedicated_account_bank)")
       .eq("id", order_id)
       .maybeSingle();
     if (!order) return json({ error: "Order not found" }, 404);
@@ -102,12 +106,15 @@ Deno.serve(async (req: Request) => {
     const results: Record<string, string> = {};
 
     if (type === "payment_request") {
+      // Payment is asked for after delivery (notify-customer calls this once the order is delivered); the older
+      // "order confirmed" trigger is therefore a no-op until then.
+      if (order.order_status !== "delivered") return json({ ok: true, skipped: "payment is requested after delivery" });
       if (!buyer?.dedicated_account_number) return json({ error: "This media buyer has no payment account yet -- call paystack-create-account first." }, 400);
       if (order.customer_phone) {
         try {
           await sendTemplate(order.customer_phone, TPL_CUSTOMER_REQUEST, [
             order.customer_name || "there", amount, buyer.dedicated_account_bank || "", buyer.dedicated_account_number, order.payment_narration_code || "",
-          ]);
+          ], TPL_CUSTOMER_REQUEST.endsWith("_v2") ? `PAID:${order.id}` : undefined);
           results.customer = "sent";
         } catch (err: any) { results.customer = `error: ${err.message}`; }
       }
