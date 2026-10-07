@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#1a7a5e">
+<meta name="theme-color" content="#1877F2">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Revora">
@@ -26,8 +26,8 @@
   --bg:#ffffff; --panel:#ffffff; --panel2:#faf9f7;
   --border:#e7e3da; --borderStrong:#d6d1c4;
   --text:#14130f; --text2:#55524a; --muted:#8c887c;
-  --accent:#1a7a5e; --accentDk:#125c46;
-  --accentBg:#eaf4f0; --accentBdr:#cfe6dd;
+  --accent:#1877F2; --accentDk:#0c5dc7;
+  --accentBg:#e7f0fe; --accentBdr:#c5dbfc;
   --warn:#8a5a12; --warnBg:#fbf3e3; --warnBdr:#eeddb3;
   --danger:#b03a2e; --dangerBg:#fbece9; --dangerBdr:#f0d3cc;
   --blue:#1c5a9e; --blueBg:#eaf1fb; --blueBdr:#cfe0f5;
@@ -41,7 +41,7 @@
   --bg:#121212; --panel:#191919; --panel2:#1f1f1f;
   --border:#2c2c2c; --borderStrong:#3c3c3c;
   --text:#f2f1ee; --text2:#b4b0a6; --muted:#7a766c;
-  --accentBg:rgba(26,122,94,.18); --accentBdr:rgba(26,122,94,.4);
+  --accentBg:rgba(24,119,242,.18); --accentBdr:rgba(24,119,242,.4);
   --ink:#f2f1ee;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 20px 48px -24px rgba(0,0,0,.6);
   --shadow-sm:0 1px 2px rgba(0,0,0,.3), 0 6px 16px -10px rgba(0,0,0,.4);
@@ -1093,6 +1093,25 @@ html{-webkit-text-size-adjust:100%;}
   body:has(.chat-panel.open){overflow:hidden;}
   body:has(.chat-panel.open) .chat-toggle,body:has(.chat-panel.open) .bottom-nav{display:none;}
 }
+
+  /* Settings layout */
+  .set-wrap{display:flex;gap:18px;align-items:flex-start;}
+  .set-nav{display:flex;flex-direction:column;gap:4px;min-width:190px;position:sticky;top:12px;}
+  .set-nav-btn{display:flex;align-items:center;gap:10px;text-align:left;padding:9px 12px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text2);font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+  .set-nav-btn:hover{background:var(--panel2);}
+  .set-nav-btn.active{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
+  .set-body{flex:1;min-width:0;}
+  .set-body [data-sec]{display:none;}
+  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"]{display:block;}
+  @media (max-width:760px){.set-wrap{flex-direction:column;}.set-nav{flex-direction:row;overflow-x:auto;min-width:0;width:100%;position:static;}.set-nav-btn{white-space:nowrap;}}
+  .setup-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:2px 0 12px;}
+  .setup-bar>div{height:100%;background:var(--accent);border-radius:99px;}
+  .setup-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 18px;}
+  .setup-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0;}
+  .setup-row.done .setup-lbl{color:var(--muted);text-decoration:line-through;}
+  .setup-tick{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--borderStrong);display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#fff;flex:none;}
+  .setup-row.done .setup-tick{background:var(--accent);border-color:var(--accent);}
+  .setup-lbl{flex:1;}
 </style>
 </head>
 <body>
@@ -1733,29 +1752,42 @@ async function sbFn(name, body = null, method = "POST") {
 }
 
 // ── MULTI-ACCOUNT MANAGEMENT ──────────────────────────────────────────────────
+// Which ad accounts the header switcher offers. Everyone sees only THEIR OWN accounts there: a buyer's own, or an
+// admin's personal ones (an admin has none unless they also run ads). The company-wide list stays in accountsList for
+// Settings and the admin screens, so an admin never lands inside a buyer's ad dashboard by default.
+function bvIsAdminRole() { const r = window.myProfile?.role; return r === "owner" || r === "admin"; }
+function bvMyAccounts() {
+  const mine = window.myProfile?.media_buyer_id;
+  return (accountsList || []).filter(a => mine && a.media_buyer_id === mine);
+}
 async function loadAccounts() {
   const dot = document.getElementById("liveDot");
   try {
     const data = await sbQuery("ad_accounts", "order=created_at.desc");
     accountsList = data || [];
-    
+
     // The mobile header menu duplicates this selector (crowding the header
     // on a phone otherwise) -- keep both in sync from one source of truth.
     const sels = [document.getElementById("acctSelector"), document.getElementById("acctSelectorMobile")].filter(Boolean);
+    const mineList = bvIsAdminRole() ? bvMyAccounts() : accountsList;
+    // Nothing to switch between -> hide the switcher entirely (admins without personal ad accounts).
+    const hideSwitch = bvIsAdminRole() && mineList.length === 0;
+    sels.forEach(sel => { sel.style.display = hideSwitch ? "none" : ""; });
+    document.querySelectorAll(".hdr-menu-lbl").forEach(l => { if (/ad account/i.test(l.textContent)) l.style.display = hideSwitch ? "none" : ""; });
 
-    if (accountsList.length === 0) {
+    if (mineList.length === 0) {
       sels.forEach(sel => sel.innerHTML = `<option value="">No Ad Accounts</option>`);
       activeAccountId = null;
-      dot.classList.add("off");
+      dot.classList.toggle("off", accountsList.length === 0 && !bvIsAdminRole());
       return;
     }
 
     // Preserve selection or set default
-    if (!activeAccountId || !accountsList.find(a => a.id === activeAccountId)) {
-      activeAccountId = accountsList[0].id;
+    if (!activeAccountId || !mineList.find(a => a.id === activeAccountId)) {
+      activeAccountId = mineList[0].id;
     }
 
-    const optsHtml = accountsList.map(a =>
+    const optsHtml = mineList.map(a =>
       `<option value="${a.id}" ${a.id === activeAccountId ? "selected" : ""}>${a.name}</option>`
     ).join("");
     sels.forEach(sel => sel.innerHTML = optsHtml);
@@ -1935,12 +1967,12 @@ async function render() {
   // literally every tab, meaning a buyer who hadn't connected Meta couldn't
   // even use the order form link that's supposed to work from day one.
   const NEEDS_AD_ACCOUNT = new Set(["campaigns", "performance", "vault"]);
-  if (NEEDS_AD_ACCOUNT.has(activeTab) && !activeAccountId && accountsList.length === 0) {
+  if (NEEDS_AD_ACCOUNT.has(activeTab) && !activeAccountId && (bvIsAdminRole() ? true : accountsList.length === 0)) {
     c.innerHTML = `
       <div class="empty">
         <div class="empty-ico">🔌</div>
-        <div style="margin-bottom: 12px;">No Ad Accounts linked yet.</div>
-        <button class="btn btn-a" onclick="activeTab='settings'; document.querySelector('[data-tab=settings]').click();">Go to Settings to Link Account</button>
+        <div style="margin-bottom: 12px;">${bvIsAdminRole() ? "Ad dashboards are personal: each media buyer sees their own. Company-wide numbers are on Overview and Leaderboard. If you run ads yourself, link your own ad account in Settings." : "No Ad Accounts linked yet."}</div>
+        <button class="btn btn-a" onclick="bvGoToTab('settings')">Go to Settings to Link Account</button>
       </div>`;
     return;
   }
@@ -2055,6 +2087,7 @@ function bvOverviewBalances(bals) {
 }
 
 async function renderOverview(el) {
+  if (bvIsAdminRole()) return renderAdminOverview(el);
   const since = watDate(-6), until = watDate(0);
   // Ad numbers are for the people who run ads; customer care / delivery just see orders.
   const canAds = ["owner", "admin", "buyer"].includes(window.myProfile?.role);
@@ -2093,6 +2126,7 @@ async function renderOverview(el) {
       <div class="sh-title">Overview</div>
       <div class="sh-actions" id="qaActions"></div>
     </div>
+    <div id="setupCheckSlot"></div>
 
     ${walletChipBalance !== null ? `
     <div class="wallet-chip" onclick="activeTab='wallet'; document.querySelector('[data-tab=wallet]').click();">
@@ -2187,6 +2221,50 @@ async function renderOverview(el) {
           </table></div>`}
     </div>` : ""}
     <div id="actionResult"></div>`;
+}
+
+
+// ── ADMIN OVERVIEW: the whole company at a glance (no ad-account context; each buyer's ads are their own) ──
+async function renderAdminOverview(el) {
+  const since = watDate(-6), prev = watDate(-13);
+  const [orders, buyers, wallet, setup] = await Promise.all([
+    sbQuery("orders", `select=order_status,order_value_naira,media_buyer_id,ordered_at&ordered_at=gte.${prev}T00:00:00%2B01:00&limit=5000`).catch(() => []),
+    sbQuery("media_buyers", "select=id,code,name&order=code.asc").catch(() => []),
+    fetchWalletBalances().catch(() => ({ walletBalances: {}, fundingWalletBalance: 0 })),
+    bvSetupState().catch(() => null),
+  ]);
+  const cut = new Date(since + "T00:00:00+01:00").getTime();
+  const cur = [], old = [];
+  (orders || []).forEach(o => (new Date(o.ordered_at).getTime() >= cut ? cur : old).push(o));
+  const sum = a => a.reduce((t, o) => t + Number(o.order_value_naira || 0), 0);
+  const cnt = (a, st) => a.filter(o => o.order_status === st).length;
+  const done = a => a.filter(o => ["delivered", "returned", "cancelled", "failed"].includes(o.order_status)).length;
+  const rateOf = a => { const d = done(a); return d ? cnt(a, "delivered") / d * 100 : null; };
+  const delta = (c, p) => p ? `${c >= p ? "▲" : "▼"} ${Math.abs((c - p) / p * 100).toFixed(0)}% vs previous 7 days` : "no earlier data";
+  const rate = rateOf(cur);
+  const byBuyer = new Map();
+  cur.forEach(o => { const k = o.media_buyer_id || "none"; const r = byBuyer.get(k) || { n: 0, rev: 0, del: 0, ret: 0 }; r.n++; r.rev += Number(o.order_value_naira || 0); if (o.order_status === "delivered") r.del++; if (o.order_status === "returned") r.ret++; byBuyer.set(k, r); });
+  const nameOf = id => { const b = (buyers || []).find(x => x.id === id); return b ? (b.name || b.code) : "Unassigned"; };
+  const rows = [...byBuyer.entries()].sort((a, b) => b[1].n - a[1].n);
+  const fund = wallet.fundingWalletBalance;
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Company overview</div><div class="sh-actions" id="qaActions"></div></div>
+    ${fund != null ? `<div class="wallet-chip" onclick="bvGoToTab('wallet')">💰 ${fund < 0 ? "⚠️ Funding wallet low" : "Funding wallet"}: ${fN(fund)} <span style="opacity:.7;">→ Wallet</span></div>` : ""}
+    ${setup && !setup.done ? bvSetupChecklistHtml(setup) : ""}
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Orders · 7 days</div><div class="kc-val">${cur.length}</div><div class="kc-sub">${delta(cur.length, old.length)}</div></div>
+      <div class="kc"><div class="kc-lbl">Order value · 7 days</div><div class="kc-val a">${fN(sum(cur))}</div><div class="kc-sub">${delta(sum(cur), sum(old))}</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rate == null ? "" : rate >= 70 ? "a" : rate >= 50 ? "w" : "d"}">${rate == null ? "—" : rate.toFixed(0) + "%"}</div><div class="kc-sub">${cnt(cur, "delivered")} delivered · ${cnt(cur, "returned")} returned</div></div>
+      <div class="kc"><div class="kc-lbl">Waiting to be handled</div><div class="kc-val ${cnt(cur, "pending") ? "w" : ""}">${cnt(cur, "pending")}</div><div class="kc-sub">pending orders this week</div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Media buyers · last 7 days</div><div class="ph-count">${(buyers || []).length} buyers</div></div>
+      ${!rows.length ? `<div class="empty"><div class="empty-ico">📦</div>No orders in the last 7 days.</div>` : `<div class="tbl-wrap"><table>
+        <tr><th>Buyer</th><th>Orders</th><th>Order value</th><th>Delivered</th><th>Returned</th></tr>
+        ${rows.map(([id, r]) => `<tr><td class="s n">${escH(id === "none" ? "Unassigned" : nameOf(id))}</td><td>${r.n}</td><td>${fN(r.rev)}</td><td>${r.del}</td><td>${r.ret}</td></tr>`).join("")}
+      </table></div>`}
+      <div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Ad spend and campaigns are personal to each buyer. See ROAS per buyer on <a href="javascript:void(0)" onclick="bvGoToTab('leaderboard')" style="color:var(--accent);">Leaderboard</a>.</div>
+    </div>`;
 }
 
 // ── QUICK ACTION HANDLERS ─────────────────────────────────────────────────────
@@ -5388,6 +5466,7 @@ async function bvRenderDomains() {
   const el = document.getElementById("domainsPanel"); if (!el) return;
   const role = window.myProfile?.role, isAdm = role === "owner" || role === "admin";
   if (!["owner", "admin", "buyer", "customer_care"].includes(role)) { el.remove(); return; }
+  const canAdd = isAdm || (role === "buyer" && !!window.myProfile?.media_buyer_id);
   const [rows, sites, buyers] = await Promise.all([
     sbQuery("site_domains", "select=*&order=created_at.desc").catch(() => []),
     sbQuery("sites", "select=id,name,slug,media_buyer_id&order=name.asc").catch(() => []),
@@ -5408,18 +5487,18 @@ async function bvRenderDomains() {
         <td><select class="dom-site" style="max-width:170px;">${siteOpts(d.site_id)}</select></td>
         ${isAdm ? `<td><select class="dom-buyer" style="max-width:150px;">${buyerOpts(d.media_buyer_id)}</select></td>` : ""}
         <td style="white-space:nowrap;"><button class="btn btn-g dom-check" style="padding:3px 9px;font-size:10px;">Check</button>
-          ${isAdm ? `<button class="btn btn-g dom-del" style="padding:3px 9px;font-size:10px;">Remove</button>` : ""}</td>
+          ${isAdm || (canAdd && d.media_buyer_id === window.myProfile?.media_buyer_id) ? `<button class="btn btn-g dom-del" style="padding:3px 9px;font-size:10px;">Remove</button>` : ""}</td>
       </tr>
       ${d.status !== "active" ? `<tr><td colspan="${isAdm ? 5 : 4}" style="background:var(--bg2,rgba(0,0,0,.03));font-size:11.5px;">
         <b>At your domain provider, add:</b>
         ${(d.dns || []).map(r => `<div style="font-family:monospace;margin-top:3px;">${escH(r.type)} &nbsp; ${escH(r.name)} &nbsp; → &nbsp; ${escH(r.value)}</div>`).join("")}
         <div style="color:var(--muted);margin-top:4px;">It can take a few minutes (sometimes a few hours) to go live. Press <b>Check</b> afterwards.</div></td></tr>` : ""}`).join("")}
     </table></div>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">No domains yet.</div>`}
-    ${isAdm ? `
+    ${canAdd ? `
     <form id="domAddForm" style="margin-top:14px;">
       <div class="fg">
         <div class="field"><label>Domain *</label><input id="domHost" required placeholder="shop.mybrand.com"></div>
-        <div class="field"><label>Assign to media buyer</label><select id="domBuyer">${buyerOpts("")}</select></div>
+        ${isAdm ? `<div class="field"><label>Assign to media buyer</label><select id="domBuyer">${buyerOpts("")}</select></div>` : ""}
         <div class="field"><label>Shows site</label><select id="domSite">${siteOpts("")}</select></div>
       </div>
       <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;">+ Connect domain</button>
@@ -5450,7 +5529,7 @@ async function bvRenderDomains() {
   if (f) f.onsubmit = async ev => {
     ev.preventDefault();
     const btn = f.querySelector("button[type=submit]");
-    const r = await call({ action: "add", hostname: document.getElementById("domHost").value, media_buyer_id: document.getElementById("domBuyer").value || null, site_id: document.getElementById("domSite").value || null }, btn);
+    const r = await call({ action: "add", hostname: document.getElementById("domHost").value, media_buyer_id: document.getElementById("domBuyer")?.value || null, site_id: document.getElementById("domSite").value || null }, btn);
     if (r) { bvToast("Domain added — now add the DNS record shown below"); bvRenderDomains(); }
   };
 }
@@ -7743,17 +7822,18 @@ async function renderWebsiteLeads(el) {
 // Every order placed on a built site goes through receive-order, so it lands in the Orders tab
 // (tagged with its site) - not in Website Leads.
 let bvWebSub = "sites";
-let bvWebData = { sites: [], pages: [], snippets: [], orders: [], products: [] };
+let bvWebData = { sites: [], pages: [], snippets: [], orders: [], products: [], domains: [] };
 
 async function renderWebsites(el) {
-  const [sites, pages, snippets, orders, products] = await Promise.all([
+  const [sites, pages, snippets, orders, products, domains] = await Promise.all([
     sbQuery("sites", "select=*&order=created_at.desc", { allAccounts: true }),
     sbQuery("site_pages", "select=id,site_id,title,slug,kind,published_at,updated_at&order=created_at.asc"),
     sbQuery("tracking_snippets", "select=*&order=created_at.desc"),
     sbQuery("orders", "select=site_id,order_value_naira,order_status&site_id=not.is.null&limit=5000"),
     sbQuery("products", "select=id,product_name,is_service&is_active=eq.true&order=product_name", { allAccounts: true }),
+    sbQuery("site_domains", "select=hostname,site_id,status").catch(() => []),
   ]);
-  bvWebData = { sites: sites || [], pages: pages || [], snippets: snippets || [], orders: orders || [], products: products || [] };
+  bvWebData = { sites: sites || [], pages: pages || [], snippets: snippets || [], orders: orders || [], products: products || [], domains: domains || [] };
   bvWebDraw(el);
 }
 
@@ -7773,7 +7853,7 @@ function bvWebSwitch(t) { bvWebSub = t; bvWebDraw(bvWebHost); }
 async function bvWebReload() { await renderWebsites(bvWebHost); }
 
 function bvWebSitesHtml() {
-  const { sites, pages, orders, products } = bvWebData;
+  const { sites, pages, orders, products, domains } = bvWebData;
   if (!sites.length) return `<div class="panel"><div class="empty"><div class="empty-ico">🌐</div>
     <div style="font-weight:700;font-size:15px;margin-bottom:6px;">Build your first sales website</div>
     <div style="max-width:420px;margin:0 auto 14px;">Drag-and-drop pages with a built-in order form. Every order lands in your Orders tab, and your Meta pixel is already connected.</div>
@@ -7784,7 +7864,9 @@ function bvWebSitesHtml() {
     const so = orders.filter(o => o.site_id === s.id);
     const rev = so.reduce((a, o) => a + (Number(o.order_value_naira) || 0), 0);
     const prod = products.find(p => p.id === s.product_id);
-    const url = window.RV_siteUrl(s.slug);
+    // A live custom domain assigned to this site is its main address.
+    const dom = (domains || []).find(d => d.site_id === s.id && d.status === "active");
+    const url = dom ? "https://" + dom.hostname : window.RV_siteUrl(s.slug);
     return `<div class="ws-card">
       <div class="ws-top"><div class="ws-name">${escH(s.name)}</div><span class="ws-pill ${s.status === "published" ? "live" : ""}">${s.status === "published" ? "Live" : "Draft"}</span></div>
       <div class="ws-url">${escH(url)}</div>
@@ -10102,6 +10184,67 @@ async function renderWallet(el) {
 }
 
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
+
+// ── SETTINGS: sections + setup checklist ─────────────────────────────────────
+let bvSettingsSec = "accounts";
+function bvSettingsSections(isAdmin) {
+  const list = [
+    { id: "accounts", icon: "🔌", label: "Ad accounts" },
+    { id: "domains", icon: "🌐", label: "Domains" },
+    { id: "automation", icon: "⚙️", label: "Automation & alerts" },
+    { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
+  ];
+  return list;
+}
+function bvSettingsWire() {
+  const nav = document.getElementById("setNav"), body = document.getElementById("setBody");
+  if (!nav || !body) return;
+  nav.querySelectorAll(".set-nav-btn").forEach(btn => btn.onclick = () => {
+    bvSettingsSec = btn.dataset.sec;
+    body.dataset.active = bvSettingsSec;
+    nav.querySelectorAll(".set-nav-btn").forEach(x => x.classList.toggle("active", x === btn));
+  });
+}
+async function bvSetupState() {
+  const role = window.myProfile?.role, admin = role === "owner" || role === "admin";
+  if (!["owner", "admin", "buyer"].includes(role)) return { done: true, items: [] };
+  const mine = admin ? accountsList : accountsList;
+  const [products, sites, domains, buyers] = await Promise.all([
+    sbCount("products", "is_active=eq.true").catch(() => 0),
+    sbQuery("sites", "select=id,status&limit=50").catch(() => []),
+    sbQuery("site_domains", "select=id,status&limit=50").catch(() => []),
+    admin ? sbQuery("media_buyers", "select=id&limit=2").catch(() => []) : [],
+  ]);
+  const items = [];
+  if (admin) items.push({ label: "Add your first media buyer", done: (buyers || []).length > 0, go: ["settings", "business"] });
+  items.push({ label: "Connect a Meta ad account", done: mine.length > 0, go: ["settings", "accounts"] });
+  items.push({ label: "Set the pixel and Facebook page on it", done: mine.some(a => a.meta_pixel_id && a.fb_page_id), go: ["settings", "accounts"] });
+  items.push({ label: "Add a product", done: products > 0, go: ["products"] });
+  items.push({ label: "Publish a website", done: (sites || []).some(x => x.status === "published"), go: ["websites"] });
+  items.push({ label: "Connect your own domain (optional)", done: (domains || []).length > 0, go: ["settings", "domains"], optional: true });
+  items.push({ label: "Add your WhatsApp number for alerts", done: !!window.myProfile?.whatsapp_number, go: ["settings", "automation"] });
+  items.push({ label: "Turn on notifications", done: typeof Notification !== "undefined" && Notification.permission === "granted", go: ["settings", "automation"] });
+  const need = items.filter(i => !i.optional);
+  return { items, done: need.every(i => i.done), pct: Math.round(need.filter(i => i.done).length / need.length * 100) };
+}
+function bvSetupChecklistHtml(st, compact) {
+  const next = st.items.filter(i => !i.done);
+  return `<div class="panel setup-card">
+    <div class="ph"><div class="ph-title">Finish setting up</div><div class="ph-count">${st.pct}% done</div></div>
+    <div class="setup-bar"><div style="width:${st.pct}%"></div></div>
+    <div class="setup-list">${st.items.map(i => `<div class="setup-row ${i.done ? "done" : ""}">
+      <span class="setup-tick">${i.done ? "✓" : ""}</span><span class="setup-lbl">${escH(i.label)}</span>
+      ${i.done ? "" : `<button type="button" class="btn btn-g" style="padding:3px 9px;font-size:10px;" onclick="bvSetupGo('${i.go[0]}','${i.go[1] || ""}')">Do it</button>`}
+    </div>`).join("")}</div>
+  </div>`;
+}
+function bvSetupGo(tab, sec) { if (sec) bvSettingsSec = sec; bvGoToTab(tab); }
+async function bvRenderSetupSlot() {
+  const slot = document.getElementById("setupCheckSlot"); if (!slot) return;
+  const st = await bvSetupState().catch(() => null);
+  if (st && !st.done) slot.innerHTML = bvSetupChecklistHtml(st);
+}
+
 async function renderSettings(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const [buyers, company, invites, teamMembers, partnerBizId] = await Promise.all([
@@ -10115,19 +10258,23 @@ async function renderSettings(el) {
   delete window.oauthToast;
 
   el.innerHTML = `
-    <div class="sh"><div class="sh-title">Settings & Ad Accounts</div></div>
+    <div class="sh"><div class="sh-title">Settings</div></div>
+    <div id="setupCheckSlot"></div>
+    <div class="set-wrap">
+    <nav class="set-nav" id="setNav">${bvSettingsSections(isAdmin).map(x => `<button type="button" class="set-nav-btn ${x.id === bvSettingsSec ? "active" : ""}" data-sec="${x.id}"><span>${x.icon}</span>${x.label}</button>`).join("")}</nav>
+    <div class="set-body" id="setBody" data-active="${bvSettingsSec}">
 
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
 
-    <div class="panel" id="notifPanel"></div>
+    <div class="panel" data-sec="automation" id="notifPanel"></div>
 
-    <div class="panel" id="killRulesPanel"></div>
+    <div class="panel" data-sec="automation" id="killRulesPanel"></div>
 
-    <div class="panel" id="domainsPanel"></div>
+    <div class="panel" data-sec="domains" id="domainsPanel"></div>
 
-    <div class="panel" id="aiAgentPanel"></div>
+    <div class="panel" data-sec="automation" id="aiAgentPanel"></div>
 
-    <div class="panel">
+    <div class="panel" data-sec="automation">
       <div class="ph"><div class="ph-title">WhatsApp alerts</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Your number for time-sensitive alerts (low ad balance, payment confirmed, funding request updates, transfer results).</div>
       <div style="display:flex;gap:6px;">
@@ -10137,7 +10284,7 @@ async function renderSettings(el) {
       <div id="whatsappMsg" style="margin-top:6px;"></div>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-sec="business">
       <div class="ph"><div class="ph-title">${escH(company?.name || "Your company")}</div><div class="ph-count">Your role: ${escH(window.myProfile?.role || "—")}</div></div>
       ${!isAdmin ? `<div style="font-size:11.5px;color:var(--muted);">Only an owner/admin can invite team members or manage ad account connections.</div>` : `
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Invite a teammate -- they sign up with this link and land inside your company only, never anyone else's.</div>
@@ -10187,7 +10334,7 @@ async function renderSettings(el) {
       const myId = window.myProfile.media_buyer_id;
       const myBuyer = (buyers || []).find(b => b.id === myId);
       return `
-    <div class="panel">
+    <div class="panel" data-sec="accounts">
       <div class="ph"><div class="ph-title">Share your ad account with us</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">In your own Meta Business Settings -&gt; Partners -&gt; "Give a partner access to your assets", paste the Business ID below and share your ad account. We'll pick it up automatically once it's approved -- no login here needed.</div>
       <div style="font-size:11.5px;color:var(--accent);background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:8px;padding:8px 10px;margin-bottom:14px;">When Meta asks what access to grant: choose <strong>"View performance"/Analyst</strong> access, not "Manage campaigns." We only ever read spend and metrics -- view-only access is all we need, and it means we can't touch your budgets or campaigns even by accident.</div>
@@ -10207,7 +10354,7 @@ async function renderSettings(el) {
     })()}
 
     ${!isAdmin ? "" : `
-    <div class="panel">
+    <div class="panel" data-sec="business">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
       <form id="buyerForm">
@@ -10220,7 +10367,7 @@ async function renderSettings(el) {
       </form>
     </div>
 
-    <div class="panel">
+    <div class="panel" data-sec="accounts">
       <div class="ph"><div class="ph-title">Partner-shared ad accounts</div><button class="btn btn-g" style="padding:3px 6px;font-size:10px;margin-left:6px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync all</button></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer shares their own ad account with us directly from their own Meta Business Settings (self-service panel below, or you can enter their Business ID for them here). Give them our Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(partnerBizId || "unavailable right now")}</code>. You'll get a request to approve in your own Meta Business Settings -- approve it there, then hit Sync here.</div>
       ${!buyers?.length ? `<div class="empty"><div class="empty-ico">🔌</div>Add a buyer above first.</div>` : `
@@ -10236,7 +10383,7 @@ async function renderSettings(el) {
     </div>`}
 
     ${(isAdmin || window.myProfile?.media_buyer_id) ? `
-    <div class="panel">
+    <div class="panel" data-sec="accounts">
       <div class="ph"><div class="ph-title">Link New Meta Ad Account</div><div class="sh-actions" style="font-size:10.5px;color:var(--muted);">Manual entry -- for an account you're not connecting via OAuth above</div></div>
       <form id="acctForm">
         <div class="fg">
@@ -10249,38 +10396,17 @@ async function renderSettings(el) {
       </form>
     </div>
 
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Linked Ad Accounts <button class="btn btn-g" style="padding:3px 6px; font-size:10px; margin-left:6px;" onclick="refreshBalances()" id="refreshBalBtn" title="Sync live balances from Meta">↻ Refresh</button></div><div class="ph-count">${accountsList.length} accounts</div></div>
-      ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">🔌</div>No ad accounts linked yet. Add one above.</div>` : `
-      <div class="tbl-wrap"><table>
-        <tr><th>Account Name</th><th>Meta ID</th><th>Page ID</th><th>Balance</th><th>Status</th><th>Actions</th></tr>
-        ${accountsList.map(a => `<tr>
-          <td class="s n">${a.name}</td>
-          <td>${a.meta_ad_account_id}</td>
-          <td>${a.fb_page_id}</td>
-          <td id="bal-${a.id}">
-            <div style="color:var(--text);font-size:12px;">${fN(a.balance_naira)}</div>
-            ${a.balance_updated_at ? `<div style="font-size:9px;color:var(--muted);">synced ${ago(a.balance_updated_at)}</div>` : `<div style="font-size:9px;color:var(--muted);">not synced</div>`}
-          </td>
-          <td><span class="pill ${a.status === 'active' ? 'active' : 'paused'}">${a.status}</span></td>
-          <td>
-            <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button>
-          </td>
-        </tr>`).join("")}
-      </table></div>`}
-    </div>
-
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Pixel &amp; Page Connections</div><div class="ph-count">${accountsList.length} accounts</div></div>
+    <div class="panel" data-sec="accounts">
+      <div class="ph"><div class="ph-title">Your ad accounts</div><div class="ph-count">${accountsList.length} account${accountsList.length === 1 ? "" : "s"} <button class="btn btn-g" style="padding:3px 6px;font-size:10px;margin-left:6px;" onclick="refreshBalances()" id="refreshBalBtn" title="Sync live balances from Meta">↻ Refresh balances</button></div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">
         The Facebook Page and Meta Pixel each ad account launches ads as/tracks Purchases through. Typing the wrong ID here fails silently until launch -- <b style="color:var(--text2);">Verify</b> asks Meta directly which pages/pixels this ad account can actually use, so you pick from confirmed options instead of guessing.
       </div>
       ${accountsList.length === 0 ? `<div class="empty"><div class="empty-ico">📡</div>No ad accounts linked yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Account Name</th><th>Meta Ad Account ID</th><th>Facebook Page</th><th>WhatsApp number</th><th>Pixel / Dataset</th><th></th></tr>
+        <tr><th>Account</th>${isAdmin ? "<th>Buyer</th>" : ""}<th>Facebook Page</th><th>WhatsApp number</th><th>Pixel / Dataset</th><th>Balance</th><th></th></tr>
         ${accountsList.map(a => `<tr id="connRow-${a.id}">
-          <td class="s n">${escH(a.nickname || a.name || "")}</td>
-          <td>${escH(a.meta_ad_account_id || "")}</td>
+          <td class="s n">${escH(a.nickname || a.name || "")}<div style="font-size:10.5px;color:var(--muted);font-weight:400;">${escH(a.meta_ad_account_id || "")} · <span class="pill ${a.status === "active" ? "active" : "paused"}">${escH(a.status || "")}</span></div></td>
+          ${isAdmin ? `<td>${escH((buyers || []).find(b => b.id === a.media_buyer_id)?.name || "—")}</td>` : ""}
           <td id="pageCell-${a.id}">${a.fb_page_id
             ? (a.fb_page_name
                 ? `✓ ${escH(a.fb_page_name)} <span style="color:var(--muted);font-size:10.5px;">(${escH(a.fb_page_id)})</span>`
@@ -10292,12 +10418,15 @@ async function renderSettings(el) {
                 ? `✓ ${escH(a.pixel_name)} <span style="color:var(--muted);font-size:10.5px;">(${escH(a.meta_pixel_id)})</span>`
                 : `<span style="font-family:monospace;font-size:11.5px;">${escH(a.meta_pixel_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>`)
             : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
-          <td><button type="button" class="btn btn-g connVerifyBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;white-space:nowrap;">🔄 Verify</button></td>
+          <td id="bal-${a.id}"><div style="font-size:12px;">${fN(a.balance_naira)}</div><div style="font-size:9px;color:var(--muted);">${a.balance_updated_at ? "synced " + ago(a.balance_updated_at) : "not synced"}</div></td>
+          <td style="white-space:nowrap;"><button type="button" class="btn btn-g connVerifyBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">🔄 Verify</button> <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button></td>
         </tr>`).join("")}
       </table></div>`}
-    </div>` : ""}`;
-
-  document.querySelectorAll(".connVerifyBtn").forEach(btn => {
+    </div>` : ""}
+    </div></div>`;
+  bvSettingsWire();
+  bvRenderSetupSlot();
+document.querySelectorAll(".connVerifyBtn").forEach(btn => {
     btn.addEventListener("click", () => bvVerifyAdAccountConnection(btn.dataset.aid));
   });
 
