@@ -6253,7 +6253,7 @@ async function renderProducts(el) {
     </div>`;
 
   window.bvProductsCache = prods || [];
-  window.bvDraftTiers = []; bvRenderDraftTiers();
+  try { window.bvDraftTiers = []; bvRenderDraftTiers(); } catch (e) { console.error(e); }
 
   document.getElementById("prodForm").addEventListener("submit", async e => {
     e.preventDefault();
