@@ -857,7 +857,7 @@ input,select,textarea{font:inherit}
       var fe = ed.Canvas.getFrameEl(); if (!doc || !fe) return;
       var last = w.components().length ? w.components().at(w.components().length - 1) : null, le = last && last.getEl && last.getEl();
       var fr = fe.getBoundingClientRect(), cv = $("#canvas").getBoundingClientRect();
-      var bottom = le ? le.getBoundingClientRect().bottom : 0, y = fr.top + bottom + 22, x = fr.left + fr.width / 2;
+      var bottom = 0; w.components().forEach(function (k) { var ke = k.getEl && k.getEl(); if (!ke) return; var pos = doc.defaultView.getComputedStyle(ke).position; if (pos === "fixed" || pos === "sticky") return; bottom = Math.max(bottom, ke.getBoundingClientRect().bottom); }); var y = fr.top + bottom + 22, x = fr.left + fr.width / 2;
       var ok = w.components().length > 0 && y > cv.top + 4 && y < cv.bottom - 40;
       btn.classList.toggle("on", ok);
       if (ok) { btn.style.left = Math.round(x - btn.offsetWidth / 2) + "px"; btn.style.top = Math.round(y) + "px"; }
