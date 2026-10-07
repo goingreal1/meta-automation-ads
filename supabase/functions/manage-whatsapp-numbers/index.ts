@@ -13,6 +13,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "request_code",  media_buyer_id, access_token, phone_number_id, code_method }
 //   POST { action: "verify_code",   media_buyer_id, access_token, phone_number_id, code, nickname }
 //   POST { action: "remove",        media_buyer_id, access_token, id }   -- id = buyer_whatsapp_numbers.id
+//   POST { action: "es_config",     media_buyer_id, access_token }       -- { app_id, config_id } for Facebook's Embedded Signup pop-up
+//   POST { action: "es_complete",   media_buyer_id, access_token, code, waba_id, phone_number_id } -- finish a pop-up sign-up
 //
 // access_token here is always the caller's own *Supabase session* token
 // (proves who's signed in), never the Meta token -- the Meta token is looked
@@ -21,6 +23,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
+const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
+const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+// The "Facebook Login for Business" configuration made for WhatsApp Embedded Signup (public, not a secret).
+const ES_CONFIG_ID = Deno.env.get("WHATSAPP_ES_CONFIG_ID") ?? "959056356702707";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -72,6 +78,46 @@ Deno.serve(async (req: Request) => {
     // The buyer's own Meta token, from the same OAuth connection ad accounts
     // use -- whatsapp_business_management/_messaging were added to its scope,
     // so no separate login is needed.
+    // WhatsApp Embedded Signup needs no earlier Facebook login: the pop-up itself
+    // creates/connects the WhatsApp Business account and hands back a code.
+    if (action === "es_config") {
+      if (!META_APP_ID) return json({ error: "Meta app isn't configured on the server (META_APP_ID missing)." }, 500);
+      return json({ app_id: META_APP_ID, config_id: ES_CONFIG_ID });
+    }
+    if (action === "es_complete") {
+      const { code, waba_id: wabaId, phone_number_id: phoneNumberId } = body;
+      if (!code || !wabaId || !phoneNumberId) return json({ error: "code, waba_id and phone_number_id are required." }, 400);
+      if (!/^\d+$/.test(String(wabaId)) || !/^\d+$/.test(String(phoneNumberId))) return json({ error: "Invalid WhatsApp account details." }, 400);
+      if (buyer.company_id !== profile.company_id) return json({ error: "Unknown media buyer." }, 404);
+      if (!META_APP_ID || !META_APP_SECRET) return json({ error: "Meta app isn't configured on the server." }, 500);
+      const tokRes = await fetch(`${META_GRAPH_BASE}/oauth/access_token?` + new URLSearchParams({ client_id: META_APP_ID, client_secret: META_APP_SECRET, code: String(code) }));
+      const tok = await tokRes.json();
+      if (!tokRes.ok || !tok.access_token) return json({ error: tok?.error?.message || "Meta did not accept the sign-up code. Try again." }, 400);
+      const esToken = tok.access_token as string;
+      // Confirm this token really owns that number (never trust ids sent by the browser).
+      const num = await graph(`${phoneNumberId}?fields=display_phone_number,verified_name`, esToken);
+      if (!num.ok) return json({ error: num.data?.error?.message || "Could not read the number you connected." }, 400);
+      // Route incoming messages to us, and switch the number on for the Cloud API (random two-step PIN).
+      const sub = await graph(`${wabaId}/subscribed_apps`, esToken, "POST");
+      if (!sub.ok) console.error("subscribed_apps failed:", JSON.stringify(sub.data));
+      const pin = String(100000 + Math.floor(Math.random() * 900000));
+      const reg = await graph(`${phoneNumberId}/register`, esToken, "POST", { messaging_product: "whatsapp", pin });
+      if (!reg.ok) console.error("register failed:", JSON.stringify(reg.data));
+      const { data: row, error } = await supabase.from("buyer_whatsapp_numbers").upsert({
+        company_id: buyer.company_id,
+        media_buyer_id: mediaBuyerId,
+        waba_id: String(wabaId),
+        phone_number_id: String(phoneNumberId),
+        display_phone_number: num.data?.display_phone_number ?? null,
+        nickname: num.data?.verified_name ?? null,
+        access_token: esToken,
+        verified_at: new Date().toISOString(),
+        status: "active",
+      }, { onConflict: "phone_number_id" }).select("id").single();
+      if (error) return json({ error: `Could not save it: ${error.message}` }, 500);
+      return json({ saved: true, id: row.id, number: num.data?.display_phone_number ?? null, webhook_subscribed: sub.ok, registered: reg.ok, register_note: reg.ok ? null : (reg.data?.error?.message || "register failed") });
+    }
+
     const { data: conn } = await supabase
       .from("meta_connections")
       .select("access_token")

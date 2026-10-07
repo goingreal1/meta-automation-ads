@@ -11305,7 +11305,7 @@ function bvLoadFbSdk(appId) {
 }
 async function bvWaSignup(buyerId) {
   try {
-    const cfg = await sbFn("whatsapp-embedded-signup", { action: "config", access_token: sessionData.access_token });
+    const cfg = await sbFn("manage-whatsapp-numbers", { action: "es_config", media_buyer_id: buyerId, access_token: sessionData.access_token });
     if (cfg.error) throw new Error(cfg.error);
     await bvLoadFbSdk(cfg.app_id);
     let done = null;
@@ -11323,7 +11323,7 @@ async function bvWaSignup(buyerId) {
       for (let i = 0; i < 20 && !done; i++) await new Promise(r => setTimeout(r, 250)); // the pop-up reports the new account just after login
       window.removeEventListener("message", onMsg);
       if (!done?.waba_id || !done?.phone_number_id) { bvToast("Facebook didn't finish creating the number. Please try again.", "err"); return; }
-      const r = await sbFn("whatsapp-embedded-signup", { action: "complete", access_token: sessionData.access_token, media_buyer_id: buyerId, code, waba_id: done.waba_id, phone_number_id: done.phone_number_id });
+      const r = await sbFn("manage-whatsapp-numbers", { action: "es_complete", access_token: sessionData.access_token, media_buyer_id: buyerId, code, waba_id: done.waba_id, phone_number_id: done.phone_number_id });
       if (r.error) { bvToast(r.error, "err"); return; }
       bvToast(`WhatsApp number connected${r.number ? ": " + r.number : ""}${r.webhook_subscribed ? "" : " (messages may not arrive yet — contact support)"}`);
       bvRenderFbConnect();
