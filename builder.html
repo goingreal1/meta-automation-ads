@@ -1070,8 +1070,11 @@ input,select,textarea{font:inherit}
     // columns (any number of cards/columns in a row)
     var cl = c.getClasses();
     if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^(c[1-6]|s13|s31)$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["s13", "2 columns: narrow + wide (1/3 + 2/3)"], ["s31", "2 columns: wide + narrow (2/3 + 1/3)"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><label class="chk" style="margin:8px 0 0"><input type="checkbox" data-keep="1"' + (cl.indexOf("keep") > -1 ? " checked" : "") + '>Stay side by side on phones (2 per row)</label><div class="hint2">Duplicate a card with the toolbar to add more. Otherwise they stack on phones.</div></div></div>'; }
+    if (k === "text") h += '<div class="ss"><div class="hint2" style="margin:0">Colour only some words: click the text, select the words with your mouse, then use the <b>A</b> colour or highlight button in the small bar above. The colour here changes the whole block.</div></div>';
     // pin a top-level bar/section to the top or bottom of the screen
     if (c.parent() === ed.getWrapper()) { var pinCur = cl.indexOf("pin-top") > -1 ? "top" : cl.indexOf("pin-bot") > -1 ? "bot" : (cl.indexOf("stick") > -1 ? "top" : ""); h += '<div class="ss"><div class="sst">Stay on screen</div><div class="sf"><select data-pin="1">' + [["", "Normal (scrolls away)"], ["top", "Pinned to the top while scrolling"], ["bot", "Pinned to the bottom of the screen"]].map(function (o) { return '<option value="' + o[0] + '"' + (pinCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Use this to turn a bar into a sticky header or footer.</div></div></div>'; }
+    // image fit: show the whole picture, or fill the box and crop
+    if (k === "image") { var fitCur = clean(own["object-fit"]) || ""; h += '<div class="ss"><div class="sst">Picture fit</div><div class="sf"><select data-fit="1">' + [["", "Default"], ["contain", "Show the whole picture (no cropping)"], ["cover", "Fill the box (edges may be cropped)"]].map(function (o) { return '<option value="' + o[0] + '"' + (fitCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Pick "Show the whole picture" if your image looks cut off.</div></div></div>'; }
     // button size
     if (isBtn) h += '<div class="ss"><div class="sst">Button size</div><div class="seg">' + [["S", "Small"], ["M", "Medium"], ["L", "Large"], ["XL", "Extra large"]].map(function (b) { return '<button data-bsize="' + b[0] + '" title="' + b[1] + '">' + b[0] + "</button>"; }).join("") + "</div></div>";
     // colours
@@ -1115,6 +1118,12 @@ input,select,textarea{font:inherit}
     if (inl || /^inline/.test(cs.display)) o.display = "block";
     if (k === "link" || isBtn) { if (!clean(own.width) && c.getClasses().indexOf("block") < 0) o.width = "fit-content"; }
     else if (el.parentElement && el.offsetWidth >= el.parentElement.clientWidth - 2 && !clean(own.width) && !clean(own["max-width"])) { o.width = "50%"; toast("Width set to 50% so you can see the alignment. Change it under Size."); }
+    var pcs = el.parentElement && el.ownerDocument.defaultView.getComputedStyle(el.parentElement);
+    if (pcs && /grid/.test(pcs.display)) {
+      // inside a column: the picture fills its column, so give it room to move
+      o["justify-self"] = dir === "left" ? "start" : dir === "right" ? "end" : "center";
+      if (!clean(own.width) && !clean(own["max-width"]) && el.getBoundingClientRect().width >= el.parentElement.getBoundingClientRect().width * 0.85 / Math.max(1, pcs.gridTemplateColumns.split(" ").length)) { o.width = "70%"; toast("Width set to 70% so you can see the alignment. Change it under Size."); }
+    }
     if (own.margin) { o.margin = ""; o["margin-top"] = cs.marginTop; o["margin-bottom"] = cs.marginBottom; }
     o["margin-left"] = dir === "left" ? "0" : "auto"; o["margin-right"] = dir === "right" ? "0" : "auto";
     sty(o);
@@ -1144,6 +1153,7 @@ input,select,textarea{font:inherit}
     box.addEventListener("change", function (e) {
       var n = e.target;
       if (n.dataset.keep) { var kc = ed.getSelected(); if (n.checked) kc.addClass("keep"); else kc.removeClass("keep"); return; }
+      if (n.dataset.fit) { if (n.value === "contain") sty({ "object-fit": "contain", height: "auto", "aspect-ratio": "auto" }); else if (n.value === "cover") sty({ "object-fit": "cover" }); else sty({ "object-fit": "", height: "", "aspect-ratio": "" }); return; }
       if (n.dataset.pin) { var pc = ed.getSelected(); ["pin-top", "pin-bot", "stick"].forEach(function (x) { pc.removeClass(x); }); if (n.value) pc.addClass("pin-" + n.value); return; }
       if (n.dataset.cols) { var cc = ed.getSelected(); ["c1", "c2", "c3", "c4", "c5", "c6", "s13", "s31", "auto"].forEach(function (x) { cc.removeClass(x); }); cc.addClass(n.value); return; }
       if (n.dataset.s && n.dataset.k === "sel") { var o = {}; o[n.dataset.s] = n.value; sty(o); }
