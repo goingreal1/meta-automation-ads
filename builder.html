@@ -514,7 +514,7 @@ input,select,textarea{font:inherit}
         { extend: "font-family", default: "inherit", options: [
           { id: "inherit", label: "Default" }, { id: "var(--fh)", label: "Heading font" }, { id: "var(--fb)", label: "Body font" },
           { id: "Arial, sans-serif", label: "Arial" }, { id: "Georgia, serif", label: "Georgia" }, { id: "'Courier New', monospace", label: "Courier" }] },
-        "font-size", "font-weight", "color", "line-height", "letter-spacing", "text-align", { extend: "text-transform", default: "none" }] },
+        "font-size", "font-weight", "color", { extend: "line-height", units: ["", "px", "em", "%"], default: "normal" }, "letter-spacing", "text-align", { extend: "text-transform", default: "none" }] },
       { name: "Spacing", open: false, properties: ["margin", "padding"] },
       { name: "Size", open: false, properties: ["width", "max-width", "min-height"] },
       { name: "Background", open: false, properties: [
@@ -1194,7 +1194,7 @@ input,select,textarea{font:inherit}
     var box = $("#rvStyle"), ed = S.editor;
     function val(n) {
       var p = n.dataset.s, v = n.value, kind = n.dataset.k;
-      if (kind === "color") { if (v && !(window.CSS && CSS.supports("color", v))) return null; return v ? v + " !important" : ""; }
+      if (kind === "color") { if (v && !(window.CSS && CSS.supports("color", v))) return null; return v || ""; }
       if (kind === "num") { if (v === "") return ""; var u = n.dataset.wu ? ($('[data-wunit]', box) || {}).value : n.dataset.u; if (u === "%" && +v > 100) { v = "100"; n.value = v; } return v + (u || "px"); }
       return v;
     }
@@ -1217,7 +1217,7 @@ input,select,textarea{font:inherit}
       if (n.dataset.bgp !== undefined) {
         var bc = ed.getSelected(); bc.getClasses().filter(function (x) { return /^bgp-/.test(x); }).forEach(function (x) { bc.removeClass(x); });
         var pr = BGP[n.value] || BGP[""];
-        sty({ "background-color": pr.bg ? pr.bg + " !important" : "", "background-image": pr.img || "", color: pr.fg ? pr.fg + " !important" : "", "border-radius": pr.r || "", "padding-top": pr.pv || "", "padding-bottom": pr.pv || "", "padding-left": pr.ph || "", "padding-right": pr.ph || "", border: pr.bd || "", "box-sizing": pr.bg || pr.img || pr.bd ? "border-box" : "", "max-width": pr.bg || pr.img || pr.bd ? "100%" : "" });
+        sty({ "background-color": pr.bg || "", "background-image": pr.img || "", color: pr.fg || "", "border-radius": pr.r || "", "padding-top": pr.pv || "", "padding-bottom": pr.pv || "", "padding-left": pr.ph || "", "padding-right": pr.ph || "", border: pr.bd || "", "box-sizing": pr.bg || pr.img || pr.bd ? "border-box" : "", "max-width": pr.bg || pr.img || pr.bd ? "100%" : "" });
         return renderStyle();
       }
       if (n.dataset.fit) { if (n.value === "contain") sty({ "object-fit": "contain", height: "auto", "aspect-ratio": "auto" }); else if (n.value === "cover") sty({ "object-fit": "cover" }); else sty({ "object-fit": "", height: "", "aspect-ratio": "" }); return; }
@@ -1232,7 +1232,7 @@ input,select,textarea{font:inherit}
       if (n.dataset.addpic) { var pc = ed.getSelected(); pc.append('<img class="rv-img" src="' + RB.PLACEHOLDER + '" alt="">'); return; }
       if (n.dataset.al) { setAlign(n.dataset.al); return renderStyle(); }
       if (n.dataset.bsize) { var b = BSIZE[n.dataset.bsize]; sty({ "padding-top": b[0], "padding-bottom": b[0], "padding-left": b[1], "padding-right": b[1], "font-size": b[2] }); return renderStyle(); }
-      if (n.dataset.sw) { var o = {}; o[n.dataset.sw] = n.dataset.v + " !important"; sty(o); return renderStyle(); }
+      if (n.dataset.sw) { var o = {}; o[n.dataset.sw] = n.dataset.v; sty(o); return renderStyle(); }
       if (n.dataset.clear) { var o2 = {}; o2[n.dataset.clear] = ""; sty(o2); return renderStyle(); }
       if (n.dataset.wchip) { sty({ width: n.dataset.wchip }); return renderStyle(); }
       if (n.id === "padLink") { S.padLink = !S.padLink; S.padTouched = true; n.textContent = S.padLink ? "linked" : "separate"; }
@@ -1479,8 +1479,18 @@ input,select,textarea{font:inherit}
       sec = Array.isArray(sec) ? sec[0] : sec; c.move(sec.components().at(0), { at: 0 });
     });
   }
+  // older pages stored colours with "!important": a phone/tablet value or the "More style options" panel can never beat that, so those fields looked dead
+  function dropImportant() {
+    S.editor.Css.getAll().forEach(function (r) {
+      var sel = r.selectorsToString ? r.selectorsToString() : ""; if (sel.charAt(0) !== "#") return;
+      var st = r.getStyle(), ch = false;
+      Object.keys(st).forEach(function (k) { if (/!important/i.test(String(st[k]))) { st[k] = String(st[k]).replace(/\s*!important/ig, ""); ch = true; } });
+      if (ch) r.setStyle(st);
+    });
+  }
   function finishLoad() {
     try { healLayout(); } catch (e) {}
+    try { dropImportant(); } catch (e) {}
     nameAll(); S.loadedProject = true; S.dirty = false;
     applyCanvasTheme(); syncUndo(); renderPages(); renderPageSel(); onSelect(); syncEmpty();
     status("", pageStatusText());
@@ -1768,7 +1778,7 @@ input,select,textarea{font:inherit}
   }
 
   boot().catch(function (e) { console.error(e); fatal("Something went wrong opening the builder."); });
-  window.__rvBuilder = S;
+  window.__rvBuilder = S; S.loadPage = loadPage;
 })();
 </script>
 </body>
