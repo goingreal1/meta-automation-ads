@@ -323,6 +323,9 @@ input,select,textarea{font:inherit}
       <div class="fld"><label>Search title</label><input id="pSeoTitle" placeholder="Shown in browser tab and Google"></div>
       <div class="fld"><label>Search description</label><textarea id="pSeoDesc" placeholder="One or two sentences"></textarea></div>
       <div class="fld"><label>Share image URL</label><input id="pSeoImg" placeholder="https://… (shown when shared on WhatsApp/Facebook)"></div>
+      <div class="fld"><label>Whole-page background colour</label><div class="cf"><input type="color" id="pBgColor" value="#ffffff"><input id="pBgColorTx" placeholder="(default)"></div></div>
+      <div class="fld"><label>Whole-page background picture</label><input id="pBgImg" placeholder="Paste an image link (https://…)"><div style="margin-top:6px"><button class="btn sm" id="pBgPick" type="button">Choose or upload…</button></div><small>Blocks that have their own background colour stay on top of it. Set a block's background to the page colour or remove it to let the picture show through.</small></div>
+      <div class="fld"><label>Picture behaviour</label><select id="pBgMode"><option value="fixed">Fill the page, stays still while scrolling</option><option value="cover">Fill the page, scrolls with it</option><option value="tile">Repeat as tiles</option></select></div>
       <div class="fld"><label><input type="checkbox" id="pNoindex" style="width:auto;margin-right:8px;vertical-align:middle">Hide this page from Google</label></div>
     </div>
   </div>
@@ -1145,6 +1148,13 @@ input,select,textarea{font:inherit}
     // pin a top-level bar/section to the top or bottom of the screen
     if (c.parent() === ed.getWrapper()) { var pinCur = cl.indexOf("pin-top") > -1 ? "top" : cl.indexOf("pin-bot") > -1 ? "bot" : (cl.indexOf("stick") > -1 ? "top" : ""); h += '<div class="ss"><div class="sst">Stay on screen</div><div class="sf"><select data-pin="1">' + [["", "Normal (scrolls away)"], ["top", "Pinned to the top while scrolling"], ["bot", "Pinned to the bottom of the screen"]].map(function (o) { return '<option value="' + o[0] + '"' + (pinCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Use this to turn a bar into a sticky header or footer.</div></div></div>'; }
     if (!isMedia && !isBtn && (k === "text" || k === "box" || k === "traits")) { var bgCur = (cl.filter(function (x) { return /^bgp-/.test(x); })[0]) || ""; h += '<div class="ss"><div class="sst">Background design</div><div class="sf"><select data-bgp="1">' + [["", "Choose a design…"], ["bgp-orange", "Orange box"], ["bgp-green", "Green box"], ["bgp-red", "Red box"], ["bgp-blue", "Blue box"], ["bgp-black", "Black box"], ["bgp-soft", "Soft grey-green box"], ["bgp-sunset", "Sunset gradient"], ["bgp-ocean", "Ocean gradient"], ["bgp-outline", "White with coloured outline"], ["bgp-dashed", "White with dashed green outline"]].map(function (o) { return '<option value="' + o[0] + '"' + (bgCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Sets colour, rounded corners (16px) and space (22px top/bottom, 28px sides). Every value stays editable below, and you can drag the edge grips to any size.</div></div></div>'; }
+    if (!isMedia && !isBtn) {
+      var bgi = String(own["background-image"] || ""), um = /url\(["']?([^"')]+)["']?\)/.exec(bgi), bgu = um ? um[1] : "", om = /rgba\(0,\s*0,\s*0,\s*([\d.]+)\)/.exec(bgi), bgo = om ? Math.round(parseFloat(om[1]) * 100) : 0;
+      var bgf = clean(own["background-size"]) || "cover", bgp = clean(own["background-position"]) || "center";
+      h += '<div class="ss"><div class="sst">Background picture</div><div class="sf"><input data-bgpic="url" value="' + esc(bgu) + '" placeholder="Paste an image link (https://…)"><div style="margin:8px 0;display:flex;gap:8px"><button class="btn sm" data-bgpick="1">Choose or upload…</button>' + (bgu ? '<button class="btn sm" data-bgpicrm="1">Remove</button>' : "") + '</div>' +
+        '<label style="font-size:12px;color:var(--tx2)">Dark layer over the picture (so text is easy to read): <b id="bgoV">' + bgo + '</b>%</label><input type="range" min="0" max="85" step="5" value="' + bgo + '" data-bgpic="ov" style="width:100%">' +
+        '<div class="row2" style="margin-top:8px"><div><label style="font-size:12px;color:var(--tx2)">Fit</label><select data-bgpic="fit">' + [["cover", "Fill the box"], ["contain", "Show whole picture"], ["auto", "Repeat as tiles"]].map(function (o) { return '<option value="' + o[0] + '"' + (bgf === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select></div><div><label style="font-size:12px;color:var(--tx2)">Focus</label><select data-bgpic="pos">' + [["center", "Centre"], ["top", "Top"], ["bottom", "Bottom"], ["left", "Left"], ["right", "Right"]].map(function (o) { return '<option value="' + o[0] + '"' + (bgp === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select></div></div></div></div>';
+    }
     // image fit: show the whole picture, or fill the box and crop
     if (k === "image") { var fitCur = clean(own["object-fit"]) || ""; h += '<div class="ss"><div class="sst">Picture fit</div><div class="sf"><select data-fit="1">' + [["", "Default"], ["contain", "Show the whole picture (no cropping)"], ["cover", "Fill the box (edges may be cropped)"]].map(function (o) { return '<option value="' + o[0] + '"' + (fitCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Pick "Show the whole picture" if your image looks cut off.</div></div></div>'; }
     // button size
@@ -1225,6 +1235,21 @@ input,select,textarea{font:inherit}
       if (kind === "num") { if (v === "") return ""; var u = n.dataset.wu ? ($('[data-wunit]', box) || {}).value : n.dataset.u; if (u === "%" && +v > 100) { v = "100"; n.value = v; } return v + (u || "px"); }
       return v;
     }
+    // background picture (any block, section or column)
+    function applyBgPic() {
+      var q = function (k) { return box.querySelector('[data-bgpic="' + k + '"]'); }, u = (q("url").value || "").trim(), ov = +q("ov").value || 0, fit = q("fit").value, pos = q("pos").value;
+      var vv = box.querySelector("#bgoV"); if (vv) vv.textContent = ov;
+      if (!u) return sty({ "background-image": "", "background-size": "", "background-position": "", "background-repeat": "" });
+      var g = ov ? "linear-gradient(rgba(0,0,0," + (ov / 100) + "),rgba(0,0,0," + (ov / 100) + ")), " : "";
+      sty({ "background-image": g + 'url("' + u.replace(/"/g, "%22") + '")', "background-size": fit, "background-position": pos, "background-repeat": fit === "auto" ? "repeat" : "no-repeat" });
+    }
+    box.addEventListener("input", function (e) { if (e.target.dataset && e.target.dataset.bgpic) applyBgPic(); });
+    box.addEventListener("change", function (e) { if (e.target.dataset && e.target.dataset.bgpic) applyBgPic(); });
+    box.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("[data-bgpick],[data-bgpicrm]"); if (!b) return;
+      if (b.dataset.bgpicrm) { sty({ "background-image": "", "background-size": "", "background-position": "", "background-repeat": "" }); return renderStyle(); }
+      ed.AssetManager.open({ types: ["image"], accept: "image/*", select: function (asset, complete) { var inp = box.querySelector('[data-bgpic="url"]'); inp.value = asset.get ? asset.get("src") : asset.src; applyBgPic(); if (complete !== false) ed.AssetManager.close(); renderStyle(); } });
+    });
     // the colour picker opens far below the visible page (it measures from the scrolled panel): pin it next to the swatch that opened it
     var lastSw = null;
     document.addEventListener("mousedown", function (e) { var sw = e.target.closest && e.target.closest(".gjs-field-color-picker"); if (sw) lastSw = sw; }, true);
@@ -1522,7 +1547,7 @@ input,select,textarea{font:inherit}
     var sp = (S.page && S.page.seo) || {};
     doc.body.className = ((doc.body.className || "").replace(/\brv-bc\S*\s*/g, "") + " " + (sp.body_class || "")).trim();
     var bs2 = doc.getElementById("rv-bodystyle"); if (!bs2) { bs2 = doc.createElement("style"); bs2.id = "rv-bodystyle"; doc.head.appendChild(bs2); }
-    bs2.textContent = sp.body_style ? "body{" + sp.body_style + "}" : "";
+    bs2.textContent = sp.body_style ? "html body{" + sp.body_style + "}" : "";
     var cc = doc.getElementById("rv-custom"); if (!cc) { cc = doc.createElement("style"); cc.id = "rv-custom"; doc.head.appendChild(cc); }
     cc.textContent = customCss;
     // editing aids
@@ -1810,7 +1835,7 @@ input,select,textarea{font:inherit}
     $("#pName").value = p.title; $("#pSlug").value = p.slug; $("#pSlug").disabled = p.slug === "" && S.pages.length === 1 || p.slug === "";
     $("#pSlugNote").textContent = p.slug === "" ? "The home page has no extra address." : "";
     $("#pKind").value = p.kind; var seo = p.seo || {};
-    $("#pSeoTitle").value = seo.title || ""; $("#pSeoDesc").value = seo.description || ""; $("#pSeoImg").value = seo.image || ""; $("#pNoindex").checked = !!seo.noindex;
+    $("#pSeoTitle").value = seo.title || ""; $("#pSeoDesc").value = seo.description || ""; $("#pSeoImg").value = seo.image || ""; $("#pNoindex").checked = !!seo.noindex; var pg0 = seo.page_bg || {}; $("#pBgColorTx").value = pg0.color || ""; if (pg0.color) $("#pBgColor").value = pg0.color; $("#pBgImg").value = pg0.img || ""; $("#pBgMode").value = pg0.mode || "fixed"; $("#pBgColor").oninput = function () { $("#pBgColorTx").value = this.value; }; $("#pBgPick").onclick = function () { S.editor.AssetManager.open({ types: ["image"], accept: "image/*", select: function (a, c) { $("#pBgImg").value = a.get ? a.get("src") : a.src; if (c !== false) S.editor.AssetManager.close(); } }); };
     function theme() { applyCanvasTheme(); }
     function setPrimary(c) { S.theme.primary = c; $("#dColor").value = c; $("#dColorTx").value = c; $$(".sw").forEach(function (x) { x.classList.toggle("on", x.dataset.c === c); }); theme(); }
     $$(".sw").forEach(function (x) { x.onclick = function () { setPrimary(x.dataset.c); }; });
@@ -1831,6 +1856,11 @@ input,select,textarea{font:inherit}
     var slug = p.slug === "" ? "" : slugify($("#pSlug").value) || p.slug;
     if (S.pages.some(function (x) { return x.id !== p.id && x.slug === slug; })) { toast("Another page already uses that address."); btn.disabled = false; return; }
     var seo = Object.assign({}, p.seo || {}, { title: $("#pSeoTitle").value.trim(), description: $("#pSeoDesc").value.trim(), image: $("#pSeoImg").value.trim(), noindex: $("#pNoindex").checked, custom_css: customCss });
+    var pbg = { color: $("#pBgColorTx").value.trim(), img: $("#pBgImg").value.trim(), mode: $("#pBgMode").value };
+    if (pbg.color || pbg.img) {
+      seo.page_bg = pbg;
+      seo.body_style = (pbg.color ? "background-color:" + pbg.color + ";" : "") + (pbg.img ? 'background-image:url("' + pbg.img.replace(/"/g, "%22") + '");' + (pbg.mode === "tile" ? "background-repeat:repeat;" : "background-repeat:no-repeat;background-size:cover;background-position:center;") + (pbg.mode === "fixed" ? "background-attachment:fixed;" : "") : "");
+    } else if (seo.page_bg) { delete seo.page_bg; delete seo.body_style; }
     var r2 = await sb.from("site_pages").update({ title: $("#pName").value.trim() || p.title, slug: slug, kind: $("#pKind").value, seo: seo }).eq("id", p.id).select("*").single();
     btn.disabled = false;
     if (r1.error || r2.error) return toast("Couldn't save: " + esc((r1.error || r2.error).message));
