@@ -7,6 +7,21 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
+// Caller must be the service role (internal) or a signed-in dashboard user --
+// the public anon key alone is not enough. This function launches real Meta
+// campaigns, so it is scoped to the caller's own company's creatives.
+type Caller = { service: boolean; company_id: string | null; role: string | null };
+async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  const { data } = await admin.auth.getUser(token);
+  if (!data?.user) return null;
+  const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
+  if (!p?.company_id) return null;
+  return { service: false, company_id: p.company_id, role: p.role };
+}
+
 // Browser callers (the dashboard's Publish button, Run Tonight's Batch) send
 // Authorization + Content-Type headers, which triggers a CORS preflight. Every
 // response -- not just the OPTIONS preflight -- needs Access-Control-Allow-Origin
@@ -1073,6 +1088,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const caller = await getCaller(req, supabase);
+    if (!caller) {
+      return new Response(JSON.stringify({ error: "Not signed in" }), { status: 401, headers: { "Content-Type": "application/json", ...CORS_HEADERS } });
+    }
 
     // An explicit product_id (the dashboard's "Publish" button, scoped to one
     // product) bypasses the auto_post_enabled gate -- that toggle controls
@@ -1129,6 +1148,9 @@ Deno.serve(async (req: Request) => {
         .order("uploaded_at", { ascending: true })
         .limit(5);
     }
+
+    // Tenant scope: a signed-in user can only launch their own company's creatives.
+    if (!caller.service) pendingQuery = pendingQuery.eq("company_id", caller.company_id);
 
     const { data: pendingCreatives, error: pendingErr } = await pendingQuery;
 

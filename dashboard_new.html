@@ -7604,7 +7604,11 @@ async function bvWebDeleteSnippet(id) {
   if (error) return bvToast("Couldn't delete: " + error.message, "err");
   bvToast("Code deleted"); bvWebReload();
 }
+const BV_WEB_PRESET_KEY = { meta: "metapx", ga: "ga4", tiktok: "tiktok", clarity: "clarity", hotjar: "hotjar", gtm: "gtm" };
 const BV_WEB_PRESETS = {
+  clarity: { name: "Microsoft Clarity", location: "head", ask: "Clarity Project ID", ph: "e.g. k8x2abcd9z", make: id => `<script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","${id}");<\/script>` },
+  hotjar: { name: "Hotjar", location: "head", ask: "Hotjar Site ID (numbers)", ph: "e.g. 1234567", make: id => `<script>(function(h,o,t,j,a,r){h.hj=h.hj||function(){(h.hj.q=h.hj.q||[]).push(arguments)};h._hjSettings={hjid:${id.replace(/\D/g, "")},hjsv:6};a=o.getElementsByTagName('head')[0];r=o.createElement('script');r.async=1;r.src=t+h._hjSettings.hjid+j+h._hjSettings.hjsv;a.appendChild(r);})(window,document,'https://static.hotjar.com/c/hotjar-','.js?sv=');<\/script>` },
+  gtm: { name: "Google Tag Manager", location: "head", ask: "Container ID", ph: "GTM-XXXXXXX", make: id => `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${id}');<\/script>` },
   meta: { name: "Meta Pixel", location: "head", ask: "Pixel ID", ph: "e.g. 1234567890123456", make: id => `<!-- Meta Pixel -->\n<script>\n!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');\nfbq('init','${id}');\nfbq('track','PageView');\n<\/script>` },
   ga: { name: "Google Analytics", location: "head", ask: "Measurement ID", ph: "G-XXXXXXXXXX", make: id => `<script async src="https://www.googletagmanager.com/gtag/js?id=${id}"><\/script>\n<script>\nwindow.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}\ngtag('js',new Date());gtag('config','${id}');\n<\/script>` },
   tiktok: { name: "TikTok Pixel", location: "head", ask: "Pixel ID", ph: "e.g. C1234567890", make: id => `<script>\n!function (w, d, t) {w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.load=function(e,n){var i="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=i,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=document.createElement("script");o.type="text/javascript",o.async=!0,o.src=i+"?sdkid="+e+"&lib="+t;var a=document.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};ttq.load('${id}');ttq.page();}(window, document, 'ttq');\n<\/script>` },
@@ -7615,7 +7619,8 @@ function bvWebPreset(k) {
   if (!id || !id.trim()) return;
   const clean = id.trim().replace(/[^A-Za-z0-9_-]/g, "");
   if (!clean) return bvToast("That ID doesn't look right", "err");
-  document.getElementById("snCode").value = pr.make(clean);
+  // the marker line lets the website builder's Plugins panel recognise (and manage) this tool too
+  document.getElementById("snCode").value = `<!-- rv-plugin:${BV_WEB_PRESET_KEY[k] || k} id=${clean} -->\n` + pr.make(clean);
   if (!document.getElementById("snName").value) document.getElementById("snName").value = pr.name;
   document.getElementById("snLoc").value = pr.location;
 }
@@ -7631,7 +7636,10 @@ function bvWebSnippet(id) {
     ${sn ? "" : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"><span style="font-size:11.5px;color:var(--muted);">Quick add:</span>
       <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('meta')">Meta Pixel</button>
       <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('tiktok')">TikTok Pixel</button>
-      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('ga')">Google Analytics</button></div>`}
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('ga')">Google Analytics</button>
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('clarity')">Microsoft Clarity</button>
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('gtm')">Tag Manager</button>
+      <button class="btn btn-g" style="width:auto;padding:4px 10px;font-size:11.5px;" onclick="bvWebPreset('hotjar')">Hotjar</button></div>`}
     <div class="ws-field"><label>Name</label><input id="snName" value="${escH(sn?.name || "")}" placeholder="e.g. TikTok pixel - Herbal Tea"></div>
     <div class="ws-field"><label>Code</label><textarea id="snCode" class="ws-code" spellcheck="false" placeholder="Paste your script or HTML here">${escH(sn?.code || "")}</textarea></div>
     <div class="ws-field"><label>Where on the page</label><select id="snLoc">${Object.entries(BV_WEB_LOC).map(([k, t]) => `<option value="${k}" ${sn?.location === k ? "selected" : ""}>${escH(t)}</option>`).join("")}</select></div>

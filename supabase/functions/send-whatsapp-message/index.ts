@@ -25,6 +25,16 @@ function json(obj: any, status = 200) {
   });
 }
 
+// Caller must be a signed-in dashboard user (the public anon key is not enough).
+async function callerCompany(req: Request, admin: ReturnType<typeof createClient>): Promise<string | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  const { data } = await admin.auth.getUser(token);
+  if (!data?.user) return null;
+  const { data: p } = await admin.from("profiles").select("company_id").eq("id", data.user.id).maybeSingle();
+  return p?.company_id ?? null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -47,13 +57,16 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    const callerCo = await callerCompany(req, supabase);
+    if (!callerCo) return json({ error: "Not signed in" }, 401);
+
     const { data: conv, error: convErr } = await supabase
       .from("conversations")
       .select("id, phone, company_id, buyer_whatsapp_numbers(phone_number_id, access_token)")
       .eq("id", conversationId)
       .maybeSingle();
 
-    if (convErr || !conv) {
+    if (convErr || !conv || conv.company_id !== callerCo) {
       return json({ error: "Conversation not found." }, 404);
     }
 

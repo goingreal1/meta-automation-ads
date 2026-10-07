@@ -10,6 +10,20 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+// Caller must be the service role (internal) or a signed-in dashboard user --
+// the public anon key alone is not enough.
+type Caller = { service: boolean; company_id: string | null; role: string | null };
+async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  const { data } = await admin.auth.getUser(token);
+  if (!data?.user) return null;
+  const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
+  if (!p?.company_id) return null;
+  return { service: false, company_id: p.company_id, role: p.role };
+}
+
 function json(obj: any, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -30,6 +44,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const caller = await getCaller(req, supabase);
+    if (!caller) return json({ error: "Not signed in" }, 401);
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const productId = formData.get("product_id") as string | null;
@@ -49,10 +65,10 @@ Deno.serve(async (req: Request) => {
 
     const { data: product, error: productErr } = await supabase
       .from("products")
-      .select("id")
+      .select("id, company_id")
       .eq("id", productId)
       .maybeSingle();
-    if (productErr || !product) {
+    if (productErr || !product || (!caller.service && product.company_id !== caller.company_id)) {
       return json({ error: "Product not found." }, 404);
     }
 
