@@ -656,10 +656,29 @@ input,select,textarea{font:inherit}
     if (c) afterInsert(c);
     return c;
   }
+  /* ---- pictures in a row: ask how many, then keep them centred however many are left ---- */
+  function setPicCount(c, n) {
+    var kids = c.components(), have = kids.length, ph = RB.PLACEHOLDER;
+    while (kids.length > n) kids.at(kids.length - 1).remove();
+    for (var i = have; i < n; i++) c.append('<img class="rv-img" src="' + ph + '" alt="">');
+    for (var j = 1; j <= 6; j++) c.removeClass("i" + j);
+    c.addClass("i" + Math.min(6, n));
+  }
+  function askPicCount(c) {
+    c.removeAttributes("data-rv-new");
+    var o = document.createElement("div"); o.className = "ov on";
+    o.innerHTML = '<div class="dlg" style="max-width:420px"><div class="dhd"><h3>How many pictures in this row?</h3></div><div class="dbd"><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+      [1, 2, 3, 4, 5, 6].map(function (n) { return '<button class="btn" data-n="' + n + '" style="flex:1;min-width:52px;height:56px;font-size:20px">' + n + "</button>"; }).join("") +
+      '</div><div class="hint2" style="margin-top:12px">They are centred automatically. You can add or remove pictures later and the row stays centred.</div></div></div>';
+    document.body.appendChild(o);
+    function done(n) { o.remove(); if (n) setPicCount(c, n); S.editor.select(c); setTab("R", "style"); }
+    o.addEventListener("click", function (e) { var b = e.target.closest("[data-n]"); if (b) done(+b.dataset.n); else if (e.target === o) done(0); });
+  }
   function afterInsert(c) {
     var ed = S.editor; ed.select(c);
     setTimeout(function () { try { var el = c.getEl(); el && el.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {} }, 60);
     if (c.is("rv-html")) return openCode(c);
+    if (c.getAttributes()["data-rv-new"]) return askPicCount(c);
     setTab("R", "content");
     setTimeout(function () { var f = $("#rvContent [data-focus]"); if (f) { f.focus(); if (f.select) f.select(); } }, 120);
   }
@@ -1072,6 +1091,7 @@ input,select,textarea{font:inherit}
     var cl = c.getClasses();
     if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^(c[1-6]|s13|s31)$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["s13", "2 columns: narrow + wide (1/3 + 2/3)"], ["s31", "2 columns: wide + narrow (2/3 + 1/3)"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><label class="chk" style="margin:8px 0 0"><input type="checkbox" data-keep="1"' + (cl.indexOf("keep") > -1 ? " checked" : "") + '>Stay side by side on phones (2 per row)</label><div class="hint2">Duplicate a card with the toolbar to add more. Otherwise they stack on phones.</div></div></div>'; }
     if (k === "text") h += '<div class="ss"><div class="hint2" style="margin:0">Colour only some words: click the text, select the words with your mouse, then use the <b>A</b> colour or highlight button in the small bar above. The colour here changes the whole block.</div></div>';
+    if (cl.indexOf("rv-imgs") > -1) { var ipr = (cl.filter(function (x) { return /^i[1-6]$/.test(x); })[0] || "i3").slice(1); h += '<div class="ss"><div class="sst">Pictures per row</div><div class="sf"><select data-ipr="1">' + [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="' + n + '"' + (String(n) === ipr ? " selected" : "") + ">" + n + "</option>"; }).join("") + '</select><button class="btn" data-addpic="1" style="margin-top:8px;width:100%">+ Add a picture</button><div class="hint2">Rows are centred, even when the last row has fewer pictures. Use Alignment above for left or right.</div></div></div>'; }
     // pin a top-level bar/section to the top or bottom of the screen
     if (c.parent() === ed.getWrapper()) { var pinCur = cl.indexOf("pin-top") > -1 ? "top" : cl.indexOf("pin-bot") > -1 ? "bot" : (cl.indexOf("stick") > -1 ? "top" : ""); h += '<div class="ss"><div class="sst">Stay on screen</div><div class="sf"><select data-pin="1">' + [["", "Normal (scrolls away)"], ["top", "Pinned to the top while scrolling"], ["bot", "Pinned to the bottom of the screen"]].map(function (o) { return '<option value="' + o[0] + '"' + (pinCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Use this to turn a bar into a sticky header or footer.</div></div></div>'; }
     // image fit: show the whole picture, or fill the box and crop
@@ -1104,6 +1124,7 @@ input,select,textarea{font:inherit}
     box.innerHTML = h;
   }
   function currentAlign(c, el, cs, own) {
+    if (c.getClasses().indexOf("rv-imgs") > -1) return cs.justifyContent === "flex-start" ? "left" : cs.justifyContent === "flex-end" ? "right" : "center";
     var k = kindOf(c), inl = /^inline/.test(cs.display), isBtn = c.getClasses().indexOf("rv-btn") > -1;
     if ((k === "text" && !inl && !isBtn) || k === "box" || k === "traits") { var t = cs.textAlign; return t === "center" || t === "right" || t === "justify" ? t : "left"; }
     var par = el.parentElement; if (!par) return "";
@@ -1112,6 +1133,7 @@ input,select,textarea{font:inherit}
   }
   function setAlign(dir) {
     var ed = S.editor, c = ed.getSelected(); if (!c) return;
+    if (c.getClasses().indexOf("rv-imgs") > -1) return sty({ "justify-content": dir === "left" ? "flex-start" : dir === "right" ? "flex-end" : "center" });
     var el = c.getEl(), cs = el.ownerDocument.defaultView.getComputedStyle(el), own = ownStyle(), k = kindOf(c), inl = /^inline/.test(cs.display), isBtn = c.getClasses().indexOf("rv-btn") > -1;
     if ((k === "text" && !inl && !isBtn) || k === "box" || k === "traits") return sty({ "text-align": dir });
     if (inl && !isBtn && tagOf(c) === "a") return toast("Select the whole text block to align a link inside it.");
@@ -1155,13 +1177,15 @@ input,select,textarea{font:inherit}
       var n = e.target;
       if (n.dataset.keep) { var kc = ed.getSelected(); if (n.checked) kc.addClass("keep"); else kc.removeClass("keep"); return; }
       if (n.dataset.fit) { if (n.value === "contain") sty({ "object-fit": "contain", height: "auto", "aspect-ratio": "auto" }); else if (n.value === "cover") sty({ "object-fit": "cover" }); else sty({ "object-fit": "", height: "", "aspect-ratio": "" }); return; }
+      if (n.dataset.ipr) { var ic = ed.getSelected(); for (var q = 1; q <= 6; q++) ic.removeClass("i" + q); ic.addClass("i" + n.value); return; }
       if (n.dataset.pin) { var pc = ed.getSelected(); ["pin-top", "pin-bot", "stick"].forEach(function (x) { pc.removeClass(x); }); if (n.value) pc.addClass("pin-" + n.value); return; }
       if (n.dataset.cols) { var cc = ed.getSelected(); ["c1", "c2", "c3", "c4", "c5", "c6", "s13", "s31", "auto"].forEach(function (x) { cc.removeClass(x); }); cc.addClass(n.value); return; }
       if (n.dataset.s && n.dataset.k === "sel") { var o = {}; o[n.dataset.s] = n.value; sty(o); }
       if (n.dataset.wunit) { var w = $('[data-s="width"]', box); if (w.value) sty({ width: w.value + n.value }); }
     });
     box.addEventListener("click", function (e) {
-      var n = e.target.closest("[data-al],[data-bsize],[data-sw],[data-clear],[data-wchip],#padLink"); if (!n) return;
+      var n = e.target.closest("[data-al],[data-bsize],[data-sw],[data-clear],[data-wchip],[data-addpic],#padLink"); if (!n) return;
+      if (n.dataset.addpic) { var pc = ed.getSelected(); pc.append('<img class="rv-img" src="' + RB.PLACEHOLDER + '" alt="">'); return; }
       if (n.dataset.al) { setAlign(n.dataset.al); return renderStyle(); }
       if (n.dataset.bsize) { var b = BSIZE[n.dataset.bsize]; sty({ "padding-top": b[0], "padding-bottom": b[0], "padding-left": b[1], "padding-right": b[1], "font-size": b[2] }); return renderStyle(); }
       if (n.dataset.sw) { var o = {}; o[n.dataset.sw] = n.dataset.v + " !important"; sty(o); return renderStyle(); }
