@@ -5459,6 +5459,33 @@ async function bvAiSave(numberId) {
   }
 }
 
+
+// Approved Meta payment account names: with at least one, a top-up transfer is only sent to an account whose
+// bank-resolved name matches one of them exactly (see paystack-transfer-to-meta).
+async function bvRenderTransferNames() {
+  const el = document.getElementById("transferNamesPanel"); if (!el) return;
+  const rows = await sbQuery("transfer_allowed_names", "select=id,account_name,created_at&order=created_at.asc").catch(() => []);
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Approved Meta payment accounts</div><div class="ph-count">${rows.length ? rows.length + " approved" : "not set"}</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Money for ad top-ups is only sent to an account whose bank-verified name is on this list, exactly as the bank shows it (for example <b>FACEBOOK NIGERIA LIMITED</b>). ${rows.length ? "" : "Until you add one, any account clearly named Facebook or Meta Platforms is accepted."} If a transfer is refused, the message shows the name the bank returned. Add it here only if you are sure it is Meta's billing account.</div>
+    ${rows.length ? `<div class="tbl-wrap"><table><tr><th>Account name</th><th></th></tr>${rows.map(r => `<tr><td class="s n">${escH(r.account_name)}</td><td><button class="btn btn-g tn-del" data-id="${r.id}" style="padding:3px 9px;font-size:10px;">Remove</button></td></tr>`).join("")}</table></div>` : ""}
+    <form id="tnForm" style="display:flex;gap:6px;margin-top:10px;"><input id="tnName" required placeholder="Exact account name, e.g. FACEBOOK NIGERIA LIMITED" style="flex:1;"><button class="btn btn-a" type="submit" style="width:auto;">Add</button></form>`;
+  el.querySelectorAll(".tn-del").forEach(b => b.onclick = async () => {
+    if (!confirm("Remove this approved account name?")) return;
+    const { error } = await supabaseClient.from("transfer_allowed_names").delete().eq("id", b.dataset.id);
+    if (error) return bvToast(error.message, "err");
+    bvRenderTransferNames();
+  });
+  document.getElementById("tnForm").onsubmit = async ev => {
+    ev.preventDefault();
+    const name = document.getElementById("tnName").value.trim();
+    if (name.length < 3) return;
+    const { error } = await supabaseClient.from("transfer_allowed_names").insert({ account_name: name });
+    if (error) return bvToast(/duplicate|unique/i.test(error.message) ? "That name is already on the list." : error.message, "err");
+    bvToast("Added"); bvRenderTransferNames();
+  };
+}
+
 // ── CUSTOM DOMAINS (Settings) ─────────────────────────────────────────────────
 // A domain belongs to the company; an owner/admin connects it and can assign it to a media buyer, who then
 // chooses which of their sites it shows. Other sites of the company stay reachable at <domain>/s/<site-slug>.
@@ -7054,6 +7081,23 @@ async function bvSaveShopCreative(productId) {
 }
 
 // ── TAB: ORDERS ───────────────────────────────────────────────────────────────
+
+// Which statuses a role may set on an order. "Delivered" is proof of payment or handover: it comes from a matched
+// Paystack payment (the webhook) or from the delivery agent, never from a media buyer (the database enforces this too).
+function bvOrderStatusSelect(o) {
+  const role = window.myProfile?.role;
+  const all = [["pending", "Pending"], ["valid", "Valid"], ["delivered", "Delivered"], ["returned", "Returned"], ["cancelled", "Cancelled"]];
+  const allowed = role === "owner" || role === "admin" || role === "delivery_agent" ? all.map(x => x[0])
+    : role === "customer_care" ? ["pending", "valid", "returned", "cancelled"]
+    : ["pending", "valid", "cancelled"];
+  const cur = o.order_status || "pending";
+  const locked = cur === "delivered" ? !(role === "owner" || role === "admin") : false;
+  const opts = all.filter(x => allowed.includes(x[0]) || x[0] === cur);
+  return `<select data-oid="${o.id}" class="oSel" style="padding:3px 7px;font-size:11px;width:auto;" ${locked ? "disabled title=\"Delivered orders can only be changed by an admin\"" : ""}>
+    ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""} ${allowed.includes(v) ? "" : "disabled"}>${l}</option>`).join("")}
+  </select>`;
+}
+
 async function renderOrders(el) {
   // Stats and pagination need exact full-table counts separate from the one
   // page of rows actually rendered -- sbCount reads Content-Range instead of
@@ -7133,13 +7177,7 @@ async function renderOrders(el) {
           <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span>${o.possible_duplicate ? ` <span class="pill returned" title="Same customer, same address, within the last hour">⚠️ Possible dup</span>` : ""} <a href="javascript:void(0)" onclick="bvShowOrderHistoryModal('${o.id}')" title="Change history" style="color:var(--muted);text-decoration:none;">🕘</a></td>
           <td>${ago(o.ordered_at)}</td>
           <td>
-            <select data-oid="${o.id}" class="oSel" style="padding:3px 7px;font-size:11px;width:auto;">
-              <option value="pending"   ${o.order_status==="pending"   ?"selected":""}>Pending</option>
-              <option value="valid"     ${o.order_status==="valid"     ?"selected":""}>Valid</option>
-              <option value="delivered" ${o.order_status==="delivered" ?"selected":""}>Delivered</option>
-              <option value="returned"  ${o.order_status==="returned"  ?"selected":""}>Returned</option>
-              <option value="cancelled" ${o.order_status==="cancelled" ?"selected":""}>Cancelled</option>
-            </select>
+            ${bvOrderStatusSelect(o)}
           </td>
         </tr>`).join("")}
       </table></div>
@@ -7169,7 +7207,7 @@ async function renderOrders(el) {
         if (ns === "delivered") body.delivered_at = new Date().toISOString();
         const { error } = await supabaseClient.from('orders').update(body).eq('id', id);
         if (error) throw error;
-      } catch(err) { alert("Update failed: " + err.message); }
+      } catch(err) { alert("Update failed: " + err.message); renderOrders(el); }
     });
   });
 
@@ -10418,6 +10456,7 @@ async function renderSettings(el) {
     })()}
 
     ${!isAdmin ? "" : `
+    <div class="panel" data-sec="business" id="transferNamesPanel"></div>
     <div class="panel" data-sec="business">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
@@ -10490,6 +10529,7 @@ async function renderSettings(el) {
     </div></div>`;
   bvSettingsWire();
   bvRenderSetupSlot();
+  bvRenderTransferNames();
 document.querySelectorAll(".connVerifyBtn").forEach(btn => {
     btn.addEventListener("click", () => bvVerifyAdAccountConnection(btn.dataset.aid));
   });

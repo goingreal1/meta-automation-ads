@@ -15,8 +15,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //      match a single pending order for that buyer.
 //   3. Neither -- logged unmatched for manual reconciliation rather than
 //      guessed.
-// A confirmed match triggers a "payment received" WhatsApp alert to both
-// the customer and the assigned delivery agent.
+// A confirmed match marks the order delivered (this webhook, or the delivery agent, are the only ways an order
+// becomes delivered) and triggers a "payment received" WhatsApp alert to both the customer and the delivery agent.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -85,6 +85,12 @@ Deno.serve(async (req: Request) => {
       const narration = String(data.authorization?.narration ?? "");
       const senderName = normalizeName(data.authorization?.sender_name);
 
+      // Paystack retries webhooks: a reference we already confirmed must never confirm (or deliver) anything twice.
+      if (reference) {
+        const { data: seen } = await supabase.from("payments").select("id").eq("paystack_reference", reference).eq("status", "confirmed").limit(1);
+        if (seen && seen.length) return new Response("ok", { status: 200 });
+      }
+
       // Company-level DVA (admin depositing their own money) -- always
       // auto-confirmed on arrival, no order to match against since it was
       // never tied to a customer order in the first place.
@@ -132,6 +138,12 @@ Deno.serve(async (req: Request) => {
           break;
         }
       }
+      // A code in the narration proves which order it is for, but not that the whole price was paid.
+      // Part payments are left for a person to reconcile instead of marking the order delivered.
+      if (matchedOrderId) {
+        const { data: ord } = await supabase.from("orders").select("order_value_naira").eq("id", matchedOrderId).maybeSingle();
+        if (ord && Number(ord.order_value_naira ?? 0) - amountNaira > 1) matchedOrderId = null;
+      }
 
       // 2. Sender name + exact amount, among this buyer's pending payments.
       if (!matchedOrderId) {
@@ -154,7 +166,21 @@ Deno.serve(async (req: Request) => {
           paystack_reference: reference, channel: data.channel, raw_event: event,
         }).eq("order_id", matchedOrderId);
         if (error) console.error("paystack-webhook update error:", error.message);
-        else await notifyPaymentConfirmed(matchedOrderId);
+        else {
+          // The order may have had no pending payment row to update; make sure a confirmed one exists.
+          const { data: confirmedRow } = await supabase.from("payments").select("id").eq("order_id", matchedOrderId).eq("status", "confirmed").limit(1);
+          if (!confirmedRow || !confirmedRow.length) {
+            await supabase.from("payments").insert({
+              company_id: buyer.company_id, order_id: matchedOrderId, media_buyer_id: buyer.id,
+              amount_naira: amountNaira, status: "confirmed", paid_at: new Date().toISOString(),
+              channel: data.channel, paystack_reference: reference, raw_event: event,
+            });
+          }
+          // A matched payment is the proof of delivery: mark the order delivered (never reopen a cancelled/returned one).
+          await supabase.from("orders").update({ order_status: "delivered", delivered_at: new Date().toISOString() })
+            .eq("id", matchedOrderId).in("order_status", ["pending", "valid"]);
+          await notifyPaymentConfirmed(matchedOrderId);
+        }
       } else {
         await supabase.from("payments").insert({
           company_id: buyer.company_id, order_id: null, media_buyer_id: buyer.id,
