@@ -367,7 +367,22 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (error || !approval) {
-      await sendWhatsApp(from, `⚠️ No pending approval found with ID ${approvalId}`);
+      // Say nothing to unknown senders: this webhook URL is public.
+      return new Response("ok", { status: 200 });
+    }
+
+    // Only the company's own owner/admin may approve or reject: the sender's WhatsApp number must match
+    // an owner/admin profile of the company this approval belongs to. (Anyone can POST to this URL, so the
+    // "from" field alone proves nothing; the approval id is also not a secret.)
+    const fromDigits = String(from ?? "").replace(/\D/g, "");
+    const { data: staff } = await supabase.from("profiles").select("whatsapp_number")
+      .eq("company_id", approval.company_id).in("role", ["owner", "admin"]);
+    const senderOk = !!fromDigits && (staff ?? []).some((a: any) => {
+      const d = String(a.whatsapp_number ?? "").replace(/\D/g, "");
+      return !!d && (d === fromDigits || (d.startsWith("0") && "234" + d.slice(1) === fromDigits));
+    });
+    if (!senderOk) {
+      console.warn(`handle-whatsapp-reply: ignored approval command from non-admin sender for ${approvalId}`);
       return new Response("ok", { status: 200 });
     }
 

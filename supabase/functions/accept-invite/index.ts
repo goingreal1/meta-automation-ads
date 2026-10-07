@@ -62,6 +62,10 @@ Deno.serve(async (req: Request) => {
       // it instead of failing here.
       const { data: link, error: linkErr } = await supabase.auth.admin.generateLink({ type: "recovery", email });
       if (linkErr || !link?.user?.id) throw new Error("Could not find the existing account for this email.");
+      // Only a leftover from a broken attempt (no profile yet) may be taken over. A real account that already
+      // belongs to a company must never have its password reset by someone holding an invite link.
+      const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", link.user.id).maybeSingle();
+      if (existingProfile) return json({ error: "This email already has an account. Sign in, or use \"Forgot password\"." }, 409);
       const { error: updErr } = await supabase.auth.admin.updateUserById(link.user.id, { password, email_confirm: true });
       if (updErr) throw updErr;
     }
