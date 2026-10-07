@@ -22,7 +22,9 @@ const META_OAUTH_STATE_SECRET = Deno.env.get("META_OAUTH_STATE_SECRET") ?? "";
 // below is what Meta now expects instead. The configuration itself (set up
 // in the Meta dashboard, not here) defines which permissions/assets it asks
 // for, so SCOPES below is unused whenever this is set.
-const META_LOGIN_CONFIG_ID = Deno.env.get("META_LOGIN_CONFIG_ID") ?? "";
+// Public id of the "Facebook Login for Business" configuration (system-user token that never expires,
+// ads_management etc.). The env var, if set, wins; otherwise this default is used.
+const META_LOGIN_CONFIG_ID = Deno.env.get("META_LOGIN_CONFIG_ID") || "1784938949217359";
 
 // ads_read: pull spend/insights for the accounts they grant. business_management:
 // list accounts, incl. ones held under a Business Manager rather than personally.

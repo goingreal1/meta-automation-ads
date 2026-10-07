@@ -1,5 +1,7 @@
 # Meta App Review: `ads_management` (and friends)
 
+> Status (Oct 2026): the app owner confirmed `ads_management` is already approved, and created the login configuration `1784938949217359` (system-user token that never expires; pages, ad accounts, pixels, Instagram; all the permissions above). The ad-account login now uses it by default. This document stays as a reference for re-submitting or adding permissions.
+
 Use this text in **App Dashboard → App Review → Permissions and Features → ads_management → Request advanced access**.
 
 ## Before you submit (checklist)
