@@ -870,6 +870,17 @@ input,select,textarea{font:inherit}
       var doc; try { doc = ed.Canvas.getDocument(); } catch (e) { return; }
       if (!doc || doc.__rvEnd) return; doc.__rvEnd = 1;
       doc.addEventListener("scroll", soon, true);
+      // clicking a button/link that points to a section on this page scrolls the editing view there (like visitors will see), with a way back
+      doc.addEventListener("click", function (e) {
+        var a = e.target.closest && e.target.closest("a[href^='#']"); if (!a) return;
+        var id = (a.getAttribute("href") || "").slice(1); if (!id || /^rv-popup/.test(id)) return;
+        var t = doc.getElementById(id); if (!t || t.contains(a)) return;
+        var scroller = doc.scrollingElement || doc.documentElement, from = scroller.scrollTop;
+        var top = t.getBoundingClientRect().top + from - 70;
+        scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        toast("Jumped to <b>#" + esc(id) + "</b> &nbsp;<a href=\"#\" id=\"jmpBack\" style=\"color:var(--ac);font-weight:700\">Back to the button</a>", 6000);
+        var bk = document.getElementById("jmpBack"); if (bk) bk.onclick = function (ev) { ev.preventDefault(); scroller.scrollTo({ top: from, behavior: "smooth" }); $("#toast").classList.remove("on"); };
+      }, true);
       doc.addEventListener("click", function (e) { if (e.target === doc.body || e.target === doc.documentElement) { var last = ed.getWrapper().components().length; if (last) { var l = ed.getWrapper().components().at(last - 1).getEl(); if (l && e.clientY > l.getBoundingClientRect().bottom) openPicker(null); } } }, true);
     }
     ed.on("canvas:frame:load", attach); ed.on("canvas:frame:load:body", attach); ed.on("load", attach); attach(); soon();
