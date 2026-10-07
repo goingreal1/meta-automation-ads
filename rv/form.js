@@ -38,7 +38,7 @@
       return;
     }
     var hasTiers = product.tiers && product.tiers.length;
-    var selectedTier = hasTiers ? (product.tiers.find(function (t) { return t.badge; }) || product.tiers[0]).id : null;
+    var selectedTier = hasTiers ? (product.tiers.find(function (t) { return t.is_default; }) || product.tiers.find(function (t) { return t.badge; }) || product.tiers[0]).id : null;
     var qty = 1;
     var isService = !!product.is_service;
     var btnText = ds.rvButton || (isService ? "Submit & get payment details" : "Complete my order");
@@ -72,7 +72,7 @@
       (subtitle ? '<p class="rv-sub">' + esc(subtitle) + "</p>" : "") +
       (hasTiers
         ? '<div class="rv-field rv-pkgfield"><label>Choose your package</label><div class="rv-tiersum"><div><small>Your package</small><b class="rv-sumlabel"></b></div><button type="button" class="rv-change">Change</button></div><div class="rv-tiers">' + product.tiers.map(function (t) {
-            return '<div class="rv-tier' + (t.id === selectedTier ? " on" : "") + '" data-tier="' + esc(t.id) + '"><div><b>' + esc(t.label) + "</b>" + (t.badge ? "<em>" + esc(t.badge) + "</em>" : "") + "</div><span>" + fmt(t.price_naira, product.currency) + "</span></div>";
+            return '<div class="rv-tier' + (t.id === selectedTier ? " on" : "") + '" data-tier="' + esc(t.id) + '">' + (t.image_url ? '<img class="rv-tierimg" src="' + esc(t.image_url) + '" alt="" loading="lazy">' : "") + '<div style="flex:1"><b>' + esc(t.label) + "</b>" + (t.badge ? "<em>" + esc(t.badge) + "</em>" : "") + "</div><span>" + fmt(t.price_naira, product.currency) + "</span></div>";
           }).join("") + "</div></div>"
         : (isService ? "" : '<div class="rv-field"><label>Quantity</label><div class="rv-qty"><button type="button" data-q="-1" aria-label="Less">&minus;</button><b class="rv-qv">1</b><button type="button" data-q="1" aria-label="More">+</button></div></div>')) +
       '<div class="rv-field"><label>Full name</label><input name="name" autocomplete="name" placeholder="Your full name" required></div>' +

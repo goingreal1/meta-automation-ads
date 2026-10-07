@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
     const [{ data: p }, { data: tiers }] = await Promise.all([
       supabase.from("products").select(`id, product_name, currency, default_order_value_naira, is_active, description, benefits, product_image_url,
         whatsapp_number, is_service, bank_name, bank_account_number, bank_account_name, payment_note, ad_accounts(meta_pixel_id)`).eq("id", site.product_id).maybeSingle(),
-      supabase.from("product_tiers").select("id, label, quantity, price_naira, badge").eq("product_id", site.product_id).eq("is_active", true).order("sort_order", { ascending: true }),
+      supabase.from("product_tiers").select("id, label, quantity, price_naira, badge, image_url, features, is_default").eq("product_id", site.product_id).eq("is_active", true).order("sort_order", { ascending: true }),
     ]);
     if (p && p.is_active) {
       product = { ...p, tiers: tiers ?? [] };

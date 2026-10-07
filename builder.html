@@ -458,12 +458,12 @@ input,select,textarea{font:inherit}
     if (!S.site.product_id) return;
     var p = S.products.find(function (x) { return x.id === S.site.product_id; });
     if (!p) return;
-    var t = await sb.from("product_tiers").select("id,label,quantity,price_naira,badge").eq("product_id", p.id).eq("is_active", true).order("sort_order");
+    var t = await sb.from("product_tiers").select("id,label,quantity,price_naira,badge,image_url,features,is_default").eq("product_id", p.id).eq("is_active", true).order("sort_order");
     S.product = Object.assign({}, p, { tiers: t.data || [] });
   }
   function blockCtx() {
     var p = S.product;
-    return { product: p ? p.product_name : "", price: p ? RV_fmt(p.default_order_value_naira, p.currency) : "", whatsapp: p ? p.whatsapp_number : "", siteName: S.site.name };
+    return { product: p ? p.product_name : "", price: p ? RV_fmt(p.default_order_value_naira, p.currency) : "", whatsapp: p ? p.whatsapp_number : "", siteName: S.site.name, productImage: p ? p.product_image_url : "", tiers: p ? (p.tiers || []).map(function (t) { return Object.assign({}, t, { price_text: RV_fmt(t.price_naira, p.currency) }); }) : [] };
   }
   function RV_fmt(n, cur) { try { return new Intl.NumberFormat("en-NG", { style: "currency", currency: cur || "NGN", maximumFractionDigits: 0 }).format(n || 0); } catch (e) { return "₦" + n; } }
   function siteLite() { return { id: S.site.id, slug: S.site.slug, purchase_event: S.site.purchase_event, thanks_slug: null, settings: S.site.settings || {} }; }
@@ -990,6 +990,10 @@ input,select,textarea{font:inherit}
     $("#traits").style.display = c && kind === "traits" ? "" : "none";
     if (!c) return;
     var h = addRow(c), a = c.getAttributes();
+    if (a["data-rv-pkg"]) {
+      var nt = ((S.product && S.product.tiers) || []).length;
+      h += '<div class="fld" style="padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)"><b style="font-size:12.5px">Packages from your product</b><div class="hint2" style="margin:6px 0 10px">' + (S.product ? (nt ? "Your product \"" + esc(S.product.product_name) + "\" has " + nt + " package" + (nt > 1 ? "s" : "") + ". Fill these cards with their names, prices, pictures and the default one." : "Your product has no packages yet. Add them in the dashboard under Products → Edit.") : "Choose a product in Settings first.") + '</div><button class="btn sm" data-act="pkgfill"' + (nt ? "" : " disabled") + '>Fill from product</button></div>';
+    }
     if (kind === "text" || kind === "link") {
       if (isTextual(c) || (kind === "text") || c.components().length === 0) {
         var t = readText(c), lvl = /^h[1-6]$/.test(tagOf(c));
@@ -1065,6 +1069,12 @@ input,select,textarea{font:inherit}
     });
     on('[data-f="src"]', "input", function (n) { var v = n.value.trim(); if (v) { c.set("src", v); c.addAttributes({ src: v }); } });
     on('[data-f="alt"]', "input", function (n) { c.addAttributes({ alt: n.value }); });
+    on('[data-act="pkgfill"]', "click", function () {
+      var id = a["data-rv-pkg"], b = ed.Blocks.get(id); if (!b) return;
+      if (!window.confirm("Replace these package cards with your product's packages? Any changes you made inside them will be lost.")) return;
+      var par = c.parent(), at = c.index(), added = par.append(b.get("content"), { at: at }); c.remove();
+      var n = Array.isArray(added) ? added[0] : added; if (n) ed.select(n); toast("Filled from your product.");
+    });
     on('[data-act="pick"]', "click", function () { ed.runCommand("open-assets", { target: c, types: ["image"], accept: "image/*" }); });
     on('[data-f="vsrc"]', "input", function (n) { clearTimeout(deb); deb = setTimeout(function () { c.addAttributes({ "data-src": n.value.trim() }); var r = c.getAttributes()["data-ratio"]; var sel = $('[data-f="vratio"]', box); if (sel && sel.value !== r) sel.value = r || "16:9"; }, 350); });
     on('[data-f="vratio"]', "change", function (n) { c.addAttributes({ "data-ratio": n.value }); });
@@ -1848,6 +1858,18 @@ input,select,textarea{font:inherit}
     $("#ovSettings").classList.add("on");
     if (tab) { var b = $('#sTabs [data-s="' + tab + '"]'); if (b) b.click(); }
   }
+  // after a product change: refill every package section already on the page from the new product's packages
+  function fillPackagesOnPage() {
+    var ed = S.editor, tiers = (S.product && S.product.tiers) || [], found = [];
+    (function walk(c) { c.components().forEach(function (k) { if ((k.getAttributes() || {})["data-rv-pkg"]) found.push(k); else walk(k); }); })(ed.getWrapper());
+    if (!found.length || !tiers.length) return;
+    if (!window.confirm("Fill the " + found.length + " package section" + (found.length > 1 ? "s" : "") + " on this page with the packages, prices and pictures of " + S.product.product_name + "?")) return;
+    found.forEach(function (c) {
+      var b = ed.Blocks.get(c.getAttributes()["data-rv-pkg"]); if (!b) return;
+      var par = c.parent(), at = c.index(); par.append(b.get("content"), { at: at }); c.remove();
+    });
+    toast("Package sections filled from " + esc(S.product.product_name) + ".");
+  }
   async function saveSettings() {
     var s = S.site, p = S.page, btn = $("#sSave"); btn.disabled = true;
     var settings = Object.assign({}, s.settings || {}, { theme: themeForSave(), confirmation_call: $("#sCall").checked });
@@ -1867,6 +1889,7 @@ input,select,textarea{font:inherit}
     var productChanged = r1.data.product_id !== s.product_id;
     S.site = r1.data; Object.assign(p, r2.data);
     await loadProduct(); refreshBlocks(); applyCanvasTheme();
+    if (productChanged) fillPackagesOnPage();
     if (productChanged) S.editor.getWrapper().view.render && null; // forms re-mount when reselected/re-rendered
     renderPageSel(); renderPages(); status("saving", "Saving…"); S.dirty = true; saveDraft();
     $("#ovSettings").classList.remove("on");
@@ -1886,7 +1909,7 @@ input,select,textarea{font:inherit}
   }
 
   boot().catch(function (e) { console.error(e); fatal("Something went wrong opening the builder."); });
-  window.__rvBuilder = S; S.loadPage = loadPage;
+  window.__rvBuilder = S; S.loadPage = loadPage; S.refreshBlocks = refreshBlocks;
 })();
 </script>
 </body>
