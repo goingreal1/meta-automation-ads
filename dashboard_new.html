@@ -1204,6 +1204,34 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
 .rv-switch{width:38px;height:22px;border-radius:99px;background:#c7c7cc;position:relative;display:inline-block;flex:none;cursor:pointer;border:0;padding:0;}
 .rv-switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s;}
 .rv-switch.on{background:#34c759;}.rv-switch.on::after{left:18px;}
+
+/* ── Campaigns (Ads Manager) ── */
+.am-bal{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 18px;}
+.am-bal-main b{font-family:inherit;font-size:22px;font-weight:700;letter-spacing:-.02em;}
+.am-bal.low{background:var(--dangerBg);}
+.am-banner{border-radius:14px;padding:14px 18px;}
+.am-kpis .kc{border-radius:14px;box-shadow:none;}
+.am-kpis .kc-lbl{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:500;color:var(--text2);}
+.am-kpis .kc-val{font-family:inherit;font-weight:700;letter-spacing:-.025em;}
+.am-tabs{border-bottom:none;gap:6px;margin-bottom:12px;}
+.am-tabs .am-tab{margin:0;border:0;border-radius:8px;padding:6px 14px;font-weight:500;font-size:13px;color:var(--text2);background:transparent;}
+.am-tabs .am-tab.active{background:var(--panel);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.14);}
+.am-table{border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.am-head{background:var(--panel2);}
+.am-head .am-c{text-transform:none;letter-spacing:0;font-size:12px;font-weight:500;background:transparent;}
+.am-row:not(.am-head):not(.am-foot):hover{background:var(--hover);}
+.am-sw .sw-track{background:#c7c7cc;}
+.am-sw input:checked + .sw-track{background:#34c759;}
+.am-chip{border-radius:99px;}
+.am-filter,.am-actions select{border-radius:8px;}
+.am-stamp{text-align:center;margin-top:16px;}
+@media(max-width:720px){
+  .sh-actions.am-actions{flex-wrap:wrap;gap:8px;}
+  .sh-actions.am-actions .btn,.sh-actions.am-actions select{margin:0 !important;}
+  .am-actions select{flex:1 1 120px;min-width:110px;}
+  .am-tabs{background:var(--bg);}
+  .am-row:not(.am-head):not(.am-foot):hover{background:var(--panel);}
+}
 </style>
 </head>
 <body>
