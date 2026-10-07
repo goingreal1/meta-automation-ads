@@ -504,7 +504,7 @@ input,select,textarea{font:inherit}
     ed.on("run:preview", function () {});
     ed.on("canvas:frame:load", applyCanvasTheme);
     ed.on("change:device", function () { onSelect(); });
-    wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle();
+    wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle(); wireRte();
   }
 
   function sectors() {
@@ -762,6 +762,45 @@ input,select,textarea{font:inherit}
     clearTimeout(hv.t);
     hv.t = setTimeout(function () { var s = S.editor.getSelected(); if (s) showHandles(s); else hideHandles(); }, 350);
   }
+  function wireRte() {
+    var ed = S.editor, saved = null;
+    function mk(name, title, cmd, init, label) {
+      ed.RichTextEditor.add(name, {
+        icon: '<label title="' + title + '" style="display:flex;align-items:center;gap:2px;cursor:pointer;margin:0"><b style="font-size:13px;line-height:1;' + label + '">A</b><input type="color" value="' + init + '" style="width:16px;height:16px;padding:0;border:0;background:none;cursor:pointer"></label>',
+        event: "input",
+        result: function (rte, action) {
+          var inp = action.btn.querySelector("input"); if (!inp) return;
+          var doc = rte.doc, sel = doc.getSelection();
+          if (saved && (!sel || sel.isCollapsed)) { sel.removeAllRanges(); sel.addRange(saved); }
+          doc.execCommand("styleWithCSS", false, true);
+          doc.execCommand(cmd, false, inp.value);
+        }
+      });
+    }
+    mk("rv-color", "Text colour (select some words first)", "foreColor", "#e11d48", "border-bottom:3px solid #e11d48;padding-bottom:1px");
+    mk("rv-hilite", "Highlight colour", "hiliteColor", "#fde047", "background:#fde047;padding:0 2px");
+    function attach() {
+      var doc; try { doc = ed.Canvas.getDocument(); } catch (e) { return; }
+      if (!doc || doc.__rvRte) return;
+      doc.__rvRte = 1;
+      doc.addEventListener("selectionchange", function () {
+        var sel = doc.getSelection();
+        if (sel && sel.rangeCount && !sel.isCollapsed) saved = sel.getRangeAt(0).cloneRange();
+      });
+      // one click on a text block starts editing it (so words can be selected straight away)
+      doc.addEventListener("mouseup", function (e) {
+        var c = ed.getSelected(); if (!c || !c.is("text")) return;
+        var el = c.getEl(); if (!el || el.isContentEditable || !el.contains(e.target)) return;
+        var rng = doc.caretRangeFromPoint ? doc.caretRangeFromPoint(e.clientX, e.clientY) : null;
+        try { c.trigger("active"); } catch (x) { return; }
+        setTimeout(function () {
+          if (!rng) return;
+          var sel = doc.getSelection(); sel.removeAllRanges(); sel.addRange(rng);
+        }, 0);
+      });
+    }
+    ed.on("canvas:frame:load", attach); ed.on("load", attach); attach();
+  }
   function wireHandles() {
     var ed = S.editor;
     ed.on("component:hover", function (c) { clearTimeout(hv.t); showHandles(c); });
@@ -886,7 +925,7 @@ input,select,textarea{font:inherit}
       }
       if (kind === "link") {
         h += F("Link (where it goes)", '<input data-f="href" value="' + esc(a.href || "") + '" placeholder="https://…  or  #order">',
-          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' +
+          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' + drawerPicker(a.href) +
           '<label class="chk"><input type="checkbox" data-f="blank"' + (a.target === "_blank" ? " checked" : "") + '>Open in a new tab</label>'
         var tiers = (S.product && S.product.tiers) || [], curT = String(a["data-rv-tier"] || "");
         h += F("Package this button selects", '<select data-f="tier"><option value="">None (just a link)</option>' + (tiers.length ? tiers.map(function (t, i) { return '<option value="' + (i + 1) + '"' + (curT === String(i + 1) ? " selected" : "") + ">" + (i + 1) + " &middot; " + esc(t.label) + " (" + RV_fmt(t.price_naira, S.product.currency) + ")</option>"; }).join("") : [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="' + n + '"' + (curT === String(n) ? " selected" : "") + ">Package " + n + "</option>"; }).join("")) + "</select>", tiers.length ? "The order form below picks this package for the customer, so they don't choose twice." : "Add packages to your product, then pick one here. Package 1 is the first one listed on the product.");
@@ -904,11 +943,27 @@ input,select,textarea{font:inherit}
     } else if (kind === "html") {
       var code = c.getInnerHTML(); if (/Custom HTML area\./.test(code)) code = "";
       h += F("HTML code", '<textarea class="mono" data-focus="1" data-f="code" spellcheck="false" placeholder="Paste your HTML, embed code, form or script here…">' + esc(code) + "</textarea>", "HTML, CSS (&lt;style&gt;) and scripts all work. Press Apply to show it on the page.") + '<div style="display:flex;gap:8px;margin:-4px 0 12px"><button class="btn pri sm" data-act="apply">Apply</button><button class="btn sm" data-act="big">Bigger editor</button></div>';
+    } else if (kind === "box" && c.getClasses().indexOf("rv-popup") > -1) {
+      var pcl = c.getClasses(), pos = pcl.indexOf("side") < 0 ? "centre" : pcl.indexOf("left") > -1 ? "left" : pcl.indexOf("bottom") > -1 ? "bottom" : "right", dl = a["data-delay"];
+      h += '<p class="hint">This is a <b>popup / drawer</b>. Put any widget inside it (text, images, package cards, the order form). A button opens it: select the button and choose <b>Open a drawer / popup</b>.</p>' +
+        F("Shows as", '<select data-f="ppos">' + [["right", "Drawer from the right"], ["left", "Drawer from the left"], ["bottom", "Drawer from the bottom"], ["centre", "Popup in the middle"]].map(function (o) { return '<option value="' + o[0] + '"' + (pos === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>") +
+        F("Also open by itself after (seconds)", '<input data-f="pdelay" type="number" min="-1" value="' + (dl === undefined || dl === "-1" ? "" : esc(dl)) + '" placeholder="Leave empty = only when a button opens it">', "") +
+        '<label class="chk"><input type="checkbox" data-f="pexit"' + (a["data-exit"] === "1" ? " checked" : "") + '>Also open when the visitor is about to leave</label>' +
+        '<div class="hint2" style="margin-top:8px">Its link name is <b>#' + esc(a.id || "(none)") + '</b></div>';
     } else if (kind === "box") {
       h += '<p class="hint">This is a ' + esc((c.getName() || "block").toLowerCase()) + ". Click any text, image or button inside it to edit that, or use the + buttons to add a widget.</p>";
     }
     box.innerHTML = h;
     wireContent(box, c, kind);
+  }
+  // popups / drawers on this page, for the "Open a drawer / popup" choice on buttons
+  function drawerList() {
+    var out = []; S.editor.getWrapper().find(".rv-popup").forEach(function (p) { var id = p.getAttributes().id || p.getId(); out.push({ id: id, name: (p.find("h1,h2,h3")[0] && (p.find("h1,h2,h3")[0].getEl() || {}).textContent) || id }); });
+    return out;
+  }
+  function drawerPicker(href) {
+    var L = drawerList(); if (!L.length) return '<div class="hint2" style="margin:-4px 0 10px">Tip: add a <b>Drawer</b> from the Offers widgets, then a button can open it.</div>';
+    return F("Open a drawer / popup", '<select data-f="drawer"><option value="">— not opening a drawer —</option>' + L.map(function (d) { return '<option value="#' + esc(d.id) + '"' + (href === "#" + d.id ? " selected" : "") + ">" + esc(String(d.name).trim().slice(0, 40)) + "</option>"; }).join("") + "</select>");
   }
   function wireContent(box, c, kind) {
     var ed = S.editor, deb;
@@ -918,6 +973,10 @@ input,select,textarea{font:inherit}
     on('[data-f="level"]', "change", function (n) { c.set("tagName", n.value); c.set("name", "Heading"); ed.select(c); });
     on('[data-f="href"]', "input", function (n) { c.addAttributes({ href: n.value }); });
     on('[data-f="tier"]', "change", function (n) { if (n.value) { c.addAttributes({ "data-rv-tier": n.value }); if (!clean(c.getAttributes().href || "")) c.addAttributes({ href: "#order" }); } else c.removeAttributes(["data-rv-tier"]); });
+    on('[data-f="drawer"]', "change", function (n) { if (n.value) { c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; } });
+    on('[data-f="ppos"]', "change", function (n) { ["side", "left", "bottom"].forEach(function (x) { c.removeClass(x); }); if (n.value !== "centre") { c.addClass("side"); if (n.value !== "right") c.addClass(n.value); } });
+    on('[data-f="pdelay"]', "input", function (n) { c.addAttributes({ "data-delay": n.value === "" ? "-1" : n.value }); });
+    on('[data-f="pexit"]', "change", function (n) { c.addAttributes({ "data-exit": n.checked ? "1" : "0" }); });
     on('[data-f="blank"]', "change", function (n) { if (n.checked) c.addAttributes({ target: "_blank", rel: "noopener" }); else c.removeAttributes(["target", "rel"]); });
     on('[data-f="bstyle"]', "change", function (n) { if (n.value) c.addClass("ghost"); else c.removeClass("ghost"); });
     on('[data-f="bcart"]', "change", function (n) { if (n.checked) c.addClass("cart"); else c.removeClass("cart"); });
@@ -1010,7 +1069,9 @@ input,select,textarea{font:inherit}
       (k === "box" ? '<div class="hint2">Aligns everything inside this block.</div>' : "") + "</div>";
     // columns (any number of cards/columns in a row)
     var cl = c.getClasses();
-    if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^c[1-6]$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><label class="chk" style="margin:8px 0 0"><input type="checkbox" data-keep="1"' + (cl.indexOf("keep") > -1 ? " checked" : "") + '>Stay side by side on phones (2 per row)</label><div class="hint2">Duplicate a card with the toolbar to add more. Otherwise they stack on phones.</div></div></div>'; }
+    if (cl.indexOf("rv-cols") > -1) { var cur2 = (cl.filter(function (x) { return /^(c[1-6]|s13|s31)$/.test(x) || x === "auto"; })[0]) || "c2"; h += '<div class="ss"><div class="sst">Columns</div><div class="sf"><select data-cols="1">' + [["c1", "1 column"], ["c2", "2 columns"], ["c3", "3 columns"], ["c4", "4 columns"], ["c5", "5 columns"], ["c6", "6 columns"], ["s13", "2 columns: narrow + wide (1/3 + 2/3)"], ["s31", "2 columns: wide + narrow (2/3 + 1/3)"], ["auto", "Automatic (fit as many as possible)"]].map(function (o) { return '<option value="' + o[0] + '"' + (cur2 === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><label class="chk" style="margin:8px 0 0"><input type="checkbox" data-keep="1"' + (cl.indexOf("keep") > -1 ? " checked" : "") + '>Stay side by side on phones (2 per row)</label><div class="hint2">Duplicate a card with the toolbar to add more. Otherwise they stack on phones.</div></div></div>'; }
+    // pin a top-level bar/section to the top or bottom of the screen
+    if (c.parent() === ed.getWrapper()) { var pinCur = cl.indexOf("pin-top") > -1 ? "top" : cl.indexOf("pin-bot") > -1 ? "bot" : (cl.indexOf("stick") > -1 ? "top" : ""); h += '<div class="ss"><div class="sst">Stay on screen</div><div class="sf"><select data-pin="1">' + [["", "Normal (scrolls away)"], ["top", "Pinned to the top while scrolling"], ["bot", "Pinned to the bottom of the screen"]].map(function (o) { return '<option value="' + o[0] + '"' + (pinCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Use this to turn a bar into a sticky header or footer.</div></div></div>'; }
     // button size
     if (isBtn) h += '<div class="ss"><div class="sst">Button size</div><div class="seg">' + [["S", "Small"], ["M", "Medium"], ["L", "Large"], ["XL", "Extra large"]].map(function (b) { return '<button data-bsize="' + b[0] + '" title="' + b[1] + '">' + b[0] + "</button>"; }).join("") + "</div></div>";
     // colours
@@ -1083,7 +1144,8 @@ input,select,textarea{font:inherit}
     box.addEventListener("change", function (e) {
       var n = e.target;
       if (n.dataset.keep) { var kc = ed.getSelected(); if (n.checked) kc.addClass("keep"); else kc.removeClass("keep"); return; }
-      if (n.dataset.cols) { var cc = ed.getSelected(); ["c1", "c2", "c3", "c4", "c5", "c6", "auto"].forEach(function (x) { cc.removeClass(x); }); cc.addClass(n.value); return; }
+      if (n.dataset.pin) { var pc = ed.getSelected(); ["pin-top", "pin-bot", "stick"].forEach(function (x) { pc.removeClass(x); }); if (n.value) pc.addClass("pin-" + n.value); return; }
+      if (n.dataset.cols) { var cc = ed.getSelected(); ["c1", "c2", "c3", "c4", "c5", "c6", "s13", "s31", "auto"].forEach(function (x) { cc.removeClass(x); }); cc.addClass(n.value); return; }
       if (n.dataset.s && n.dataset.k === "sel") { var o = {}; o[n.dataset.s] = n.value; sty(o); }
       if (n.dataset.wunit) { var w = $('[data-s="width"]', box); if (w.value) sty({ width: w.value + n.value }); }
     });
@@ -1308,7 +1370,7 @@ input,select,textarea{font:inherit}
     cc.textContent = customCss;
     // editing aids
     var ea = doc.getElementById("rv-edit"); if (!ea) { ea = doc.createElement("style"); ea.id = "rv-edit"; doc.head.appendChild(ea); }
-    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.rv-sidetab{position:relative!important;right:auto!important;top:auto!important;transform:none!important;animation:none!important;display:inline-block;border-radius:99px!important;margin:8px}.rv-top.stick{position:relative!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}.rv-video:not([data-src])::before,.rv-video[data-src=\"\"]::before{content:\"▶  Paste a video link in the panel on the right\";position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#cfd4da;font:600 15px/1.4 system-ui,sans-serif}";
+    ea.textContent = ".rv-popup{position:relative!important;display:flex!important;inset:auto!important;min-height:320px;background:rgba(10,10,10,.35)!important}.rv-video iframe,.rv-video video,.rv-map iframe,[data-rv-html] iframe{pointer-events:none}[data-rv-form] *,[data-rv-bank] *{pointer-events:none}[data-rv-form],[data-rv-bank]{min-height:40px}.rv-sticky,.rv-wa{position:relative!important;right:auto!important;bottom:auto!important}.rv-sidetab{position:relative!important;right:auto!important;top:auto!important;transform:none!important;animation:none!important;display:inline-block;border-radius:99px!important;margin:8px}.rv-top.stick,.pin-top{position:relative!important}.pin-bot{position:sticky!important;bottom:0!important}.gjs-dashed .rv-sec{outline:1px dashed rgba(34,176,138,.45)}.rv-video:not([data-src])::before,.rv-video[data-src=\"\"]::before{content:\"▶  Paste a video link in the panel on the right\";position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#cfd4da;font:600 15px/1.4 system-ui,sans-serif}";
   }
   var customCss = "";
 
