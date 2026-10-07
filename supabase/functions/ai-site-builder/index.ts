@@ -139,7 +139,7 @@ Allowed ops:
 If the request is unclear or impossible with these ops, return {"say":"<a short question or explanation>","ops":[]}.
 Prefer the smallest change that does what was asked. For colours use readable contrast.
 ${RULES}`;
-    const out = await ask(system, `${productText}\n\nSELECTED ELEMENT: ${JSON.stringify({ tag: plain(t.tag, 10), kind: plain(t.kind, 20), text: plain(t.text, 400), classes: plain(t.classes, 120), section: plain(t.section, 80) })}\n\nPAGE OUTLINE (top to bottom): ${JSON.stringify((Array.isArray(body.outline) ? body.outline : []).slice(0, 30).map((o: any) => plain(o, 60)))}\n\nBLOCK CATALOG:\n${JSON.stringify(catalog)}\n\nTHE PERSON SAYS: ${plain(body.instruction, 600)}`, "gpt-4o-mini", 1500);
+    const out = await ask(system, `${productText}\n\nSELECTED ELEMENT: ${JSON.stringify({ tag: plain(t.tag, 10), kind: plain(t.kind, 20), text: plain(t.text, 400), classes: plain(t.classes, 120), section: plain(t.section, 80) })}\n\nPAGE OUTLINE (top to bottom): ${JSON.stringify((Array.isArray(body.outline) ? body.outline : []).slice(0, 30).map((o: any) => plain(o, 60)))}\n\nBLOCK CATALOG:\n${JSON.stringify(catalog)}\n\nTHE PERSON SAYS: ${plain(body.instruction, 600)}`, "gpt-4o", 1500);
     const ids = new Set(catalog.map((b: any) => b.id));
     const ops: any[] = [];
     for (const o of (Array.isArray(out.ops) ? out.ops : []).slice(0, 6)) {
