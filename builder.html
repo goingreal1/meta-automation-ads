@@ -497,6 +497,7 @@ input,select,textarea{font:inherit}
     });
     ed.on("component:add", function (c) { if (!c.get("name") && !c.get("custom-name")) { var n = friendlyName(c); if (n) c.set("name", n, { silent: true }); } });
     ed.on("update", markDirty);
+    ed.on("update component:add component:remove component:update style:custom canvas:frame:load:body change:device", refreshAuto);
     ed.on("update component:add component:remove", syncEmpty);
     ed.on("undo redo update", syncUndo);
     ed.on("component:selected", function (c) { addMoveTools(c); onSelect(); });
@@ -1198,6 +1199,17 @@ input,select,textarea{font:inherit}
       if (kind === "num") { if (v === "") return ""; var u = n.dataset.wu ? ($('[data-wunit]', box) || {}).value : n.dataset.u; if (u === "%" && +v > 100) { v = "100"; n.value = v; } return v + (u || "px"); }
       return v;
     }
+    // the colour picker opens far below the visible page (it measures from the scrolled panel): pin it next to the swatch that opened it
+    var lastSw = null;
+    document.addEventListener("mousedown", function (e) { var sw = e.target.closest && e.target.closest(".gjs-field-color-picker"); if (sw) lastSw = sw; }, true);
+    function placePicker(pc) {
+      if (!lastSw || pc.classList.contains("sp-hidden")) return;
+      var r = lastSw.getBoundingClientRect(), w = pc.offsetWidth || 240, h = pc.offsetHeight || 260;
+      pc.style.position = "fixed"; pc.style.zIndex = 5000;
+      pc.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - w - 8)) + "px";
+      pc.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, r.top - 20)) + "px";
+    }
+    new MutationObserver(function (muts) { muts.forEach(function (m) { var t = m.target; if (t.classList && t.classList.contains("sp-container")) placePicker(t); }); }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class", "style"] });
     // the "More style options" fields (built in) only reacted on Enter/leaving the box: apply them while typing instead
     $("#styles").addEventListener("input", function (e) {
       var n = e.target; if (!n || n.tagName !== "INPUT" || /^(range|radio|checkbox|file)$/.test(n.type) || n.value === "") return;
@@ -1437,6 +1449,40 @@ input,select,textarea{font:inherit}
   /* ---- canvas theme (base design system + theme variables + custom css) ---- */
   function themeForSave() { return Object.assign({}, S.theme, { fonts_url: RB.fontsUrl(S.theme) }); }
   function themeCssAll() { return RB.themeCss(S.theme) + RB.BASE_CSS; }
+  /* ---- automatic phone version: what you set for the laptop is scaled down for phones unless you set a phone value yourself ---- */
+  function autoMobileCss() {
+    var by = {}, mob = {};
+    S.editor.Css.getAll().forEach(function (r) {
+      var sel = r.selectorsToString ? r.selectorsToString() : ""; if (sel.charAt(0) !== "#" || /[\s:>.,]/.test(sel.slice(1)) || r.get("state")) return;
+      var mt = String(r.get("mediaText") || "");
+      if (!mt) by[sel] = Object.assign(by[sel] || {}, r.getStyle());
+      else if (/max-width:\s*767px/.test(mt)) mob[sel] = Object.assign(mob[sel] || {}, r.getStyle());
+    });
+    var px = function (v) { var m = /^(-?[\d.]+)px$/.exec(String(v == null ? "" : v).trim()); return m ? parseFloat(m[1]) : null; };
+    var out = [];
+    Object.keys(by).forEach(function (sel) {
+      var st = by[sel], mo = mob[sel] || {}, o = [];
+      function put(prop, val) { if (mo[prop] === undefined) o.push(prop + ":" + val); }
+      Object.keys(st).forEach(function (prop) {
+        var v = px(st[prop]); if (v === null) return;
+        if (prop === "font-size" && v > 26) put(prop, Math.round(26 + (v - 26) * 0.45) + "px");
+        else if (/^(padding|margin)-(top|bottom|left|right)$/.test(prop) && v > 24) put(prop, Math.round(24 + (v - 24) * 0.5) + "px");
+        else if (/radius$/.test(prop) && v > 30 && v < 200) put(prop, Math.round(30 + (v - 30) * 0.4) + "px");
+        else if (prop === "width" && v > 300) { put("width", "100%"); put("max-width", Math.round(v) + "px"); if (px(st.height) !== null) put("height", "auto"); }
+      });
+      if (o.length) out.push("html " + sel + "{" + o.join(";") + "}");
+    });
+    return out.length ? "@media (max-width: 767px){" + out.join("") + "}" : "";
+  }
+  var autoT = 0;
+  function refreshAuto() {
+    clearTimeout(autoT);
+    autoT = setTimeout(function () {
+      var doc = S.editor && S.editor.Canvas.getDocument(); if (!doc || !doc.head) return;
+      var st = doc.getElementById("rv-auto"); if (!st) { st = doc.createElement("style"); st.id = "rv-auto"; }
+      st.textContent = autoMobileCss(); doc.head.appendChild(st);
+    }, 200);
+  }
   function applyCanvasTheme() {
     var doc = S.editor && S.editor.Canvas.getDocument(); if (!doc) return;
     var st = doc.getElementById("rv-base");
@@ -1532,7 +1578,7 @@ input,select,textarea{font:inherit}
   }
   function exportCss() {
     var css = S.editor.getCss({ avoidProtected: true });
-    return RB.themeCss(S.theme) + css + "\n" + customCss;   // the design system (RB.BASE_CSS) is added by the renderer
+    return RB.themeCss(S.theme) + css + "\n" + autoMobileCss() + "\n" + customCss;   // the design system (RB.BASE_CSS) is added by the renderer
   }
 
   async function publish() {
