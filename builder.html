@@ -1198,6 +1198,12 @@ input,select,textarea{font:inherit}
       if (kind === "num") { if (v === "") return ""; var u = n.dataset.wu ? ($('[data-wunit]', box) || {}).value : n.dataset.u; if (u === "%" && +v > 100) { v = "100"; n.value = v; } return v + (u || "px"); }
       return v;
     }
+    // the "More style options" fields (built in) only reacted on Enter/leaving the box: apply them while typing instead
+    $("#styles").addEventListener("input", function (e) {
+      var n = e.target; if (!n || n.tagName !== "INPUT" || /^(range|radio|checkbox|file)$/.test(n.type) || n.value === "") return;
+      if (n.closest(".gjs-sm-color") && !(window.CSS && CSS.supports("color", n.value))) return;
+      clearTimeout(n._lt); n._lt = setTimeout(function () { n.dispatchEvent(new Event("change", { bubbles: true })); }, 150);
+    });
     box.addEventListener("input", function (e) {
       var n = e.target, p = n.dataset && n.dataset.s;
       if (p) {
