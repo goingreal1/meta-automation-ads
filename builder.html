@@ -503,6 +503,7 @@ input,select,textarea{font:inherit}
     ed.on("component:deselected", onSelect);
     ed.on("run:preview", function () {});
     ed.on("canvas:frame:load", applyCanvasTheme);
+    ed.on("canvas:frame:load:body", applyCanvasTheme);   // a reloaded page rebuilds the frame: put the design styles back
     ed.on("change:device", function () { onSelect(); });
     wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle(); wireRte();
   }
