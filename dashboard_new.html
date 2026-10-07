@@ -1295,6 +1295,30 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
 .am-kpis .kc-val{font-size:24px;}
 .am-kpis .kc-sub{margin-top:2px;}
 .am-toolbar .am-more{color:var(--text2);}
+
+/* ── Settings v2 ── */
+.set-wrap{gap:28px;}
+.set-nav{min-width:210px;gap:2px;}
+.set-nav-btn{border:0;font-weight:500;font-size:13.5px;padding:9px 12px;border-radius:9px;}
+.set-nav-btn.active{background:var(--accentBg);color:var(--accent);font-weight:600;border:0;}
+.set-nav-btn span{width:18px;text-align:center;}
+.set-body .panel{border-radius:14px;box-shadow:none;padding:18px 20px;margin-bottom:18px;}
+.set-body .panel .ph{margin-bottom:12px;}
+.set-body .panel .ph-title{font-size:15px;font-weight:700;letter-spacing:-.01em;}
+.set-lbl{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin:2px 4px 8px;}
+.set-group{margin-bottom:22px;}
+.set-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.set-item{display:flex;align-items:center;gap:13px;padding:13px 16px;border-bottom:1px solid var(--border);}
+.set-item:last-child{border-bottom:none;}
+.set-ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;color:#fff;}
+.set-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.set-tx b{font-size:14px;font-weight:600;color:var(--text);}
+.set-tx span{font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.set-ok{font-size:12.5px;font-weight:600;color:#1f9d4c;white-space:nowrap;}
+.set-warn{font-size:12.5px;font-weight:600;color:#b86e00;white-space:nowrap;}
+@media(max-width:760px){.set-nav{min-width:0;}.set-nav-btn{background:var(--panel2);}}
+.switch .sw-track{background:#c7c7cc;}
+.switch input:checked + .sw-track{background:#34c759;}
 </style>
 </head>
 <body>
@@ -10617,6 +10641,15 @@ async function renderSettings(el) {
     <div class="set-body" id="setBody" data-active="${bvSettingsSec}">
 
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
+
+    ${accountsList.length ? `<div class="set-group" data-sec="accounts">
+      <div class="set-lbl">Your ad accounts</div>
+      <div class="set-card">${accountsList.map(a => `
+        <div class="set-item"><span class="set-ic" style="background:#1877F2">📣</span><div class="set-tx"><b>${escH(a.nickname || a.name || "Ad account")}</b><span>${escH(a.meta_ad_account_id || "")} · Balance ${fN(a.balance_naira)}</span></div><span class="pill ${a.status === "active" ? "active" : "paused"}">${a.status === "active" ? "Active" : escH(a.status || "—")}</span></div>
+        <div class="set-item"><span class="set-ic" style="background:#8e8e93">🔌</span><div class="set-tx"><b>Pixel</b><span>${escH(a.pixel_name || a.meta_pixel_id || "Not set — verify below")}</span></div>${a.meta_pixel_id ? '<span class="set-ok">✓ Connected</span>' : '<span class="set-warn">Not set</span>'}</div>
+        <div class="set-item"><span class="set-ic" style="background:#34c759">💬</span><div class="set-tx"><b>Facebook page &amp; WhatsApp</b><span>${escH(a.fb_page_name || a.fb_page_id || "Not set — verify below")}${a.whatsapp_number ? " · " + escH(a.whatsapp_number) : ""}</span></div>${a.fb_page_id ? '<span class="set-ok">✓ Connected</span>' : '<span class="set-warn">Not set</span>'}</div>`).join("")}
+      </div>
+    </div>` : ""}
 
     <div class="panel" data-sec="automation" id="notifPanel"></div>
 
