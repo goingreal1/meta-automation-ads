@@ -108,36 +108,6 @@
   ],
   "rewrites": [
     {
-      "source": "/",
-      "has": [
-        {
-          "type": "host",
-          "value": "revora-sites.vercel.app"
-        }
-      ],
-      "destination": "/__not_found__"
-    },
-    {
-      "source": "/(dashboard|dashboard_new|dashboard_v2|builder|login|setup-company|reset-password|index)\\.html",
-      "has": [
-        {
-          "type": "host",
-          "value": "revora-sites.vercel.app"
-        }
-      ],
-      "destination": "/__not_found__"
-    },
-    {
-      "source": "/(sales-ginaris-herbal|wordpress-meta-pixel)\\.html",
-      "has": [
-        {
-          "type": "host",
-          "value": "revora-sites.vercel.app"
-        }
-      ],
-      "destination": "/__not_found__"
-    },
-    {
       "source": "/s/:slug",
       "destination": "/api/site?slug=:slug"
     },
@@ -151,5 +121,40 @@
       "includeFiles": "rv/**",
       "maxDuration": 15
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "revora-sites.vercel.app"
+        }
+      ],
+      "destination": "https://metaautomationads.vercel.app/",
+      "permanent": false
+    },
+    {
+      "source": "/(dashboard|dashboard_new|dashboard_v2|builder|login|setup-company|reset-password|index)\\.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "revora-sites.vercel.app"
+        }
+      ],
+      "destination": "https://metaautomationads.vercel.app/$1.html",
+      "permanent": false
+    },
+    {
+      "source": "/(sales-ginaris-herbal|wordpress-meta-pixel)\\.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "revora-sites.vercel.app"
+        }
+      ],
+      "destination": "https://metaautomationads.vercel.app/$1.html",
+      "permanent": false
+    }
+  ]
 }
