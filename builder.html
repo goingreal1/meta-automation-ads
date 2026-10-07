@@ -294,7 +294,7 @@ input,select,textarea{font:inherit}
     <div class="devhint" id="devHint"></div>
     <div class="pane on" data-pane="R-content"><div class="empty" id="emptySel"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6z"/></svg><h4>Select anything to edit it</h4><div>Click any text, image, button or section on the page. Hover a block and press <b>+</b> to add a widget exactly where you want it.</div></div><div id="rvContent"></div><div id="traits"></div></div>
     <div class="pane" data-pane="R-style"><div id="rvStyle"></div><details id="moreStyle"><summary>More style options</summary><div id="styles"></div></details></div>
-    <div class="pane" data-pane="R-adv"><div id="classes"></div><div class="fld" style="padding:0 14px"><label>Custom CSS for this page</label><textarea id="customCss" placeholder="/* advanced: runs on this page only */" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px;min-height:130px"></textarea><small>For designers: this CSS is added at the end of the page.</small></div></div>
+    <div class="pane" data-pane="R-adv"><div id="advId" style="padding:12px 14px 0"></div><div id="classes"></div><div class="fld" style="padding:0 14px"><label>Custom CSS for this page</label><textarea id="customCss" placeholder="/* advanced: runs on this page only */" spellcheck="false" style="font-family:ui-monospace,monospace;font-size:12px;min-height:130px"></textarea><small>For designers: this CSS is added at the end of the page.</small></div></div>
   </aside>
 </div>
 
@@ -860,6 +860,24 @@ input,select,textarea{font:inherit}
     var bk = document.getElementById("jmpBack"); if (bk) bk.onclick = function (ev) { ev.preventDefault(); scroller.scrollTo({ top: from, behavior: "smooth" }); $("#toast").classList.remove("on"); };
     return true;
   }
+  /* Advanced tab: a link name (ID) for ANY selected element, like Elementor's "CSS ID" */
+  function renderAdvId() {
+    var box = $("#advId"), ed = S.editor, c = ed.getSelected(); if (!box) return;
+    if (!c || c === ed.getWrapper()) { box.innerHTML = ""; return; }
+    var at = c.getAttributes() || {}, mine = at["data-rv-anchor"] ? (at.id || "") : (at.id === "order" || at.id === "packages" ? at.id : "");
+    var pointing = 0; if (mine) (function walk(k) { k.components().forEach(function (x) { if ((x.getAttributes() || {}).href === "#" + mine) pointing++; walk(x); }); })(ed.getWrapper());
+    box.innerHTML = '<div class="fld"><label>Link name (ID)</label><input id="advIdIn" maxlength="40" value="' + esc(mine) + '" placeholder="e.g. offers">' +
+      '<div class="hint2" style="margin-top:6px">Gives <b>this exact element</b> a name that buttons can scroll to (like Elementor\'s “CSS ID”). ' + (mine ? "Buttons link to it as <b>#" + esc(mine) + "</b> (" + pointing + " point here now). " : "") + "To name a whole section, select the section, or pick <b>Create a new link name</b> in a button\'s link settings.</div></div>";
+    $("#advIdIn").onchange = function () {
+      var old = mine, v = this.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      if (v && v !== old && findFirst(function (k) { return k !== c && (k.getAttributes() || {}).id === v; })) { toast("The name “" + esc(v) + "” is already used by another element."); this.value = old; return; }
+      if (v) c.addAttributes({ id: v, "data-rv-anchor": "1" }); else if (old) dropAnchor(c);
+      var moved = 0;
+      if (old && old !== v) (function walk(k) { k.components().forEach(function (x) { if ((x.getAttributes() || {}).href === "#" + old) { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
+      toast(v ? "Link name <b>#" + esc(v) + "</b> saved." + (moved ? " " + moved + " button" + (moved === 1 ? "" : "s") + " updated." : "") : "Link name removed.");
+      setTimeout(renderAdvId, 0);
+    };
+  }
   /* "+ Add block" under the last block: click it (or the empty page below) to add something at the end */
   function wireEndAdd() {
     var ed = S.editor, btn = $("#endAdd");
@@ -1140,7 +1158,7 @@ input,select,textarea{font:inherit}
       var moved = 0;
       if (old && old !== v) (function walk(k) { k.components().forEach(function (x) { var hh = (x.getAttributes() || {}).href; if (hh === "#" + old) { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
       toast("Section named <b>#" + esc(v || "—") + "</b>." + (moved ? " " + moved + " button" + (moved === 1 ? "" : "s") + " updated." : ""));
-      renderContent();
+      setTimeout(renderContent, 0);
     });
     on('[data-f="jump"]', "change", function (n) {
       var nb = $('[data-f="newbox"]', box);
@@ -1159,7 +1177,7 @@ input,select,textarea{font:inherit}
       if (old && old !== name) (function walk(k) { k.components().forEach(function (x) { if ((x.getAttributes() || {}).href === "#" + old) x.addAttributes({ href: "#" + name }); walk(x); }); })(ed.getWrapper());
       c.addAttributes({ href: "#" + name });
       toast("Link name <b>#" + esc(name) + "</b> created, and this button now goes there.");
-      renderContent();
+      setTimeout(renderContent, 0);
     });
     on('[data-f="drawer"]', "change", function (n) { if (n.value) { c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; } });
     on('[data-f="ppos"]', "change", function (n) { ["side", "left", "bottom"].forEach(function (x) { c.removeClass(x); }); if (n.value !== "centre") { c.addClass("side"); if (n.value !== "right") c.addClass(n.value); } });
@@ -1860,7 +1878,7 @@ input,select,textarea{font:inherit}
   function onSelect() {
     var sel = S.editor.getSelected();
     $("#emptySel").style.display = sel ? "none" : "";
-    renderContent(); renderStyle();
+    renderContent(); renderStyle(); renderAdvId();
     updateSelHead();
     var dev = S.editor.getDevice();
     var hint = $("#devHint");
