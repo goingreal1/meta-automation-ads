@@ -141,6 +141,7 @@ input,select,textarea{font:inherit}
 .gjs-placeholder-int{background:var(--ac)!important}
 .gjs-resizer-h{border-color:var(--ac)!important}
 /* ---- hover + handles, picker, content forms ---- */
+.endadd{position:fixed;z-index:58;display:none;padding:9px 18px;border-radius:99px;border:2px dashed var(--ac);background:rgba(255,255,255,.92);color:#0d1f1a;font:700 13px Inter,sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}.endadd.on{display:block}.endadd:hover{background:var(--ac);color:#04281e}
 .hplus{position:fixed;z-index:60;width:26px;height:26px;border-radius:50%;border:0;background:var(--ac);color:#04281e;font:700 19px/1 Inter,sans-serif;display:none;align-items:center;justify-content:center;padding:0;box-shadow:0 4px 14px rgba(0,0,0,.45);cursor:pointer}
 .hplus.on{display:flex}.hplus:hover{background:#2bc29a;transform:scale(1.12)}
 .rzg{position:fixed;z-index:59;display:none;align-items:center;justify-content:center;background:#fff;color:#0d1f1a;border:2px solid var(--ac);border-radius:99px;box-shadow:0 3px 10px rgba(0,0,0,.4);touch-action:none;user-select:none}
@@ -284,7 +285,7 @@ input,select,textarea{font:inherit}
   </aside>
 
   <main id="canvas"><div id="gjs"></div><div id="emptyAdd"><div class="card"><b>Start building</b><span>Add your first widget, or pick a ready-made template.</span><button class="btn pri" id="eaAdd">+ Add widget</button> <button class="btn" id="eaTpl">Templates</button></div></div></main>
-<button class="hplus" id="hTop" title="Add widget above">+</button><button class="hplus" id="hBot" title="Add widget below">+</button>
+<button class="endadd" id="endAdd" title="Add a block at the end of the page">+ Add block</button><button class="hplus" id="hTop" title="Add widget above">+</button><button class="hplus" id="hBot" title="Add widget below">+</button>
 <div class="rzg" data-e="top" title="Drag to add or remove space above"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></div><div class="rzg" data-e="bottom" title="Drag to make this section taller or shorter"><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div><div class="rzg" data-e="left" title="Drag to change the left space"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></div><div class="rzg" data-e="right" title="Drag to change the right space"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div><div id="rzTip"></div>
 
   <aside class="side" id="right">
@@ -506,7 +507,7 @@ input,select,textarea{font:inherit}
     ed.on("canvas:frame:load", applyCanvasTheme);
     ed.on("canvas:frame:load:body", applyCanvasTheme);   // a reloaded page rebuilds the frame: put the design styles back
     ed.on("change:device", function () { onSelect(); });
-    wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle(); wireRte();
+    wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle(); wireRte(); wireEndAdd();
   }
 
   function sectors() {
@@ -844,6 +845,31 @@ input,select,textarea{font:inherit}
       });
     }
     ed.on("canvas:frame:load", attach); ed.on("load", attach); attach();
+  }
+  /* "+ Add block" under the last block: click it (or the empty page below) to add something at the end */
+  function wireEndAdd() {
+    var ed = S.editor, btn = $("#endAdd");
+    function place() {
+      var doc, w; try { doc = ed.Canvas.getDocument(); w = ed.getWrapper(); } catch (e) { return; }
+      var fe = ed.Canvas.getFrameEl(); if (!doc || !fe) return;
+      var last = w.components().length ? w.components().at(w.components().length - 1) : null, le = last && last.getEl && last.getEl();
+      var fr = fe.getBoundingClientRect(), cv = $("#canvas").getBoundingClientRect();
+      var bottom = le ? le.getBoundingClientRect().bottom : 0, y = fr.top + bottom + 22, x = fr.left + fr.width / 2;
+      var ok = w.components().length > 0 && y > cv.top + 4 && y < cv.bottom - 40;
+      btn.classList.toggle("on", ok);
+      if (ok) { btn.style.left = Math.round(x - btn.offsetWidth / 2) + "px"; btn.style.top = Math.round(y) + "px"; }
+    }
+    btn.onclick = function () { openPicker(null); };
+    var t = 0; function soon() { clearTimeout(t); t = setTimeout(place, 60); }
+    ed.on("update component:add component:remove component:update canvas:frame:load:body change:device load", soon);
+    window.addEventListener("resize", soon);
+    function attach() {
+      var doc; try { doc = ed.Canvas.getDocument(); } catch (e) { return; }
+      if (!doc || doc.__rvEnd) return; doc.__rvEnd = 1;
+      doc.addEventListener("scroll", soon, true);
+      doc.addEventListener("click", function (e) { if (e.target === doc.body || e.target === doc.documentElement) { var last = ed.getWrapper().components().length; if (last) { var l = ed.getWrapper().components().at(last - 1).getEl(); if (l && e.clientY > l.getBoundingClientRect().bottom) openPicker(null); } } }, true);
+    }
+    ed.on("canvas:frame:load", attach); ed.on("canvas:frame:load:body", attach); ed.on("load", attach); attach(); soon();
   }
   function wireHandles() {
     var ed = S.editor;
