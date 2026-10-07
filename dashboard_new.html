@@ -1319,6 +1319,44 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
 @media(max-width:760px){.set-nav{min-width:0;}.set-nav-btn{background:var(--panel2);}}
 .switch .sw-track{background:#c7c7cc;}
 .switch input:checked + .sw-track{background:#34c759;}
+
+/* ── New campaign wizard (6 steps + live preview) ── */
+.wz-sub{font-size:13px;color:var(--text2);margin-bottom:14px;}
+.wz-steps{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;}
+.wz-step{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:var(--panel);color:var(--text2);border-radius:99px;padding:5px 13px 5px 6px;font:500 12.5px inherit;cursor:pointer;white-space:nowrap;}
+.wz-n{width:20px;height:20px;border-radius:50%;background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+.wz-step.on{border-color:var(--accent);color:var(--text);box-shadow:0 0 0 3px var(--accentBg);}
+.wz-step.on .wz-n{background:var(--accent);color:#fff;}
+.wz-step.done .wz-n{background:#34c759;color:#fff;}
+#bvBuilderOverlay .bv-builder-sidebar{display:none !important;}
+#bvBuilderOverlay [data-wzs]{display:none;}
+#bvBuilderOverlay[data-wz="goal"] [data-wzs="goal"],#bvBuilderOverlay[data-wz="product"] [data-wzs="product"],#bvBuilderOverlay[data-wz="budget"] [data-wzs="budget"]{display:block;}
+#bvBuilderOverlay[data-wz="goal"] .fg[data-wzs="goal"]{display:grid;}
+#bvBuilderOverlay[data-wz="review"] .bv-builder-section{display:none !important;}
+#bvBuilderOverlay[data-wz="review"] .bv-builder-summary{display:block;flex:1;width:auto;border-left:0;}
+#bvBuilderOverlay[data-wz="review"] .bv-builder-body{display:none;}
+.bv-builder-head{padding-bottom:12px;}
+.wz-prev .wz-phone{border:6px solid #1d1d1f;border-radius:26px;background:var(--panel);padding:10px;max-width:250px;margin:0 auto;}
+.wz-pg{display:flex;align-items:center;gap:7px;font-size:11.5px;margin-bottom:6px;}
+.wz-pg b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.wz-pg i{font-style:normal;color:var(--muted);font-size:10.5px;}
+.wz-av{width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none;}
+.wz-pt{font-size:11.5px;line-height:1.4;margin-bottom:8px;word-break:break-word;}
+.wz-img{aspect-ratio:1/1;border-radius:8px;background:linear-gradient(135deg,#8fc1ff,#1877F2);overflow:hidden;}
+.wz-img img{width:100%;height:100%;object-fit:cover;display:block;}
+.wz-hd{font-size:12px;font-weight:700;margin-top:8px;}
+.wz-cta{margin-top:8px;background:var(--accent);color:#fff;text-align:center;border-radius:8px;padding:8px;font-size:12px;font-weight:600;}
+@media(min-width:721px){.bv-builder-summary{width:300px;}}
+@media(max-width:720px){
+  #bvBuilderOverlay:not([data-step="campaign"]) .bv-builder-head{display:block;padding-bottom:0;}
+  #bvBuilderOverlay[data-step]:not([data-wz="goal"]) #bvTabBackBtn{display:flex !important;}
+  #bvBuilderOverlay[data-wz="goal"] #bvTabBackBtn{display:none !important;}
+  #bvBuilderOverlay[data-step="ad"] #bvTabNextBtn{display:flex;}
+  #bvBuilderOverlay[data-wz="review"] #bvTabNextBtn{display:none;}
+  #bvBuilderOverlay[data-wz="review"] #uploadBtn{display:flex;flex:1;align-items:center;}
+  #bvBuilderOverlay[data-wz="creative"] #uploadBtn{display:none;}
+  #bvBuilderOverlay .bv-builder-foot > div{flex:1;}
+}
 </style>
 </head>
 <body>
@@ -2884,8 +2922,10 @@ function bvOpenCampaignBuilder(presetObjective) {
       <form id="uploadForm" style="display:flex;flex-direction:column;height:100%;min-height:0;">
 
         <div class="bv-builder-head">
-          <div class="ph-title" style="margin-bottom:10px;">New campaign</div>
-          <div class="field"><label>Destination *</label>
+          <div class="ph-title" style="margin-bottom:4px;">New campaign</div>
+          <div class="wz-sub">Set it up in a few steps. Your ads start paused until you approve them.</div>
+          <div class="wz-steps" id="bvWzSteps">${BV_WZ.map((w, i) => `<button type="button" class="wz-step" data-wz="${w[0]}" onclick="bvWzGo('${w[0]}')"><span class="wz-n">${i + 1}</span>${w[1]}</button>`).join("")}</div>
+          <div class="field" data-wzs="goal"><label>Where do you want customers to go? *</label>
             <div style="display:flex;gap:18px;margin-top:4px;">
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
                 <input type="radio" name="f_destination" value="whatsapp" ${!presetObjective || presetObjective === "OUTCOME_SALES" ? "checked" : ""} onchange="bvOnDestinationChange()"> WhatsApp — opens a chat
@@ -2895,13 +2935,13 @@ function bvOpenCampaignBuilder(presetObjective) {
               </label>
             </div>
           </div>
-          <div class="fg" style="margin-top:10px;">
+          <div class="fg" style="margin-top:10px;" data-wzs="goal">
             <div class="field" id="f_whatsappNumberField"><label>WhatsApp number *</label><input id="f_whatsapp_number" placeholder="e.g. 2348012345678" oninput="bvRenderIdentitySection(); bvRenderBuilderSummary();">
               <div id="f_whatsappPicker" style="margin-top:6px;"></div>
             </div>
             <div class="field" id="f_landingUrlField" style="display:none;"><label>Landing page URL *</label><input id="f_landing_url" placeholder="https://…"></div>
           </div>
-          <div class="field" style="margin-top:10px;"><label>Link to a product <span style="font-weight:400;color:var(--muted);">(optional — for Shop checkout + Purchase pixel tracking)</span></label>
+          <div class="field" data-wzs="product" style="margin-top:10px;"><label>Link to a product <span style="font-weight:400;color:var(--muted);">(optional — for Shop checkout + Purchase pixel tracking)</span></label>
             <select id="f_product" onchange="bvOnProductChange()">
               <option value="">— none (standalone campaign) —</option>
               ${pOpts}
@@ -2920,7 +2960,7 @@ function bvOpenCampaignBuilder(presetObjective) {
           <div class="bv-builder-body">
 
           <div class="bv-builder-section active" id="bvSection-campaign">
-            <div class="bv-section-card">
+            <div class="bv-section-card" data-wzs="goal">
               <div class="bv-section-card-title"><span class="bv-ico">🎯</span> Campaign details</div>
               <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager)</span></label>
                 <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch" oninput="bvRenderBuilderSummary()">
@@ -2937,7 +2977,7 @@ function bvOpenCampaignBuilder(presetObjective) {
               </div>
             </div>
 
-            <div class="bv-section-card">
+            <div class="bv-section-card" data-wzs="budget">
               <div class="bv-section-card-title"><span class="bv-ico">💰</span> Budget & schedule</div>
               <div class="field"><label>Budget type</label>
                 <select id="f_budget_type" onchange="bvRenderBuilderSummary()">
@@ -3039,7 +3079,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                 <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
               </div>
               <div class="fg" style="margin-top:14px;">
-                <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook"></div>
+                <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook" oninput="bvRenderBuilderSummary()"></div>
                 <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
               </div>
               <div style="margin-top:14px;position:relative;display:inline-block;">
@@ -3089,7 +3129,7 @@ function bvOpenCampaignBuilder(presetObjective) {
   bvReuseAsset = null;
   bvLoadBuilderIdentity();
   bvRenderBuilderSummary();
-  bvSwitchBuilderTab("campaign");
+  bvWzGo("goal");
   bvDraftStart();
 
   // Drag-and-drop
@@ -3151,6 +3191,22 @@ function bvOpenCampaignBuilder(presetObjective) {
 }
 
 const BV_BUILDER_TABS = ["campaign", "adset", "ad"];
+// The 6-step wizard the builder shows. Each step maps to one of the original three
+// sections (which still hold every field and all the launch logic).
+const BV_WZ = [["goal", "Goal", "campaign"], ["product", "Product", "campaign"], ["audience", "Audience", "adset"], ["creative", "Creative", "ad"], ["budget", "Budget", "campaign"], ["review", "Review", "ad"]];
+function bvWzPaint() {
+  const ov = document.getElementById("bvBuilderOverlay"); if (!ov) return;
+  const cur = ov.dataset.wz || "goal", i = BV_WZ.findIndex(w => w[0] === cur);
+  ov.querySelectorAll(".wz-step").forEach((b, n) => { b.classList.toggle("on", n === i); b.classList.toggle("done", n < i); const num = b.querySelector(".wz-n"); if (num) num.textContent = n < i ? "✓" : String(n + 1); });
+  const back = document.getElementById("bvTabBackBtn"), next = document.getElementById("bvTabNextBtn");
+  if (back) back.style.visibility = i === 0 ? "hidden" : "visible";
+  if (next) next.style.visibility = i === BV_WZ.length - 1 ? "hidden" : "visible";
+}
+function bvWzGo(id) {
+  const ov = document.getElementById("bvBuilderOverlay"); if (!ov) return;
+  ov.dataset.wz = id;
+  bvSwitchBuilderTab(BV_WZ.find(w => w[0] === id)[2]);
+}
 
 function bvSwitchBuilderTab(tab) {
   BV_BUILDER_TABS.forEach(t => {
@@ -3168,13 +3224,19 @@ function bvSwitchBuilderTab(tab) {
   if (nextBtn) nextBtn.style.visibility = i === BV_BUILDER_TABS.length - 1 ? "hidden" : "visible";
   document.querySelector(".bv-builder-body")?.scrollTo(0, 0);
   if (tab === "ad") bvRenderStagedCopies();
+  const ov = document.getElementById("bvBuilderOverlay");
+  if (ov) {
+    const w = BV_WZ.find(x => x[0] === ov.dataset.wz);
+    if (!w || w[2] !== tab) ov.dataset.wz = BV_WZ.find(x => x[2] === tab)[0];
+  }
+  bvWzPaint();
   bvRenderBuilderSummary();
 }
 
 function bvBuilderTabStep(delta) {
-  const current = BV_BUILDER_TABS.find(t => document.getElementById(`bvSection-${t}`)?.classList.contains("active"));
-  const i = Math.max(0, Math.min(BV_BUILDER_TABS.length - 1, BV_BUILDER_TABS.indexOf(current) + delta));
-  bvSwitchBuilderTab(BV_BUILDER_TABS[i]);
+  const cur = document.getElementById("bvBuilderOverlay")?.dataset.wz || "goal";
+  const i = Math.max(0, Math.min(BV_WZ.length - 1, BV_WZ.findIndex(w => w[0] === cur) + delta));
+  bvWzGo(BV_WZ[i][0]);
 }
 
 // ── REVIEW & LAUNCH ──────────────────────────────────────────────────────────
@@ -3614,7 +3676,22 @@ function bvRenderBuilderSummary() {
   bvRenderAdTabs();
   const acc = (window.accountsList || accountsList || []).find(a => a.id === activeAccountId);
 
+  const pvImg = document.querySelector("#dzPrev .dz-thumb")?.src || "";
+  const pvPage = acc?.fb_page_name || acc?.nickname || acc?.name || "Your page";
+  const pvText = document.getElementById("f_primary")?.value.trim() || "Your ad text appears here.";
+  const pvHead = document.getElementById("f_headline")?.value.trim() || "";
+  const ctaSel = document.getElementById("f_cta");
+  const pvCta = isWhatsapp ? "Send message" : (ctaSel?.options[ctaSel.selectedIndex]?.text || "Shop Now");
   el.innerHTML = `
+    <div class="bv-builder-summary-card wz-prev">
+      <div class="bv-builder-summary-title">Preview</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">How your ad looks in the feed</div>
+      <div class="wz-phone"><div class="wz-pg"><span class="wz-av">${escH(pvPage.slice(0, 2).toUpperCase())}</span><b>${escH(pvPage)}</b><i>Sponsored</i></div>
+        <div class="wz-pt">${escH(pvText.length > 140 ? pvText.slice(0, 140) + "…" : pvText)}</div>
+        <div class="wz-img">${pvImg ? `<img src="${pvImg}" alt="">` : ""}</div>
+        ${pvHead ? `<div class="wz-hd">${escH(pvHead)}</div>` : ""}
+        <div class="wz-cta">${escH(pvCta)}</div></div>
+    </div>
     <div class="bv-builder-summary-card">
       <div class="bv-builder-summary-title">Campaign score</div>
       <div style="font-size:11.5px;color:var(--muted);line-height:1.5;">
@@ -4991,7 +5068,7 @@ function setFileRaw(file) {
   dz.style.background  = "var(--accentBg)";
   if (file.type.startsWith("image/")) {
     const r = new FileReader();
-    r.onload = e => { prev.innerHTML = `✓ ${file.name}<br><img src="${e.target.result}" class="dz-thumb">`; };
+    r.onload = e => { prev.innerHTML = `✓ ${file.name}<br><img src="${e.target.result}" class="dz-thumb">`; bvRenderBuilderSummary(); };
     r.readAsDataURL(file);
   } else {
     prev.innerHTML = `✓ ${file.name} · ${(file.size/1024/1024).toFixed(1)} MB`;
