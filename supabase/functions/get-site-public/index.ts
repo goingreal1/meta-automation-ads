@@ -100,7 +100,20 @@ Deno.serve(async (req: Request) => {
     .map((s: any) => ({ id: s.id, code: s.code, location: s.location }));
 
   // Where the form sends the customer after ordering: the site's published thank-you page, if it has one.
-  const { data: thanks } = await supabase.from("site_pages").select("slug").eq("site_id", site.id).eq("kind", "thanks").not("published_at", "is", null).limit(1).maybeSingle();
+  // The site owner can pick a specific thank-you page, or turn the redirect off (settings.thanks_mode = "builtin");
+  // otherwise the first published page of type "thanks" is used.
+  const tmode = (site.settings as any)?.thanks_mode, tpage = (site.settings as any)?.thanks_page_id;
+  let thanks: { slug: string } | null = null;
+  if (tmode !== "builtin") {
+    if (tpage) {
+      const { data: t1 } = await supabase.from("site_pages").select("slug").eq("site_id", site.id).eq("id", tpage).not("published_at", "is", null).maybeSingle();
+      thanks = t1 ?? null;
+    }
+    if (!thanks) {
+      const { data: t2 } = await supabase.from("site_pages").select("slug").eq("site_id", site.id).eq("kind", "thanks").not("published_at", "is", null).limit(1).maybeSingle();
+      thanks = t2 ?? null;
+    }
+  }
 
   const { project: _p, ...pageOut } = page as any;
   return json({

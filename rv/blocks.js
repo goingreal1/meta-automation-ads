@@ -539,8 +539,12 @@
     { id: "zumifa", name: "Zumifa eye capsules - full sales page", desc: "Red banner, story, review screenshots, video cards, symptoms list, guarantee, 3 flat offer cards, order form and floating order button", kind: "page", theme: { primary: "#e0301e", heading: "Roboto", body: "Montserrat" }, html: zumifaHtml },
     { id: "service", name: "Service - bank transfer", desc: "Sell a service: steps, proof, FAQ and a form that shows your bank details", kind: "page",
       blocks: ["announce", "hero-center", "steps", "features", "testimonials", "guarantee", "faq", "order-form", "footer", "whatsapp"] },
-    { id: "thanks", name: "Thank-you page", desc: "Shown after an order; includes bank details when relevant", kind: "thanks",
+    { id: "thanks", name: "Thank-you - simple", desc: "A big tick, the order reference and bank details when relevant", kind: "thanks",
       blocks: ["thanks-hero", "footer"] },
+    { id: "thanks-steps", name: "Thank-you - what happens next", desc: "Confirmation, then the steps (we call, we deliver, you pay) and a WhatsApp button", kind: "thanks",
+      blocks: ["thanks-hero", "steps", "whatsapp", "footer"] },
+    { id: "thanks-trust", name: "Thank-you - reassurance + reviews", desc: "Confirmation, delivery promises, customer reviews and FAQ to keep buyers confident", kind: "thanks",
+      blocks: ["thanks-hero", "iconbox-row", "testimonials", "faq", "footer", "whatsapp"] },
     { id: "blank", name: "Blank page", desc: "Start from scratch", kind: "page", blocks: [] }
   ];
 

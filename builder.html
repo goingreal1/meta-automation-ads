@@ -309,6 +309,7 @@ input,select,textarea{font:inherit}
       <div class="fld"><label>Product this site sells</label><select id="sProduct"></select><small>The built-in order form uses this product's price, packages and payment details. Every order lands in your Orders tab.</small></div>
       <div class="fld"><label>Ad account &amp; pixel</label><select id="sAdAcct"></select><small id="sPixelNote">Pick the ad account whose Meta Pixel this site should use.</small></div>
       <div class="fld"><label>Purchase tracking</label><select id="sPurchase"><option value="submit">Count a Purchase when the order form is submitted (Meta, TikTok, Google)</option><option value="none">Do not send a Purchase event</option></select><small>Orders are always saved. This controls the Purchase event sent to every pixel on the page, with the price of the package the customer picked (plus the server-side Meta event when an ad account is linked).</small></div>
+      <div class="fld"><label>After a customer orders, send them to</label><select id="sThanks"></select><small>Create a thank-you page under Pages → “+ Add thank-you page”, publish it, then choose it here (or leave on Automatic). Customers are sent there right after they submit the order form, with their order reference and payment details filled in.</small></div>
       <div class="fld"><label><input type="checkbox" id="sCall" style="width:auto;margin-right:8px;vertical-align:middle">Place an AI confirmation call for orders from this site</label></div>
     </div>
     <div data-sp="design" style="display:none">
@@ -1789,6 +1790,8 @@ input,select,textarea{font:inherit}
       var url = liveUrl(S.page);
       toast("🎉 Published. <a href=\"" + esc(url) + "\" target=\"_blank\" rel=\"noopener\">Open page</a> <a href=\"#\" id=\"tcopy\">Copy link</a>", 8000);
       var c = $("#tcopy"); if (c) c.onclick = function (e) { e.preventDefault(); copy(url); toast("Link copied"); };
+      var hasThanks = S.pages.some(function (x) { return x.kind === "thanks" && x.published_at; });
+      if (S.page.kind !== "thanks" && !hasThanks && !((S.site.settings || {}).thanks_mode === "builtin")) setTimeout(function () { toast("Tip: customers who order only see a basic message. Add a thank-you page under <b>Pages</b> and publish it to send them to your own page.", 9000); }, 8200);
     } catch (e) { toast("Couldn't publish: " + esc(e.message || e)); }
     btn.disabled = false; btn.textContent = "Publish";
   }
@@ -1907,6 +1910,10 @@ input,select,textarea{font:inherit}
       var st = !p.published_at ? ["Draft", ""] : (new Date(p.updated_at) - new Date(p.published_at) > 2000 ? ["Changes", "chg"] : ["Live", "live"]);
       h += '<div class="prow' + (p.id === S.page.id ? " on" : "") + '" data-id="' + p.id + '"><div style="flex:1;min-width:0"><div class="nm">' + esc(p.title) + (p.kind === "thanks" ? " ·  thank-you" : "") + '</div><div class="sl">/s/' + esc(S.site.slug) + (p.slug ? "/" + esc(p.slug) : "") + '</div></div><span class="st ' + st[1] + '">' + st[0] + "</span></div>";
     });
+    var thp = S.pages.filter(function (x) { return x.kind === "thanks"; }), live = thp.filter(function (x) { return x.published_at; });
+    var cfg = (S.site && S.site.settings) || {};
+    var tmsg = cfg.thanks_mode === "builtin" ? ["#8a8f98", "Customers see the basic “Order received” message (turned on in Settings)."] : live.length ? ["#22b08a", "✓ After an order, customers go to “" + esc(live[0].title) + "”."] : thp.length ? ["#e0a030", "⚠ Your thank-you page isn't published yet. Open it and press Publish, or customers only see the basic message."] : ["#e0a030", "No thank-you page yet. Customers see the basic “Order received” message."];
+    h += '<div style="margin:10px 0;padding:10px 12px;border:1px solid ' + tmsg[0] + ';border-radius:10px;font-size:12px;line-height:1.45;color:var(--tx2)"><b style="color:var(--tx)">After an order</b><br>' + tmsg[1] + '</div>';
     h += '<button class="btn addp" id="addPage">+ Add page</button><button class="btn addp" id="addThanks" style="margin-top:8px">+ Add thank-you page</button>';
     el.innerHTML = h;
     $$(".prow", el).forEach(function (r) { r.onclick = function () { switchPage(r.dataset.id); }; });
@@ -1967,6 +1974,9 @@ input,select,textarea{font:inherit}
     $("#sProduct").innerHTML = '<option value="">— No product (just a page) —</option>' + S.products.map(function (x) { return '<option value="' + x.id + '"' + (x.id === s.product_id ? " selected" : "") + ">" + esc(x.product_name) + (x.is_service ? " (service)" : "") + "</option>"; }).join("");
     $("#sAdAcct").innerHTML = '<option value="">— Use the product\'s ad account —</option>' + S.accounts.map(function (a) { return '<option value="' + a.id + '"' + (a.id === s.ad_account_id ? " selected" : "") + ">" + esc(a.nickname || a.name || a.id.slice(0, 8)) + (a.meta_pixel_id ? " · pixel " + esc(a.meta_pixel_id) : " · no pixel") + "</option>"; }).join("");
     $("#sPurchase").value = s.purchase_event; $("#sCall").checked = !!(s.settings && s.settings.confirmation_call);
+    var th = S.pages.filter(function (x) { return x.kind === "thanks"; }), cfg = s.settings || {};
+    $("#sThanks").innerHTML = '<option value="auto">Automatic: my published thank-you page' + (th.some(function (x) { return x.published_at; }) ? "" : " (none published yet, so they see the basic message)") + '</option><option value="builtin">The basic built-in “Order received” message</option>' + th.map(function (x) { return '<option value="' + x.id + '">' + esc(x.title) + (x.published_at ? "" : " (not published yet)") + "</option>"; }).join("");
+    $("#sThanks").value = cfg.thanks_mode === "builtin" ? "builtin" : (cfg.thanks_page_id && th.some(function (x) { return x.id === cfg.thanks_page_id; }) ? cfg.thanks_page_id : "auto");
     $("#dColor").value = S.theme.primary; $("#dColorTx").value = S.theme.primary;
     $("#swatches").innerHTML = COLORS.map(function (c) { return '<div class="sw' + (c.toLowerCase() === S.theme.primary.toLowerCase() ? " on" : "") + '" style="background:' + c + '" data-c="' + c + '"></div>'; }).join("");
     var fopts = Object.keys(RB.FONTS).map(function (f) { return "<option>" + f + "</option>"; }).join("");
@@ -2003,6 +2013,7 @@ input,select,textarea{font:inherit}
   async function saveSettings() {
     var s = S.site, p = S.page, btn = $("#sSave"); btn.disabled = true;
     var settings = Object.assign({}, s.settings || {}, { theme: themeForSave(), confirmation_call: $("#sCall").checked });
+    var tv = $("#sThanks").value; settings.thanks_mode = tv === "builtin" ? "builtin" : "auto"; if (tv !== "auto" && tv !== "builtin") settings.thanks_page_id = tv; else delete settings.thanks_page_id;
     var sUpd = { name: $("#sName").value.trim() || s.name, product_id: $("#sProduct").value || null, ad_account_id: $("#sAdAcct").value || null, purchase_event: $("#sPurchase").value, settings: settings, updated_at: new Date().toISOString() };
     var r1 = await sb.from("sites").update(sUpd).eq("id", s.id).select("*").single();
     var slug = p.slug === "" ? "" : slugify($("#pSlug").value) || p.slug;
