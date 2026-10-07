@@ -2705,7 +2705,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                 <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
                 <div class="dz-prev" id="dzPrev"></div>
                 <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
-                <div style="margin-top:8px;font-size:11px;"><a href="javascript:void(0)" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()" style="color:var(--accent);">↺ Reuse a creative already uploaded for this product</a></div>
+                <div style="margin-top:8px;font-size:11px;"><button type="button" class="btn btn-a" style="width:auto;padding:8px 16px;font-size:12px;" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()">📁 Choose from creative vault ▾</button></div>
               </div>
               <div id="dzFit"></div>
               <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:10px;" onclick="bvOpenAdPreview()">👁 Preview on phone &amp; laptop</button>
@@ -3436,34 +3436,33 @@ function bvRenderIdentitySection() {
 // Ad-level creative picker: choose a creative already uploaded for the
 // selected product instead of re-uploading the same video/image, with the
 // product's link/destination already auto-filled as before.
-function bvOpenReuseCreativeModal() {
-  // A product link is optional now -- when one's picked, scope the list to
-  // its creatives (most relevant); otherwise show every uploaded creative,
-  // since there's no product to narrow by.
+async function bvOpenReuseCreativeModal() {
+  // Creatives from the product's vault, with their copy: picking one fills the headline, primary text,
+  // description and button below, so setting up an ad is just choose-and-go.
   const productId = document.getElementById("f_product")?.value;
-  const allAssets = (window.bvVaultAssetsCache || []).filter(a => a.public_url);
-  const assets = productId ? allAssets.filter(a => a.product_id === productId) : allAssets;
   const overlay = document.createElement("div");
   overlay.id = "bvReuseModalOverlay";
   overlay.className = "bv-overlay";
-  overlay.innerHTML = `
-    <div class="bv-modal" style="max-width:520px;">
-      <button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button>
-      <div class="ph-title" style="margin-bottom:12px;">Reuse an existing creative</div>
-      ${!assets.length
-          ? `<div style="font-size:12px;color:var(--muted);">No creatives uploaded yet.</div>`
-          : assets.map(a => `
-            <div class="bv-clickable-row" onclick="bvPickReuseAsset('${a.id}')" style="display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;cursor:pointer;">
-              ${a.asset_type === "video"
-                ? `<video src="${a.public_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex-shrink:0;"></video>`
-                : `<img src="${a.public_url}" style="width:56px;height:56px;object-fit:cover;border-radius:6px;flex-shrink:0;">`}
-              <div style="flex:1;overflow:hidden;">
-                <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.file_name}</div>
-                <div style="font-size:11px;color:var(--muted);">${(a.test_status ?? "untested").replace(/_/g," ")}</div>
-              </div>
-            </div>`).join("")}
-    </div>`;
+  overlay.innerHTML = `<div class="bv-modal" style="max-width:640px;"><button class="bv-modal-close" onclick="this.closest('.bv-overlay').remove()">✕</button><div class="ph-title" style="margin-bottom:4px;">Choose from your creative vault</div><div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Pick one and its headline, primary text, description and button fill in automatically.</div><div id="bvReuseList" style="font-size:12px;color:var(--muted);">Loading…</div></div>`;
   document.body.appendChild(overlay);
+  let assets = [];
+  try {
+    assets = await sbQuery("creative_assets", `select=*${productId ? `&product_id=eq.${productId}` : ""}&order=uploaded_at.desc&limit=200`);
+  } catch (e) { assets = (window.bvVaultAssetsCache || []).filter(a => !productId || a.product_id === productId); }
+  assets = (assets || []).filter(a => a.public_url);
+  window.bvVaultAssetsCache = [...assets, ...(window.bvVaultAssetsCache || []).filter(a => !assets.some(x => x.id === a.id))];
+  const list = document.getElementById("bvReuseList"); if (!list) return;
+  list.innerHTML = !assets.length
+    ? `<div style="padding:14px;border:1px dashed var(--border);border-radius:10px;">${productId ? "This product has no creatives yet. Open Products → Edit and upload some to its Creative vault." : "Pick a product first, or upload your first creative."}</div>`
+    : `<div style="display:grid;gap:8px;max-height:60vh;overflow:auto;">${assets.map(a => `
+        <div class="bv-clickable-row" onclick="bvPickReuseAsset('${a.id}')" style="display:flex;align-items:flex-start;gap:10px;border:1px solid var(--border);border-radius:10px;padding:9px;cursor:pointer;">
+          ${a.asset_type === "video" ? `<video src="${escH(a.public_url)}" muted style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;"></video>` : `<img src="${escH(a.public_url)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;">`}
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12.5px;font-weight:700;color:var(--text);">${escH(a.headline || "(no headline yet)")}</div>
+            <div style="font-size:11.5px;color:var(--text2);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escH(a.primary_text || "(no primary text yet)")}</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">${escH(a.file_name || "")} · ${(a.test_status ?? "untested").replace(/_/g, " ")}</div>
+          </div>
+        </div>`).join("")}</div>`;
 }
 
 function bvPickReuseAsset(assetId) {
@@ -3473,6 +3472,11 @@ function bvPickReuseAsset(assetId) {
   document.getElementById("f_file").value = "";
   const prev = document.getElementById("dzPrev");
   prev.innerHTML = `↺ Reusing: ${asset.file_name} <button type="button" onclick="event.stopPropagation(); bvClearReuseAsset();" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:11px;margin-left:6px;">✕ clear</button>`;
+  // fill the ad copy from the creative's own copy
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== "") el.value = v; };
+  set("f_primary", asset.primary_text); set("f_headline", asset.headline); set("f_desc", asset.description); set("f_cta", asset.cta_type);
+  set("f_mechanism", asset.mechanism); set("f_format", asset.format);
+  try { bvRenderBuilderSummary(); } catch (e) {}
   document.getElementById("bvReuseModalOverlay")?.remove();
 }
 
@@ -6103,13 +6107,13 @@ async function renderProducts(el) {
     <div class="sh"><div class="sh-title">Products</div></div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title" id="prodFormTitle">Add package</div><div class="sh-actions"><button type="button" class="btn btn-g" id="prodCancelEdit" style="display:none;" onclick="bvCancelProductEdit()">Cancel edit</button></div></div>
+      <div class="ph"><div class="ph-title" id="prodFormTitle">Add product</div><div class="sh-actions"><button type="button" class="btn btn-g" id="prodCancelEdit" style="display:none;" onclick="bvCancelProductEdit()">Cancel edit</button></div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Name and price are all you need to start — this is what shows up as a package in the Order Forms builder. Everything else (description, safety notes, WhatsApp bot behavior) is optional and can be filled in any time.</div>
       <form id="prodForm">
         <input type="hidden" id="p_id">
         <div class="fg">
           <div class="field"><label>Product name *</label><input id="p_name" required placeholder="e.g. Quality Herb — Immune Booster"></div>
-          <div class="field"><label>Price *</label><input id="p_val" type="number" value="19000" min="0"></div>
+          <div class="field"><label>Default price * <span style="font-weight:400;color:var(--muted);">(follows your default offer package once you add packages)</span></label><input id="p_val" type="number" value="19000" min="0"></div>
         </div>
         <div class="fg" style="margin-top:11px;">
           <div class="field"><label>Stock on hand <span style="font-weight:400;color:var(--muted);">(leave blank if you're not tracking inventory for this product)</span></label><input id="p_stock" type="number" min="0" step="1" placeholder="untracked"></div>
@@ -6185,12 +6189,16 @@ async function renderProducts(el) {
 
 
         <div class="field" style="margin-top:14px;">
-          <label>Package options <span style="font-weight:400;color:var(--muted);">(optional — let customers pick between bundle sizes on the order form instead of a plain quantity count, e.g. "1 piece" / "3-piece bundle")</span></label>
+          <label>Offer packages <span style="font-weight:400;color:var(--muted);">(bundles customers can pick, e.g. "1 piece" / "3-piece bundle". The <b>default</b> one is pre-selected and sets the product's price. You can add them now, before saving the product.)</span></label>
           <div id="tiersList"></div>
-          <div id="tiersHint" style="font-size:10.5px;color:var(--muted);margin-top:4px;">Save the package first, then come back to add package options.</div>
+          <div id="tiersHint" style="display:none;"></div>
         </div>
 
-        <button type="submit" class="btn btn-a btn-full" id="prodSubmitBtn" style="margin-top:14px;">+ Add package</button>
+        <div class="field" id="vaultField" style="margin-top:18px;">
+          <label>🎨 Creative vault <span style="font-weight:400;color:var(--muted);">(images and videos for this product's ads, each with its own headline, primary text, description and button. The AI launches tests from these.)</span></label>
+          <div id="vaultBox"><div style="font-size:11.5px;color:var(--muted);padding:12px;border:1px dashed var(--border);border-radius:10px;">Save the product first, then upload its creatives here.</div></div>
+        </div>
+        <button type="submit" class="btn btn-a btn-full" id="prodSubmitBtn" style="margin-top:14px;">+ Add product</button>
         <div id="prodMsg"></div>
       </form>
     </div>
@@ -6245,6 +6253,7 @@ async function renderProducts(el) {
     </div>`;
 
   window.bvProductsCache = prods || [];
+  window.bvDraftTiers = []; bvRenderDraftTiers();
 
   document.getElementById("prodForm").addEventListener("submit", async e => {
     e.preventDefault();
@@ -6281,9 +6290,15 @@ async function renderProducts(el) {
       } else {
         const { data, error } = await supabaseClient.from('products').insert({ ...fields, ad_account_id: activeAccountId }).select('id').single();
         if (error) throw error;
+        if (window.bvDraftTiers?.length) {
+          const rows = window.bvDraftTiers.map((t, i) => ({ product_id: data.id, company_id: window.myProfile.company_id, label: t.label, quantity: t.quantity, price_naira: t.price_naira, badge: t.badge, features: t.features, is_default: !!t.is_default, sort_order: i }));
+          const { error: te } = await supabaseClient.from("product_tiers").insert(rows);
+          if (te) bvToast(`Product saved, but the offer packages didn't: ${te.message}`);
+          window.bvDraftTiers = [];
+        }
         await renderProducts(el);
         bvEditProduct(data.id);
-        document.getElementById("prodMsg").innerHTML = `<div class="msg ok">✅ Product added — now upload its photo below.</div>`;
+        document.getElementById("prodMsg").innerHTML = `<div class="msg ok">✅ Product added — now upload its photo and its creatives below.</div>`;
       }
     } catch(err) {
       msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
@@ -6343,6 +6358,7 @@ function bvEditProduct(id) {
     : "No image";
   document.getElementById("prodForm").scrollIntoView({ behavior: "smooth", block: "start" });
   bvRenderTiersEditor(p.id);
+  bvRenderProductVault(p.id);
 }
 
 async function bvUploadTierImage(file) {
@@ -6353,6 +6369,43 @@ async function bvUploadTierImage(file) {
   const up = await supabaseClient.storage.from("site-media").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
   if (up.error) throw up.error;
   return supabaseClient.storage.from("site-media").getPublicUrl(path).data.publicUrl;
+}
+
+// the product's price follows its default package
+async function bvSyncDefaultPrice(productId) {
+  const { data } = await supabaseClient.from("product_tiers").select("price_naira").eq("product_id", productId).eq("is_default", true).maybeSingle();
+  if (!data || !(Number(data.price_naira) > 0)) return;
+  await supabaseClient.from("products").update({ default_order_value_naira: Number(data.price_naira) }).eq("id", productId);
+  const el = document.getElementById("p_val"); if (el && document.getElementById("p_id").value === productId) el.value = data.price_naira;
+}
+
+// Packages for a product that isn't saved yet: kept here, written when the product is saved.
+window.bvDraftTiers = [];
+function bvRenderDraftTiers() {
+  const list = document.getElementById("tiersList"); if (!list) return;
+  const t = window.bvDraftTiers, inp = "font-size:12px;padding:8px 10px;";
+  list.innerHTML = `
+    ${t.length ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">${t.map((x, i) => `
+      <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid ${x.is_default ? "var(--accent)" : "var(--border)"};border-radius:8px;padding:7px 10px;font-size:12px;">
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input type="radio" name="draftDef" data-i="${i}" ${x.is_default ? "checked" : ""}> Default</label>
+        <div style="flex:1;"><b>${escH(x.label)}</b> — ${x.quantity} pc${x.quantity > 1 ? "s" : ""} — ${fN(x.price_naira)}${x.badge ? ` <span class="pill">${escH(x.badge)}</span>` : ""}</div>
+        <button type="button" class="btn btn-g draftRm" data-i="${i}" style="padding:3px 8px;font-size:10px;color:var(--danger);">Remove</button>
+      </div>`).join("")}</div>` : `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">No offer packages yet. Add the first one below. You can add pictures and more details after saving the product.</div>`}
+    <div class="fg"><div class="field"><label style="font-size:10.5px;">Label</label><input id="d_label" placeholder="e.g. 3-piece bundle" style="${inp}"></div>
+    <div class="field"><label style="font-size:10.5px;">Pieces</label><input id="d_qty" type="number" min="1" value="1" style="${inp}"></div></div>
+    <div class="fg" style="margin-top:7px;"><div class="field"><label style="font-size:10.5px;">Price</label><input id="d_price" type="number" min="0" style="${inp}"></div>
+    <div class="field"><label style="font-size:10.5px;">Badge (optional)</label><input id="d_badge" placeholder="e.g. Best value" style="${inp}"></div></div>
+    <div class="field" style="margin-top:7px;"><label style="font-size:10.5px;">What's included (one per line, optional)</label><textarea id="d_feat" rows="2" style="${inp}"></textarea></div>
+    <button type="button" class="btn btn-g" id="draftAdd" style="margin-top:7px;padding:6px 12px;font-size:11px;">+ Add offer package</button>`;
+  const sync = () => { const d = t.find(x => x.is_default); if (d) document.getElementById("p_val").value = d.price_naira; };
+  list.querySelectorAll('input[name="draftDef"]').forEach(r => r.addEventListener("change", () => { t.forEach((x, i) => x.is_default = i === Number(r.dataset.i)); sync(); bvRenderDraftTiers(); }));
+  list.querySelectorAll(".draftRm").forEach(b => b.addEventListener("click", () => { const was = t[Number(b.dataset.i)]; t.splice(Number(b.dataset.i), 1); if (was.is_default && t[0]) t[0].is_default = true; sync(); bvRenderDraftTiers(); }));
+  document.getElementById("draftAdd").addEventListener("click", () => {
+    const label = document.getElementById("d_label").value.trim(), price = Number(document.getElementById("d_price").value);
+    if (!label || !price) { bvToast("Label and price are required."); return; }
+    t.push({ label, quantity: Number(document.getElementById("d_qty").value) || 1, price_naira: price, badge: document.getElementById("d_badge").value.trim() || null, features: document.getElementById("d_feat").value.trim() || null, is_default: !t.length });
+    sync(); bvRenderDraftTiers();
+  });
 }
 
 async function bvRenderTiersEditor(productId) {
@@ -6414,12 +6467,14 @@ async function bvRenderTiersEditor(productId) {
       if (!upd.label) { flash(card, "Label is required"); return; }
       const { error } = await supabaseClient.from("product_tiers").update(upd).eq("id", tid);
       flash(card, error ? "Couldn't save" : "Saved ✓");
+      if (!error && card.querySelector(".tierDef").checked) bvSyncDefaultPrice(productId);
     };
     card.querySelectorAll(".tf").forEach(el => el.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(save, 700); }));
     card.querySelector(".tierDef").addEventListener("change", async () => {
       await supabaseClient.from("product_tiers").update({ is_default: false }).eq("product_id", productId).eq("is_default", true);
       const { error } = await supabaseClient.from("product_tiers").update({ is_default: true }).eq("id", tid);
       if (error) { bvToast(`Couldn't set the default: ${error.message}`); }
+      await bvSyncDefaultPrice(productId);
       bvRenderTiersEditor(productId);
     });
     const file = card.querySelector(".tierImgFile");
@@ -6438,7 +6493,9 @@ async function bvRenderTiersEditor(productId) {
     if (rm) rm.addEventListener("click", async () => { await supabaseClient.from("product_tiers").update({ image_url: null }).eq("id", tid); bvRenderTiersEditor(productId); });
     card.querySelector(".tierDeleteBtn").addEventListener("click", async () => {
       if (!confirm("Remove this package?")) return;
+      const wasDef = card.querySelector(".tierDef").checked;
       await supabaseClient.from("product_tiers").delete().eq("id", tid);
+      if (wasDef) { const first = tiers.find(x => x.id !== tid); if (first) { await supabaseClient.from("product_tiers").update({ is_default: true }).eq("id", first.id); await bvSyncDefaultPrice(productId); } }
       bvRenderTiersEditor(productId);
     });
   });
@@ -6455,7 +6512,96 @@ async function bvRenderTiersEditor(productId) {
       is_default: !(tiers?.length), sort_order: (tiers?.length ?? 0),
     });
     if (error) { bvToast(`Couldn't add it: ${error.message}`); return; }
+    if (!(tiers?.length)) await bvSyncDefaultPrice(productId);
     bvRenderTiersEditor(productId);
+  });
+}
+
+
+// ── PRODUCT CREATIVE VAULT (inside the product editor) ──────────────────────
+const BV_CTAS = [["SHOP_NOW", "Shop Now"], ["ORDER_NOW", "Order Now"], ["LEARN_MORE", "Learn More"], ["SIGN_UP", "Sign Up"], ["GET_OFFER", "Get Offer"], ["CONTACT_US", "Contact Us"]];
+async function bvRenderProductVault(productId) {
+  const box = document.getElementById("vaultBox"); if (!box) return;
+  const p = (window.bvProductsCache || []).find(x => x.id === productId) || {};
+  const assets = await sbQuery("creative_assets", `select=id,file_name,public_url,asset_type,primary_text,headline,description,cta_type,test_status&product_id=eq.${productId}&order=uploaded_at.desc`).catch(() => []);
+  const complete = assets.filter(a => (a.primary_text || "").trim() && (a.headline || "").trim()).length;
+  const hasLink = !!(p.landing_page_url || (p.destination_type === "whatsapp" && p.whatsapp_number));
+  const ready = assets.length >= 5 && complete >= 5 && hasLink;
+  const chk = (ok, txt) => `<div style="display:flex;gap:8px;align-items:center;font-size:12px;${ok ? "" : "color:var(--muted);"}"><span style="width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;background:${ok ? "var(--accent)" : "var(--panel)"};color:${ok ? "#04281e" : "var(--muted)"};border:1px solid ${ok ? "var(--accent)" : "var(--border)"};">${ok ? "✓" : ""}</span>${txt}</div>`;
+  const inp = "font-size:12px;padding:7px 9px;";
+  box.innerHTML = `
+    <div style="border:1px solid ${ready ? "var(--accent)" : "var(--border)"};border-radius:12px;padding:12px;background:var(--panel2);margin-bottom:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <b style="font-size:13px;">${ready ? "✅ Ready for AI auto-launch" : "AI auto-launch readiness"}</b>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;${ready ? "" : "opacity:.55;"}"><input type="checkbox" id="vaultAuto" ${p.auto_post_enabled ? "checked" : ""} ${ready ? "" : "disabled"}> Let the AI launch tests from this vault</label>
+      </div>
+      <div style="display:grid;gap:5px;margin-top:9px;">
+        ${chk(assets.length >= 5, `At least 5 creatives <span style="color:var(--muted);">(${assets.length} uploaded)</span>`)}
+        ${chk(complete >= 5, `Each with a headline and primary text <span style="color:var(--muted);">(${complete} complete)</span>`)}
+        ${chk(hasLink, p.destination_type === "whatsapp" ? "WhatsApp number set" : "Website link set (Landing page URL under More details)")}
+      </div>
+    </div>
+    <div class="dz" id="vaultDrop" style="padding:16px;cursor:pointer;" onclick="document.getElementById('vaultFiles').click()">
+      <div class="dz-ico">⬆️</div><div class="dz-txt">Upload creatives (images or videos, as many as you like)</div>
+      <div class="dz-hint" id="vaultUpState">Then give each one its headline, primary text and description below.</div>
+      <input type="file" id="vaultFiles" accept="video/*,image/*" multiple style="display:none;">
+    </div>
+    <div style="display:grid;gap:10px;margin-top:12px;">
+      ${assets.map(a => `
+        <div class="vaultCard" data-aid="${a.id}" style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--panel2);display:grid;grid-template-columns:96px 1fr;gap:10px;">
+          <div>
+            <div style="width:96px;height:96px;border-radius:8px;overflow:hidden;background:var(--panel);border:1px solid var(--border);">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}" muted style="width:100%;height:100%;object-fit:cover;"></video>` : `<img src="${escH(a.public_url)}" style="width:100%;height:100%;object-fit:cover;">`}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escH(a.file_name || "")}</div>
+            <span class="pill ${(a.test_status || "untested").replace(/ /g, "_")}" style="margin-top:3px;">${(a.test_status || "untested").replace(/_/g, " ")}</span>
+          </div>
+          <div style="min-width:0;">
+            <div class="fg"><div class="field"><label style="font-size:10.5px;">Headline</label><input class="vf" data-k="headline" value="${escH(a.headline || "")}" placeholder="Short bold hook" style="${inp}"></div>
+            <div class="field"><label style="font-size:10.5px;">Button</label><select class="vf" data-k="cta_type" style="${inp}">${BV_CTAS.map(c => `<option value="${c[0]}" ${(a.cta_type || "SHOP_NOW") === c[0] ? "selected" : ""}>${c[1]}</option>`).join("")}</select></div></div>
+            <div class="field" style="margin-top:6px;"><label style="font-size:10.5px;">Primary text (ad copy)</label><textarea class="vf" data-k="primary_text" rows="3" style="${inp}">${escH(a.primary_text || "")}</textarea></div>
+            <div class="field" style="margin-top:6px;"><label style="font-size:10.5px;">Description</label><input class="vf" data-k="description" value="${escH(a.description || "")}" placeholder="Supporting line under the headline" style="${inp}"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;"><span class="vSaved" style="font-size:10.5px;color:var(--muted);"></span><button type="button" class="btn btn-g vDel" style="padding:3px 8px;font-size:10px;color:var(--danger);">Delete creative</button></div>
+          </div>
+        </div>`).join("") || `<div style="font-size:11.5px;color:var(--muted);">No creatives yet.</div>`}
+    </div>`;
+
+  const auto = document.getElementById("vaultAuto");
+  if (auto) auto.addEventListener("change", async () => { await supabaseClient.from("products").update({ auto_post_enabled: auto.checked }).eq("id", productId); p.auto_post_enabled = auto.checked; bvToast(auto.checked ? "AI auto-launch is on for this product." : "AI auto-launch is off for this product."); });
+
+  box.querySelectorAll(".vaultCard").forEach(card => {
+    const aid = card.dataset.aid; let timer = 0;
+    const flash = t => { const el = card.querySelector(".vSaved"); el.textContent = t; setTimeout(() => { if (el.textContent === t) el.textContent = ""; }, 1800); };
+    const save = async () => {
+      const upd = {}; card.querySelectorAll(".vf").forEach(el => upd[el.dataset.k] = el.value.trim() || (el.dataset.k === "cta_type" ? "SHOP_NOW" : null));
+      const { error } = await supabaseClient.from("creative_assets").update(upd).eq("id", aid);
+      flash(error ? "Couldn't save" : "Saved ✓");
+      if (!error) { clearTimeout(box._rt); box._rt = setTimeout(() => bvRenderProductVault(productId), 1200); }
+    };
+    card.querySelectorAll(".vf").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { clearTimeout(timer); timer = setTimeout(save, 700); }));
+    card.querySelector(".vDel").addEventListener("click", async () => {
+      if (!confirm("Delete this creative from the vault?")) return;
+      const { error } = await supabaseClient.from("creative_assets").delete().eq("id", aid);
+      if (error) { bvToast(`Couldn't delete: ${error.message}`); return; }
+      bvRenderProductVault(productId);
+    });
+  });
+
+  const fileInput = document.getElementById("vaultFiles"), state = document.getElementById("vaultUpState");
+  fileInput.addEventListener("change", async () => {
+    const files = Array.from(fileInput.files || []); if (!files.length) return;
+    const acct = p.ad_account_id || activeAccountId;
+    let done = 0, failed = 0;
+    for (const f of files) {
+      state.textContent = `Uploading ${done + 1} of ${files.length}…`;
+      const fd = new FormData();
+      fd.append("file", f); fd.append("product_id", productId); fd.append("ad_account_id", acct); fd.append("uploaded_by", "dashboard");
+      fd.append("primary_text", p.ad_primary_text || ""); fd.append("headline", p.ad_headline || ""); fd.append("description", p.ad_description || ""); fd.append("cta_type", p.ad_cta_type || "SHOP_NOW");
+      try {
+        const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd });
+        const r = await res.json(); if (r.error) throw new Error(r.error); done++;
+      } catch (err) { failed++; bvToast(`"${f.name}": ${err.message || err}`); }
+    }
+    bvToast(`${done} creative${done === 1 ? "" : "s"} added${failed ? `, ${failed} failed` : ""}.`);
+    bvRenderProductVault(productId);
   });
 }
 
@@ -6464,13 +6610,13 @@ function bvCancelProductEdit() {
   if (!form) return;
   form.reset();
   document.getElementById("p_id").value = "";
-  document.getElementById("prodFormTitle").textContent = "Add package";
-  document.getElementById("prodSubmitBtn").textContent = "+ Add package";
+  document.getElementById("prodFormTitle").textContent = "Add product";
+  document.getElementById("prodSubmitBtn").textContent = "+ Add product";
   document.getElementById("prodCancelEdit").style.display = "none";
   document.getElementById("prodImgHint").textContent = "Save the package first, then come back to upload its photo.";
   document.getElementById("prodImgPreview").innerHTML = "—";
-  document.getElementById("tiersList").innerHTML = "";
-  document.getElementById("tiersHint").style.display = "";
+  window.bvDraftTiers = []; bvRenderDraftTiers();
+  const vb = document.getElementById("vaultBox"); if (vb) vb.innerHTML = '<div style="font-size:11.5px;color:var(--muted);padding:12px;border:1px dashed var(--border);border-radius:10px;">Save the product first, then upload its creatives here.</div>';
 }
 
 // Creates the real campaign/ad sets/ads on Meta for this product's pending
