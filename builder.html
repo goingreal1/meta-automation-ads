@@ -1093,9 +1093,26 @@ input,select,textarea{font:inherit}
     }); })(S.editor.getWrapper());
     return out;
   }
+  // a friendly label for each top-level section, so a link name can be given to the right one
+  function sectionChoices() {
+    var w = S.editor.getWrapper(), out = [];
+    w.components().forEach(function (k, i) {
+      var at = k.getAttributes() || {}, label;
+      if (hasPkg(k)) label = "Packages"; else if (hasForm(k) || (k.find && k.find("[data-rv-form]").length)) label = "Order form";
+      else { var h = k.find ? k.find("h1,h2,h3")[0] : null, t = h && h.getEl() ? (h.getEl().textContent || "").trim() : ""; label = t ? t.slice(0, 38) : (({ top: "Top bar", sec: "Section", marq: "Scrolling bar" }[(k.getClasses().filter(function (x) { return /^rv-/.test(x) && x !== "rv-sec"; })[0] || "rv-sec").replace(/^rv-/, "")] || (k.getClasses().filter(function (x) { return /^rv-/.test(x) && x !== "rv-sec"; })[0] || tagOf(k) || "block").replace(/^rv-/, ""))); }
+      out.push({ i: i, label: (i + 1) + ". " + label + (at.id && !/^(sec-|i[a-z0-9]{3,5}$)/.test(at.id) ? "  (#" + at.id + ")" : "") });
+    });
+    return out;
+  }
   function jumpPicker(href) {
-    var L = anchorList(); if (!L.length) return "";
-    return F("Scroll to a section on this page", '<select data-f="jump"><option value="">— choose a section —</option>' + L.map(function (d) { return '<option value="#' + esc(d.id) + '"' + (href === "#" + d.id ? " selected" : "") + ">" + esc(d.name) + "</option>"; }).join("") + "</select>", "");
+    var L = anchorList(), secs = sectionChoices();
+    var sel = '<select data-f="jump"><option value="">— choose a link name —</option>' + L.map(function (d) { return '<option value="#' + esc(d.id) + '"' + (href === "#" + d.id ? " selected" : "") + ">" + esc(d.name) + "</option>"; }).join("") + '<option value="__new__">＋ Create a new link name…</option></select>';
+    var make = '<div data-f="newbox" style="display:none;margin-top:8px;padding:10px;border:1px solid var(--ac);border-radius:10px;background:var(--acbg)">' +
+      '<div class="hint2" style="margin:0 0 8px">A <b>link name</b> (web people call it an <b>ID</b> or anchor) marks a place on the page. A button linked to it scrolls the visitor there. Elementor does the same with its “CSS ID” field and Menu Anchor widget.</div>' +
+      '<label style="font-size:12px;color:var(--tx2)">1. Link name</label><input data-f="newname" maxlength="40" placeholder="e.g. offers, reviews, order-now">' +
+      '<label style="font-size:12px;color:var(--tx2);margin-top:8px;display:block">2. Which section should it scroll to?</label><select data-f="newsec">' + secs.map(function (x) { return '<option value="' + x.i + '">' + esc(x.label) + "</option>"; }).join("") + '</select>' +
+      '<button class="btn sm pri" data-act="anchorcreate" style="margin-top:10px">Create and use this link name</button></div>';
+    return F("Scroll to a section on this page", sel + make, "Pick a section, or create a new link name for any section right here.");
   }
   function drawerList() {
     var out = []; S.editor.getWrapper().find(".rv-popup").forEach(function (p) { var id = p.getAttributes().id || p.getId(); out.push({ id: id, name: (p.find("h1,h2,h3")[0] && (p.find("h1,h2,h3")[0].getEl() || {}).textContent) || id }); });
@@ -1125,7 +1142,25 @@ input,select,textarea{font:inherit}
       toast("Section named <b>#" + esc(v || "—") + "</b>." + (moved ? " " + moved + " button" + (moved === 1 ? "" : "s") + " updated." : ""));
       renderContent();
     });
-    on('[data-f="jump"]', "change", function (n) { if (!n.value) return; c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; });
+    on('[data-f="jump"]', "change", function (n) {
+      var nb = $('[data-f="newbox"]', box);
+      if (n.value === "__new__") { if (nb) { nb.style.display = ""; var ni = $('[data-f="newname"]', nb); if (ni) ni.focus(); } return; }
+      if (nb) nb.style.display = "none";
+      if (!n.value) return; c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value;
+    });
+    on('[data-act="anchorcreate"]', "click", function () {
+      var name = ($('[data-f="newname"]', box).value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      if (!name) { toast("Type a link name first, for example <b>offers</b>."); return; }
+      var tgt = ed.getWrapper().components().at(+$('[data-f="newsec"]', box).value); if (!tgt) return;
+      var own = (tgt.getAttributes() || {}).id;
+      if (name !== own && findFirst(function (k) { return k !== tgt && (k.getAttributes() || {}).id === name; })) { toast("The name “" + esc(name) + "” is already used by another section. Pick a different one."); return; }
+      var old = own;
+      tgt.addAttributes({ id: name, "data-rv-anchor": "1" });
+      if (old && old !== name) (function walk(k) { k.components().forEach(function (x) { if ((x.getAttributes() || {}).href === "#" + old) x.addAttributes({ href: "#" + name }); walk(x); }); })(ed.getWrapper());
+      c.addAttributes({ href: "#" + name });
+      toast("Link name <b>#" + esc(name) + "</b> created, and this button now goes there.");
+      renderContent();
+    });
     on('[data-f="drawer"]', "change", function (n) { if (n.value) { c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; } });
     on('[data-f="ppos"]', "change", function (n) { ["side", "left", "bottom"].forEach(function (x) { c.removeClass(x); }); if (n.value !== "centre") { c.addClass("side"); if (n.value !== "right") c.addClass(n.value); } });
     on('[data-f="pdelay"]', "input", function (n) { c.addAttributes({ "data-delay": n.value === "" ? "-1" : n.value }); });
