@@ -761,8 +761,9 @@ input,select,textarea{font:inherit}
       g.onpointerdown = function (e) {
         var c = rz.c; if (!c) return; e.preventDefault();
         var el = c.getEl(), cs = el.ownerDocument.defaultView.getComputedStyle(el), edge = g.dataset.e, vert = edge === "top" || edge === "bottom";
-        var prop = rz.img ? (vert ? "height" : "width") : "padding-" + edge;
-        var start = rz.img ? (vert ? el.offsetHeight : el.offsetWidth) : parseFloat(cs[camel[edge]]) || 0;
+        // sides of a background box change its width (centred, so white shows on both sides); top/bottom change its thickness
+        var prop = rz.img ? (vert ? "height" : "width") : vert ? "padding-" + edge : "width";
+        var start = rz.img ? (vert ? el.offsetHeight : el.offsetWidth) : vert ? parseFloat(cs[camel[edge]]) || 0 : el.offsetWidth;
         S.editor.select(c); g.setPointerCapture(e.pointerId); g.classList.add("drag");
         rz.drag = { g: g, x0: e.clientX, y0: e.clientY, start: start, prop: prop, edge: edge, raf: 0 };
       };
@@ -770,11 +771,15 @@ input,select,textarea{font:inherit}
         var d = rz.drag; if (!d || d.g !== g) return;
         var delta = d.edge === "bottom" ? e.clientY - d.y0 : d.edge === "top" ? d.y0 - e.clientY : d.edge === "right" ? e.clientX - d.x0 : d.x0 - e.clientX;
         if (rz.img && (d.edge === "top" || d.edge === "left")) delta = -delta;   // images only grow from bottom/right
-        var val = Math.max(rz.img ? 40 : 0, Math.min(rz.img ? 2000 : 600, Math.round(d.start + delta)));
-        var tip = $("#rzTip"); tip.textContent = (rz.img ? (d.prop === "width" ? "Width " : "Height ") : "Space ") + val + "px"; tip.style.display = "block"; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px";
+        var side = !rz.img && d.prop === "width", pw = 0;
+        if (side) { var pe = rz.c.getEl().parentElement; pw = pe ? pe.clientWidth : 0; delta *= 2; }
+        var val = side ? Math.max(60, Math.min(pw || 4000, Math.round(d.start + delta))) : Math.max(rz.img ? 40 : 0, Math.min(rz.img ? 2000 : 600, Math.round(d.start + delta)));
+        var pct = side && pw ? Math.round(val / pw * 100) : 0;
+        var tip = $("#rzTip"); tip.textContent = side ? "Width " + (pct ? pct + "%" : val + "px") : (rz.img ? (d.prop === "width" ? "Width " : "Height ") : "Space ") + val + "px"; tip.style.display = "block"; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px";
         if (d.raf) return;
         d.raf = requestAnimationFrame(function () {
-          d.raf = 0; var o = {}; o[d.prop] = val + "px";
+          d.raf = 0; var o = {}; o[d.prop] = side && pct ? pct + "%" : val + "px";
+          if (side) { o["margin-left"] = "auto"; o["margin-right"] = "auto"; o["max-width"] = "100%"; o["box-sizing"] = "border-box"; }
           if (rz.img) { if (d.prop === "width") o["max-width"] = "100%"; else o["object-fit"] = "cover"; }
           sty(o); placeGrips();
         });
