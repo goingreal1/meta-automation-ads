@@ -153,11 +153,19 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
           if (res.error) throw new Error(res.error);
-          var fired = site.purchase_event === "submit" ? firePurchase(value, product.currency || "NGN", eventId, tier ? product.product_name + " (" + tier.label + ")" : product.product_name, tier ? tier.quantity : qty) : false;
+          var pname = tier ? product.product_name + " (" + tier.label + ")" : product.product_name, pqty = tier ? tier.quantity : qty;
           var ref = eventId.slice(0, 8).toUpperCase();
           sset("rv_last_ref", ref); sset("rv_last_value", String(value)); sset("rv_last_payment", payment);
-          if (site.thanks_slug != null) { var dest = "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") + "?ref=" + ref; if (fired) setTimeout(function () { global.location.href = dest; }, 350); else global.location.href = dest; }   // give the pixels a moment to send before leaving the page
-          else showThanks(el, d, ref, value, payment);
+          var counts = site.purchase_event === "submit";
+          // With a thank-you page the Purchase is counted THERE (once, with the same event id the server sends, so Meta de-duplicates);
+          // without one it is counted right here.
+          if (site.thanks_slug != null) {
+            if (counts) { try { global.sessionStorage.setItem("rv_pending_purchase", JSON.stringify({ value: value, cur: product.currency || "NGN", eventId: eventId, name: pname, qty: pqty, site: site.id })); } catch (e) {} }
+            global.location.href = "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") + "?ref=" + ref;
+          } else {
+            if (counts) firePurchase(value, product.currency || "NGN", eventId, pname, pqty);
+            showThanks(el, d, ref, value, payment);
+          }
         })
         .catch(function (err) { msg.textContent = "Something went wrong, please try again. (" + err.message + ")"; msg.classList.add("on"); btn.disabled = false; btn.textContent = old; });
     });
@@ -221,6 +229,14 @@
     root.querySelectorAll("[data-rv-form]").forEach(function (el) { mountForm(el, d, opts); });
     root.querySelectorAll("[data-rv-bank]").forEach(function (el) { mountBank(el, d, opts); });
     root.querySelectorAll("[data-rv-ref]").forEach(function (el) { el.textContent = sget("rv_last_ref") || (opts && opts.preview ? "A1B2C3D4" : ""); });
+    // thank-you page: count the Purchase that the order form stored (once)
+    try {
+      var pend = global.sessionStorage.getItem("rv_pending_purchase");
+      if (pend && d && d.page && d.page.kind === "thanks" && !(opts && opts.preview)) {
+        var pp = JSON.parse(pend); global.sessionStorage.removeItem("rv_pending_purchase");
+        if (!pp.site || !d.site || pp.site === d.site.id) firePurchase(pp.value, pp.cur, pp.eventId, pp.name, pp.qty);
+      }
+    } catch (e) {}
     root.querySelectorAll("[data-rv-year]").forEach(function (el) { el.textContent = new Date().getFullYear(); });
     root.querySelectorAll("[data-rv-date]").forEach(function (el) { el.textContent = fmtDate(el.getAttribute("data-rv-fmt") || "D, d M", parseInt(el.getAttribute("data-rv-date"), 10) || 0); });
     // package buttons ([data-rv-tier="1" or a package name]) pre-select that package in the order form
