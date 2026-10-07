@@ -104,8 +104,16 @@ Deno.serve(async (req: Request) => {
     // ~30 minutes anyway, so nothing about this result gets saved for reuse.
     const resolved = await paystackFetch(`/bank/resolve?account_number=${encodeURIComponent(account_number)}&bank_code=${encodeURIComponent(bank_code)}`);
     const accountName = resolved?.data?.account_name ?? "";
-    if (!ALLOWED_NAME_PATTERN.test(accountName)) {
-      return json({ verified: false, account_name: accountName, reason: "This account isn't registered to Facebook/Meta -- we only accept transfers into Meta's own ad billing account. Double check you copied today's top-up account number from Ads Manager, not an old one." });
+    // Fixed list: when the company has approved specific Meta payment account names (Settings -> Business & team), the
+    // resolved name must be exactly one of them. Until a company sets a list, the strict Facebook/Meta name pattern applies.
+    const normName = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+    const { data: allowedRows } = await supabase.from("transfer_allowed_names").select("name_key").eq("company_id", fr.company_id);
+    const hasList = (allowedRows ?? []).length > 0;
+    const nameOk = hasList ? (allowedRows ?? []).some((a: any) => a.name_key === normName(accountName)) : ALLOWED_NAME_PATTERN.test(accountName);
+    if (!nameOk) {
+      return json({ verified: false, account_name: accountName, reason: hasList
+        ? `The bank resolved this account to "${accountName}", which isn't on your approved list of Meta payment accounts. If it really is Meta's billing account, an owner/admin can approve that exact name in Settings → Business & team, then try again.`
+        : "This account isn't registered to Facebook/Meta -- we only accept transfers into Meta's own ad billing account. Double check you copied today's top-up account number from Ads Manager, not an old one." });
     }
 
     const bankList = await paystackFetch("/bank?country=nigeria").catch(() => ({ data: [] }));
