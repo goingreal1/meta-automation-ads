@@ -75,27 +75,50 @@ Deno.serve(async (req: Request) => {
     if (!shortRes.ok || !shortData.access_token) throw new Error(shortData.error?.message || "Failed to exchange code for a token.");
 
     // short-lived -> long-lived (~60 days) user token
-    const longRes = await fetch(
-      `${META_GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${shortData.access_token}`,
-    );
-    const longData = await longRes.json();
-    if (!longRes.ok || !longData.access_token) throw new Error(longData.error?.message || "Failed to get a long-lived token.");
+    // Business Login "system-user" tokens never expire (no expires_in) and cannot be exchanged;
+    // ordinary user tokens are extended to ~60 days.
+    let accessToken = shortData.access_token as string;
+    let expiresAt: string | null = shortData.expires_in ? new Date(Date.now() + shortData.expires_in * 1000).toISOString() : null;
+    if (shortData.expires_in) {
+      const longRes = await fetch(
+        `${META_GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${shortData.access_token}`,
+      );
+      const longData = await longRes.json();
+      if (!longRes.ok || !longData.access_token) throw new Error(longData.error?.message || "Failed to get a long-lived token.");
+      accessToken = longData.access_token as string;
+      expiresAt = longData.expires_in ? new Date(Date.now() + longData.expires_in * 1000).toISOString() : null;
+    }
 
-    const accessToken = longData.access_token as string;
-    const expiresAt = longData.expires_in ? new Date(Date.now() + longData.expires_in * 1000).toISOString() : null;
+    // What did the person actually share? (also gives us their id when /me is not available to system users)
+    const dbgRes = await fetch(`${META_GRAPH_BASE}/debug_token?input_token=${accessToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`);
+    const dbg = (await dbgRes.json())?.data ?? {};
+    const grantedAdIds = new Set<string>();
+    for (const g of dbg.granular_scopes ?? []) {
+      if (["ads_management", "ads_read"].includes(g.scope)) for (const id of g.target_ids ?? []) grantedAdIds.add(String(id));
+    }
+    if (dbg.is_valid === false) throw new Error("Facebook did not give us a valid login. Please try again.");
 
     const meRes = await fetch(`${META_GRAPH_BASE}/me?fields=id,name&access_token=${accessToken}`);
-    const me = await meRes.json();
-    if (!meRes.ok) throw new Error(me.error?.message || "Could not read the connected Facebook profile.");
+    let me = await meRes.json();
+    if (!meRes.ok) {
+      if (!dbg.user_id) throw new Error(me.error?.message || "Could not read the connected Facebook profile.");
+      me = { id: String(dbg.user_id), name: null };
+    }
 
-    const acctRes = await fetch(
-      `${META_GRAPH_BASE}/me/adaccounts?fields=name,account_id,account_status,business_name,currency&limit=200&access_token=${accessToken}`,
-    );
+    const acctFields = "name,account_id,account_status,business_name,currency";
+    const acctRes = await fetch(`${META_GRAPH_BASE}/me/adaccounts?fields=${acctFields}&limit=200&access_token=${accessToken}`);
     const acctData = await acctRes.json();
-    if (!acctRes.ok) throw new Error(acctData.error?.message || "Could not list ad accounts for this Facebook login.");
-    // Note: only the first 200 accounts are listed if a Business Manager has
-    // more than that -- fine for this use case, but real for very large BMs.
-    const discoveredAdAccounts = (acctData.data ?? []).map((a: any) => ({
+    let acctRows: any[] = acctRes.ok ? (acctData.data ?? []) : [];
+    if (!acctRows.length && grantedAdIds.size) {
+      // System-user tokens have no /me/adaccounts; read each shared account directly.
+      const got = await Promise.all([...grantedAdIds].slice(0, 100).map(async (id) => {
+        const r = await fetch(`${META_GRAPH_BASE}/act_${id}?fields=${acctFields}&access_token=${accessToken}`);
+        return r.ok ? await r.json() : null;
+      }));
+      acctRows = got.filter(Boolean);
+    }
+    if (!acctRes.ok && !acctRows.length && !grantedAdIds.size) throw new Error(acctData.error?.message || "Could not list ad accounts for this Facebook login.");
+    const discoveredAdAccounts = acctRows.map((a: any) => ({
       account_id: a.account_id,
       name: a.name,
       business_name: a.business_name ?? null,
@@ -123,7 +146,7 @@ Deno.serve(async (req: Request) => {
       fb_user_name: me.name ?? null,
       access_token: accessToken,
       token_expires_at: expiresAt,
-      scopes: "ads_read,business_management,whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_read_engagement,pages_manage_engagement",
+      scopes: (dbg.scopes ?? []).join(",") || "ads_management,ads_read,business_management,whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_read_engagement,pages_manage_engagement",
       status: "active",
       discovered_ad_accounts: discoveredAdAccounts,
       last_synced_at: new Date().toISOString(),
