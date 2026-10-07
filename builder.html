@@ -142,6 +142,22 @@ input,select,textarea{font:inherit}
 .gjs-resizer-h{border-color:var(--ac)!important}
 /* ---- hover + handles, picker, content forms ---- */
 .endadd{position:fixed;z-index:58;display:none;padding:9px 18px;border-radius:99px;border:2px dashed var(--ac);background:rgba(255,255,255,.92);color:#0d1f1a;font:700 13px Inter,sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}.endadd.on{display:block}.endadd:hover{background:var(--ac);color:#04281e}
+
+/* AI builder */
+#bAI{background:linear-gradient(135deg,#7c3aed,#22b08a);color:#fff;border:0;font-weight:700}
+#aiPanel{position:fixed;right:0;top:52px;bottom:0;width:390px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);z-index:1500;display:none;flex-direction:column;box-shadow:-10px 0 30px rgba(0,0,0,.35)}
+#aiPanel.on{display:flex}
+#aiPanel .ahd{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700}
+#aiPanel .atabs{display:flex;gap:6px;padding:10px 14px 0}#aiPanel .atabs button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--tx2);font-weight:600}#aiPanel .atabs button.on{background:var(--acbg);border-color:var(--ac);color:var(--ac)}
+#aiLog{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.aim{padding:10px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:92%;white-space:pre-wrap}.aim.u{align-self:flex-end;background:var(--ac);color:#04281e}.aim.b{align-self:flex-start;background:var(--panel2);border:1px solid var(--line);color:var(--tx)}.aim.e{align-self:flex-start;background:rgba(224,70,70,.12);border:1px solid rgba(224,70,70,.4)}
+.aim a{color:var(--ac);font-weight:700;cursor:pointer}
+#aiPanel .afoot{padding:12px 14px;border-top:1px solid var(--line)}#aiPanel textarea{width:100%;min-height:64px;resize:vertical}
+.achips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}.achips button{font-size:11.5px;padding:5px 9px;border-radius:99px;border:1px solid var(--line);background:var(--panel2);color:var(--tx2)}.achips button:hover{border-color:var(--ac);color:var(--ac)}
+#aiChip{position:fixed;z-index:62;display:none;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;border:0;background:linear-gradient(135deg,#7c3aed,#22b08a);color:#fff;font:700 11.5px Inter,sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4)}#aiChip.on{display:inline-flex}
+#aiPop{position:fixed;z-index:2600;width:330px;max-width:94vw;background:var(--panel);border:1px solid var(--ac);border-radius:14px;padding:12px;box-shadow:0 18px 50px rgba(0,0,0,.55);display:none}#aiPop.on{display:block}
+#aiPop .pt{font-weight:700;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;gap:8px}#aiPop textarea{width:100%;min-height:54px}
+#aiPop .pr{font-size:12px;line-height:1.45;margin-top:8px;color:var(--tx2)}#aiPop .pr a{color:var(--ac);font-weight:700;cursor:pointer}
 .hplus{position:fixed;z-index:60;width:26px;height:26px;border-radius:50%;border:0;background:var(--ac);color:#04281e;font:700 19px/1 Inter,sans-serif;display:none;align-items:center;justify-content:center;padding:0;box-shadow:0 4px 14px rgba(0,0,0,.45);cursor:pointer}
 .hplus.on{display:flex}.hplus:hover{background:#2bc29a;transform:scale(1.12)}
 .rzg{position:fixed;z-index:59;display:none;align-items:center;justify-content:center;background:#fff;color:#0d1f1a;border:2px solid var(--ac);border-radius:99px;box-shadow:0 3px 10px rgba(0,0,0,.4);touch-action:none;user-select:none}
@@ -271,6 +287,7 @@ input,select,textarea{font:inherit}
     <span class="grow"></span>
     <span class="chip" id="status"><i></i><span>Saved</span></span>
     <button class="ib" id="bSettings" title="Site settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg><span>Settings</span></button>
+    <button class="ib" id="bAI" title="Build or edit with AI"><span>✨ AI</span></button>
     <button class="ib" id="bImport" title="Import / paste your own HTML"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg><span>HTML</span></button>
     <button class="ib" id="bPlugins" title="Plugins & integrations (tracking, analytics, custom code)"><svg viewBox="0 0 24 24"><path d="M9 3h6v4h3a2 2 0 012 2v3h-2a2 2 0 100 4h2v3a2 2 0 01-2 2h-3v-2a2 2 0 10-4 0v2H6a2 2 0 01-2-2v-3h2a2 2 0 100-4H4V9a2 2 0 012-2h3z"/></svg><span>Plugins</span></button>
     <button class="btn" id="bPreview">Preview</button>
@@ -285,6 +302,12 @@ input,select,textarea{font:inherit}
   </aside>
 
   <main id="canvas"><div id="gjs"></div><div id="emptyAdd"><div class="card"><b>Start building</b><span>Add your first widget, or pick a ready-made template.</span><button class="btn pri" id="eaAdd">+ Add widget</button> <button class="btn" id="eaTpl">Templates</button></div></div></main>
+<div id="aiPanel"><div class="ahd"><span>✨ AI builder</span><button class="ib" id="aiClose" title="Close">✕</button></div>
+  <div class="atabs"><button class="on" data-aitab="build">Build a page</button><button data-aitab="edit">Edit what's selected</button></div>
+  <div id="aiLog"></div>
+  <div class="afoot"><div class="achips" id="aiChips"></div><textarea id="aiIn" placeholder="Describe the page you want…"></textarea><button class="btn pri" id="aiSend" style="width:100%;margin-top:8px">Build my page</button></div></div>
+<button id="aiChip" title="Change this with AI">✨ Edit with AI</button>
+<div id="aiPop"><div class="pt"><span id="aiPopT">Edit with AI</span><a href="#" id="aiPopX" style="color:var(--tx3)">✕</a></div><div class="achips" id="aiPopChips"></div><textarea id="aiPopIn" placeholder="Tell the AI what to change…"></textarea><button class="btn pri" id="aiPopSend" style="width:100%;margin-top:8px">Apply</button><div class="pr" id="aiPopRes"></div></div>
 <button class="endadd" id="endAdd" title="Add a block at the end of the page">+ Add block</button><button class="hplus" id="hTop" title="Add widget above">+</button><button class="hplus" id="hBot" title="Add widget below">+</button>
 <div class="rzg" data-e="top" title="Drag to add or remove space above"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></div><div class="rzg" data-e="bottom" title="Drag to make this section taller or shorter"><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></div><div class="rzg" data-e="left" title="Drag to change the left space"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></div><div class="rzg" data-e="right" title="Drag to change the right space"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div><div id="rzTip"></div>
 
@@ -511,7 +534,7 @@ input,select,textarea{font:inherit}
     ed.on("canvas:frame:load", applyCanvasTheme);
     ed.on("canvas:frame:load:body", applyCanvasTheme);   // a reloaded page rebuilds the frame: put the design styles back
     ed.on("change:device", function () { onSelect(); });
-    wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle(); wireRte(); wireEndAdd();
+    wireUi(); wireHandles(); wireGrips(); wirePicker(); wireStyle(); wireRte(); wireEndAdd(); wireAI();
   }
 
   function sectors() {
@@ -909,6 +932,164 @@ input,select,textarea{font:inherit}
       doc.addEventListener("click", function (e) { if (e.target === doc.body || e.target === doc.documentElement) { var last = ed.getWrapper().components().length; if (last) { var l = ed.getWrapper().components().at(last - 1).getEl(); if (l && e.clientY > l.getBoundingClientRect().bottom) openPicker(null); } } }, true);
     }
     ed.on("canvas:frame:load", attach); ed.on("canvas:frame:load:body", attach); ed.on("load", attach); ed.on("component:selected component:hover", attach); attach(); soon();
+  }
+
+  /* ================= AI builder: build a page by chatting, and edit any element with AI ================= */
+  var AI = { busy: false, tab: "build", target: null, prev: null };
+  function aiCall(body) {
+    return sb.auth.getSession().then(function (r) {
+      var t = r && r.data && r.data.session && r.data.session.access_token;
+      return fetch(SUPA_URL + "/functions/v1/ai-site-builder", { method: "POST", headers: { Authorization: "Bearer " + (t || ANON), apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    }).then(function (res) { return res.json().catch(function () { return {}; }).then(function (j) { if (!res.ok || j.error) throw new Error(j.error || "The AI request failed. Please try again."); return j; }); });
+  }
+  function aiProduct() {
+    var p = S.product; if (!p) return null;
+    return { name: p.product_name, price: RV_fmt(p.default_order_value_naira, p.currency), description: p.description || "", benefits: p.benefits || "", packages: (p.tiers || []).map(function (t) { return { label: t.label, price: RV_fmt(t.price_naira, p.currency), features: t.features || "" }; }) };
+  }
+  function aiCatalog() {
+    return S.editor.Blocks.getAll().models.map(function (b) { var cat = b.get("category"); return { id: b.get("id") || b.id, label: String(b.get("label") || "").replace(/<[^>]*>/g, "").slice(0, 60), category: String((cat && (cat.id || cat.label)) || cat || "") }; });
+  }
+  function aiSay(cls, html) { var d = document.createElement("div"); d.className = "aim " + cls; d.innerHTML = html; var log = $("#aiLog"); log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
+  function aiComposeHtml(ids) {
+    return ids.map(function (id) { var b = S.editor.Blocks.get(id); if (!b) return ""; var c = b.get("content"); if (typeof c !== "string") return ""; return b.get("widget") ? '<section class="rv-sec tight"><div class="rv-wrap">' + c + "</div></section>" : c; }).join("\n");
+  }
+  var AI_TEXT = /^(h[1-6]|p|li|summary|figcaption|blockquote)$/;
+  function aiTextNodes() {
+    var out = [], map = {};
+    (function walk(c, skip) {
+      c.components().forEach(function (k) {
+        var at = k.getAttributes() || {}, t = tagOf(k), sk = skip || at["data-rv-form"] !== undefined || at["data-rv-bank"] !== undefined || at["data-rv-pkg"] !== undefined || at["data-rv-countdown"] !== undefined;
+        var isBtn = t === "a" && k.getClasses().indexOf("rv-btn") > -1, eyebrow = k.getClasses().some(function (x) { return x === "rv-eyebrow" || x === "rv-badge"; });
+        if (!sk && (AI_TEXT.test(t) || isBtn || eyebrow) && isTextual(k) && !k.find("li").length) {
+          var r = readText(k); if (!r.html && r.v.trim().length > 1 && out.length < 140) { var id = "n" + out.length; map[id] = k; out.push({ id: id, tag: isBtn ? "button" : t, text: r.v.trim().slice(0, 240) }); }
+        } else if (!sk) walk(k, sk);
+      });
+    })(S.editor.getWrapper(), false);
+    return { nodes: out, map: map };
+  }
+  function aiSetText(c, text) { c.components(esc(text).replace(/\n/g, "<br>")); }
+  function aiPageHasContent() { return S.editor.getWrapper().components().length > 0; }
+
+  async function aiBuildPage(prompt) {
+    if (AI.busy) return; AI.busy = true; $("#aiSend").disabled = true;
+    aiSay("u", esc(prompt));
+    var thinking = aiSay("b", "Planning your page…");
+    try {
+      var plan = await aiCall({ mode: "plan", prompt: prompt, product: aiProduct(), catalog: aiCatalog() });
+      thinking.textContent = "Building it and writing the text…";
+      if (aiPageHasContent()) AI.prev = S.editor.getProjectData();
+      var html = aiComposeHtml(plan.blocks);
+      S.editor.setStyle(""); S.editor.setComponents(html);
+      Object.assign(S.theme, plan.theme || {}); applyCanvasTheme();
+      S.loadedProject = true; S.dirty = true;
+      var tn = aiTextNodes(), applied = 0;
+      if (tn.nodes.length) {
+        try {
+          var cp = await aiCall({ mode: "copy", prompt: prompt, product: aiProduct(), nodes: tn.nodes });
+          Object.keys(cp.texts || {}).forEach(function (id) { var c = tn.map[id]; if (c && typeof cp.texts[id] === "string") { aiSetText(c, cp.texts[id]); applied++; } });
+        } catch (e) { aiSay("e", "The page is built, but I couldn't rewrite the text: " + esc(e.message)); }
+      }
+      thinking.innerHTML = esc(plan.summary || "Your page is ready.") + "\n" + (S.product ? "I used your product's name, price and packages." : "No product is connected yet, so connect one in Settings to fill in real prices.") + (AI.prev ? ' <a data-aiundo="1">Undo this build</a>' : "");
+      var u = thinking.querySelector("[data-aiundo]"); if (u) u.onclick = function () { S.editor.loadProjectData(AI.prev); AI.prev = null; u.remove(); toast("Back to your previous page."); };
+      saveDraft();
+    } catch (e) { thinking.className = "aim e"; thinking.textContent = e.message || "Something went wrong."; }
+    AI.busy = false; $("#aiSend").disabled = false;
+  }
+
+  function aiTargetInfo(c) {
+    var sec = topSectionOf(c), secAt = sec.getAttributes() || {};
+    var h = sec.find ? sec.find("h1,h2,h3")[0] : null;
+    var r = isTextual(c) ? readText(c) : { v: "", html: false };
+    return { tag: tagOf(c), kind: kindOf(c), text: (r.v || "").slice(0, 400), classes: c.getClasses().join(" "), section: (hasPkg(sec) ? "packages" : hasForm(sec) ? "order form" : (h && h.getEl() ? (h.getEl().textContent || "").trim().slice(0, 60) : (sec.getClasses()[0] || "section"))) };
+  }
+  function aiOutline() { return S.editor.getWrapper().components().map(function (k, i) { var h = k.find ? k.find("h1,h2,h3")[0] : null; return (i + 1) + ". " + (hasPkg(k) ? "Packages" : hasForm(k) ? "Order form" : (h && h.getEl() ? (h.getEl().textContent || "").trim().slice(0, 50) : (k.getClasses()[0] || tagOf(k)))); }); }
+  function aiApplyOps(c, ops) {
+    var ed = S.editor, done = 0, w = ed.getWrapper();
+    ed.select(c);
+    ops.forEach(function (o) {
+      if (o.op === "set_text") { if (isTextual(c) || kindOf(c) === "link" || kindOf(c) === "text") { aiSetText(c, o.text); done++; } }
+      else if (o.op === "set_style") { sty(o.style); done++; }
+      else if (o.op === "set_link") { if (kindOf(c) === "link") { c.addAttributes({ href: o.href }); done++; } }
+      else if (o.op === "add_block") { var html = aiComposeHtml([o.id]); if (html) { var top = topSectionOf(c); w.append(html, { at: top.index() + (o.where === "before" ? 0 : 1) }); done++; } }
+      else if (o.op === "delete") { if (c !== w) { var par = c.parent(); c.remove(); done++; if (par) ed.select(par); } }
+    });
+    return done;
+  }
+  async function aiEdit(c, instruction, onSay) {
+    var res = await aiCall({ mode: "edit", instruction: instruction, product: aiProduct(), target: aiTargetInfo(c), outline: aiOutline(), catalog: aiCatalog() });
+    var n = res.ops && res.ops.length ? aiApplyOps(c, res.ops) : 0;
+    return { say: res.say || (n ? "Done." : "I wasn't sure what to change. Try describing it differently."), n: n };
+  }
+  function aiChipsFor(c) {
+    var k = kindOf(c), t = tagOf(c);
+    if (k === "link") return ["Make it bigger and bolder", "Change the colour to red", "Better button text"];
+    if (/^h[1-6]$/.test(t)) return ["Make it shorter and punchier", "Make it more urgent", "Center it and make it bigger"];
+    if (k === "text") return ["Make it shorter", "Make it more persuasive", "Make the text bigger"];
+    if (k === "image") return ["Make it rounded", "Add a soft shadow"];
+    return ["Dark background with white text", "Add reviews below", "Add a countdown below", "More space around it"];
+  }
+
+  function wireAI() {
+    var ed = S.editor, log = $("#aiLog");
+    function openPanel(tab) { $("#aiPanel").classList.add("on"); setAiTab(tab || AI.tab); setTimeout(function () { $("#aiIn").focus(); }, 60); if (!log.children.length) aiSay("b", "Hi! Tell me about the page you want, or select something on the page and ask me to change it."); }
+    function setAiTab(t) {
+      AI.tab = t; $$("#aiPanel [data-aitab]").forEach(function (b) { b.classList.toggle("on", b.dataset.aitab === t); });
+      var sel = ed.getSelected();
+      $("#aiSend").textContent = t === "build" ? "Build my page" : "Apply to the selected element";
+      $("#aiIn").placeholder = t === "build" ? "e.g. A bold red page for my body cream, cash on delivery, with 3 packages and customer reviews" : (sel ? "e.g. Make this shorter and more urgent" : "Select something on the page first");
+      $("#aiChips").innerHTML = (t === "build" ? ["Clean, simple COD page for my product", "Bold red sales page with reviews and a countdown", "Short page: hero, benefits, packages, order form"] : (sel ? aiChipsFor(sel) : [])).map(function (x) { return "<button>" + esc(x) + "</button>"; }).join("");
+      $$("#aiChips button").forEach(function (b) { b.onclick = function () { $("#aiIn").value = b.textContent; $("#aiIn").focus(); }; });
+    }
+    $("#bAI").onclick = function () { openPanel(aiPageHasContent() && ed.getSelected() ? "edit" : "build"); };
+    $("#aiClose").onclick = function () { $("#aiPanel").classList.remove("on"); };
+    $$("#aiPanel [data-aitab]").forEach(function (b) { b.onclick = function () { setAiTab(b.dataset.aitab); }; });
+    ed.on("component:selected component:deselected", function () { if ($("#aiPanel").classList.contains("on")) setAiTab(AI.tab); });
+    $("#aiSend").onclick = async function () {
+      var v = $("#aiIn").value.trim(); if (!v) return;
+      if (AI.tab === "build") {
+        if (aiPageHasContent() && !window.confirm("Build a new page? It replaces what's on this page (you can undo it right after).")) return;
+        $("#aiIn").value = ""; return aiBuildPage(v);
+      }
+      var c = ed.getSelected(); if (!c) return toast("Select something on the page first.");
+      $("#aiIn").value = ""; aiSay("u", esc(v)); var m = aiSay("b", "Working on it…"); $("#aiSend").disabled = true;
+      try { var r = await aiEdit(c, v); m.innerHTML = esc(r.say) + (r.n ? ' <a data-undo="1">Undo</a>' : ""); var u = m.querySelector("[data-undo]"); if (u) u.onclick = function () { for (var i = 0; i < r.n; i++) ed.UndoManager.undo(); u.remove(); }; }
+      catch (e) { m.className = "aim e"; m.textContent = e.message; }
+      $("#aiSend").disabled = false;
+    };
+    $("#aiIn").addEventListener("keydown", function (e) { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("#aiSend").click(); });
+
+    /* "Edit with AI" chip on hover + a small chat box for just that element */
+    var chip = $("#aiChip"), pop = $("#aiPop"), hoverC = null, hideT = 0;
+    function placeChip() {
+      var c = hoverC, el = c && c.getEl && c.getEl(), fe = ed.Canvas.getFrameEl(); if (!el || !el.isConnected || !fe) return chip.classList.remove("on");
+      var fr = fe.getBoundingClientRect(), r = el.getBoundingClientRect(), cv = $("#canvas").getBoundingClientRect();
+      var x = Math.min(Math.max(fr.left + r.left + 6, cv.left + 4), cv.right - 130), y = fr.top + r.top - 11;
+      if (y < cv.top + 2 || y > cv.bottom - 24) return chip.classList.remove("on");
+      chip.style.left = x + "px"; chip.style.top = y + "px"; chip.classList.add("on");
+    }
+    ed.on("component:hover", function (c) { if (isTextNode(c)) c = c.parent(); if (!c || c === ed.getWrapper()) return; clearTimeout(hideT); hoverC = c; placeChip(); });
+    ed.on("component:unhover", function () { clearTimeout(hideT); hideT = setTimeout(function () { if (!pop.classList.contains("on")) chip.classList.remove("on"); }, 500); });
+    chip.onmouseenter = function () { clearTimeout(hideT); };
+    chip.onmouseleave = function () { hideT = setTimeout(function () { if (!pop.classList.contains("on")) chip.classList.remove("on"); }, 500); };
+    ed.on("canvas:frame:load", function () { try { ed.Canvas.getWindow().addEventListener("scroll", function () { chip.classList.remove("on"); }, true); } catch (e) {} });
+    chip.onclick = function () {
+      var c = hoverC; if (!c) return; AI.target = c; ed.select(c);
+      $("#aiPopT").textContent = "Edit with AI: " + (kindOf(c) === "link" ? "button" : /^h[1-6]$/.test(tagOf(c)) ? "heading" : kindOf(c) === "image" ? "picture" : kindOf(c) === "text" ? "text" : "this block");
+      $("#aiPopChips").innerHTML = aiChipsFor(c).map(function (x) { return "<button>" + esc(x) + "</button>"; }).join("");
+      $$("#aiPopChips button").forEach(function (b) { b.onclick = function () { $("#aiPopIn").value = b.textContent; $("#aiPopIn").focus(); }; });
+      $("#aiPopRes").innerHTML = ""; $("#aiPopIn").value = "";
+      var cr = chip.getBoundingClientRect(); pop.style.left = Math.max(8, Math.min(window.innerWidth - 340, cr.left)) + "px"; pop.style.top = Math.min(window.innerHeight - 260, cr.bottom + 8) + "px";
+      pop.classList.add("on"); setTimeout(function () { $("#aiPopIn").focus(); }, 40);
+    };
+    $("#aiPopX").onclick = function (e) { e.preventDefault(); pop.classList.remove("on"); chip.classList.remove("on"); };
+    $("#aiPopSend").onclick = async function () {
+      var v = $("#aiPopIn").value.trim(), c = AI.target; if (!v || !c) return;
+      var res = $("#aiPopRes"); res.textContent = "Working on it…"; $("#aiPopSend").disabled = true;
+      try { var r = await aiEdit(c, v); res.innerHTML = esc(r.say) + (r.n ? ' <a data-undo="1">Undo</a>' : ""); var u = res.querySelector("[data-undo]"); if (u) u.onclick = function () { for (var i = 0; i < r.n; i++) ed.UndoManager.undo(); res.textContent = "Undone."; }; $("#aiPopIn").value = ""; }
+      catch (e) { res.textContent = e.message; }
+      $("#aiPopSend").disabled = false;
+    };
+    $("#aiPopIn").addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#aiPopSend").click(); } if (e.key === "Escape") $("#aiPopX").click(); });
   }
   function wireHandles() {
     var ed = S.editor;
