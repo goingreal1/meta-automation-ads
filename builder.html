@@ -666,12 +666,20 @@ input,select,textarea{font:inherit}
   }
   function askPicCount(c) {
     c.removeAttributes("data-rv-new");
+    var single = c.get("type") === "image";
     var o = document.createElement("div"); o.className = "ov on";
-    o.innerHTML = '<div class="dlg" style="max-width:420px"><div class="dhd"><h3>How many pictures in this row?</h3></div><div class="dbd"><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    o.innerHTML = '<div class="dlg" style="max-width:420px"><div class="dhd"><h3>How many pictures side by side?</h3></div><div class="dbd"><div style="display:flex;gap:8px;flex-wrap:wrap">' +
       [1, 2, 3, 4, 5, 6].map(function (n) { return '<button class="btn" data-n="' + n + '" style="flex:1;min-width:52px;height:56px;font-size:20px">' + n + "</button>"; }).join("") +
       '</div><div class="hint2" style="margin-top:12px">They are centred automatically. You can add or remove pictures later and the row stays centred.</div></div></div>';
     document.body.appendChild(o);
-    function done(n) { o.remove(); if (n) setPicCount(c, n); S.editor.select(c); setTab("R", "style"); }
+    function done(n) {
+      o.remove();
+      if (single) {
+        if (n > 1) { var par = c.parent(), at = c.index(), row = par.append('<div class="rv-imgs i3"></div>', { at: at }); row = Array.isArray(row) ? row[0] : row; c.remove(); setPicCount(row, n); S.editor.select(row); setTab("R", "style"); return; }
+        S.editor.select(c); setTab("R", "content"); return;
+      }
+      if (n) setPicCount(c, n); S.editor.select(c); setTab("R", "style");
+    }
     o.addEventListener("click", function (e) { var b = e.target.closest("[data-n]"); if (b) done(+b.dataset.n); else if (e.target === o) done(0); });
   }
   function afterInsert(c) {
@@ -722,6 +730,12 @@ input,select,textarea{font:inherit}
     var w = S.editor.getWrapper(); if (!c || c === w) { rz.img = false; return null; }
     if (kindOf(c) === "image" && S.editor.getSelected() === c) { rz.img = true; return c; }
     rz.img = false;
+    // the nearest block around the pointer that has its own background (e.g. the yellow heading box), else the whole section
+    for (var n = c; n && n !== w; n = n.parent()) {
+      var ne = n.getEl && n.getEl(); if (!ne) continue;
+      var ns = ne.ownerDocument.defaultView.getComputedStyle(ne);
+      if (ns.backgroundImage !== "none" || !/^(rgba\(0, 0, 0, 0\)|transparent)$/.test(ns.backgroundColor)) { if (n.parent() !== w || true) return n; }
+    }
     var t = c; while (t.parent() && t.parent() !== w) t = t.parent();
     return t.parent() === w ? t : null;
   }
