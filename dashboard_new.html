@@ -9920,7 +9920,18 @@ let leaderboardRangeDays = 7;
 
 async function renderLeaderboard(el) {
   const since = leaderboardRangeDays ? new Date(Date.now() - (leaderboardRangeDays - 1) * 86400000).toISOString().slice(0, 10) : null;
-  const { list } = await fetchBuyerRoas(since, null, true);
+  const [roasRaw, live] = await Promise.all([
+    fetchBuyerRoas(since, null, true),
+    // Spend is read live from Meta (same source as Overview and Ad Spend & ROAS), not from the
+    // old saved copy, which had stopped updating. Meta history here is capped at 92 days.
+    fetchLiveDaily(since || watDate(-91), watDate(0)),
+  ]);
+  const { list } = bvMergeLiveSpend(roasRaw, live.rows);
+  // A buyer's login can only read their own ad accounts, so other buyers' spend is unknown to them.
+  const adminView = bvIsAdminRole(), myBuyerId = window.myProfile?.media_buyer_id;
+  const spendKnown = r => adminView || r.buyer?.id === myBuyerId;
+  const sp = r => spendKnown(r) ? fN(r.spend) : "—";
+  const rs = (num, r) => spendKnown(r) ? roasFmt(num, r.spend) : "—";
 
   // Rank named buyers only (an "Unattributed" bucket can't be ranked) --
   // by revenue by default, since that's what the business actually cares about.
@@ -9938,19 +9949,20 @@ async function renderLeaderboard(el) {
       <button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
 
     <div class="panel">
-      <div class="ph"><div class="ph-title">Media buyer rankings</div><div class="ph-count">Ranked by order revenue</div></div>
+      <div class="ph"><div class="ph-title">Media buyer rankings</div><div class="ph-count">Ranked by order revenue · spend live from Meta${leaderboardRangeDays === 0 ? " (last 92 days)" : ""}</div></div>
+      ${live.ok ? "" : `<div class="msg err" style="display:block;margin-bottom:10px;">Couldn't read live spend from Meta (${escH(live.error || "")}) — spend and ROAS may be wrong until you refresh.</div>`}
       ${!ranked.length ? `<div class="empty"><div class="empty-ico">🏆</div>No media buyers yet -- add one from Settings.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Rank</th><th>Buyer</th><th>Spend</th><th>Orders</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th></tr>
         ${ranked.map((r, i) => `<tr ${i < 3 ? 'style="background:var(--accentBg);"' : ""}>
           <td style="font-size:14px;font-weight:700;">#${i + 1}</td>
           <td class="s"><a href="javascript:void(0)" class="lbBuyerLink" data-id="${r.buyer.id}" style="color:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;">${escH(r.buyer.name)}</a></td>
-          <td>${fN(r.spend)}</td>
+          <td>${sp(r)}</td>
           <td>${r.orders}</td>
           <td class="s">${fN(r.revenue)}</td>
-          <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
-          <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
-          <td class="${roasCls(r.confirmed, r.spend)}" title="Based on confirmed Paystack payments only -- the only figure that's actual cash in hand.">${roasFmt(r.confirmed, r.spend)}</td>
+          <td class="${spendKnown(r) ? roasCls(r.revenue, r.spend) : ""}">${rs(r.revenue, r)}</td>
+          <td class="${spendKnown(r) ? roasCls(r.delivered, r.spend) : ""}">${rs(r.delivered, r)}</td>
+          <td class="${spendKnown(r) ? roasCls(r.confirmed, r.spend) : ""}" title="Based on confirmed Paystack payments only -- the only figure that's actual cash in hand.">${rs(r.confirmed, r)}</td>
         </tr>`).join("")}
       </table></div>`}
     </div>
