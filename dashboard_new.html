@@ -2242,7 +2242,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -10740,6 +10740,8 @@ async function renderSettings(el) {
       </div>
     </div>` : ""}
 
+    <div class="panel" data-sec="accounts" id="fbConnectPanel"></div>
+
     <div class="panel" data-sec="automation" id="notifPanel"></div>
 
     <div class="panel" data-sec="automation" id="killRulesPanel"></div>
@@ -11236,6 +11238,97 @@ async function bvSavePartnerBizId(mediaBuyerId, value, btn) {
     bvToast("Could not save: " + err.message, "err");
     btn.disabled = false; btn.textContent = original;
   }
+}
+
+
+// ── CONNECT WITH FACEBOOK / WHATSAPP SIGN-UP ─────────────────────────────────
+// The simple way in: log in with Facebook once and we can see the ad accounts, pages and
+// WhatsApp numbers they chose to share (no Business ID to type). The Business ID share below
+// stays as the fallback for people who would rather not log in.
+async function bvRenderFbConnect() {
+  const el = document.getElementById("fbConnectPanel"); if (!el) return;
+  const isAdm = bvIsAdminRole(), myBuyer = window.myProfile?.media_buyer_id;
+  if (!isAdm && !myBuyer) { el.remove(); return; }
+  const [buyers, conns, nums] = await Promise.all([
+    sbQuery("media_buyers", "select=id,name,code&order=code.asc").catch(() => []),
+    sbQuery("meta_connections_public", "select=*&status=eq.active&order=connected_at.desc").catch(() => []),
+    sbQuery("buyer_whatsapp_numbers", "select=id,nickname,display_phone_number,media_buyer_id,status&status=eq.active&order=created_at.asc").catch(() => []),
+  ]);
+  const mine = isAdm ? (buyers || []) : (buyers || []).filter(b => b.id === myBuyer);
+  if (!mine.length) { el.innerHTML = `<div class="ph"><div class="ph-title">Connect with Facebook</div></div><div style="font-size:12.5px;color:var(--text2);">Add a media buyer first (Business &amp; team), then connect their Facebook here.</div>`; return; }
+  const sel = window.bvFbBuyer && mine.some(b => b.id === window.bvFbBuyer) ? window.bvFbBuyer : mine[0].id;
+  window.bvFbBuyer = sel;
+  const conn = (conns || []).find(c => c.media_buyer_id === sel);
+  const have = new Set((accountsList || []).map(a => String(a.meta_ad_account_id || "").replace(/^act_/, "")));
+  const avail = (conn?.discovered_ad_accounts || []).filter(a => !have.has(String(a.account_id)));
+  const myNums = (nums || []).filter(n => n.media_buyer_id === sel);
+  const expires = conn?.token_expires_at ? new Date(conn.token_expires_at) : null;
+  const soon = expires && (expires - Date.now()) / 86400000 < 7;
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Connect with Facebook</div><div class="ph-count">Recommended</div></div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Log in with Facebook once and choose which ad accounts, pages and WhatsApp numbers to share. No Business ID to type. You stay in control and can remove access any time in Facebook.</div>
+    ${isAdm && mine.length > 1 ? `<div class="field" style="max-width:320px;"><label>Media buyer</label><select id="fbBuyerSel">${mine.map(b => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}</select></div>` : ""}
+    <div class="set-card" style="margin:10px 0 14px;">
+      <div class="set-item"><span class="set-ic" style="background:#1877F2">f</span><div class="set-tx"><b>${conn ? `Connected as ${escH(conn.fb_user_name || "Facebook user")}` : "Not connected yet"}</b><span>${conn ? (soon ? "Login expires soon — reconnect" : expires ? "Valid until " + expires.toLocaleDateString() : "Connected") : "Ad accounts, pages and tracking"}</span></div>
+        <button type="button" class="btn ${conn ? "btn-g" : "btn-a"}" style="width:auto;padding:7px 14px;" onclick="bvFbStart('${sel}')">${conn ? "Reconnect" : "Continue with Facebook"}</button></div>
+      <div class="set-item"><span class="set-ic" style="background:#25D366">💬</span><div class="set-tx"><b>${myNums.length ? myNums.map(n => escH(n.display_phone_number || n.nickname || "number")).join(", ") : "No WhatsApp number yet"}</b><span>Create or connect your WhatsApp Business number without leaving this page</span></div>
+        <button type="button" class="btn btn-a" style="width:auto;padding:7px 14px;" onclick="bvWaSignup('${sel}')">${myNums.length ? "Add another" : "Set up WhatsApp"}</button></div>
+      ${conn ? `<div class="set-item"><span class="set-ic" style="background:#8e8e93">＋</span><div class="set-tx"><b>Use a number you already have</b><span>Pick one from your WhatsApp Business account</span></div><button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvAddWhatsappModal('${sel}')">Choose number</button></div>` : ""}
+    </div>
+    ${avail.length ? `<div class="set-lbl">Ad accounts we found — add the ones you want</div><div class="set-card">${avail.map(a => `<div class="set-item"><span class="set-ic" style="background:#1877F2">📣</span><div class="set-tx"><b>${escH(a.name || a.account_id)}</b><span>${escH(a.business_name || "")} act_${escH(a.account_id)}</span></div><button type="button" class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvFbAddAccount(this,'${conn.id}','${sel}','${escH(String(a.account_id))}','${escH(String(a.name || "").replace(/'/g, "’"))}')">Add</button></div>`).join("")}</div>` : (conn ? `<div style="font-size:12px;color:var(--muted);">All the ad accounts we found are already added.</div>` : "")}
+    <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Prefer not to log in? Use the Business ID share further down instead — it still works.</div>`;
+  document.getElementById("fbBuyerSel")?.addEventListener("change", e => { window.bvFbBuyer = e.target.value; bvRenderFbConnect(); });
+}
+function bvFbStart(buyerId) {
+  location.href = `${SUPA_URL}/functions/v1/meta-oauth-start?media_buyer_id=${encodeURIComponent(buyerId)}&access_token=${encodeURIComponent(sessionData.access_token)}`;
+}
+async function bvFbAddAccount(btn, connId, buyerId, actId, name) {
+  btn.disabled = true; btn.textContent = "Adding…";
+  const { error } = await supabaseClient.from("ad_accounts").insert({
+    user_id: sessionData.user.id, media_buyer_id: buyerId, name: name || actId, nickname: name || actId,
+    meta_ad_account_id: actId, status: "active", meta_connection_id: connId, connected_via: "oauth",
+  });
+  if (error) { btn.disabled = false; btn.textContent = "Add"; bvToast("Could not add: " + error.message, "err"); return; }
+  bvToast("Ad account added — verify its page and pixel below");
+  await loadAccounts();
+  if (activeTab === "settings") render();
+}
+// WhatsApp Embedded Signup: Facebook's own pop-up creates/connects the WhatsApp Business account and number.
+function bvLoadFbSdk(appId) {
+  if (window.FB) return Promise.resolve();
+  return new Promise((res, rej) => {
+    window.fbAsyncInit = () => { FB.init({ appId, autoLogAppEvents: true, xfbml: false, version: "v21.0" }); res(); };
+    const s = document.createElement("script");
+    s.src = "https://connect.facebook.net/en_US/sdk.js"; s.async = true; s.onerror = () => rej(new Error("Could not load Facebook. Check your connection or ad blocker."));
+    document.head.appendChild(s);
+  });
+}
+async function bvWaSignup(buyerId) {
+  try {
+    const cfg = await sbFn("manage-whatsapp-numbers", { action: "es_config", media_buyer_id: buyerId, access_token: sessionData.access_token });
+    if (cfg.error) throw new Error(cfg.error);
+    await bvLoadFbSdk(cfg.app_id);
+    let done = null;
+    const onMsg = ev => {
+      if (!/facebook\.com$/.test(new URL(ev.origin).hostname)) return;
+      try {
+        const d = typeof ev.data === "string" ? JSON.parse(ev.data) : ev.data;
+        if (d?.type === "WA_EMBEDDED_SIGNUP" && d.event === "FINISH") done = d.data;
+      } catch {}
+    };
+    window.addEventListener("message", onMsg);
+    FB.login(async resp => {
+      const code = resp?.authResponse?.code;
+      if (!code) { window.removeEventListener("message", onMsg); bvToast("WhatsApp sign-up was cancelled.", "err"); return; }
+      for (let i = 0; i < 20 && !done; i++) await new Promise(r => setTimeout(r, 250)); // the pop-up reports the new account just after login
+      window.removeEventListener("message", onMsg);
+      if (!done?.waba_id || !done?.phone_number_id) { bvToast("Facebook didn't finish creating the number. Please try again.", "err"); return; }
+      const r = await sbFn("manage-whatsapp-numbers", { action: "es_complete", access_token: sessionData.access_token, media_buyer_id: buyerId, code, waba_id: done.waba_id, phone_number_id: done.phone_number_id });
+      if (r.error) { bvToast(r.error, "err"); return; }
+      bvToast(`WhatsApp number connected${r.number ? ": " + r.number : ""}${r.webhook_subscribed ? "" : " (messages may not arrive yet — contact support)"}`);
+      bvRenderFbConnect();
+    }, { config_id: cfg.config_id, response_type: "code", override_default_response_type: true, extras: { setup: {}, featureType: "", sessionInfoVersion: "3" } });
+  } catch (e) { bvToast(e.message || "Could not start WhatsApp sign-up.", "err"); }
 }
 
 // WhatsApp number add/verify wizard -- list the buyer's WhatsApp Business
