@@ -647,6 +647,10 @@ input,select,textarea{font:inherit}
       at = t.index() + (mode === "before" ? 0 : 1); parent = w;
     }
     var added;
+    if (b.get("widget") && parent !== w && parent.parent() === w && parent.getClasses().indexOf("rv-wrap") < 0) {
+      // the neighbour sits directly in a section (outside its content wrapper): give the widget its own section after it
+      at = parent.index() + (mode === "before" ? 0 : 1); parent = w;
+    }
     if (b.get("widget") && parent === w) {
       var sec = w.append('<section class="rv-sec tight"><div class="rv-wrap"></div></section>', { at: at });
       sec = Array.isArray(sec) ? sec[0] : sec;
@@ -1113,6 +1117,7 @@ input,select,textarea{font:inherit}
     if (cl.indexOf("rv-imgs") > -1) { var ipr = (cl.filter(function (x) { return /^i[1-6]$/.test(x); })[0] || "i3").slice(1); h += '<div class="ss"><div class="sst">Pictures per row</div><div class="sf"><select data-ipr="1">' + [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="' + n + '"' + (String(n) === ipr ? " selected" : "") + ">" + n + "</option>"; }).join("") + '</select><button class="btn" data-addpic="1" style="margin-top:8px;width:100%">+ Add a picture</button><div class="hint2">Rows are centred, even when the last row has fewer pictures. Use Alignment above for left or right.</div></div></div>'; }
     // pin a top-level bar/section to the top or bottom of the screen
     if (c.parent() === ed.getWrapper()) { var pinCur = cl.indexOf("pin-top") > -1 ? "top" : cl.indexOf("pin-bot") > -1 ? "bot" : (cl.indexOf("stick") > -1 ? "top" : ""); h += '<div class="ss"><div class="sst">Stay on screen</div><div class="sf"><select data-pin="1">' + [["", "Normal (scrolls away)"], ["top", "Pinned to the top while scrolling"], ["bot", "Pinned to the bottom of the screen"]].map(function (o) { return '<option value="' + o[0] + '"' + (pinCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Use this to turn a bar into a sticky header or footer.</div></div></div>'; }
+    if (!isMedia && !isBtn && (k === "text" || k === "box" || k === "traits")) { var bgCur = (cl.filter(function (x) { return /^bgp-/.test(x); })[0]) || ""; h += '<div class="ss"><div class="sst">Background design</div><div class="sf"><select data-bgp="1">' + [["", "None"], ["bgp-orange", "Orange box"], ["bgp-green", "Green box"], ["bgp-red", "Red box"], ["bgp-blue", "Blue box"], ["bgp-black", "Black box"], ["bgp-soft", "Soft grey-green box"], ["bgp-sunset", "Sunset gradient"], ["bgp-ocean", "Ocean gradient"], ["bgp-outline", "White with coloured outline"], ["bgp-dashed", "White with dashed green outline"]].map(function (o) { return '<option value="' + o[0] + '"' + (bgCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Ready-made designs. Fine-tune colour, corners and size below. They also look right on phones.</div></div></div>'; }
     // image fit: show the whole picture, or fill the box and crop
     if (k === "image") { var fitCur = clean(own["object-fit"]) || ""; h += '<div class="ss"><div class="sst">Picture fit</div><div class="sf"><select data-fit="1">' + [["", "Default"], ["contain", "Show the whole picture (no cropping)"], ["cover", "Fill the box (edges may be cropped)"]].map(function (o) { return '<option value="' + o[0] + '"' + (fitCur === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + '</select><div class="hint2">Pick "Show the whole picture" if your image looks cut off.</div></div></div>'; }
     // button size
@@ -1195,6 +1200,7 @@ input,select,textarea{font:inherit}
     box.addEventListener("change", function (e) {
       var n = e.target;
       if (n.dataset.keep) { var kc = ed.getSelected(); if (n.checked) kc.addClass("keep"); else kc.removeClass("keep"); return; }
+      if (n.dataset.bgp !== undefined && n.dataset.bgp !== "") { var bc = ed.getSelected(); bc.getClasses().filter(function (x) { return /^bgp-/.test(x); }).forEach(function (x) { bc.removeClass(x); }); if (n.value) bc.addClass(n.value); return; }
       if (n.dataset.fit) { if (n.value === "contain") sty({ "object-fit": "contain", height: "auto", "aspect-ratio": "auto" }); else if (n.value === "cover") sty({ "object-fit": "cover" }); else sty({ "object-fit": "", height: "", "aspect-ratio": "" }); return; }
       if (n.dataset.ipr) { var ic = ed.getSelected(); for (var q = 1; q <= 6; q++) ic.removeClass("i" + q); ic.addClass("i" + n.value); return; }
       if (n.dataset.pin) { var pc = ed.getSelected(); ["pin-top", "pin-bot", "stick"].forEach(function (x) { pc.removeClass(x); }); if (n.value) pc.addClass("pin-" + n.value); return; }
@@ -1445,7 +1451,17 @@ input,select,textarea{font:inherit}
       if (!noPicker) openTemplates(true);
     }
   }
+  // old pages can hold a bare picture/text straight on the page (no section around it): wrap it so it lays out normally
+  function healLayout() {
+    var ed = S.editor, w = ed.getWrapper();
+    w.components().models.slice().forEach(function (c) {
+      var t = tagOf(c); if (!/^(img|h[1-6]|p|a|ul|ol)$/.test(t)) return;
+      var at = c.index(), sec = w.append('<section class="rv-sec tight"><div class="rv-wrap"></div></section>', { at: at });
+      sec = Array.isArray(sec) ? sec[0] : sec; c.move(sec.components().at(0), { at: 0 });
+    });
+  }
   function finishLoad() {
+    try { healLayout(); } catch (e) {}
     nameAll(); S.loadedProject = true; S.dirty = false;
     applyCanvasTheme(); syncUndo(); renderPages(); renderPageSel(); onSelect(); syncEmpty();
     status("", pageStatusText());
