@@ -6345,43 +6345,114 @@ function bvEditProduct(id) {
   bvRenderTiersEditor(p.id);
 }
 
+async function bvUploadTierImage(file) {
+  if (!file || !/^image\//.test(file.type)) throw new Error("Please choose an image file.");
+  if (file.size > 10 * 1024 * 1024) throw new Error("That image is over 10MB.");
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${window.myProfile.company_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const up = await supabaseClient.storage.from("site-media").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
+  if (up.error) throw up.error;
+  return supabaseClient.storage.from("site-media").getPublicUrl(path).data.publicUrl;
+}
+
 async function bvRenderTiersEditor(productId) {
   document.getElementById("tiersHint").style.display = "none";
   const tiers = await sbQuery("product_tiers", `select=*&product_id=eq.${productId}&order=sort_order.asc`).catch(() => []);
   const list = document.getElementById("tiersList");
+  const inp = "font-size:12px;padding:8px 10px;";
   list.innerHTML = `
-    ${!tiers?.length ? `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">No package options yet — the order form will show a plain quantity picker.</div>` : `
-    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+    ${!tiers?.length ? `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">No package options yet — the order form will show a plain quantity picker. Add your first package below. The one marked <b>Default</b> is pre-selected for customers, and sites built in the website builder fill their package cards from these.</div>` : `
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
       ${tiers.map(t => `
-        <div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;">
-          <div style="flex:1;"><b>${escH(t.label)}</b> — ${t.quantity} pc${t.quantity > 1 ? "s" : ""} — ${fN(t.price_naira)}${t.badge ? ` <span class="pill">${escH(t.badge)}</span>` : ""}</div>
-          <button type="button" class="btn btn-g tierDeleteBtn" data-tid="${t.id}" style="padding:3px 8px;font-size:10px;color:var(--danger);">Remove</button>
+        <div class="tierCard" data-tid="${t.id}" style="background:var(--panel2);border:1px solid ${t.is_default ? "var(--accent)" : "var(--border)"};border-radius:10px;padding:10px;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:74px;flex:none;">
+              <div class="tierThumb" style="width:74px;height:74px;border-radius:8px;border:1px solid var(--border);background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:10px;color:var(--muted);text-align:center;">${t.image_url ? `<img src="${escH(t.image_url)}" style="width:100%;height:100%;object-fit:cover;">` : "No picture"}</div>
+              <button type="button" class="btn btn-g tierImgBtn" style="width:100%;margin-top:5px;padding:3px 0;font-size:10px;">${t.image_url ? "Replace" : "Upload"}</button>
+              ${t.image_url ? `<button type="button" class="btn btn-g tierImgRm" style="width:100%;margin-top:4px;padding:3px 0;font-size:10px;">Remove</button>` : ""}
+              <input type="file" accept="image/*" class="tierImgFile" style="display:none;">
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div class="fg"><div class="field"><label style="font-size:10.5px;">Label</label><input class="tf" data-k="label" value="${escH(t.label || "")}" style="${inp}"></div>
+              <div class="field"><label style="font-size:10.5px;">Pieces</label><input class="tf" data-k="quantity" type="number" min="1" value="${t.quantity || 1}" style="${inp}"></div></div>
+              <div class="fg" style="margin-top:7px;"><div class="field"><label style="font-size:10.5px;">Price</label><input class="tf" data-k="price_naira" type="number" min="0" value="${t.price_naira ?? ""}" style="${inp}"></div>
+              <div class="field"><label style="font-size:10.5px;">Badge (optional)</label><input class="tf" data-k="badge" value="${escH(t.badge || "")}" placeholder="e.g. Best value" style="${inp}"></div></div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:7px;"><label style="font-size:10.5px;">What's included (one per line, shown as ticks on the website)</label><textarea class="tf" data-k="features" rows="3" style="${inp}">${escH(t.features || "")}</textarea></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;"><input type="radio" name="tierDefault" class="tierDef" ${t.is_default ? "checked" : ""}> <b>Default</b> <span style="color:var(--muted);">(pre-selected)</span></label>
+            <span class="tierSaved" style="font-size:10.5px;color:var(--muted);"></span>
+            <button type="button" class="btn btn-g tierDeleteBtn" style="padding:3px 8px;font-size:10px;color:var(--danger);">Remove package</button>
+          </div>
         </div>`).join("")}
     </div>`}
+    <div style="border-top:1px dashed var(--border);padding-top:10px;">
+    <div style="font-size:11px;font-weight:700;margin-bottom:6px;">Add a package</div>
     <div class="fg">
-      <div class="field"><label style="font-size:10.5px;">Label</label><input id="t_label" placeholder="e.g. 3-piece bundle" style="font-size:12px;padding:8px 10px;"></div>
-      <div class="field"><label style="font-size:10.5px;">Pieces</label><input id="t_qty" type="number" min="1" value="1" style="font-size:12px;padding:8px 10px;"></div>
+      <div class="field"><label style="font-size:10.5px;">Label</label><input id="t_label" placeholder="e.g. 3-piece bundle" style="${inp}"></div>
+      <div class="field"><label style="font-size:10.5px;">Pieces</label><input id="t_qty" type="number" min="1" value="1" style="${inp}"></div>
     </div>
     <div class="fg" style="margin-top:7px;">
-      <div class="field"><label style="font-size:10.5px;">Price</label><input id="t_price" type="number" min="0" placeholder="e.g. 40000" style="font-size:12px;padding:8px 10px;"></div>
-      <div class="field"><label style="font-size:10.5px;">Badge (optional)</label><input id="t_badge" placeholder="e.g. Best value" style="font-size:12px;padding:8px 10px;"></div>
+      <div class="field"><label style="font-size:10.5px;">Price</label><input id="t_price" type="number" min="0" placeholder="e.g. 40000" style="${inp}"></div>
+      <div class="field"><label style="font-size:10.5px;">Badge (optional)</label><input id="t_badge" placeholder="e.g. Best value" style="${inp}"></div>
     </div>
+    <div class="field" style="margin-top:7px;"><label style="font-size:10.5px;">What's included (one per line, optional)</label><textarea id="t_features" rows="2" style="${inp}"></textarea></div>
     <button type="button" class="btn btn-g" id="tierAddBtn" style="margin-top:7px;padding:6px 12px;font-size:11px;">+ Add package option</button>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:6px;">After adding, you can upload a picture for it and choose the default.</div>
+    </div>
   `;
 
-  list.querySelectorAll(".tierDeleteBtn").forEach(btn => btn.addEventListener("click", async () => {
-    await supabaseClient.from("product_tiers").delete().eq("id", btn.dataset.tid);
-    bvRenderTiersEditor(productId);
-  }));
+  const flash = (card, txt) => { const el = card.querySelector(".tierSaved"); if (el) { el.textContent = txt; setTimeout(() => { if (el.textContent === txt) el.textContent = ""; }, 1800); } };
+
+  list.querySelectorAll(".tierCard").forEach(card => {
+    const tid = card.dataset.tid;
+    let timer = 0;
+    const save = async () => {
+      const f = k => card.querySelector(`.tf[data-k="${k}"]`).value;
+      const upd = { label: f("label").trim(), quantity: Number(f("quantity")) || 1, price_naira: Number(f("price_naira")) || 0, badge: f("badge").trim() || null, features: f("features").trim() || null };
+      if (!upd.label) { flash(card, "Label is required"); return; }
+      const { error } = await supabaseClient.from("product_tiers").update(upd).eq("id", tid);
+      flash(card, error ? "Couldn't save" : "Saved ✓");
+    };
+    card.querySelectorAll(".tf").forEach(el => el.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(save, 700); }));
+    card.querySelector(".tierDef").addEventListener("change", async () => {
+      await supabaseClient.from("product_tiers").update({ is_default: false }).eq("product_id", productId).eq("is_default", true);
+      const { error } = await supabaseClient.from("product_tiers").update({ is_default: true }).eq("id", tid);
+      if (error) { bvToast(`Couldn't set the default: ${error.message}`); }
+      bvRenderTiersEditor(productId);
+    });
+    const file = card.querySelector(".tierImgFile");
+    card.querySelector(".tierImgBtn").addEventListener("click", () => file.click());
+    file.addEventListener("change", async () => {
+      if (!file.files[0]) return;
+      flash(card, "Uploading…");
+      try {
+        const url = await bvUploadTierImage(file.files[0]);
+        const { error } = await supabaseClient.from("product_tiers").update({ image_url: url }).eq("id", tid);
+        if (error) throw error;
+        bvRenderTiersEditor(productId);
+      } catch (err) { flash(card, "Upload failed"); bvToast(`Couldn't upload: ${err.message || err}`); }
+    });
+    const rm = card.querySelector(".tierImgRm");
+    if (rm) rm.addEventListener("click", async () => { await supabaseClient.from("product_tiers").update({ image_url: null }).eq("id", tid); bvRenderTiersEditor(productId); });
+    card.querySelector(".tierDeleteBtn").addEventListener("click", async () => {
+      if (!confirm("Remove this package?")) return;
+      await supabaseClient.from("product_tiers").delete().eq("id", tid);
+      bvRenderTiersEditor(productId);
+    });
+  });
 
   document.getElementById("tierAddBtn").addEventListener("click", async () => {
     const label = document.getElementById("t_label").value.trim();
     const quantity = Number(document.getElementById("t_qty").value) || 1;
     const price_naira = Number(document.getElementById("t_price").value);
     const badge = document.getElementById("t_badge").value.trim() || null;
+    const features = document.getElementById("t_features").value.trim() || null;
     if (!label || !price_naira) { bvToast("Label and price are required."); return; }
     const { error } = await supabaseClient.from("product_tiers").insert({
-      product_id: productId, company_id: window.myProfile.company_id, label, quantity, price_naira, badge, sort_order: (tiers?.length ?? 0),
+      product_id: productId, company_id: window.myProfile.company_id, label, quantity, price_naira, badge, features,
+      is_default: !(tiers?.length), sort_order: (tiers?.length ?? 0),
     });
     if (error) { bvToast(`Couldn't add it: ${error.message}`); return; }
     bvRenderTiersEditor(productId);

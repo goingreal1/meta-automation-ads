@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
     // instead of a plain quantity stepper when the list isn't empty.
     supabase
       .from("product_tiers")
-      .select("id, label, quantity, price_naira, badge")
+      .select("id, label, quantity, price_naira, badge, image_url, features, is_default")
       .eq("product_id", id)
       .eq("is_active", true)
       .order("sort_order", { ascending: true }),
