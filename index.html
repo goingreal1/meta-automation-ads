@@ -172,6 +172,19 @@ footer{background:var(--dark2);padding:60px 0 32px;}
   .footer-col-links{margin-top:14px;}
 }
 .footer-copy{font-size:12.5px;color:#716e63;}
+
+/* ── PHOTOS (drop files into /images/landing/ -- a missing file simply isn't shown) ───────────────── */
+.photo{position:relative;overflow:hidden;border-radius:16px;background:linear-gradient(135deg,#e7f0fe,#f4f8ff);}
+.photo img{width:100%;height:100%;object-fit:cover;}
+.hero-photo{max-width:1040px;margin:56px auto 0;aspect-ratio:21/9;box-shadow:0 30px 60px -30px rgba(20,19,15,.35);}
+.hero-photo+.mock-wrap{margin-top:-90px;position:relative;z-index:2;}
+.hub-photo{aspect-ratio:16/9;border-radius:10px;margin-bottom:18px;}
+.team-photo{aspect-ratio:21/8;margin-bottom:26px;}
+.cta-section{position:relative;overflow:hidden;}
+.cta-bg{position:absolute;inset:0;}
+.cta-bg img{width:100%;height:100%;object-fit:cover;opacity:.28;}
+.cta-section .container{position:relative;z-index:1;}
+@media (max-width:640px){ .hero-photo{aspect-ratio:4/3;margin-top:36px;} .hero-photo+.mock-wrap{margin-top:-40px;} .team-photo{aspect-ratio:16/9;} }
 </style>
 </head>
 <body>
@@ -205,6 +218,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     </div>
     <div class="hero-note">No credit card required · Set up your company in minutes</div>
   </div>
+  <figure class="photo hero-photo"><img src="images/landing/hero-office.jpg" alt="A media buyer reviewing ad spend, orders and delivery on a Revora dashboard in a bright office" width="1680" height="720" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
 
   <div class="mock-wrap">
     <div class="mock">
@@ -250,6 +264,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     </div>
     <div class="hub-grid">
       <div class="hub-card">
+        <figure class="photo hub-photo"><img src="images/landing/module-marketing.jpg" alt="A marketer comparing campaign results with real revenue" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
           <h3>Marketing</h3>
@@ -261,6 +276,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
+        <figure class="photo hub-photo"><img src="images/landing/module-sales.jpg" alt="A customer care agent chatting with customers on WhatsApp while the order list updates" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
           <h3>Sales &amp; CRM</h3>
@@ -272,6 +288,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
+        <figure class="photo hub-photo"><img src="images/landing/module-operations.jpg" alt="A dispatcher coordinating delivery agents and orders" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>
           <h3>Operations</h3>
@@ -283,6 +300,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
+        <figure class="photo hub-photo"><img src="images/landing/module-finance.jpg" alt="A finance lead checking wallet balances and payments" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
           <h3>Finance</h3>
@@ -357,6 +375,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
       <h2 class="serif">Everyone sees what's theirs</h2>
       <p>No role sees a cluttered dashboard full of tools that aren't their job.</p>
     </div>
+<figure class="photo team-photo"><img src="images/landing/team.jpg" alt="A mixed team of media buyers, customer care and delivery staff working together" width="1680" height="640" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
     <div class="roles">
       <div class="role-card">
         <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2-6.3-4.5-6.3 4.5 2.3-7.2-6-4.4h7.6z"/></svg></span>
@@ -384,6 +403,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 
 <!-- CTA -->
 <section class="cta-section">
+  <div class="cta-bg"><img src="images/landing/cta-bg.jpg" alt="" width="1920" height="800" loading="lazy" onerror="this.parentNode.remove()"></div>
   <div class="container cta-inner">
     <h2 class="serif">Connect your ad spend to real revenue</h2>
     <p>Set up your company and invite your team in minutes.</p>

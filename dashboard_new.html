@@ -7534,7 +7534,7 @@ async function renderRiders(el) {
   const isDeliveryAgent = window.myProfile?.role === "delivery_agent";
   const [agents, orders] = await Promise.all([
     sbQuery("delivery_agents", "select=*&order=name.asc"),
-    sbQuery("orders", `select=id,delivery_agent_id,order_status,assignment_status,assignment_offered_at,order_value_naira,customer_name,customer_phone,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc`),
+    sbQuery("orders", `select=id,delivery_agent_id,delivery_stage,order_status,assignment_status,assignment_offered_at,order_value_naira,customer_name,customer_phone,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc`),
   ]);
   for (const o of orders || []) o.payment = (o.payments || [])[0] || null;
 
@@ -7657,7 +7657,7 @@ function renderMyDeliveries(el, orders, agents) {
       <div class="ph"><div class="ph-title">Your assignments</div></div>
       ${!active.length ? `<div class="empty"><div class="empty-ico">📦</div>Nothing assigned to you yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>Phone</th><th>City</th><th>Value</th><th>Payment</th><th>Status</th><th>Assigned</th></tr>
+        <tr><th>Customer</th><th>Phone</th><th>City</th><th>Value</th><th>Payment</th><th>Status</th><th>Assigned</th><th>Update</th></tr>
         ${active.map(o => `<tr>
           <td class="s n">${escH(o.customer_name ?? "—")}</td>
           <td class="n">${o.customer_phone
@@ -7666,14 +7666,31 @@ function renderMyDeliveries(el, orders, agents) {
           <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
           <td>${fN(o.order_value_naira)}</td>
           <td>${bvPaymentCell(o)}</td>
-          <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span></td>
+          <td><span class="pill ${o.order_status}">${escH(o.order_status)}</span>${o.delivery_stage === "on_the_way" && o.order_status !== "delivered" ? ` <span class="pill">🚚 on the way</span>` : ""}</td>
           <td>${ago(o.ordered_at)}</td>
+          <td style="white-space:nowrap;">${o.order_status === "delivered" || o.order_status === "cancelled" || o.order_status === "returned" ? "—" : `
+            ${o.delivery_stage !== "on_the_way" ? `<button class="btn btn-g agentStep" data-step="on_the_way" data-oid="${o.id}" style="padding:3px 9px;font-size:10px;">🚚 On the way</button>` : ""}
+            <button class="btn btn-a agentStep" data-step="delivered" data-oid="${o.id}" style="padding:3px 9px;font-size:10px;">✓ Delivered</button>`}</td>
         </tr>`).join("")}
       </table></div>`}
     </div>`;
 
+  el.querySelectorAll(".agentStep").forEach(btn => btn.addEventListener("click", () => bvAgentStep(btn.dataset.oid, btn.dataset.step, btn)));
   el.querySelectorAll(".assignAccept").forEach(btn => btn.addEventListener("click", () => bvRespondAssignment(btn.dataset.oid, "accepted")));
   el.querySelectorAll(".assignDecline").forEach(btn => btn.addEventListener("click", () => bvRespondAssignment(btn.dataset.oid, "declined")));
+}
+
+
+// The delivery agent's two buttons. "On the way" tells the customer (WhatsApp) the order is out; "Delivered" is the
+// agent's proof of handover (cash collected, or paid from another account). Payment is then requested from the customer.
+async function bvAgentStep(orderId, step, btn) {
+  if (step === "delivered" && !confirm("Mark this order as delivered?\nThe customer will be told, and asked to pay if they haven't yet.")) return;
+  if (btn) btn.disabled = true;
+  const patch = step === "on_the_way" ? { delivery_stage: "on_the_way" } : { order_status: "delivered", delivered_at: new Date().toISOString() };
+  const { error } = await supabaseClient.from("orders").update(patch).eq("id", orderId);
+  if (error) { bvToast(error.message, "err"); if (btn) btn.disabled = false; return; }
+  bvToast(step === "on_the_way" ? "Customer told you're on the way" : "Marked delivered");
+  render();
 }
 
 // A rider accepting/declining their own offered assignment. Race-safe the

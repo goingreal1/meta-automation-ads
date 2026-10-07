@@ -347,6 +347,20 @@ Deno.serve(async (req: Request) => {
     const from = message.from; // sender's WhatsApp number
     const text = message.type === "text" ? (message.text?.body ?? "").trim() : "";
 
+    // "I've paid" quick-reply button on the payment request (send-payment-whatsapp). Re-check the payment right away;
+    // notify-customer answers the customer. The payment itself is only ever confirmed by the Paystack webhook.
+    const paidPayload = String(message.button?.payload ?? message.interactive?.button_reply?.id ?? "");
+    const paidMatch = paidPayload.match(/^PAID:([a-f0-9-]{36})$/i);
+    if (paidMatch) {
+      const p = fetch(`${SUPABASE_URL}/functions/v1/notify-customer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+        body: JSON.stringify({ order_id: paidMatch[1], event: "paid_claimed", from }),
+      }).catch((err) => console.error("notify-customer (paid_claimed) failed:", err));
+      (globalThis as any).EdgeRuntime?.waitUntil?.(p);
+      return new Response("ok", { status: 200 });
+    }
+
     const approveMatch = text.match(/^APPROVE\s+([a-f0-9-]+)/i);
     const rejectMatch = text.match(/^REJECT\s+([a-f0-9-]+)/i);
 

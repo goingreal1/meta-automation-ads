@@ -26,9 +26,9 @@ const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const PAYSTACK_BASE = "https://api.paystack.co";
-// Meta's billing accounts resolve to names like "FACEBOOK NIGERIA LIMITED" / "META PLATFORMS IRELAND LIMITED". Matching a bare "meta" let any
-// account whose name merely contains it (e.g. "Metalworks Ltd") receive a buyer's approved wallet, so match whole words only.
-const ALLOWED_NAME_PATTERN = /\b(facebook|meta platforms|meta ireland)\b|^\s*meta\b/i;
+// Meta's billing accounts always carry "Meta" or "Facebook" as a whole word in the bank-resolved name. Whole words only, so a name
+// that merely contains it (e.g. "Metalworks Ltd") is refused; the approved-names list below tightens this further.
+const ALLOWED_NAME_PATTERN = /\b(facebook|meta)\b/i;
 
 function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), {
