@@ -7942,16 +7942,35 @@ function bvWebNew() {
     <button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('bvWebOverlay')">✕</button>
     <div class="ph-title" style="margin-bottom:12px;">New website</div>
     <div class="ws-field"><label>Website name</label><input id="wsName" placeholder="e.g. Herbal Tea Store" oninput="document.getElementById('wsSlug').value=bvWebSlugify(this.value);bvWebSlugHint()"></div>
-    <div class="ws-field"><label>Address</label><div style="display:flex;align-items:center;gap:6px;"><span style="color:var(--muted);font-size:12.5px;white-space:nowrap;">${escH((window.RV_SITE_ORIGIN || location.origin).replace(/^https?:\/\//, ""))}/s/</span><input id="wsSlug" placeholder="herbal-tea" oninput="bvWebSlugHint()"></div><small id="wsSlugHint">Lowercase letters, numbers and dashes.</small></div>
+    <div class="ws-field"><label>Put it on</label><select id="wsDom" onchange="bvWebDomChange()">
+      <option value="">${escH((window.RV_SITE_ORIGIN || location.origin).replace(/^https?:\/\//, ""))} (platform address)</option>
+      ${(bvWebData.domains || []).map(d => `<option value="${d.id}">${escH(d.hostname)}${d.status === "active" ? "" : " (not live yet)"}</option>`).join("")}
+    </select>${(bvWebData.domains || []).length ? "" : `<small>Connect your own domain in Settings → Domains, then pick it here.</small>`}</div>
+    <div class="ws-field"><label>Address</label><div style="display:flex;align-items:center;gap:6px;"><span id="wsPrefix" style="color:var(--muted);font-size:12.5px;white-space:nowrap;">${escH((window.RV_SITE_ORIGIN || location.origin).replace(/^https?:\/\//, ""))}/s/</span><input id="wsSlug" placeholder="herbal-tea" oninput="bvWebSlugHint()"></div><small id="wsSlugHint">Lowercase letters, numbers and dashes.</small>
+      <label id="wsMainRow" style="display:none;margin-top:8px;font-size:12.5px;align-items:center;gap:6px;"><input type="checkbox" id="wsMain" style="width:auto;" onchange="bvWebSlugHint()"> <span id="wsMainTxt"></span></label></div>
     <div class="ws-field"><label>Product it sells</label><select id="wsProduct"><option value="">Choose later</option>${prods.map(p => `<option value="${p.id}">${escH(p.product_name)}${p.is_service ? " (service)" : ""}</option>`).join("")}</select><small>Its price, packages and bank details power the built-in order form.</small></div>
     <div id="wsErr"></div>
     <button class="btn btn-a" id="wsCreate" onclick="bvWebCreate()">Create &amp; open builder</button>`, 480);
+}
+function bvWebDomChange() {
+  const id = document.getElementById("wsDom").value, d = (bvWebData.domains || []).find(x => x.id === id);
+  document.getElementById("wsPrefix").textContent = d ? d.hostname + "/s/" : (window.RV_SITE_ORIGIN || location.origin).replace(/^https?:\/\//, "") + "/s/";
+  const row = document.getElementById("wsMainRow");
+  row.style.display = d ? "flex" : "none";
+  if (d) {
+    document.getElementById("wsMain").checked = !d.site_id;
+    document.getElementById("wsMainTxt").textContent = d.site_id ? `Make it the main site on ${d.hostname} (replaces the current main site)` : `Make it the main site: ${d.hostname} opens it directly`;
+  }
+  bvWebSlugHint();
 }
 function bvWebSlugHint() {
   const v = document.getElementById("wsSlug").value, h = document.getElementById("wsSlugHint");
   if (!h) return;
   if (!v) { h.textContent = "Lowercase letters, numbers and dashes."; return; }
-  h.textContent = /^[a-z0-9][a-z0-9-]{1,40}$/.test(v) ? "Your site will be at " + window.RV_siteUrl(v).replace(/^https?:\/\//, "") : "Use 2–40 lowercase letters, numbers or dashes.";
+  if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(v)) { h.textContent = "Use 2–40 lowercase letters, numbers or dashes."; return; }
+  const d = (bvWebData.domains || []).find(x => x.id === document.getElementById("wsDom")?.value);
+  const main = d && document.getElementById("wsMain")?.checked;
+  h.textContent = "Your site will be at " + (d ? (main ? d.hostname : d.hostname + "/s/" + v) : window.RV_siteUrl(v).replace(/^https?:\/\//, ""));
 }
 async function bvWebCreate() {
   const name = document.getElementById("wsName").value.trim();
@@ -7968,6 +7987,11 @@ async function bvWebCreate() {
     const { data, error } = await supabaseClient.from("sites").insert({ name, slug, product_id, ad_account_id }).select("id").single();
     if (error) throw error;
     await supabaseClient.from("site_pages").insert({ site_id: data.id, slug: "", title: "Home" });
+    const domId = document.getElementById("wsDom")?.value;
+    if (domId) {
+      try { localStorage.setItem("rv_addr_" + data.id, domId); } catch (e) {}
+      if (document.getElementById("wsMain")?.checked) await sbFn("manage-domain", { action: "assign", id: domId, site_id: data.id }).catch(() => {});
+    }
     location.href = "/builder.html?site=" + data.id;
   } catch (e) {
     btn.disabled = false; btn.textContent = "Create & open builder";
