@@ -1031,11 +1031,11 @@ input,select,textarea{font:inherit}
       var shownId = named ? (ta.id || "") : "";
       var kindName = hasPkg(tgt) ? "packages section" : hasForm(tgt) ? "order form section" : "section";
       var pointing = 0; if (shownId) (function walk(k) { k.components().forEach(function (x) { if ((x.getAttributes() || {}).href === "#" + shownId) pointing++; walk(x); }); })(ed.getWrapper());
-      var card = '<div class="fld" style="padding:12px;border:1px solid var(--ac);border-radius:10px;background:var(--acbg)"><b style="font-size:12.5px">Section name <span style="font-weight:500;color:var(--tx2)">(' + kindName + ')</span></b>' +
-        '<div class="hint2" style="margin:6px 0 8px">Give this ' + kindName + ' a short name. Then any button can scroll the visitor here: select the button, open its <b>Content</b> tab and choose this name under <b>Scroll to a section</b>.</div>' +
+      var card = '<div class="fld" style="padding:12px;border:1px solid var(--ac);border-radius:10px;background:var(--acbg)"><b style="font-size:12.5px">Link name (ID) <span style="font-weight:500;color:var(--tx2)">· ' + kindName + '</span></b>' +
+        '<div class="hint2" style="margin:6px 0 8px">Give this ' + kindName + ' a short <b>link name</b> (also called an ID). Then any button can scroll the visitor here: select the button, open its <b>Content</b> tab and choose this name under <b>Scroll to a section</b>.</div>' +
         '<input data-f="anchor" maxlength="40" value="' + esc(shownId) + '" placeholder="' + (hasPkg(tgt) ? "packages" : hasForm(tgt) ? "order" : "e.g. reviews") + '">' +
         '<div class="hint2" style="margin-top:6px">' + (shownId ? "Buttons link to it as <b>#" + esc(shownId) + "</b>. " + pointing + " button" + (pointing === 1 ? "" : "s") + " on this page point here. Rename it any time: those buttons are updated for you." : "No name yet, so no button can scroll here.") + '</div></div>';
-      h += kind === "text" || kind === "image" ? '<details style="margin:0 0 12px"><summary style="cursor:pointer;font-size:12px;color:var(--tx2)">Name the section around this (so buttons can scroll to it)</summary><div style="margin-top:8px">' + card + "</div></details>" : card;
+      h += kind === "text" || kind === "image" ? '<details style="margin:0 0 12px"><summary style="cursor:pointer;font-size:12px;color:var(--tx2)">Link name (ID) of the section around this</summary><div style="margin-top:8px">' + card + "</div></details>" : card;
     }
     if (a["data-rv-pkg"]) {
       var nt = ((S.product && S.product.tiers) || []).length;
@@ -1157,7 +1157,7 @@ input,select,textarea{font:inherit}
       if (v) tc.addAttributes({ id: v, "data-rv-anchor": "1" }); else dropAnchor(tc);
       var moved = 0;
       if (old && old !== v) (function walk(k) { k.components().forEach(function (x) { var hh = (x.getAttributes() || {}).href; if (hh === "#" + old) { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
-      toast("Section named <b>#" + esc(v || "—") + "</b>." + (moved ? " " + moved + " button" + (moved === 1 ? "" : "s") + " updated." : ""));
+      toast("Link name <b>#" + esc(v || "—") + "</b>." + (moved ? " " + moved + " button" + (moved === 1 ? "" : "s") + " updated." : ""));
       setTimeout(renderContent, 0);
     });
     on('[data-f="jump"]', "change", function (n) {
