@@ -990,6 +990,9 @@ input,select,textarea{font:inherit}
     $("#traits").style.display = c && kind === "traits" ? "" : "none";
     if (!c) return;
     var h = addRow(c), a = c.getAttributes();
+    if (c.parent() === ed.getWrapper() && kind !== "text" && kind !== "link" && kind !== "image") {
+      h += F("Jump-to name", '<input data-f="anchor" value="' + esc(a["data-rv-anchor"] ? (a.id || "") : (a.id === "order" || a.id === "packages" ? a.id : "")) + '" placeholder="e.g. reviews">', "A button can scroll to this section: set its link to this name under \"Scroll to a section\". Order form = order, packages = packages (already set for those widgets).");
+    }
     if (a["data-rv-pkg"]) {
       var nt = ((S.product && S.product.tiers) || []).length;
       h += '<div class="fld" style="padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)"><b style="font-size:12.5px">Packages from your product</b><div class="hint2" style="margin:6px 0 10px">' + (S.product ? (nt ? "Your product \"" + esc(S.product.product_name) + "\" has " + nt + " package" + (nt > 1 ? "s" : "") + ". Fill these cards with their names, prices, pictures and the default one." : "Your product has no packages yet. Add them in the dashboard under Products → Edit.") : "Choose a product in Settings first.") + '</div><button class="btn sm" data-act="pkgfill"' + (nt ? "" : " disabled") + '>Fill from product</button></div>';
@@ -1002,7 +1005,7 @@ input,select,textarea{font:inherit}
       }
       if (kind === "link") {
         h += F("Link (where it goes)", '<input data-f="href" value="' + esc(a.href || "") + '" placeholder="https://…  or  #order">',
-          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' + drawerPicker(a.href) +
+          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="pkgs">Packages</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' + jumpPicker(a.href) + drawerPicker(a.href) +
           '<label class="chk"><input type="checkbox" data-f="blank"' + (a.target === "_blank" ? " checked" : "") + '>Open in a new tab</label>'
         var tiers = (S.product && S.product.tiers) || [], curT = String(a["data-rv-tier"] || "");
         h += F("Package this button selects", '<select data-f="tier"><option value="">None (just a link)</option>' + (tiers.length ? tiers.map(function (t, i) { return '<option value="' + (i + 1) + '"' + (curT === String(i + 1) ? " selected" : "") + ">" + (i + 1) + " &middot; " + esc(t.label) + " (" + RV_fmt(t.price_naira, S.product.currency) + ")</option>"; }).join("") : [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="' + n + '"' + (curT === String(n) ? " selected" : "") + ">Package " + n + "</option>"; }).join("")) + "</select>", tiers.length ? "The order form below picks this package for the customer, so they don't choose twice." : "Add packages to your product, then pick one here. Package 1 is the first one listed on the product.");
@@ -1034,6 +1037,20 @@ input,select,textarea{font:inherit}
     wireContent(box, c, kind);
   }
   // popups / drawers on this page, for the "Open a drawer / popup" choice on buttons
+  // names a button can scroll to: the order form, the packages, and any section the builder gave a "jump-to name"
+  function anchorList() {
+    var out = [], seen = {};
+    (function walk(c) { c.components().forEach(function (k) {
+      var at = k.getAttributes() || {}, id = at.id;
+      if (id && (id === "order" || id === "packages" || at["data-rv-anchor"]) && !seen[id]) { seen[id] = 1; out.push({ id: id, name: id === "order" ? "Order form" : id === "packages" ? "Packages" : id }); }
+      walk(k);
+    }); })(S.editor.getWrapper());
+    return out;
+  }
+  function jumpPicker(href) {
+    var L = anchorList(); if (!L.length) return "";
+    return F("Scroll to a section on this page", '<select data-f="jump"><option value="">— choose a section —</option>' + L.map(function (d) { return '<option value="#' + esc(d.id) + '"' + (href === "#" + d.id ? " selected" : "") + ">" + esc(d.name) + "</option>"; }).join("") + "</select>", "");
+  }
   function drawerList() {
     var out = []; S.editor.getWrapper().find(".rv-popup").forEach(function (p) { var id = p.getAttributes().id || p.getId(); out.push({ id: id, name: (p.find("h1,h2,h3")[0] && (p.find("h1,h2,h3")[0].getEl() || {}).textContent) || id }); });
     return out;
@@ -1050,6 +1067,12 @@ input,select,textarea{font:inherit}
     on('[data-f="level"]', "change", function (n) { c.set("tagName", n.value); c.set("name", "Heading"); ed.select(c); });
     on('[data-f="href"]', "input", function (n) { c.addAttributes({ href: n.value }); });
     on('[data-f="tier"]', "change", function (n) { if (n.value) { c.addAttributes({ "data-rv-tier": n.value }); if (!clean(c.getAttributes().href || "")) c.addAttributes({ href: "#order" }); } else c.removeAttributes(["data-rv-tier"]); });
+    on('[data-f="anchor"]', "change", function (n) {
+      var v = n.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      n.value = v;
+      if (v) { c.addAttributes({ id: v, "data-rv-anchor": "1" }); } else { c.removeAttributes("data-rv-anchor"); c.removeAttributes("id"); }
+    });
+    on('[data-f="jump"]', "change", function (n) { if (!n.value) return; c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; });
     on('[data-f="drawer"]', "change", function (n) { if (n.value) { c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; } });
     on('[data-f="ppos"]', "change", function (n) { ["side", "left", "bottom"].forEach(function (x) { c.removeClass(x); }); if (n.value !== "centre") { c.addClass("side"); if (n.value !== "right") c.addClass(n.value); } });
     on('[data-f="pdelay"]', "input", function (n) { c.addAttributes({ "data-delay": n.value === "" ? "-1" : n.value }); });
@@ -1061,7 +1084,7 @@ input,select,textarea{font:inherit}
     $$("[data-q]", box).forEach(function (b) {
       b.onclick = function () {
         var wa = String(blockCtx().whatsapp || "").replace(/\D/g, ""), q = b.dataset.q;
-        var v = q === "order" ? "#order" : q === "popup" ? "#rv-popup" : q === "wa" ? "https://wa.me/" + (wa || "234") : "tel:+" + (wa || "234");
+        var v = q === "order" ? "#order" : q === "pkgs" ? "#packages" : q === "popup" ? "#rv-popup" : q === "wa" ? "https://wa.me/" + (wa || "234") : "tel:+" + (wa || "234");
         if ((q === "wa" || q === "tel") && !wa) toast("Add a WhatsApp number to your product to fill this in automatically.");
         c.addAttributes({ href: v }); $('[data-f="href"]', box).value = v;
         if (q === "wa") { c.addAttributes({ target: "_blank", rel: "noopener" }); $('[data-f="blank"]', box).checked = true; }
