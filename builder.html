@@ -991,7 +991,8 @@ input,select,textarea{font:inherit}
     if (!c) return;
     var h = addRow(c), a = c.getAttributes();
     if (c.parent() === ed.getWrapper() && kind !== "text" && kind !== "link" && kind !== "image") {
-      h += F("Jump-to name", '<input data-f="anchor" value="' + esc(a["data-rv-anchor"] ? (a.id || "") : (a.id === "order" || a.id === "packages" ? a.id : "")) + '" placeholder="e.g. reviews">', "A button can scroll to this section: set its link to this name under \"Scroll to a section\". Order form = order, packages = packages (already set for those widgets).");
+      var named = a["data-rv-anchor"] || a.id === "order" || a.id === "packages" || hasForm(c) || hasPkg(c);
+      h += F("Jump-to name", '<input data-f="anchor" maxlength="40" value="' + esc(named ? (a.id || "") : "") + '" placeholder="e.g. reviews">', "The name buttons use to scroll to this section, for example a button linked to #" + esc(named && a.id ? a.id : "reviews") + ". Change it to anything you like: buttons that pointed at the old name are updated for you.");
     }
     if (a["data-rv-pkg"]) {
       var nt = ((S.product && S.product.tiers) || []).length;
@@ -1038,11 +1039,28 @@ input,select,textarea{font:inherit}
   }
   // popups / drawers on this page, for the "Open a drawer / popup" choice on buttons
   // names a button can scroll to: the order form, the packages, and any section the builder gave a "jump-to name"
+  function hasForm(c) { return !!(c.find && c.find("[data-rv-form]").length) || (c.getAttributes() || {})["data-rv-form"] !== undefined; }
+  function hasPkg(c) { return !!(c.getAttributes() || {})["data-rv-pkg"]; }
+  function topSectionOf(c) { var w = S.editor.getWrapper(); while (c.parent() && c.parent() !== w) c = c.parent(); return c; }
+  function findFirst(pred) { var hit = null; (function walk(c) { c.components().forEach(function (k) { if (hit) return; if (pred(k)) hit = k; else walk(k); }); })(S.editor.getWrapper()); return hit; }
+  // the name the page's order form / packages section currently has (renaming one never breaks the quick buttons)
+  function ensureAnchor(which) {
+    var hit = findFirst(function (k) { var at = k.getAttributes() || {}; return which === "order" ? at["data-rv-form"] !== undefined : !!at["data-rv-pkg"]; });
+    var def = which === "order" ? "order" : "packages";
+    if (!hit) return def;
+    var sec = topSectionOf(hit), id = (sec.getAttributes() || {}).id;
+    if (!id) { id = def; sec.addAttributes({ id: id, "data-rv-anchor": "1" }); }
+    return id;
+  }
   function anchorList() {
     var out = [], seen = {};
     (function walk(c) { c.components().forEach(function (k) {
       var at = k.getAttributes() || {}, id = at.id;
-      if (id && (id === "order" || id === "packages" || at["data-rv-anchor"]) && !seen[id]) { seen[id] = 1; out.push({ id: id, name: id === "order" ? "Order form" : id === "packages" ? "Packages" : id }); }
+      if (id && !seen[id] && (id === "order" || id === "packages" || at["data-rv-anchor"])) {
+        seen[id] = 1;
+        var nm = hasPkg(k) || id === "packages" ? "Packages" : (hasForm(k) || id === "order") ? "Order form" : "";
+        out.push({ id: id, name: nm ? nm + " (#" + id + ")" : "#" + id });
+      }
       walk(k);
     }); })(S.editor.getWrapper());
     return out;
@@ -1068,9 +1086,15 @@ input,select,textarea{font:inherit}
     on('[data-f="href"]', "input", function (n) { c.addAttributes({ href: n.value }); });
     on('[data-f="tier"]', "change", function (n) { if (n.value) { c.addAttributes({ "data-rv-tier": n.value }); if (!clean(c.getAttributes().href || "")) c.addAttributes({ href: "#order" }); } else c.removeAttributes(["data-rv-tier"]); });
     on('[data-f="anchor"]', "change", function (n) {
-      var v = n.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      var old = (c.getAttributes() || {}).id || "";
+      var v = n.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      if (!v) v = hasPkg(c) ? "packages" : hasForm(c) ? "order" : "";
+      if (v && v !== old && findFirst(function (k) { return k !== c && (k.getAttributes() || {}).id === v; })) { toast("Another section already uses the name “" + esc(v) + "”. Pick a different one."); n.value = old; return; }
       n.value = v;
-      if (v) { c.addAttributes({ id: v, "data-rv-anchor": "1" }); } else { c.removeAttributes("data-rv-anchor"); c.removeAttributes("id"); }
+      if (v) c.addAttributes({ id: v, "data-rv-anchor": "1" }); else { c.removeAttributes("data-rv-anchor"); c.removeAttributes("id"); }
+      var moved = 0;
+      if (old && v !== old) (function walk(k) { k.components().forEach(function (x) { var h = (x.getAttributes() || {}).href; if (h === "#" + old) { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
+      if (moved) toast(moved + " button" + (moved === 1 ? "" : "s") + " now point" + (moved === 1 ? "s" : "") + " to #" + esc(v) + ".");
     });
     on('[data-f="jump"]', "change", function (n) { if (!n.value) return; c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; });
     on('[data-f="drawer"]', "change", function (n) { if (n.value) { c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; } });
@@ -1084,7 +1108,7 @@ input,select,textarea{font:inherit}
     $$("[data-q]", box).forEach(function (b) {
       b.onclick = function () {
         var wa = String(blockCtx().whatsapp || "").replace(/\D/g, ""), q = b.dataset.q;
-        var v = q === "order" ? "#order" : q === "pkgs" ? "#packages" : q === "popup" ? "#rv-popup" : q === "wa" ? "https://wa.me/" + (wa || "234") : "tel:+" + (wa || "234");
+        var v = q === "order" ? "#" + ensureAnchor("order") : q === "pkgs" ? "#" + ensureAnchor("packages") : q === "popup" ? "#rv-popup" : q === "wa" ? "https://wa.me/" + (wa || "234") : "tel:+" + (wa || "234");
         if ((q === "wa" || q === "tel") && !wa) toast("Add a WhatsApp number to your product to fill this in automatically.");
         c.addAttributes({ href: v }); $('[data-f="href"]', box).value = v;
         if (q === "wa") { c.addAttributes({ target: "_blank", rel: "noopener" }); $('[data-f="blank"]', box).checked = true; }
