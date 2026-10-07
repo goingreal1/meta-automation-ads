@@ -990,9 +990,12 @@ input,select,textarea{font:inherit}
     $("#traits").style.display = c && kind === "traits" ? "" : "none";
     if (!c) return;
     var h = addRow(c), a = c.getAttributes();
-    if (c.parent() === ed.getWrapper() && kind !== "text" && kind !== "link" && kind !== "image") {
+    var isFormEl = (a["data-rv-form"] !== undefined);
+    if ((c.parent() === ed.getWrapper() || isFormEl) && kind !== "text" && kind !== "link" && kind !== "image") {
       var named = a["data-rv-anchor"] || a.id === "order" || a.id === "packages" || hasForm(c) || hasPkg(c);
-      h += F("Jump-to name", '<input data-f="anchor" maxlength="40" value="' + esc(named ? (a.id || "") : "") + '" placeholder="e.g. reviews">', "The name buttons use to scroll to this section, for example a button linked to #" + esc(named && a.id ? a.id : "reviews") + ". Change it to anything you like: buttons that pointed at the old name are updated for you.");
+      var shownId = named ? (a.id || "") : "";
+      if (isFormEl && !a["data-rv-anchor"]) { var ts = topSectionOf(c), tid = (ts.getAttributes() || {}).id; shownId = tid && (tid === "order" || (ts.getAttributes() || {})["data-rv-anchor"]) ? tid : ""; }
+      h += F("Jump-to name", '<input data-f="anchor" maxlength="40" value="' + esc(shownId) + '" placeholder="e.g. form">', "The name buttons use to scroll to this section, for example a button linked to #" + esc(shownId || "form") + ". Change it to anything you like: buttons that pointed at the old name are updated for you.");
     }
     if (a["data-rv-pkg"]) {
       var nt = ((S.product && S.product.tiers) || []).length;
@@ -1041,6 +1044,8 @@ input,select,textarea{font:inherit}
   // names a button can scroll to: the order form, the packages, and any section the builder gave a "jump-to name"
   function hasForm(c) { return !!(c.find && c.find("[data-rv-form]").length) || (c.getAttributes() || {})["data-rv-form"] !== undefined; }
   function hasPkg(c) { return !!(c.getAttributes() || {})["data-rv-pkg"]; }
+  // an element's id can't be deleted, so "no name" means a neutral internal id nothing links to
+  function dropAnchor(c) { c.addAttributes({ id: "sec-" + Math.random().toString(36).slice(2, 7) }); c.removeAttributes("data-rv-anchor"); }
   function topSectionOf(c) { var w = S.editor.getWrapper(); while (c.parent() && c.parent() !== w) c = c.parent(); return c; }
   function findFirst(pred) { var hit = null; (function walk(c) { c.components().forEach(function (k) { if (hit) return; if (pred(k)) hit = k; else walk(k); }); })(S.editor.getWrapper()); return hit; }
   // the name the page's order form / packages section currently has (renaming one never breaks the quick buttons)
@@ -1048,6 +1053,7 @@ input,select,textarea{font:inherit}
     var hit = findFirst(function (k) { var at = k.getAttributes() || {}; return which === "order" ? at["data-rv-form"] !== undefined : !!at["data-rv-pkg"]; });
     var def = which === "order" ? "order" : "packages";
     if (!hit) return def;
+    if ((hit.getAttributes() || {}).id && (hit.getAttributes() || {})["data-rv-anchor"]) return hit.getAttributes().id;
     var sec = topSectionOf(hit), id = (sec.getAttributes() || {}).id;
     if (!id) { id = def; sec.addAttributes({ id: id, "data-rv-anchor": "1" }); }
     return id;
@@ -1088,12 +1094,18 @@ input,select,textarea{font:inherit}
     on('[data-f="anchor"]', "change", function (n) {
       var old = (c.getAttributes() || {}).id || "";
       var v = n.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-      if (!v) v = hasPkg(c) ? "packages" : hasForm(c) ? "order" : "";
+      if (!v && c.parent() === ed.getWrapper()) v = hasPkg(c) ? "packages" : hasForm(c) ? "order" : "";
       if (v && v !== old && findFirst(function (k) { return k !== c && (k.getAttributes() || {}).id === v; })) { toast("Another section already uses the name “" + esc(v) + "”. Pick a different one."); n.value = old; return; }
       n.value = v;
-      if (v) c.addAttributes({ id: v, "data-rv-anchor": "1" }); else { c.removeAttributes("data-rv-anchor"); c.removeAttributes("id"); }
-      var moved = 0;
-      if (old && v !== old) (function walk(k) { k.components().forEach(function (x) { var h = (x.getAttributes() || {}).href; if (h === "#" + old) { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
+      if (v) c.addAttributes({ id: v, "data-rv-anchor": "1" }); else dropAnchor(c);
+      var moved = 0, olds = old ? [old] : [];
+      // naming the form widget itself takes over the name of the section around it, so old buttons follow
+      if (v && (c.getAttributes() || {})["data-rv-form"] !== undefined && c.parent() !== ed.getWrapper()) {
+        var sec = topSectionOf(c), sid = (sec.getAttributes() || {}).id;
+        if (sid && sid !== v && (sid === "order" || (sec.getAttributes() || {})["data-rv-anchor"])) { olds.push(sid); dropAnchor(sec); }
+      }
+      olds = olds.filter(function (o) { return o && o !== v; });
+      if (olds.length) (function walk(k) { k.components().forEach(function (x) { var h = (x.getAttributes() || {}).href; if (h && olds.indexOf(h.replace(/^#/, "")) > -1 && h.charAt(0) === "#") { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
       if (moved) toast(moved + " button" + (moved === 1 ? "" : "s") + " now point" + (moved === 1 ? "s" : "") + " to #" + esc(v) + ".");
     });
     on('[data-f="jump"]', "change", function (n) { if (!n.value) return; c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; });
