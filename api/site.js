@@ -32,10 +32,10 @@ const jsonForScript = (o) => JSON.stringify(o).replace(/</g, "\\u003c").replace(
 // Small per-instance cache so repeat visits (and every ad click, whose fbclid makes the CDN key unique) skip the upstream call.
 const CACHE = new Map();
 const TTL = 30 * 1000;
-async function loadSite(slug, page) {
-  const key = slug + "/" + page, hit = CACHE.get(key);
+async function loadSite(slug, page, host) {
+  const key = (host || "") + "|" + slug + "/" + page, hit = CACHE.get(key);
   if (hit && Date.now() - hit.t < TTL) return hit.v;
-  const url = SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(page);
+  const url = SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(page) + (host ? "&host=" + encodeURIComponent(host) : "");
   const r = await fetch(url, { headers: { apikey: ANON, Authorization: "Bearer " + ANON } });
   const v = { status: r.status, data: await r.json().catch(() => ({})) };
   if (v.status === 200 || v.status === 404) CACHE.set(key, { t: Date.now(), v });
@@ -79,25 +79,38 @@ function render(d, query) {
     "</body></html>";
 }
 
+// The dedicated sites project ships a marker file next to this handler (see sites-app/build.js). Only that
+// project serves customer custom domains; the dashboard project keeps redirecting /s/... to the sites origin.
+const IS_SITES_PROJECT = fs.existsSync(path.join(ROOT, ".rv-sites"));
+
 module.exports = async function handler(req, res) {
   try {
     const u = new URL(req.url, "http://x");
-    const origin = siteOrigin(), host = String(req.headers && req.headers.host || "").toLowerCase();
-    if (origin && host && host !== new URL(origin).host.toLowerCase() && !/^localhost/.test(host)) {
-      const orig = (req.headers["x-vercel-forwarded-url"] || "") || "";
+    const origin = siteOrigin();
+    const host = String(req.headers && req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
+    const originHost = origin ? new URL(origin).host.toLowerCase() : "";
+    const isPlatformHost = !host || host === originHost || /^localhost$/.test(host) || /\.vercel\.app$/.test(host);
+
+    if (!IS_SITES_PROJECT && origin && host && !isPlatformHost) {
       const parts = u.searchParams.get("slug") ? [u.searchParams.get("slug"), u.searchParams.get("page")] : [];
       const qs = new URLSearchParams(u.search); qs.delete("slug"); qs.delete("page");
       res.statusCode = 302;
       res.setHeader("location", origin + "/s/" + parts.filter(Boolean).join("/") + (qs.toString() ? "?" + qs.toString() : ""));
       return res.end();
     }
+
+    // Path as the visitor typed it. vercel.json / the sites build rewrite everything to /api/site?__p=<path>.
+    const rawPath = u.searchParams.has("__p") ? "/" + u.searchParams.get("__p") : u.pathname;
     let slug = (u.searchParams.get("slug") || "").toLowerCase(), pg = (u.searchParams.get("page") || "").toLowerCase();
+    let customHost = "";
     if (!slug) {
-      const parts = u.pathname.replace(/^\/+|\/+$/g, "").split("/");
-      if (parts[0] === "s") { slug = (parts[1] || "").toLowerCase(); pg = (parts[2] || "").toLowerCase(); }
+      const parts = rawPath.replace(/^\/+|\/+$/g, "").split("/").map((x) => x.toLowerCase());
+      if (parts[0] === "s") { slug = parts[1] || ""; pg = parts[2] || ""; }
+      else if (IS_SITES_PROJECT && !isPlatformHost) { pg = parts[0] || ""; if (parts.length > 1) return notFound(res, "This page doesn't exist."); }
     }
-    if (!slug) return notFound(res, "This page doesn't exist.");
-    const r = await loadSite(slug, pg);
+    if (IS_SITES_PROJECT && !isPlatformHost) customHost = host;
+    if (!slug && !customHost) return notFound(res, "This page doesn't exist.");
+    const r = await loadSite(slug, pg, customHost);
     if (r.status === 404 || !r.data || r.data.error) return notFound(res, "This page isn't available.", r.status === 404 ? 404 : 502);
     const html = render(r.data, u.searchParams);
     res.statusCode = 200;
