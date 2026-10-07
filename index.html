@@ -405,34 +405,45 @@ footer{background:var(--dark2);padding:60px 0 32px;}
           <div class="tour-panel on" id="tp-overview">
             <h4>Overview</h4>
             <div class="tk">
-              <div><small>Spent today</small><b>₦68,400</b><em style="color:var(--muted)">yesterday ₦71,200</em></div>
+              <div><small>Spent · 7 days</small><b>₦482,000</b><em style="color:var(--muted)">today ₦68,400</em></div>
               <div><small>Orders · 7 days</small><b>214</b><em>▲ 18% vs last week</em></div>
-              <div><small>Real ROAS</small><b class="g">3.4x</b><em>▲ 0.4</em></div>
+              <div><small>Real ROAS</small><b class="g">6.4x</b><em style="color:var(--muted)">₦3.09M delivered ÷ spend</em></div>
               <div><small>Delivery rate</small><b class="g">78%</b><em>▲ 3%</em></div>
             </div>
-            <div class="tchart"><small style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Ad spend vs revenue · last 7 days</small>
+            <div class="tk">
+              <div><small>Conversations</small><b>2,812</b><em style="color:var(--muted)">₦121 each · WhatsApp ads</em></div>
+              <div><small>Landing page views</small><b>5,480</b><em style="color:var(--muted)">₦26 each · website ads</em></div>
+              <div><small>Website purchases</small><b class="g">62</b><em style="color:var(--muted)">₦2,290 each</em></div>
+              <div><small>Clicks that loaded</small><b>72%</b><em>▲ 4%</em></div>
+            </div>
+            <div class="tchart"><small style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Ad spend vs cash collected · last 7 days</small>
               <svg viewBox="0 0 600 120" preserveAspectRatio="none" aria-hidden="true">
                 <defs><linearGradient id="tg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1877F2" stop-opacity=".28"/><stop offset="1" stop-color="#1877F2" stop-opacity="0"/></linearGradient></defs>
                 <path d="M0 95 L100 80 L200 86 L300 52 L400 60 L500 30 L600 14 L600 120 L0 120Z" fill="url(#tg1)"/>
                 <path d="M0 95 L100 80 L200 86 L300 52 L400 60 L500 30 L600 14" fill="none" stroke="#1877F2" stroke-width="2.5" stroke-linejoin="round"/>
                 <path d="M0 108 L100 104 L200 98 L300 92 L400 88 L500 80 L600 74" fill="none" stroke="#9fb4d6" stroke-width="2" stroke-dasharray="5 4"/>
               </svg></div>
-            <div class="tour-scroll"><table class="ttable"><tr><th>Date</th><th>Spent</th><th>Conversations</th><th>Cost / chat</th><th>Orders</th></tr>
-              <tr><td>Mon</td><td>₦71,200</td><td>412</td><td>₦173</td><td>31</td></tr>
-              <tr><td>Tue</td><td>₦66,900</td><td>388</td><td>₦172</td><td>29</td></tr>
-              <tr><td>Wed</td><td>₦74,300</td><td>451</td><td>₦165</td><td>37</td></tr></table></div>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Date</th><th>Spent</th><th>Chats</th><th>Page views</th><th>Website purchases</th><th>Orders</th></tr>
+              <tr><td>Mon</td><td>₦71,200</td><td>412</td><td>790</td><td>9</td><td>31</td></tr>
+              <tr><td>Tue</td><td>₦66,900</td><td>388</td><td>740</td><td>8</td><td>29</td></tr>
+              <tr><td>Wed</td><td>₦74,300</td><td>451</td><td>860</td><td>11</td><td>37</td></tr>
+              <tr><td>Thu</td><td>₦68,000</td><td>398</td><td>770</td><td>9</td><td>30</td></tr>
+              <tr><td>Fri</td><td>₦70,100</td><td>421</td><td>820</td><td>10</td><td>33</td></tr>
+              <tr><td>Sat</td><td>₦64,500</td><td>360</td><td>700</td><td>6</td><td>26</td></tr>
+              <tr><td>Sun</td><td>₦67,000</td><td>382</td><td>800</td><td>9</td><td>28</td></tr>
+              <tr style="font-weight:700;background:var(--bg2)"><td>Total</td><td>₦482,000</td><td>2,812</td><td>5,480</td><td>62</td><td>214</td></tr></table></div>
           </div>
 
           <div class="tour-panel" id="tp-orders">
             <h4>Orders</h4>
-            <div class="tour-scroll"><table class="ttable"><tr><th>Customer</th><th>Product</th><th>Value</th><th>Agent</th><th>Status</th></tr>
-              <tr><td>Amaka O.</td><td>Body cream · 3 pack</td><td>₦28,500</td><td>Segun</td><td><span class="tp ok">Delivered</span></td></tr>
-              <tr><td>Ibrahim K.</td><td>Herbal tea · 1 pack</td><td>₦12,000</td><td>Chidi</td><td><span class="tp blue">On the way</span></td></tr>
-              <tr><td>Blessing A.</td><td>Body cream · 5 pack</td><td>₦42,000</td><td>Segun</td><td><span class="tp blue">Valid</span></td></tr>
-              <tr><td>Tunde B.</td><td>Hair oil · 2 pack</td><td>₦19,800</td><td>—</td><td><span class="tp wait">Pending call</span></td></tr>
-              <tr><td>Ngozi E.</td><td>Herbal tea · 3 pack</td><td>₦31,500</td><td>Chidi</td><td><span class="tp ok">Delivered</span></td></tr>
-              <tr><td>Femi L.</td><td>Hair oil · 1 pack</td><td>₦10,500</td><td>Segun</td><td><span class="tp bad">Returned</span></td></tr>
-              <tr><td>Zainab M.</td><td>Body cream · 1 pack</td><td>₦11,500</td><td>Chidi</td><td><span class="tp ok">Delivered</span></td></tr></table></div>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Customer</th><th>Source</th><th>Product</th><th>Value</th><th>Agent</th><th>Status</th></tr>
+              <tr><td>Amaka O.</td><td><span class="tp blue">WhatsApp</span></td><td>Body cream · 3 pack</td><td>₦28,500</td><td>Segun</td><td><span class="tp ok">Delivered</span></td></tr>
+              <tr><td>Ibrahim K.</td><td><span class="tp wait">Website</span></td><td>Herbal tea · 1 pack</td><td>₦12,000</td><td>Chidi</td><td><span class="tp blue">On the way</span></td></tr>
+              <tr><td>Blessing A.</td><td><span class="tp wait">Website</span></td><td>Body cream · 5 pack</td><td>₦42,000</td><td>Segun</td><td><span class="tp blue">Valid</span></td></tr>
+              <tr><td>Tunde B.</td><td><span class="tp blue">WhatsApp</span></td><td>Hair oil · 2 pack</td><td>₦19,800</td><td>—</td><td><span class="tp wait">Pending call</span></td></tr>
+              <tr><td>Ngozi E.</td><td><span class="tp wait">Website</span></td><td>Herbal tea · 3 pack</td><td>₦31,500</td><td>Chidi</td><td><span class="tp ok">Delivered</span></td></tr>
+              <tr><td>Femi L.</td><td><span class="tp blue">WhatsApp</span></td><td>Hair oil · 1 pack</td><td>₦10,500</td><td>Segun</td><td><span class="tp bad">Returned</span></td></tr>
+              <tr><td>Zainab M.</td><td><span class="tp blue">WhatsApp</span></td><td>Body cream · 1 pack</td><td>₦11,500</td><td>Chidi</td><td><span class="tp ok">Delivered</span></td></tr></table></div>
           </div>
 
           <div class="tour-panel" id="tp-wallet">
@@ -447,11 +458,12 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 
           <div class="tour-panel" id="tp-campaigns">
             <h4>Campaigns</h4>
-            <div class="tour-scroll"><table class="ttable"><tr><th>Ad set</th><th>Spent</th><th>Chats</th><th>Cost / chat</th><th>Results</th><th>Status</th></tr>
-              <tr><td>Body cream · Women 25–44</td><td>₦182,000</td><td>1,046</td><td>₦174</td><td><span class="tbar" style="width:90px"></span></td><td><span class="tp ok">Active</span></td></tr>
-              <tr><td>Body cream · Lagos broad</td><td>₦121,500</td><td>702</td><td>₦173</td><td><span class="tbar" style="width:62px"></span></td><td><span class="tp ok">Active</span></td></tr>
-              <tr><td>Herbal tea · Abuja</td><td>₦96,000</td><td>388</td><td>₦247</td><td><span class="tbar" style="width:34px;background:#e0a030"></span></td><td><span class="tp wait">Watching</span></td></tr>
-              <tr><td>Hair oil · Retargeting</td><td>₦54,200</td><td>94</td><td>₦577</td><td><span class="tbar" style="width:12px;background:#d45a4f"></span></td><td><span class="tp bad">Auto-paused</span></td></tr></table></div>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Ad set</th><th>Type</th><th>Spent</th><th>Results</th><th>Cost / result</th><th></th><th>Status</th></tr>
+              <tr><td>Body cream · Women 25–44</td><td><span class="tp blue">WhatsApp</span></td><td>₦182,000</td><td>1,504 chats</td><td>₦121</td><td><span class="tbar" style="width:80px"></span></td><td><span class="tp ok">Active</span></td></tr>
+              <tr><td>Body cream · Lagos broad</td><td><span class="tp blue">WhatsApp</span></td><td>₦121,500</td><td>1,004 chats</td><td>₦121</td><td><span class="tbar" style="width:60px"></span></td><td><span class="tp ok">Active</span></td></tr>
+              <tr><td>Body cream · Website sales</td><td><span class="tp wait">Website</span></td><td>₦86,000</td><td>38 purchases</td><td>₦2,263</td><td><span class="tbar" style="width:70px"></span></td><td><span class="tp ok">Active</span></td></tr>
+              <tr><td>Herbal tea · Website sales</td><td><span class="tp wait">Website</span></td><td>₦56,000</td><td>24 purchases</td><td>₦2,333</td><td><span class="tbar" style="width:36px;background:#e0a030"></span></td><td><span class="tp wait">Watching</span></td></tr>
+              <tr><td>Hair oil · Retargeting</td><td><span class="tp blue">WhatsApp</span></td><td>₦36,500</td><td>80 chats</td><td>₦456</td><td><span class="tbar" style="width:12px;background:#d45a4f"></span></td><td><span class="tp bad">Auto-paused</span></td></tr></table></div>
           </div>
 
         </div>
