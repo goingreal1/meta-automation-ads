@@ -26,6 +26,29 @@ function json(obj: any, status = 200) {
   });
 }
 
+const SVC_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+// Caller must be the service role (internal functions / cron) or a signed-in
+// dashboard user -- the public anon key alone is not enough. A service token
+// is proven with the Auth admin API because pg_cron may hold a different (but
+// valid) copy of the key than this function's env.
+type Caller = { service: boolean; company_id: string | null; role: string | null };
+async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  if (SVC_KEY && token === SVC_KEY) return { service: true, company_id: null, role: null };
+  const { data } = await admin.auth.getUser(token);
+  if (data?.user) {
+    const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
+    return p?.company_id ? { service: false, company_id: p.company_id, role: p.role } : null;
+  }
+  try {
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL") ?? ""}/auth/v1/admin/users?per_page=1`, { headers: { apikey: token, Authorization: `Bearer ${token}` } });
+    if (r.status === 200) return { service: true, company_id: null, role: null };
+  } catch { /* not a service token */ }
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -63,6 +86,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    if (!(await getCaller(req, supabase))) return json({ error: "Not signed in" }, 401);
 
     const { data: conv, error: convErr } = await supabase
       .from("beoliv_conversations")

@@ -45,6 +45,19 @@ async function paystackFetch(path: string, init: RequestInit) {
   return body;
 }
 
+const SVC_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+// Internal-only: callers are other edge functions that send the service-role key.
+async function isServiceCaller(req: Request): Promise<boolean> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return false;
+  if (SVC_KEY && token === SVC_KEY) return true;
+  try {
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL") ?? ""}/auth/v1/admin/users?per_page=1`, { headers: { apikey: token, Authorization: `Bearer ${token}` } });
+    return r.status === 200;
+  } catch { return false; }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -52,6 +65,7 @@ Deno.serve(async (req: Request) => {
     });
   }
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  if (!(await isServiceCaller(req))) return json({ error: "unauthorized" }, 401);
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
