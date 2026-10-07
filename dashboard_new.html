@@ -1253,6 +1253,48 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
   .bv-tree-item:not(.active):hover{background:var(--hover);}
 }
 #bvBuilderOverlay .bv-modal-xl::before{font-family:inherit;font-weight:700;letter-spacing:-.02em;}
+
+/* ── Campaigns v2 (matches the drawn design) ── */
+.am-h1{font-size:30px;font-weight:700;letter-spacing:-.025em;margin:0;}
+.am-subline{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 16px;}
+.am-acct2{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);background:var(--panel);border:1px solid var(--border);border-radius:99px;padding:3px 11px;}
+.am-acct2 i{width:7px;height:7px;border-radius:50%;background:#34c759;display:inline-block;}
+.am-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+.am-toolbar .btn{width:auto;padding:7px 14px;margin:0;}
+.am-toolbar .am-search{width:200px;padding:7px 12px;border-radius:9px;}
+.am-toolbar select{width:auto;padding:7px 10px;border-radius:9px;margin:0;}
+.am-grow{flex:1;}
+.am-bulk{display:flex;align-items:center;gap:10px;background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:12px;padding:8px 14px;margin-bottom:12px;font-size:13px;}
+.am-bulk b{color:var(--accent);}
+.am-bulk .btn{width:auto;padding:5px 12px;margin:0;}
+.am-bulk a{cursor:pointer;color:var(--text2);}
+.am-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.am-scroll{overflow-x:auto;}
+.am-tbl{width:100%;border-collapse:collapse;font-size:13px;min-width:820px;}
+.am-tbl th{font-size:12px;font-weight:500;color:var(--text2);text-align:left;padding:11px 14px;background:var(--panel2);border-bottom:1px solid var(--border);}
+.am-tbl td{padding:13px 14px;border-bottom:1px solid var(--border);color:var(--text2);}
+.am-tbl tbody tr:last-child td{border-bottom:none;}
+.am-tbl tbody tr:hover{background:var(--hover);}
+.am-tbl tbody tr.off .am-link,.am-tbl tbody tr.off td.num{opacity:.6;}
+.am-tbl .num{text-align:right;font-variant-numeric:tabular-nums;}
+.am-tbl .num b{color:var(--text);}
+.am-tbl .c-chk{width:36px;padding-right:0;}
+.am-tbl .c-sw{width:64px;text-align:right;}
+.am-tbl .c-sw label{margin-left:auto;}
+.am-tbl tfoot td{padding:12px 14px;background:var(--panel2);font-weight:600;color:var(--text2);border-top:1px solid var(--border);}
+.tp{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--panel2);color:var(--text2);}
+.tp.wa{background:rgba(24,119,242,.12);color:var(--accent);}
+.tp.web{background:rgba(255,159,10,.16);color:#b86e00;}
+@media(max-width:720px){
+  .am-h1{font-size:26px;}
+  .am-toolbar .am-search{flex:1 1 100%;width:auto;order:5;}
+  .am-toolbar .am-grow{display:none;}
+  .am-tbl{min-width:640px;}
+}
+.am-kpis .kc{padding:14px 16px;}
+.am-kpis .kc-val{font-size:24px;}
+.am-kpis .kc-sub{margin-top:2px;}
+.am-toolbar .am-more{color:var(--text2);}
 </style>
 </head>
 <body>
@@ -5084,9 +5126,49 @@ function amRows(level) {
   rows = rows.filter(r => !["DELETED", "ARCHIVED"].includes(r.effective_status));
   if (am.filter === "active") rows = rows.filter(r => r.status === "ACTIVE");
   else if (am.filter === "paused") rows = rows.filter(r => r.status !== "ACTIVE");
+  if (am.q) rows = rows.filter(r => String(r.name || "").toLowerCase().includes(am.q.toLowerCase()));
   return [...rows].sort((a, b) => (b.status === "ACTIVE") - (a.status === "ACTIVE") || b.spend - a.spend);
 }
 
+function amSetQuery(v) {
+  am.q = v;
+  amDraw();
+  const el = document.querySelector(".am-search");
+  if (el) { el.focus(); el.setSelectionRange(v.length, v.length); }
+}
+async function amBulk(status) {
+  const ids = [...am.sel.campaigns];
+  for (const id of ids) {
+    const r = amFind("campaign", id);
+    if (r && (r.status === "ACTIVE") !== (status === "ACTIVE")) await amSetStatus("campaign", id, status, "bulk");
+  }
+}
+function amCampaignTable(rows, tot, allChecked) {
+  const d = am.data;
+  const tr = r => {
+    const on = r.status === "ACTIVE";
+    const busy = am.busy.has(r.id);
+    const sets = d.adsets.filter(s => s.campaign_id === r.id && !["DELETED", "ARCHIVED"].includes(s.effective_status)).length;
+    const ads = d.ads.filter(a => a.campaign_id === r.id && !["DELETED", "ARCHIVED"].includes(a.effective_status)).length;
+    const web = r.kind === "purchase";
+    return `<tr class="${on ? "" : "off"}${am.sel.campaigns.has(r.id) ? " sel" : ""}">
+      <td class="c-chk"><input type="checkbox" ${am.sel.campaigns.has(r.id) ? "checked" : ""} onchange="amToggleSel('campaigns','${r.id}',this.checked)" aria-label="Select"></td>
+      <td><a class="am-link" onclick="amDrill('campaigns','${r.id}')" title="View ad sets"><span class="am-name-t">${escH(r.name)}</span><span class="am-sub">${sets} ad set${sets === 1 ? "" : "s"} · ${ads} ad${ads === 1 ? "" : "s"}</span></a>${busy ? '<span class="spin"></span>' : ""}</td>
+      <td class="c-type">${web ? '<span class="tp web">Website</span>' : r.kind === "messaging" ? '<span class="tp wa">WhatsApp</span>' : '<span class="tp">—</span>'}</td>
+      <td class="num">${r.daily_budget ? fN(r.daily_budget) : "—"}</td>
+      <td class="num"><b>${fN(r.spend)}</b></td>
+      <td class="num">${r.results != null ? Number(r.results).toLocaleString("en-NG") + (web ? " purchases" : " chats") : "—"}</td>
+      <td class="num">${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</td>
+      <td class="c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('campaign','${r.id}',this)"><span class="sw-track"></span></label></td>
+    </tr>`;
+  };
+  return `<div class="am-card"><div class="am-scroll"><table class="am-tbl"><thead><tr>
+    <th class="c-chk"><input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('campaigns',this.checked)" aria-label="Select all"></th>
+    <th>Campaign</th><th>Type</th><th class="num">Budget / day</th><th class="num">Spent</th><th class="num">Results</th><th class="num">Cost / result</th><th class="c-sw">Active</th></tr></thead>
+    <tbody>${rows.map(tr).join("")}</tbody>
+    <tfoot><tr><td></td><td>Total · ${rows.length} campaign${rows.length === 1 ? "" : "s"}</td><td></td><td></td><td class="num"><b>${fN(tot.spend)}</b></td><td class="num">${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</td><td class="num">${tot.cpr != null ? fN(tot.cpr) : "—"}</td><td></td></tr></tfoot>
+  </table></div></div>`;
+}
 const amCostLabel = kind => kind === "messaging" ? "Cost / conversation" : kind === "purchase" ? "Cost / purchase" : "Cost / result";
 // Column titles follow what the rows on screen are: all message ads -> "Conversations".
 function amHeadLabels(rows) {
@@ -5166,16 +5248,25 @@ function amTotals(rows) {
 function amDraw() {
   const root = amEl(); if (!root) return;
   const d = am.data;
-  const rangeSel = `<select id="amRange" onchange="amSetRange(this.value)" aria-label="Date range">${AM_RANGES.map(([k, l]) => `<option value="${k}" ${am.range === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
+  const SEG = [["today", "Today"], ["last7", "7 days"], ["last30", "30 days"]];
+  const more = AM_RANGES.filter(([k]) => !SEG.some(x => x[0] === k));
+  const rangeSel = `<div class="rv-seg" role="group" aria-label="Date range">${SEG.map(([k, l]) => `<button type="button" class="${am.range === k ? "on" : ""}" onclick="amSetRange('${k}')">${l}</button>`).join("")}</div>
+    <select id="amRange" class="am-more" onchange="amSetRange(this.value)" aria-label="More date ranges"><option value="">More…</option>${more.map(([k, l]) => `<option value="${k}" ${am.range === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
   const header = `
-    <div class="sh">
-      <div class="sh-title">Campaigns${d?.account?.name ? ` <span class="am-acct">${escH(d.account.name)}</span>` : ""}</div>
-      <div class="sh-actions am-actions">
-        <button class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvOpenObjectiveGateModal()">+ Create</button>
-        <button class="btn btn-g" style="width:auto;padding:6px 14px;margin-left:6px;" onclick="bvOpenDraftsModal()">📝 Drafts</button>
-        ${rangeSel}
-        <button class="btn btn-g" id="amRefresh" onclick="amFetch()" ${am.loading ? "disabled" : ""}>${am.loading ? '<span class="spin"></span> Loading…' : "↻ Refresh"}</button>
+    <div class="am-head-top">
+      <div>
+        <h1 class="am-h1">Campaigns</h1>
+        <div class="am-subline">${d?.account?.name ? `<span class="am-acct2"><i></i>${escH(d.account.name)}</span>` : ""}${am.at ? `<span class="am-acct2">Last synced ${ago(new Date(am.at).toISOString())}</span>` : ""}</div>
       </div>
+    </div>
+    <div class="am-toolbar">
+      ${rangeSel}
+      <input class="am-search" type="search" placeholder="Search campaigns" value="${escH(am.q || "")}" oninput="amSetQuery(this.value)" aria-label="Search">
+      <select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="all" ${am.filter === "all" ? "selected" : ""}>Status: All</option><option value="active" ${am.filter === "active" ? "selected" : ""}>Active</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option></select>
+      <span class="am-grow"></span>
+      <button class="btn btn-g" onclick="bvOpenDraftsModal()">Drafts</button>
+      <button class="btn btn-g" id="amRefresh" onclick="amFetch()" ${am.loading ? "disabled" : ""}>${am.loading ? '<span class="spin"></span> Loading…' : "Refresh"}</button>
+      <button class="btn btn-a" onclick="bvOpenObjectiveGateModal()">+ New campaign</button>
     </div>`;
 
   if (am.error && !d) {
@@ -5215,8 +5306,7 @@ function amDraw() {
   const lvl = am.level;
   const counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
   const tabs = [["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]];
-  const tabsHtml = `<div class="am-tabs">${tabs.map(([k, l]) => `<button type="button" class="am-tab${lvl === k ? " active" : ""}" onclick="amSetLevel('${k}')">${l} <span class="am-tab-n">${counts[k]}</span></button>`).join("")}
-    <select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="all" ${am.filter === "all" ? "selected" : ""}>All</option><option value="active" ${am.filter === "active" ? "selected" : ""}>Active</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option></select></div>`;
+  const tabsHtml = `<div class="am-tabs">${tabs.map(([k, l]) => `<button type="button" class="am-tab${lvl === k ? " active" : ""}" onclick="amSetLevel('${k}')">${l} <span class="am-tab-n">${counts[k]}</span></button>`).join("")}</div>`;
 
   const chips = [];
   if (lvl !== "campaigns" && am.sel.campaigns.size) {
@@ -5257,11 +5347,13 @@ function amDraw() {
       </div>
     </div>` : "";
 
-  const body = rows.length
+  const bulk = lvl === "campaigns" && am.sel.campaigns.size ? `<div class="am-bulk"><b>${am.sel.campaigns.size} selected</b><button type="button" class="btn btn-g" onclick="amBulk('PAUSED')">Pause</button><button type="button" class="btn btn-g" onclick="amBulk('ACTIVE')">Turn on</button><span class="am-grow"></span><a onclick="amClearSel('campaigns')">Clear</a></div>` : "";
+  const body = lvl === "campaigns" && rows.length ? amCampaignTable(rows, tot, allChecked)
+    : rows.length
     ? `<div class="am-table${lvl === "ads" ? " ads" : ""}${am.showLpv ? " lpv" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
     : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
 
-  root.innerHTML = `${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${body}
+  root.innerHTML = `${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${bulk}${body}
     <div class="am-stamp">Live from Meta · updated ${ago(new Date(am.at).toISOString())} · switches pause/resume on Meta itself</div>`;
 }
 
@@ -5330,7 +5422,7 @@ async function amSaveMsg(adId) {
 
 function amSetLevel(l) { am.level = l; amDraw(); }
 function amSetFilter(f) { am.filter = f; amDraw(); }
-function amSetRange(r) { am.range = r; am.at = 0; amFetch(); }
+function amSetRange(r) { if (!r) return; am.range = r; am.at = 0; amFetch(); }
 function amToggleSel(level, id, on) {
   on ? am.sel[level].add(id) : am.sel[level].delete(id);
   if (level === "campaigns") amPruneSelection();
