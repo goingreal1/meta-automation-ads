@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revora · interface redesign preview</title>
+<style>
+:root{
+  --bg:#f5f5f7; --card:#fff; --line:rgba(0,0,0,.07); --line2:rgba(0,0,0,.12);
+  --text:#1d1d1f; --text2:#6e6e73; --text3:#a1a1a6;
+  --blue:#1877F2; --blueDk:#0f5fd1; --blueBg:rgba(24,119,242,.10);
+  --green:#28a745; --greenBg:#e6f6ec; --amber:#b7791f; --amberBg:#fff3d6; --red:#d93025; --redBg:#fdecea;
+  --r:14px; --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px -12px rgba(0,0,0,.12);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);color:var(--text);background:#dfe3ea;font-size:14px;-webkit-font-smoothing:antialiased;padding:28px;}
+.win{max-width:1400px;margin:0 auto;height:880px;display:flex;background:var(--bg);border-radius:14px;overflow:hidden;box-shadow:0 40px 90px -30px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.18);}
+/* sidebar */
+.side{width:232px;flex:none;background:rgba(246,246,248,.86);backdrop-filter:saturate(180%) blur(20px);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 10px;overflow:auto;}
+.lights{display:flex;gap:8px;padding:2px 8px 16px}.lights i{width:12px;height:12px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.brand{font:700 17px var(--font);letter-spacing:-.02em;padding:0 10px 12px}
+.grp{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;padding:14px 10px 5px}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;color:var(--text);font-size:13.5px;cursor:pointer;margin-bottom:1px}
+.nav a svg{width:17px;height:17px;color:var(--text2);flex:none}
+.nav a:hover{background:rgba(0,0,0,.05)}
+.nav a.on{background:var(--blue);color:#fff}.nav a.on svg{color:#fff}
+.me{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(0,0,0,.04)}
+.av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#6ea8ff,#1877F2);color:#fff;display:grid;place-items:center;font-weight:600;font-size:12px}
+.me b{display:block;font-size:12.5px}.me small{color:var(--text2);font-size:11px}
+/* main */
+.main{flex:1;min-width:0;overflow:auto;padding:26px 30px 40px}
+.view{display:none}.view.on{display:block}
+h1{font-size:28px;font-weight:700;letter-spacing:-.025em}
+.sub{color:var(--text2);margin:4px 0 20px;display:flex;align-items:center;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:99px;padding:3px 10px;font-size:12px;color:var(--text2)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.seg{display:inline-flex;background:rgba(0,0,0,.06);border-radius:9px;padding:2px}
+.seg button{border:0;background:transparent;font:500 12.5px var(--font);padding:5px 13px;border-radius:7px;color:var(--text2);cursor:pointer}
+.seg button.on{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.input{display:flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line2);border-radius:9px;padding:6px 11px;color:var(--text3);font-size:13px;min-width:200px}
+.input svg{width:15px;height:15px}
+.btn{border:1px solid var(--line2);background:#fff;color:var(--text);font:500 13px var(--font);padding:7px 14px;border-radius:9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn.p{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn.p:hover{background:var(--blueDk)}
+.btn.s{padding:4px 10px;font-size:12px}
+.sp{flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.kpi{padding:14px 16px}.kpi small{display:block;color:var(--text2);font-size:12px;margin-bottom:6px}.kpi b{font-size:22px;letter-spacing:-.02em}.kpi em{display:block;font-style:normal;font-size:12px;color:var(--green);margin-top:3px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11.5px;font-weight:600;color:var(--text2);padding:10px 14px;border-bottom:1px solid var(--line);background:#fafafc}
+td{padding:12px 14px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.nm b{display:block;font-weight:600}.nm small{color:var(--text2)}
+.pill{display:inline-block;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px}
+.pill.g{background:var(--greenBg);color:#1c7a3a}.pill.a{background:var(--amberBg);color:var(--amber)}.pill.r{background:var(--redBg);color:var(--red)}.pill.b{background:var(--blueBg);color:var(--blue)}.pill.n{background:rgba(0,0,0,.06);color:var(--text2)}
+.tog{width:38px;height:22px;border-radius:99px;background:#d1d1d6;position:relative;display:inline-block;flex:none}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:.15s}
+.tog.on{background:var(--green)}.tog.on::after{left:18px}
+.cb{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line2);display:inline-block;vertical-align:middle}
+.cb.on{background:var(--blue);border-color:var(--blue);box-shadow:inset 0 0 0 2px #fff}
+.spark{width:84px;height:26px}
+.bulk{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--blueBg);border:1px solid rgba(24,119,242,.25);border-radius:11px;margin-bottom:12px;color:var(--blue);font-weight:600;font-size:13px}
+/* launch */
+.steps{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
+.step{display:flex;align-items:center;gap:8px;padding:6px 13px 6px 7px;border-radius:99px;background:#fff;border:1px solid var(--line);font-size:12.5px;color:var(--text2)}
+.step i{width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.08);display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700}
+.step.done i{background:var(--green);color:#fff}.step.on{border-color:var(--blue);color:var(--text);box-shadow:0 0 0 3px var(--blueBg)}.step.on i{background:var(--blue);color:#fff}
+.launch{display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start}
+.sec{padding:18px 20px;margin-bottom:14px}.sec h3{font-size:15px;margin-bottom:3px}.sec p.h{color:var(--text2);font-size:12.5px;margin-bottom:14px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label.l{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:5px}
+.sel{background:#fff;border:1px solid var(--line2);border-radius:9px;padding:8px 11px;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+.chips{display:flex;flex-wrap:wrap;gap:7px}.chips .c{background:var(--blueBg);color:var(--blue);padding:5px 11px;border-radius:99px;font-size:12.5px;font-weight:500}
+.chips .c.o{background:#fff;border:1px dashed var(--line2);color:var(--text2)}
+.ai{display:flex;gap:11px;background:linear-gradient(135deg,#eef5ff,#f6f0ff);border:1px solid rgba(24,119,242,.2);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:12.5px;color:#2b3a55}
+.ai b{color:var(--blueDk)}
+.range{height:5px;border-radius:99px;background:rgba(0,0,0,.1);position:relative;margin:14px 6px 8px}.range i{position:absolute;left:22%;right:30%;top:0;bottom:0;background:var(--blue);border-radius:99px}.range u{position:absolute;top:-6px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.phone{width:240px;margin:0 auto;border:8px solid #1d1d1f;border-radius:30px;background:#fff;overflow:hidden}
+.phone .top{padding:10px 12px;display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600}
+.phone .img{height:170px;background:linear-gradient(135deg,#9ec5ff,#1877F2 60%,#0b3e91)}
+.phone .cta{margin:10px 12px 12px;background:var(--blue);color:#fff;text-align:center;border-radius:7px;padding:7px;font-size:12px;font-weight:600}
+.foot{display:flex;gap:10px;justify-content:flex-end;margin-top:6px}
+/* websites */
+.sites{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.site{padding:0;overflow:hidden}
+.thumb{height:150px;background:#eef2f9;padding:14px 16px;position:relative}
+.thumb .w{background:#fff;border-radius:8px;height:100%;box-shadow:0 4px 14px -6px rgba(0,0,0,.25);overflow:hidden}
+.thumb .w b{display:block;height:9px;background:#f0f0f3}.thumb .w s{display:block;height:62px;margin:8px;border-radius:5px;background:linear-gradient(135deg,var(--a),var(--b))}.thumb .w u{display:block;height:6px;margin:5px 8px;background:#e8e8ec;border-radius:3px;width:70%}.thumb .w u+u{width:48%}
+.site .body{padding:14px 16px 16px}.site h4{font-size:15px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.url{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);background:var(--bg);border-radius:8px;padding:5px 9px;margin:8px 0 10px}
+.stats{display:flex;gap:16px;font-size:12px;color:var(--text2);margin-bottom:12px}.stats b{color:var(--text);font-size:13px}
+.acts{display:flex;gap:8px}
+.new{display:grid;place-items:center;min-height:300px;border:1.5px dashed var(--line2);background:transparent;box-shadow:none;color:var(--text2);text-align:center}
+/* settings */
+.set{display:grid;grid-template-columns:200px 1fr;gap:22px}
+.sl a{display:flex;gap:10px;align-items:center;padding:8px 11px;border-radius:9px;font-size:13.5px;margin-bottom:2px;cursor:pointer}
+.sl a.on{background:var(--blueBg);color:var(--blue);font-weight:600}.sl svg{width:17px;height:17px}
+.gh{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin:0 6px 7px}
+.grp2{margin-bottom:22px}
+.item{display:flex;align-items:center;gap:14px;padding:13px 16px;border-bottom:1px solid var(--line)}.item:last-child{border:0}
+.ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none}.ic svg{width:18px;height:18px}
+.item .t{flex:1;min-width:0}.item .t b{display:block;font-weight:600;font-size:13.5px}.item .t small{color:var(--text2);font-size:12px}
+.ok{color:var(--green);font-weight:600;font-size:12.5px}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7a2 2 0 011.7 2z"/></symbol>
+<symbol id="i-mega" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z"/><path d="M15 9a4 4 0 010 6"/><path d="M18 6a8 8 0 010 12"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M16 13h2M2 10h20M6 6V4h12v2"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v9"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20M12 2a15 15 0 000 20"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 01-12 0V8z"/></symbol>
+</defs></svg>
+
+<div class="win">
+  <aside class="side">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="brand">Beoliv Naturals</div>
+    <div class="nav">
+      <div class="grp" style="padding-top:0">Overview</div>
+      <a data-go="overview"><svg><use href="#i-grid"/></svg>Overview</a>
+      <a><svg><use href="#i-cart"/></svg>Orders</a>
+      <a><svg><use href="#i-phone"/></svg>AI Call Logs</a>
+      <div class="grp">Ads &amp; Growth</div>
+      <a data-go="campaigns"><svg><use href="#i-mega"/></svg>Campaigns</a>
+      <a data-go="launch"><svg><use href="#i-plus"/></svg>New campaign</a>
+      <a><svg><use href="#i-grid"/></svg>Leaderboard</a>
+      <div class="grp">Business</div>
+      <a><svg><use href="#i-wallet"/></svg>Wallet</a>
+      <a><svg><use href="#i-box"/></svg>Products</a>
+      <a><svg><use href="#i-chat"/></svg>Conversations</a>
+      <a data-go="websites"><svg><use href="#i-globe"/></svg>Websites</a>
+      <a data-go="settings"><svg><use href="#i-gear"/></svg>Settings</a>
+    </div>
+    <div class="me"><div class="av">AN</div><div><b>Ada Nwosu</b><small>Admin</small></div></div>
+  </aside>
+  <main class="main">
+
+  <!-- CAMPAIGNS -->
+  <section class="view" id="v-campaigns">
+    <h1>Campaigns</h1>
+    <div class="sub"><span class="chip"><span class="dot"></span>Muse · pixel 843763298825904</span><span class="chip">Last synced 2 min ago</span></div>
+    <div class="toolbar">
+      <div class="seg"><button>Today</button><button class="on">7 days</button><button>30 days</button></div>
+      <div class="input"><svg><use href="#i-search"/></svg>Search campaigns</div>
+      <button class="btn">Status: All ▾</button>
+      <span class="sp"></span>
+      <button class="btn">Refresh</button>
+      <button class="btn p">＋ New campaign</button>
+    </div>
+    <div class="kpis">
+      <div class="card kpi"><small>Spent</small><b>₦482,000</b><em>₦68,400 today</em></div>
+      <div class="card kpi"><small>Conversations</small><b>2,812</b><em>₦121 each</em></div>
+      <div class="card kpi"><small>Website purchases</small><b>62</b><em>₦2,290 each</em></div>
+      <div class="card kpi"><small>Real ROAS</small><b style="color:var(--blue)">6.4x</b><em>₦3.09M delivered</em></div>
+    </div>
+    <div class="bulk">2 selected <span style="font-weight:400;color:var(--text2)">·</span> <a class="btn s" style="color:var(--text)">Pause</a><a class="btn s" style="color:var(--text)">Edit message</a><a class="btn s" style="color:var(--text)">Change image</a><span class="sp"></span><span style="font-weight:400;color:var(--text2)">Clear</span></div>
+    <div class="card"><table>
+      <tr><th style="width:34px"></th><th>Campaign</th><th>Type</th><th>Budget / day</th><th>Spent</th><th>Results</th><th>Cost / result</th><th>7-day trend</th><th>Active</th></tr>
+      <tr><td><span class="cb on"></span></td><td class="nm"><b>Body cream · Women 25–44</b><small>3 ad sets · 6 ads</small></td><td><span class="pill b">WhatsApp</span></td><td>₦30,000</td><td>₦182,000</td><td>1,504 chats</td><td>₦121</td><td><svg class="spark" viewBox="0 0 84 26"><path d="M0 20L14 17 28 19 42 11 56 13 70 6 84 3" fill="none" stroke="#1877F2" stroke-width="2" stroke-linejoin="round"/></svg></td><td><span class="tog on"></span></td></tr>
+      <tr><td><span class="cb on"></span></td><td class="nm"><b>Body cream · Lagos broad</b><small>2 ad sets · 4 ads</small></td><td><span class="pill b">WhatsApp</span></td><td>₦20,000</td><td>₦121,500</td><td>1,004 chats</td><td>₦121</td><td><svg class="spark" viewBox="0 0 84 26"><path d="M0 18L14 19 28 14 42 15 56 9 70 10 84 7" fill="none" stroke="#1877F2" stroke-width="2" stroke-linejoin="round"/></svg></td><td><span class="tog on"></span></td></tr>
+      <tr><td><span class="cb"></span></td><td class="nm"><b>Body cream · Website sales</b><small>2 ad sets · 3 ads</small></td><td><span class="pill a">Website</span></td><td>₦15,000</td><td>₦86,000</td><td>38 purchases</td><td>₦2,263</td><td><svg class="spark" viewBox="0 0 84 26"><path d="M0 22L14 18 28 20 42 12 56 14 70 8 84 9" fill="none" stroke="#1877F2" stroke-width="2" stroke-linejoin="round"/></svg></td><td><span class="tog on"></span></td></tr>
+      <tr><td><span class="cb"></span></td><td class="nm"><b>Herbal tea · Website sales</b><small>1 ad set · 2 ads</small></td><td><span class="pill a">Website</span></td><td>₦10,000</td><td>₦56,000</td><td>24 purchases</td><td>₦2,333</td><td><svg class="spark" viewBox="0 0 84 26"><path d="M0 12L14 14 28 11 42 16 56 15 70 18 84 17" fill="none" stroke="#e0a030" stroke-width="2" stroke-linejoin="round"/></svg></td><td><span class="tog on"></span></td></tr>
+      <tr><td><span class="cb"></span></td><td class="nm"><b>Hair oil · Retargeting</b><small>Paused by kill rule · cost / chat above ₦400</small></td><td><span class="pill b">WhatsApp</span></td><td>₦5,000</td><td>₦36,500</td><td>80 chats</td><td style="color:var(--red);font-weight:600">₦456</td><td><svg class="spark" viewBox="0 0 84 26"><path d="M0 6L14 8 28 10 42 14 56 17 70 21 84 23" fill="none" stroke="#d93025" stroke-width="2" stroke-linejoin="round"/></svg></td><td><span class="tog"></span></td></tr>
+    </table></div>
+  </section>
+
+  <!-- LAUNCH -->
+  <section class="view" id="v-launch">
+    <h1>New campaign</h1>
+    <div class="sub">Set it up in a few steps. Your ads start paused until you approve them.</div>
+    <div class="steps"><div class="step done"><i>✓</i>Goal</div><div class="step done"><i>✓</i>Product</div><div class="step on"><i>3</i>Audience</div><div class="step"><i>4</i>Creative</div><div class="step"><i>5</i>Budget</div><div class="step"><i>6</i>Review</div></div>
+    <div class="launch">
+      <div>
+        <div class="ai"><div style="font-size:18px">✨</div><div><b>Suggested audience.</b> Women 25–44 in Lagos and Abuja. It matches the last 3 winning ad sets for Body cream (₦121 per chat).<br><a class="btn s" style="margin-top:8px">Use this audience</a></div></div>
+        <div class="card sec"><h3>Where do you want customers to go?</h3><p class="h">This decides how the campaign is optimised.</p>
+          <div class="seg"><button class="on">Messages on WhatsApp</button><button>Purchases on my website</button></div>
+          <div class="row2" style="margin-top:14px"><div><label class="l">Ad account</label><div class="sel">Muse<span style="color:var(--text3)">▾</span></div></div><div><label class="l">WhatsApp number</label><div class="sel">+234 801 234 5678<span style="color:var(--text3)">▾</span></div></div></div>
+        </div>
+        <div class="card sec"><h3>Audience</h3><p class="h">Who should see this ad.</p>
+          <label class="l">Locations</label><div class="chips" style="margin-bottom:16px"><span class="c">Lagos ✕</span><span class="c">Abuja ✕</span><span class="c o">＋ Add</span></div>
+          <div class="row2"><div><label class="l">Age · 25 to 44</label><div class="range"><i></i><u style="left:22%"></u><u style="right:30%;left:auto"></u></div></div><div><label class="l">Gender</label><div class="seg"><button>All</button><button class="on">Women</button><button>Men</button></div></div></div>
+          <label class="l" style="margin-top:16px">Interests</label><div class="chips"><span class="c">Skin care ✕</span><span class="c">Beauty ✕</span><span class="c">Natural products ✕</span><span class="c o">＋ Search interests</span></div>
+        </div>
+        <div class="foot"><button class="btn">Back</button><button class="btn">Save draft</button><button class="btn p">Continue</button></div>
+      </div>
+      <div>
+        <div class="card sec"><h3>Preview</h3><p class="h">How your ad looks in the feed.</p>
+          <div class="phone"><div class="top"><div class="av" style="width:24px;height:24px;font-size:9px">BN</div>Beoliv Naturals<span style="margin-left:auto;color:var(--text3);font-weight:400">Sponsored</span></div><div style="padding:0 12px 8px;font-size:11.5px;color:#444">Soft, glowing skin in 14 days. Message us to order.</div><div class="img"></div><div class="cta">Send message</div></div>
+        </div>
+        <div class="card sec" style="margin-bottom:0"><h3>Estimated reach</h3><p class="h">Per day at ₦20,000</p><b style="font-size:22px">38,000 – 112,000</b><div style="color:var(--text2);font-size:12px;margin-top:4px">people · about 140 to 230 chats</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WEBSITES -->
+  <section class="view" id="v-websites">
+    <h1>Websites</h1>
+    <div class="sub">Pages that sell for you. Every order lands in Orders.</div>
+    <div class="toolbar"><div class="seg"><button class="on">My websites</button><button>Tracking codes</button></div><span class="sp"></span><button class="btn p">＋ New website</button></div>
+    <div class="sites">
+      <div class="card site"><div class="thumb" style="--a:#9ec5ff;--b:#1877F2"><div class="w"><b></b><s></s><u></u><u></u></div></div><div class="body"><h4>bodycream <span class="pill g">Live</span></h4><div class="url"><svg width="14" height="14"><use href="#i-globe"/></svg>outreachhq.xyz<span class="sp"></span>Copy</div><div class="stats"><span><b>3</b> pages</span><span><b>12</b> orders</span><span><b>₦110,000</b></span></div><div class="acts"><button class="btn p s">Edit</button><button class="btn s">Links</button><button class="btn s">Advertise</button></div></div></div>
+      <div class="card site"><div class="thumb" style="--a:#bfe8d0;--b:#2f9e63"><div class="w"><b></b><s></s><u></u><u></u></div></div><div class="body"><h4>Beoliv test <span class="pill g">Live</span></h4><div class="url"><svg width="14" height="14"><use href="#i-globe"/></svg>revora-sites.vercel.app/s/beoliv-test<span class="sp"></span>Copy</div><div class="stats"><span><b>1</b> page</span><span><b>0</b> orders</span><span style="color:var(--amber)">⚠ No product yet</span></div><div class="acts"><button class="btn p s">Edit</button><button class="btn s">Links</button><button class="btn s">Advertise</button></div></div></div>
+      <div class="card site"><div class="thumb" style="--a:#ffd9a8;--b:#e07b24"><div class="w"><b></b><s></s><u></u><u></u></div></div><div class="body"><h4>Herbal tea <span class="pill n">Draft</span></h4><div class="url"><svg width="14" height="14"><use href="#i-globe"/></svg>revora-sites.vercel.app/s/tea<span class="sp"></span>Copy</div><div class="stats"><span><b>2</b> pages</span><span><b>0</b> orders</span><span>Not published</span></div><div class="acts"><button class="btn p s">Edit</button><button class="btn s">Links</button><button class="btn s">Advertise</button></div></div></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="v-settings">
+    <h1>Settings</h1>
+    <div class="sub">Ad accounts, domains, alerts and team.</div>
+    <div class="set">
+      <div class="sl"><a class="on"><svg><use href="#i-plug"/></svg>Ad accounts</a><a><svg><use href="#i-globe"/></svg>Domains</a><a><svg><use href="#i-bell"/></svg>Automation &amp; alerts</a><a><svg><use href="#i-user"/></svg>Business &amp; team</a></div>
+      <div>
+        <div class="grp2"><div class="gh">Your ad accounts</div><div class="card">
+          <div class="item"><div class="ic" style="background:#1877F2"><svg><use href="#i-mega"/></svg></div><div class="t"><b>Muse</b><small>act_1029384756 · Balance ₦214,300</small></div><span class="pill g">Active</span><button class="btn s">Verify</button><button class="btn s">Remove</button></div>
+          <div class="item"><div class="ic" style="background:#8e8e93"><svg><use href="#i-plug"/></svg></div><div class="t"><b>Pixel</b><small>Muse · 843763298825904</small></div><span class="ok">✓ Connected</span></div>
+          <div class="item"><div class="ic" style="background:#2f9e63"><svg><use href="#i-chat"/></svg></div><div class="t"><b>Facebook page &amp; WhatsApp</b><small>Beoliv Naturals · +234 801 234 5678</small></div><span class="ok">✓ Connected</span></div>
+        </div></div>
+        <div class="grp2"><div class="gh">Domains</div><div class="card">
+          <div class="item"><div class="ic" style="background:#0a84ff"><svg><use href="#i-globe"/></svg></div><div class="t"><b>outreachhq.xyz</b><small>Main site: bodycream</small></div><span class="pill g">Live</span><button class="btn s">Check</button></div>
+          <div class="item"><div class="t" style="padding-left:48px"><small>Add another domain to show more sites.</small></div><button class="btn s">＋ Connect domain</button></div>
+        </div></div>
+        <div class="grp2"><div class="gh">Notifications</div><div class="card">
+          <div class="item"><div class="ic" style="background:#ff9f0a"><svg><use href="#i-bell"/></svg></div><div class="t"><b>New customer messages</b><small>Alert me on this device</small></div><span class="tog on"></span></div>
+          <div class="item"><div class="ic" style="background:#ff453a"><svg><use href="#i-wallet"/></svg></div><div class="t"><b>Low ad balance</b><small>When an account is nearly empty</small></div><span class="tog on"></span></div>
+          <div class="item"><div class="ic" style="background:#30b350"><svg><use href="#i-cart"/></svg></div><div class="t"><b>Payment received</b><small>When a customer's transfer is matched</small></div><span class="tog on"></span></div>
+          <div class="item"><div class="ic" style="background:#8e8e93"><svg><use href="#i-mega"/></svg></div><div class="t"><b>Kill rule paused an ad</b><small>Tell me what was stopped and why</small></div><span class="tog"></span></div>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+</div>
+<script>
+(function(){
+  function show(v){document.querySelectorAll('.view').forEach(function(x){x.classList.toggle('on',x.id==='v-'+v)});
+    document.querySelectorAll('.nav a[data-go]').forEach(function(a){a.classList.toggle('on',a.dataset.go===v)});location.hash=v;}
+  document.querySelectorAll('.nav a[data-go]').forEach(function(a){a.addEventListener('click',function(){show(a.dataset.go)})});
+  show((location.hash||'#campaigns').slice(1).replace('overview','campaigns'));
+})();
+</script></body></html>
