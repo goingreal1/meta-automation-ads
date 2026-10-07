@@ -37,13 +37,28 @@ const hex = (v: any, d: string) => (/^#[0-9a-fA-F]{6}$/.test(String(v ?? "")) ? 
 const plain = (s: any, max: number) => String(s ?? "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, max);
 
 async function ask(system: string, user: string, model: string, max = 3500): Promise<any> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST", headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model, temperature: 0.5, max_tokens: max, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
-  });
-  if (!res.ok) throw new Error("The AI service is busy. Please try again in a moment.");
-  const j = await res.json();
-  try { return JSON.parse(j.choices?.[0]?.message?.content ?? "{}"); } catch { throw new Error("The AI answered in a way I couldn't read. Please try again."); }
+  let lastErr = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST", headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model, temperature: 0.5, max_tokens: max, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
+    });
+    if (res.ok) {
+      const j = await res.json();
+      try { return JSON.parse(j.choices?.[0]?.message?.content ?? "{}"); } catch { throw new Error("The AI answered in a way I couldn't read. Please try again."); }
+    }
+    const t = await res.text().catch(() => "");
+    let code = "", msg = "";
+    try { const e = JSON.parse(t)?.error; code = String(e?.code ?? e?.type ?? ""); msg = String(e?.message ?? ""); } catch { /* not json */ }
+    lastErr = `${res.status} ${code} ${msg}`.trim();
+    console.error("OpenAI error", model, lastErr);
+    if (res.status === 429 && /quota|billing/i.test(code + msg)) throw new Error("The AI account has run out of credit. Please top up the OpenAI billing, then try again.");
+    if (res.status === 401) throw new Error("The AI key on the server isn't valid. Please check the OPENAI_API_KEY secret.");
+    if (res.status === 404 || /model/i.test(code)) throw new Error(`The AI model "${model}" isn't available for this key (${code || res.status}).`);
+    if (res.status < 500 && res.status !== 429) break;
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  throw new Error(`The AI service is busy (${lastErr.slice(0, 120) || "no details"}). Please try again in a moment.`);
 }
 
 const RULES = `Hard rules for all copy:

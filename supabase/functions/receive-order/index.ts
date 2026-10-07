@@ -262,8 +262,16 @@ Deno.serve(async (req: Request) => {
       if (!capiPixelId) capiPixelId = settings?.meta_pixel_id ?? null;
       if (!capiAccessToken) capiAccessToken = settings?.meta_access_token ?? null;
     }
-    if (!capiPixelId) capiPixelId = META_PIXEL_ID;
-    if (!capiAccessToken) capiAccessToken = META_ACCESS_TOKEN;
+    // The global env pixel/token belong to the platform's own (first) company only. Any other company that has not
+    // connected its own pixel and token must NOT fall back to them: that would send its customers' purchases to
+    // someone else's pixel (and use someone else's token).
+    if (!capiPixelId || !capiAccessToken) {
+      const { data: firstProfile } = await supabase.from('profiles').select('company_id').order('created_at', { ascending: true }).limit(1).maybeSingle();
+      if (companyId && firstProfile?.company_id === companyId) {
+        if (!capiPixelId) capiPixelId = META_PIXEL_ID || null;
+        if (!capiAccessToken) capiAccessToken = META_ACCESS_TOKEN || null;
+      }
+    }
 
     let capiSuccess = false;
 
