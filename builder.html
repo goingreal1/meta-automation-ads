@@ -849,6 +849,17 @@ input,select,textarea{font:inherit}
     }
     ed.on("canvas:frame:load", attach); ed.on("load", attach); attach();
   }
+  // scroll the editing view to a named section (what a visitor's tap does), with a way back
+  function jumpEditorTo(id, fromEl) {
+    var doc; try { doc = S.editor.Canvas.getDocument(); } catch (e) { return false; }
+    var t = doc && doc.getElementById(id);
+    if (!t || (fromEl && t.contains(fromEl))) { if (!t) toast("There is no section named <b>#" + esc(id) + "</b> on this page yet. Name one in its Content tab."); return false; }
+    var scroller = doc.scrollingElement || doc.documentElement, from = scroller.scrollTop;
+    scroller.scrollTo({ top: Math.max(0, t.getBoundingClientRect().top + from - 70), behavior: "smooth" });
+    toast("Jumped to <b>#" + esc(id) + "</b> &nbsp;<a href=\"#\" id=\"jmpBack\" style=\"color:var(--ac);font-weight:700\">Back to the button</a>", 6000);
+    var bk = document.getElementById("jmpBack"); if (bk) bk.onclick = function (ev) { ev.preventDefault(); scroller.scrollTo({ top: from, behavior: "smooth" }); $("#toast").classList.remove("on"); };
+    return true;
+  }
   /* "+ Add block" under the last block: click it (or the empty page below) to add something at the end */
   function wireEndAdd() {
     var ed = S.editor, btn = $("#endAdd");
@@ -874,16 +885,11 @@ input,select,textarea{font:inherit}
       doc.addEventListener("click", function (e) {
         var a = e.target.closest && e.target.closest("a[href^='#']"); if (!a) return;
         var id = (a.getAttribute("href") || "").slice(1); if (!id || /^rv-popup/.test(id)) return;
-        var t = doc.getElementById(id); if (!t || t.contains(a)) return;
-        var scroller = doc.scrollingElement || doc.documentElement, from = scroller.scrollTop;
-        var top = t.getBoundingClientRect().top + from - 70;
-        scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
-        toast("Jumped to <b>#" + esc(id) + "</b> &nbsp;<a href=\"#\" id=\"jmpBack\" style=\"color:var(--ac);font-weight:700\">Back to the button</a>", 6000);
-        var bk = document.getElementById("jmpBack"); if (bk) bk.onclick = function (ev) { ev.preventDefault(); scroller.scrollTo({ top: from, behavior: "smooth" }); $("#toast").classList.remove("on"); };
+        jumpEditorTo(id, a);
       }, true);
       doc.addEventListener("click", function (e) { if (e.target === doc.body || e.target === doc.documentElement) { var last = ed.getWrapper().components().length; if (last) { var l = ed.getWrapper().components().at(last - 1).getEl(); if (l && e.clientY > l.getBoundingClientRect().bottom) openPicker(null); } } }, true);
     }
-    ed.on("canvas:frame:load", attach); ed.on("canvas:frame:load:body", attach); ed.on("load", attach); attach(); soon();
+    ed.on("canvas:frame:load", attach); ed.on("canvas:frame:load:body", attach); ed.on("load", attach); ed.on("component:selected component:hover", attach); attach(); soon();
   }
   function wireHandles() {
     var ed = S.editor;
@@ -1001,12 +1007,17 @@ input,select,textarea{font:inherit}
     $("#traits").style.display = c && kind === "traits" ? "" : "none";
     if (!c) return;
     var h = addRow(c), a = c.getAttributes();
-    var isFormEl = (a["data-rv-form"] !== undefined);
-    if ((c.parent() === ed.getWrapper() || isFormEl) && kind !== "text" && kind !== "link" && kind !== "image") {
-      var named = a["data-rv-anchor"] || a.id === "order" || a.id === "packages" || hasForm(c) || hasPkg(c);
-      var shownId = named ? (a.id || "") : "";
-      if (isFormEl && !a["data-rv-anchor"]) { var ts = topSectionOf(c), tid = (ts.getAttributes() || {}).id; shownId = tid && (tid === "order" || (ts.getAttributes() || {})["data-rv-anchor"]) ? tid : ""; }
-      h += F("Jump-to name", '<input data-f="anchor" maxlength="40" value="' + esc(shownId) + '" placeholder="e.g. form">', "The name buttons use to scroll to this section, for example a button linked to #" + esc(shownId || "form") + ". Change it to anything you like: buttons that pointed at the old name are updated for you.");
+    if (c.parent() && kind !== "link") {
+      var tgt = topSectionOf(c), ta = tgt.getAttributes() || {};
+      var named = ta["data-rv-anchor"] || ta.id === "order" || ta.id === "packages" || hasForm(tgt) || hasPkg(tgt);
+      var shownId = named ? (ta.id || "") : "";
+      var kindName = hasPkg(tgt) ? "packages section" : hasForm(tgt) ? "order form section" : "section";
+      var pointing = 0; if (shownId) (function walk(k) { k.components().forEach(function (x) { if ((x.getAttributes() || {}).href === "#" + shownId) pointing++; walk(x); }); })(ed.getWrapper());
+      var card = '<div class="fld" style="padding:12px;border:1px solid var(--ac);border-radius:10px;background:var(--acbg)"><b style="font-size:12.5px">Section name <span style="font-weight:500;color:var(--tx2)">(' + kindName + ')</span></b>' +
+        '<div class="hint2" style="margin:6px 0 8px">Give this ' + kindName + ' a short name. Then any button can scroll the visitor here: select the button, open its <b>Content</b> tab and choose this name under <b>Scroll to a section</b>.</div>' +
+        '<input data-f="anchor" maxlength="40" value="' + esc(shownId) + '" placeholder="' + (hasPkg(tgt) ? "packages" : hasForm(tgt) ? "order" : "e.g. reviews") + '">' +
+        '<div class="hint2" style="margin-top:6px">' + (shownId ? "Buttons link to it as <b>#" + esc(shownId) + "</b>. " + pointing + " button" + (pointing === 1 ? "" : "s") + " on this page point here. Rename it any time: those buttons are updated for you." : "No name yet, so no button can scroll here.") + '</div></div>';
+      h += kind === "text" || kind === "image" ? '<details style="margin:0 0 12px"><summary style="cursor:pointer;font-size:12px;color:var(--tx2)">Name the section around this (so buttons can scroll to it)</summary><div style="margin-top:8px">' + card + "</div></details>" : card;
     }
     if (a["data-rv-pkg"]) {
       var nt = ((S.product && S.product.tiers) || []).length;
@@ -1020,7 +1031,7 @@ input,select,textarea{font:inherit}
       }
       if (kind === "link") {
         h += F("Link (where it goes)", '<input data-f="href" value="' + esc(a.href || "") + '" placeholder="https://…  or  #order">',
-          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="pkgs">Packages</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' + jumpPicker(a.href) + drawerPicker(a.href) +
+          '') + '<div class="chips" style="margin:-6px 0 12px"><button data-q="order">Order form</button><button data-q="pkgs">Packages</button><button data-q="wa">WhatsApp</button><button data-q="tel">Call</button><button data-q="popup">Popup</button></div>' + jumpPicker(a.href) + (/^#[A-Za-z0-9_-]+$/.test(a.href || "") && !/^#rv-popup/.test(a.href) ? '<div style="margin:-6px 0 12px"><button class="btn sm" data-act="jumptest">↧ Show me where this goes</button></div>' : "") + drawerPicker(a.href) +
           '<label class="chk"><input type="checkbox" data-f="blank"' + (a.target === "_blank" ? " checked" : "") + '>Open in a new tab</label>'
         var tiers = (S.product && S.product.tiers) || [], curT = String(a["data-rv-tier"] || "");
         h += F("Package this button selects", '<select data-f="tier"><option value="">None (just a link)</option>' + (tiers.length ? tiers.map(function (t, i) { return '<option value="' + (i + 1) + '"' + (curT === String(i + 1) ? " selected" : "") + ">" + (i + 1) + " &middot; " + esc(t.label) + " (" + RV_fmt(t.price_naira, S.product.currency) + ")</option>"; }).join("") : [1, 2, 3, 4, 5, 6].map(function (n) { return '<option value="' + n + '"' + (curT === String(n) ? " selected" : "") + ">Package " + n + "</option>"; }).join("")) + "</select>", tiers.length ? "The order form below picks this package for the customer, so they don't choose twice." : "Add packages to your product, then pick one here. Package 1 is the first one listed on the product.");
@@ -1103,21 +1114,16 @@ input,select,textarea{font:inherit}
     on('[data-f="href"]', "input", function (n) { c.addAttributes({ href: n.value }); });
     on('[data-f="tier"]', "change", function (n) { if (n.value) { c.addAttributes({ "data-rv-tier": n.value }); if (!clean(c.getAttributes().href || "")) c.addAttributes({ href: "#order" }); } else c.removeAttributes(["data-rv-tier"]); });
     on('[data-f="anchor"]', "change", function (n) {
-      var old = (c.getAttributes() || {}).id || "";
+      var tc = topSectionOf(c), ta = tc.getAttributes() || {}, old = ta.id || "";
       var v = n.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-      if (!v && c.parent() === ed.getWrapper()) v = hasPkg(c) ? "packages" : hasForm(c) ? "order" : "";
-      if (v && v !== old && findFirst(function (k) { return k !== c && (k.getAttributes() || {}).id === v; })) { toast("Another section already uses the name “" + esc(v) + "”. Pick a different one."); n.value = old; return; }
+      if (!v) v = hasPkg(tc) ? "packages" : hasForm(tc) ? "order" : "";
+      if (v && v !== old && findFirst(function (k) { return k !== tc && (k.getAttributes() || {}).id === v; })) { toast("Another section already uses the name “" + esc(v) + "”. Pick a different one."); n.value = old; return; }
       n.value = v;
-      if (v) c.addAttributes({ id: v, "data-rv-anchor": "1" }); else dropAnchor(c);
-      var moved = 0, olds = old ? [old] : [];
-      // naming the form widget itself takes over the name of the section around it, so old buttons follow
-      if (v && (c.getAttributes() || {})["data-rv-form"] !== undefined && c.parent() !== ed.getWrapper()) {
-        var sec = topSectionOf(c), sid = (sec.getAttributes() || {}).id;
-        if (sid && sid !== v && (sid === "order" || (sec.getAttributes() || {})["data-rv-anchor"])) { olds.push(sid); dropAnchor(sec); }
-      }
-      olds = olds.filter(function (o) { return o && o !== v; });
-      if (olds.length) (function walk(k) { k.components().forEach(function (x) { var h = (x.getAttributes() || {}).href; if (h && olds.indexOf(h.replace(/^#/, "")) > -1 && h.charAt(0) === "#") { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
-      if (moved) toast(moved + " button" + (moved === 1 ? "" : "s") + " now point" + (moved === 1 ? "s" : "") + " to #" + esc(v) + ".");
+      if (v) tc.addAttributes({ id: v, "data-rv-anchor": "1" }); else dropAnchor(tc);
+      var moved = 0;
+      if (old && old !== v) (function walk(k) { k.components().forEach(function (x) { var hh = (x.getAttributes() || {}).href; if (hh === "#" + old) { x.addAttributes({ href: v ? "#" + v : "#" }); moved++; } walk(x); }); })(ed.getWrapper());
+      toast("Section named <b>#" + esc(v || "—") + "</b>." + (moved ? " " + moved + " button" + (moved === 1 ? "" : "s") + " updated." : ""));
+      renderContent();
     });
     on('[data-f="jump"]', "change", function (n) { if (!n.value) return; c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; });
     on('[data-f="drawer"]', "change", function (n) { if (n.value) { c.addAttributes({ href: n.value }); var hi = $('[data-f="href"]', box); if (hi) hi.value = n.value; } });
@@ -1139,6 +1145,7 @@ input,select,textarea{font:inherit}
     });
     on('[data-f="src"]', "input", function (n) { var v = n.value.trim(); if (v) { c.set("src", v); c.addAttributes({ src: v }); } });
     on('[data-f="alt"]', "input", function (n) { c.addAttributes({ alt: n.value }); });
+    on('[data-act="jumptest"]', "click", function () { jumpEditorTo(String((c.getAttributes() || {}).href || "").slice(1), c.getEl()); });
     on('[data-act="pkgfill"]', "click", function () {
       var id = a["data-rv-pkg"], b = ed.Blocks.get(id); if (!b) return;
       if (!window.confirm("Replace these package cards with your product's packages? Any changes you made inside them will be lost.")) return;
