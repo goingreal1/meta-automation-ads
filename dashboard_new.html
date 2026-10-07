@@ -6533,13 +6533,14 @@ async function bvRenderProductVault(productId) {
     <div style="border:1px solid ${ready ? "var(--accent)" : "var(--border)"};border-radius:12px;padding:12px;background:var(--panel2);margin-bottom:12px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <b style="font-size:13px;">${ready ? "✅ Ready for AI auto-launch" : "AI auto-launch readiness"}</b>
-        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;${ready ? "" : "opacity:.55;"}"><input type="checkbox" id="vaultAuto" ${p.auto_post_enabled ? "checked" : ""} ${ready ? "" : "disabled"}> Let the AI launch tests from this vault</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;${ready ? "" : "opacity:.55;"}"><input type="checkbox" id="vaultAuto" ${p.auto_post_enabled ? "checked" : ""} ${ready ? "" : "disabled"}> Let the AI propose launches from this vault</label>
       </div>
       <div style="display:grid;gap:5px;margin-top:9px;">
         ${chk(assets.length >= 5, `At least 5 creatives <span style="color:var(--muted);">(${assets.length} uploaded)</span>`)}
         ${chk(complete >= 5, `Each with a headline and primary text <span style="color:var(--muted);">(${complete} complete)</span>`)}
         ${chk(hasLink, p.destination_type === "whatsapp" ? "WhatsApp number set" : "Website link set (Landing page URL under More details)")}
       </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;">When it's ready and the switch is on, the AI messages you in the AI chat (and sends a notification) with the creatives it wants to launch. Nothing goes live until you tap <b>Launch them</b>. It does the same right after it pauses an ad that was costing too much, to replace it.</div>
     </div>
     <div class="dz" id="vaultDrop" style="padding:16px;cursor:pointer;" onclick="document.getElementById('vaultFiles').click()">
       <div class="dz-ico">⬆️</div><div class="dz-txt">Upload creatives (images or videos, as many as you like)</div>
@@ -11071,9 +11072,46 @@ function appendProposalCards(list) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+
+// The AI proposes launching fresh vault creatives; nothing goes live until the person taps Confirm.
+function appendLaunchCard(p) {
+  const msgs = document.getElementById("chMsgs");
+  const card = document.createElement("div");
+  card.className = "ch-act-card";
+  const thumbs = (p.previews || []).slice(0, 5).map(v => `
+    <div style="width:64px;flex:none;" title="${escH(v.headline || "")}">
+      <div style="width:64px;height:64px;border-radius:8px;overflow:hidden;background:var(--panel2);border:1px solid var(--border);">${v.type === "video" ? `<video src="${escH(v.url)}" muted style="width:100%;height:100%;object-fit:cover;"></video>` : `<img src="${escH(v.url)}" style="width:100%;height:100%;object-fit:cover;">`}</div>
+      <div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.25;max-height:24px;overflow:hidden;">${escH(v.headline || "")}</div>
+    </div>`).join("");
+  card.innerHTML = `
+    <div class="ch-act-h"><div class="ch-act-ico">🎨</div><div style="min-width:0;">
+      <div class="ch-act-t">Launch ${p.creative_ids.length} fresh creative${p.creative_ids.length === 1 ? "" : "s"} for ${escH(p.product_name || "this product")}</div>
+      <div class="ch-act-s">${escH(p.account_name || "")}${p.reason ? `<br>${escH(p.reason)}` : ""}</div></div></div>
+    <div style="display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px;">${thumbs}</div>
+    <div class="ch-act-btns"><button class="ch-act-no">Not now</button><button class="ch-act-ok">Launch them</button></div>
+    <div class="ch-act-res"></div>`;
+  const ok = card.querySelector(".ch-act-ok"), no = card.querySelector(".ch-act-no"), res = card.querySelector(".ch-act-res");
+  no.onclick = () => { card.querySelector(".ch-act-btns").remove(); res.textContent = "Dismissed."; res.style.color = "var(--muted)"; chInboxResolve(p.inbox_id, "dismissed"); };
+  ok.onclick = async () => {
+    ok.disabled = no.disabled = true; ok.textContent = "Launching…";
+    try {
+      const r = await fetch(`${SUPA_URL}/functions/v1/ai-auto-launch-tests`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json" }, body: JSON.stringify({ creative_ids: p.creative_ids }) }).then(x => x.json());
+      if (r.error) throw new Error(r.error);
+      card.classList.add("done"); card.querySelector(".ch-act-btns").remove();
+      res.textContent = r.message === "No pending creatives to launch" ? "These were already launched." : "✅ Sent to Meta. I'll announce it here when it's live and keep watching it."; res.style.color = "#30d158";
+      chInboxResolve(p.inbox_id, "done");
+    } catch (err) {
+      card.classList.add("fail"); ok.disabled = no.disabled = false; ok.textContent = "Try again";
+      res.textContent = "❌ " + (err.message || "Couldn't launch."); res.style.color = "#ff453a";
+    }
+  };
+  msgs.appendChild(card);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
 // The AI speaks first: things its 5-minute watcher noticed show up here (and as a push).
 const chInboxShown = new Set();
-const CH_INBOX_ICON = { kill_suggestion: "⚠️", auto_killed: "⏸", campaign_live: "🚀", info: "💬" };
+const CH_INBOX_ICON = { kill_suggestion: "⚠️", auto_killed: "⏸", campaign_live: "🚀", launch_suggestion: "🎨", info: "💬" };
 async function chLoadInbox() {
   if (!sessionData?.user?.id) return;
   let rows = [];
@@ -11094,6 +11132,13 @@ async function chLoadInbox() {
       b.style.maxWidth = "92%";
       if (r.kind === "kill_suggestion" && r.status === "open" && r.payload?.object_id) {
         appendProposalCards([{ ...r.payload, inbox_id: r.id }]);
+      } else if (r.kind === "launch_suggestion" && r.status === "open" && r.payload?.creative_ids?.length) {
+        appendLaunchCard({ ...r.payload, inbox_id: r.id });
+      } else if (r.kind === "launch_suggestion" && r.status !== "open") {
+        const n = document.createElement("div");
+        n.className = "ch-time"; n.style.margin = "0 0 6px";
+        n.textContent = r.status === "done" ? "✅ Launched" : r.status === "dismissed" ? "Dismissed" : "";
+        msgs.appendChild(n);
       } else if (r.kind === "kill_suggestion" && r.status !== "open") {
         const n = document.createElement("div");
         n.className = "ch-time"; n.style.margin = "0 0 6px";
