@@ -26,7 +26,9 @@ const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const PAYSTACK_BASE = "https://api.paystack.co";
-const ALLOWED_NAME_PATTERN = /facebook|meta/i;
+// Meta's billing accounts resolve to names like "FACEBOOK NIGERIA LIMITED" / "META PLATFORMS IRELAND LIMITED". Matching a bare "meta" let any
+// account whose name merely contains it (e.g. "Metalworks Ltd") receive a buyer's approved wallet, so match whole words only.
+const ALLOWED_NAME_PATTERN = /\b(facebook|meta platforms|meta ireland)\b|^\s*meta\b/i;
 
 function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -129,6 +131,9 @@ Deno.serve(async (req: Request) => {
           source: "balance",
           amount: Math.round(Number(fr.amount_naira) * 100),
           recipient: recipient?.data?.recipient_code,
+          // A fixed reference per request: Paystack refuses a second transfer with the same reference, so two
+          // simultaneous clicks (or a replayed request) can never pay the same request twice.
+          reference: `rv${String(fr.id).replace(/-/g, "")}`,
           reason: `Meta Ads top-up for ${buyer.name} (request ${fr.id})`,
         }),
       });
