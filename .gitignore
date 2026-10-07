@@ -9,3 +9,6 @@ node_modules/
 
 .vercel
 sites/
+
+# sites-app build output
+sites-app/.vercel/

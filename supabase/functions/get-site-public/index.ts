@@ -22,17 +22,29 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "GET") return json({ error: "GET only" }, 405);
 
   const url = new URL(req.url);
-  const slug = (url.searchParams.get("slug") || "").toLowerCase();
+  let slug = (url.searchParams.get("slug") || "").toLowerCase();
   const pageSlug = (url.searchParams.get("page") || "").toLowerCase();
   const wantPreview = url.searchParams.get("preview") === "1";
-  if (!slug) return json({ error: "?slug= is required" }, 400);
+  // Custom domain: ?host=<hostname>. The host picks the company; with no slug it serves the
+  // domain's default site, with a slug it serves that site only if it belongs to the same company.
+  const host = (url.searchParams.get("host") || "").toLowerCase().replace(/^www\./, "");
+  let domain: { company_id: string; site_id: string | null; status: string } | null = null;
+  if (host) {
+    const { data: d } = await supabase.from("site_domains").select("company_id, site_id, status, hostname").in("hostname", [host, "www." + host]).order("hostname").limit(1).maybeSingle();
+    if (!d || d.status === "error") return json({ error: "Domain not connected" }, 404);
+    domain = d;
+  }
+  if (!slug && !domain) return json({ error: "?slug= is required" }, 400);
 
-  const { data: site } = await supabase
+  let siteQuery = supabase
     .from("sites")
-    .select("id, company_id, name, slug, status, product_id, ad_account_id, purchase_event, settings")
-    .eq("slug", slug)
-    .maybeSingle();
-  if (!site) return json({ error: "Site not found" }, 404);
+    .select("id, company_id, name, slug, status, product_id, ad_account_id, purchase_event, settings");
+  if (slug) siteQuery = siteQuery.eq("slug", slug);
+  else if (domain!.site_id) siteQuery = siteQuery.eq("id", domain!.site_id);
+  else return json({ error: "Site not found" }, 404);
+  const { data: site } = await siteQuery.maybeSingle();
+  if (!site || (domain && site.company_id !== domain.company_id)) return json({ error: "Site not found" }, 404);
+  slug = site.slug;
 
   // Drafts: only the owning company may see them.
   let isOwner = false;

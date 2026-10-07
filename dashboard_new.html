@@ -1965,7 +1965,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -5375,6 +5375,80 @@ async function bvAiSave(numberId) {
   } catch (e) {
     msg.innerHTML = `<div class="msg err" style="display:block;">${escH(e.message || String(e))}</div>`;
   }
+}
+
+// ── CUSTOM DOMAINS (Settings) ─────────────────────────────────────────────────
+// A domain belongs to the company; an owner/admin connects it and can assign it to a media buyer, who then
+// chooses which of their sites it shows. Other sites of the company stay reachable at <domain>/s/<site-slug>.
+async function bvRenderDomains() {
+  const el = document.getElementById("domainsPanel"); if (!el) return;
+  const role = window.myProfile?.role, isAdm = role === "owner" || role === "admin";
+  if (!["owner", "admin", "buyer", "customer_care"].includes(role)) { el.remove(); return; }
+  const [rows, sites, buyers] = await Promise.all([
+    sbQuery("site_domains", "select=*&order=created_at.desc").catch(() => []),
+    sbQuery("sites", "select=id,name,slug,media_buyer_id&order=name.asc").catch(() => []),
+    isAdm ? sbQuery("media_buyers", "select=id,code,name&order=code.asc").catch(() => []) : [],
+  ]);
+  const buyerName = id => { const b = (buyers || []).find(x => x.id === id); return b ? (b.name || b.code) : ""; };
+  const badge = st => st === "active" ? `<span class="badge-ok" style="color:var(--green,#16a34a);font-weight:700;">● Live</span>` : st === "error" ? `<span style="color:var(--red,#dc2626);font-weight:700;">● Problem</span>` : `<span style="color:var(--amber,#d97706);font-weight:700;">● Waiting for DNS</span>`;
+  const siteOpts = sel => `<option value="">— none —</option>` + (sites || []).map(x => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${escH(x.name)}</option>`).join("");
+  const buyerOpts = sel => `<option value="">Whole company</option>` + (buyers || []).map(x => `<option value="${x.id}" ${x.id === sel ? "selected" : ""}>${escH(x.name || x.code)}</option>`).join("");
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Domains</div><div class="ph-count">${(rows || []).length}</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Show your websites on your own domain (like <b>shop.mybrand.com</b>). One domain can serve several sites: connect each name separately (<b>shop.</b>mybrand.com, <b>offers.</b>mybrand.com), or open any site of yours at <b>mybrand.com/s/site-name</b>.</div>
+    ${(rows || []).length ? `<div class="tbl-wrap"><table>
+      <tr><th>Domain</th><th>Status</th><th>Shows site</th>${isAdm ? "<th>Assigned to</th>" : ""}<th></th></tr>
+      ${rows.map(d => `<tr data-dom="${d.id}">
+        <td><b>${escH(d.hostname)}</b>${d.last_error ? `<div style="font-size:10.5px;color:var(--muted);">${escH(d.last_error)}</div>` : ""}</td>
+        <td>${badge(d.status)}</td>
+        <td><select class="dom-site" style="max-width:170px;">${siteOpts(d.site_id)}</select></td>
+        ${isAdm ? `<td><select class="dom-buyer" style="max-width:150px;">${buyerOpts(d.media_buyer_id)}</select></td>` : ""}
+        <td style="white-space:nowrap;"><button class="btn btn-g dom-check" style="padding:3px 9px;font-size:10px;">Check</button>
+          ${isAdm ? `<button class="btn btn-g dom-del" style="padding:3px 9px;font-size:10px;">Remove</button>` : ""}</td>
+      </tr>
+      ${d.status !== "active" ? `<tr><td colspan="${isAdm ? 5 : 4}" style="background:var(--bg2,rgba(0,0,0,.03));font-size:11.5px;">
+        <b>At your domain provider, add:</b>
+        ${(d.dns || []).map(r => `<div style="font-family:monospace;margin-top:3px;">${escH(r.type)} &nbsp; ${escH(r.name)} &nbsp; → &nbsp; ${escH(r.value)}</div>`).join("")}
+        <div style="color:var(--muted);margin-top:4px;">It can take a few minutes (sometimes a few hours) to go live. Press <b>Check</b> afterwards.</div></td></tr>` : ""}`).join("")}
+    </table></div>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">No domains yet.</div>`}
+    ${isAdm ? `
+    <form id="domAddForm" style="margin-top:14px;">
+      <div class="fg">
+        <div class="field"><label>Domain *</label><input id="domHost" required placeholder="shop.mybrand.com"></div>
+        <div class="field"><label>Assign to media buyer</label><select id="domBuyer">${buyerOpts("")}</select></div>
+        <div class="field"><label>Shows site</label><select id="domSite">${siteOpts("")}</select></div>
+      </div>
+      <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;">+ Connect domain</button>
+      <div id="domMsg"></div>
+    </form>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Don't own a domain yet? Buy one, then connect it above:
+      <a href="https://www.namecheap.com/domains/" target="_blank" rel="noopener">Namecheap</a> ·
+      <a href="https://porkbun.com/" target="_blank" rel="noopener">Porkbun</a> ·
+      <a href="https://vercel.com/domains" target="_blank" rel="noopener">Vercel Domains</a> ·
+      <a href="https://www.godaddy.com/domains" target="_blank" rel="noopener">GoDaddy</a></div>` : ""}`;
+  const call = async (body, btn) => {
+    if (btn) { btn.disabled = true; }
+    const r = await sbFn("manage-domain", body);
+    if (btn) btn.disabled = false;
+    if (r.error) { bvToast(r.error, "err"); return null; }
+    return r;
+  };
+  el.querySelectorAll("tr[data-dom]").forEach(tr => {
+    const id = tr.dataset.dom;
+    tr.querySelector(".dom-site").onchange = async e => { if (await call({ action: "assign", id, site_id: e.target.value || null })) bvToast("Saved"); };
+    const bsel = tr.querySelector(".dom-buyer");
+    if (bsel) bsel.onchange = async e => { if (await call({ action: "assign", id, media_buyer_id: e.target.value || null })) bvToast("Saved"); };
+    tr.querySelector(".dom-check").onclick = async e => { if (await call({ action: "check", id }, e.target)) bvRenderDomains(); };
+    const del = tr.querySelector(".dom-del");
+    if (del) del.onclick = async e => { if (confirm("Remove this domain? Pages on it will stop loading.") && await call({ action: "remove", id }, e.target)) bvRenderDomains(); };
+  });
+  const f = document.getElementById("domAddForm");
+  if (f) f.onsubmit = async ev => {
+    ev.preventDefault();
+    const btn = f.querySelector("button[type=submit]");
+    const r = await call({ action: "add", hostname: document.getElementById("domHost").value, media_buyer_id: document.getElementById("domBuyer").value || null, site_id: document.getElementById("domSite").value || null }, btn);
+    if (r) { bvToast("Domain added — now add the DNS record shown below"); bvRenderDomains(); }
+  };
 }
 
 async function bvRenderKillRules() {
@@ -9830,6 +9904,8 @@ async function renderSettings(el) {
     <div class="panel" id="notifPanel"></div>
 
     <div class="panel" id="killRulesPanel"></div>
+
+    <div class="panel" id="domainsPanel"></div>
 
     <div class="panel" id="aiAgentPanel"></div>
 
