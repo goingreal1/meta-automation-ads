@@ -185,6 +185,46 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 .cta-bg img{width:100%;height:100%;object-fit:cover;opacity:.28;}
 .cta-section .container{position:relative;z-index:1;}
 @media (max-width:640px){ .hero-photo{margin-top:36px;} .hero-photo+.mock-wrap{margin-top:-40px;} }
+
+/* ── PRODUCT TOUR (illustrated sample screens) ─────────────────────────────────────────────── */
+.tour-tabs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:0 0 22px;}
+.tour-tab{border:1px solid var(--border);background:#fff;color:var(--text2);font:600 13.5px 'Inter',sans-serif;padding:9px 16px;border-radius:99px;cursor:pointer;transition:all .15s;}
+.tour-tab:hover{border-color:var(--borderStrong);color:var(--text);}
+.tour-tab.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.tour-frame{max-width:980px;margin:0 auto;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 40px 80px -40px rgba(20,19,15,.35);overflow:hidden;}
+.tour-bar{display:flex;align-items:center;gap:7px;padding:11px 14px;background:var(--bg2);border-bottom:1px solid var(--border);}
+.tour-bar i{width:10px;height:10px;border-radius:50%;background:#e4e0d6;display:block;}
+.tour-url{margin-left:12px;font-size:11.5px;color:var(--muted);background:#fff;border:1px solid var(--border);border-radius:6px;padding:3px 12px;}
+.tour-app{display:flex;min-height:430px;}
+.tour-side{width:150px;flex:none;background:var(--bg2);border-right:1px solid var(--border);padding:14px 10px;font-size:12px;color:var(--text2);}
+.tour-side b{display:block;font:700 15px 'Fraunces',serif;color:var(--text);margin:2px 8px 14px;}
+.tour-side div{padding:7px 10px;border-radius:7px;margin-bottom:2px;}
+.tour-side div.on{background:var(--accentBg);color:var(--accent);font-weight:600;}
+.tour-main{flex:1;min-width:0;padding:18px 20px;}
+.tour-main h4{font:600 15px 'Inter',sans-serif;margin-bottom:12px;}
+.tour-panel{display:none;}.tour-panel.on{display:block;}
+.tk{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.tk div{border:1px solid var(--border);border-radius:9px;padding:10px 12px;}
+.tk small{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
+.tk b{font-size:18px;font-weight:700;letter-spacing:-.01em;}
+.tk b.g{color:var(--accent);}
+.tk em{display:block;font-style:normal;font-size:10.5px;color:#2f9e63;margin-top:1px;}
+.tchart{border:1px solid var(--border);border-radius:9px;padding:12px 14px 8px;margin-bottom:12px;}
+.tchart svg{width:100%;height:120px;}
+.ttable{width:100%;border-collapse:collapse;font-size:12px;}
+.ttable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);}
+.ttable td{padding:8px;border-bottom:1px solid #f0ede5;white-space:nowrap;}
+.tp{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:99px;}
+.tp.ok{background:#e4f5ec;color:#1c7a47;}.tp.wait{background:#fff4dc;color:#92620c;}.tp.blue{background:var(--accentBg);color:var(--accent);}.tp.bad{background:#fdeceb;color:#b3382f;}
+.tbar{display:inline-block;height:6px;border-radius:99px;background:var(--accent);vertical-align:middle;}
+.tw{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.tw div{border:1px solid var(--border);border-radius:9px;padding:12px 14px;}
+.tw .big{background:var(--accent);border-color:var(--accent);color:#fff;}
+.tw .big small{color:#cfe1fd;}
+.tw small{display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.tw b{font-size:22px;font-weight:700;}
+.tour-note{text-align:center;font-size:12px;color:var(--muted);margin-top:14px;}
+@media (max-width:760px){.tour-side{display:none;}.tk{grid-template-columns:1fr 1fr;}.tour-main{padding:14px;}.ttable{font-size:11px;}.tour-scroll{overflow-x:auto;}.tour-url{display:none;}}
 </style>
 </head>
 <body>
@@ -196,6 +236,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     <div class="nav-links">
       <a href="#platform">Platform</a>
       <a href="#modules">Modules</a>
+      <a href="#tour">Product</a>
       <a href="#how">How it works</a>
       <a href="#roles">Your team</a>
     </div>
@@ -340,6 +381,111 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 </section>
 
 <!-- HOW IT WORKS -->
+
+<!-- PRODUCT TOUR -->
+<section class="section section-border" id="tour">
+  <div class="container">
+    <div class="section-head center">
+      <div class="section-eyebrow">See it in action</div>
+      <h2 class="serif">One screen for every part of the business</h2>
+      <p>From the first ad click to cash in your wallet. Switch between the views your team uses every day.</p>
+    </div>
+    <div class="tour-tabs" role="tablist">
+      <button class="tour-tab on" data-tour="overview" role="tab">Overview</button>
+      <button class="tour-tab" data-tour="orders" role="tab">Orders</button>
+      <button class="tour-tab" data-tour="wallet" role="tab">Wallet</button>
+      <button class="tour-tab" data-tour="campaigns" role="tab">Campaigns</button>
+    </div>
+    <div class="tour-frame">
+      <div class="tour-bar"><i></i><i></i><i></i><span class="tour-url" id="tourUrl">revora · Overview</span></div>
+      <div class="tour-app">
+        <div class="tour-side"><b>Revora</b><div class="on" data-side="overview">Overview</div><div data-side="orders">Orders</div><div>AI Call Logs</div><div>Delivery</div><div data-side="campaigns">Campaigns</div><div>Leaderboard</div><div data-side="wallet">Wallet</div><div>Websites</div></div>
+        <div class="tour-main">
+
+          <div class="tour-panel on" id="tp-overview">
+            <h4>Overview</h4>
+            <div class="tk">
+              <div><small>Spent · 7 days</small><b>₦482,000</b><em style="color:var(--muted)">today ₦68,400</em></div>
+              <div><small>Orders · 7 days</small><b>214</b><em>▲ 18% vs last week</em></div>
+              <div><small>Real ROAS</small><b class="g">6.4x</b><em style="color:var(--muted)">₦3.09M delivered ÷ spend</em></div>
+              <div><small>Delivery rate</small><b class="g">78%</b><em>▲ 3%</em></div>
+            </div>
+            <div class="tk">
+              <div><small>Conversations</small><b>2,812</b><em style="color:var(--muted)">₦121 each · WhatsApp ads</em></div>
+              <div><small>Landing page views</small><b>5,480</b><em style="color:var(--muted)">₦26 each · website ads</em></div>
+              <div><small>Website purchases</small><b class="g">62</b><em style="color:var(--muted)">₦2,290 each</em></div>
+              <div><small>Clicks that loaded</small><b>72%</b><em>▲ 4%</em></div>
+            </div>
+            <div class="tchart"><small style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;">Ad spend vs cash collected · last 7 days</small>
+              <svg viewBox="0 0 600 120" preserveAspectRatio="none" aria-hidden="true">
+                <defs><linearGradient id="tg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1877F2" stop-opacity=".28"/><stop offset="1" stop-color="#1877F2" stop-opacity="0"/></linearGradient></defs>
+                <path d="M0 95 L100 80 L200 86 L300 52 L400 60 L500 30 L600 14 L600 120 L0 120Z" fill="url(#tg1)"/>
+                <path d="M0 95 L100 80 L200 86 L300 52 L400 60 L500 30 L600 14" fill="none" stroke="#1877F2" stroke-width="2.5" stroke-linejoin="round"/>
+                <path d="M0 108 L100 104 L200 98 L300 92 L400 88 L500 80 L600 74" fill="none" stroke="#9fb4d6" stroke-width="2" stroke-dasharray="5 4"/>
+              </svg></div>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Date</th><th>Spent</th><th>Chats</th><th>Page views</th><th>Website purchases</th><th>Orders</th></tr>
+              <tr><td>Mon</td><td>₦71,200</td><td>412</td><td>790</td><td>9</td><td>31</td></tr>
+              <tr><td>Tue</td><td>₦66,900</td><td>388</td><td>740</td><td>8</td><td>29</td></tr>
+              <tr><td>Wed</td><td>₦74,300</td><td>451</td><td>860</td><td>11</td><td>37</td></tr>
+              <tr><td>Thu</td><td>₦68,000</td><td>398</td><td>770</td><td>9</td><td>30</td></tr>
+              <tr><td>Fri</td><td>₦70,100</td><td>421</td><td>820</td><td>10</td><td>33</td></tr>
+              <tr><td>Sat</td><td>₦64,500</td><td>360</td><td>700</td><td>6</td><td>26</td></tr>
+              <tr><td>Sun</td><td>₦67,000</td><td>382</td><td>800</td><td>9</td><td>28</td></tr>
+              <tr style="font-weight:700;background:var(--bg2)"><td>Total</td><td>₦482,000</td><td>2,812</td><td>5,480</td><td>62</td><td>214</td></tr></table></div>
+          </div>
+
+          <div class="tour-panel" id="tp-orders">
+            <h4>Orders</h4>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Customer</th><th>Source</th><th>Product</th><th>Value</th><th>Agent</th><th>Status</th></tr>
+              <tr><td>Amaka O.</td><td><span class="tp blue">WhatsApp</span></td><td>Body cream · 3 pack</td><td>₦28,500</td><td>Segun</td><td><span class="tp ok">Delivered</span></td></tr>
+              <tr><td>Ibrahim K.</td><td><span class="tp wait">Website</span></td><td>Herbal tea · 1 pack</td><td>₦12,000</td><td>Chidi</td><td><span class="tp blue">On the way</span></td></tr>
+              <tr><td>Blessing A.</td><td><span class="tp wait">Website</span></td><td>Body cream · 5 pack</td><td>₦42,000</td><td>Segun</td><td><span class="tp blue">Valid</span></td></tr>
+              <tr><td>Tunde B.</td><td><span class="tp blue">WhatsApp</span></td><td>Hair oil · 2 pack</td><td>₦19,800</td><td>—</td><td><span class="tp wait">Pending call</span></td></tr>
+              <tr><td>Ngozi E.</td><td><span class="tp wait">Website</span></td><td>Herbal tea · 3 pack</td><td>₦31,500</td><td>Chidi</td><td><span class="tp ok">Delivered</span></td></tr>
+              <tr><td>Femi L.</td><td><span class="tp blue">WhatsApp</span></td><td>Hair oil · 1 pack</td><td>₦10,500</td><td>Segun</td><td><span class="tp bad">Returned</span></td></tr>
+              <tr><td>Zainab M.</td><td><span class="tp blue">WhatsApp</span></td><td>Body cream · 1 pack</td><td>₦11,500</td><td>Chidi</td><td><span class="tp ok">Delivered</span></td></tr></table></div>
+          </div>
+
+          <div class="tour-panel" id="tp-wallet">
+            <h4>Wallet</h4>
+            <div class="tw"><div class="big"><small>Funding wallet</small><b>₦1,250,000</b></div><div><small>Ready to send to Meta</small><b>₦320,000</b></div></div>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Buyer</th><th>Request</th><th>Amount</th><th>Status</th></tr>
+              <tr><td>Tunde</td><td>Ad top-up</td><td>₦150,000</td><td><span class="tp ok">Transferred</span></td></tr>
+              <tr><td>Blessing</td><td>Ad top-up</td><td>₦200,000</td><td><span class="tp blue">Approved</span></td></tr>
+              <tr><td>Chioma</td><td>Ad top-up</td><td>₦120,000</td><td><span class="tp wait">Waiting for approval</span></td></tr>
+              <tr><td>Tunde</td><td>Ad top-up</td><td>₦100,000</td><td><span class="tp ok">Transferred</span></td></tr></table></div>
+          </div>
+
+          <div class="tour-panel" id="tp-campaigns">
+            <h4>Campaigns</h4>
+            <div class="tour-scroll"><table class="ttable"><tr><th>Ad set</th><th>Type</th><th>Spent</th><th>Results</th><th>Cost / result</th><th></th><th>Status</th></tr>
+              <tr><td>Body cream · Women 25–44</td><td><span class="tp blue">WhatsApp</span></td><td>₦182,000</td><td>1,504 chats</td><td>₦121</td><td><span class="tbar" style="width:80px"></span></td><td><span class="tp ok">Active</span></td></tr>
+              <tr><td>Body cream · Lagos broad</td><td><span class="tp blue">WhatsApp</span></td><td>₦121,500</td><td>1,004 chats</td><td>₦121</td><td><span class="tbar" style="width:60px"></span></td><td><span class="tp ok">Active</span></td></tr>
+              <tr><td>Body cream · Website sales</td><td><span class="tp wait">Website</span></td><td>₦86,000</td><td>38 purchases</td><td>₦2,263</td><td><span class="tbar" style="width:70px"></span></td><td><span class="tp ok">Active</span></td></tr>
+              <tr><td>Herbal tea · Website sales</td><td><span class="tp wait">Website</span></td><td>₦56,000</td><td>24 purchases</td><td>₦2,333</td><td><span class="tbar" style="width:36px;background:#e0a030"></span></td><td><span class="tp wait">Watching</span></td></tr>
+              <tr><td>Hair oil · Retargeting</td><td><span class="tp blue">WhatsApp</span></td><td>₦36,500</td><td>80 chats</td><td>₦456</td><td><span class="tbar" style="width:12px;background:#d45a4f"></span></td><td><span class="tp bad">Auto-paused</span></td></tr></table></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="tour-note">Illustrative sample data.</div>
+  </div>
+</section>
+<script>
+(function(){
+  var tabs=document.querySelectorAll('.tour-tab'), titles={overview:'Overview',orders:'Orders',wallet:'Wallet',campaigns:'Campaigns'};
+  function show(k){
+    tabs.forEach(function(t){t.classList.toggle('on',t.dataset.tour===k);});
+    document.querySelectorAll('.tour-panel').forEach(function(p){p.classList.toggle('on',p.id==='tp-'+k);});
+    document.querySelectorAll('.tour-side [data-side]').forEach(function(d){d.classList.toggle('on',d.dataset.side===k);});
+    document.getElementById('tourUrl').textContent='revora · '+titles[k];
+  }
+  tabs.forEach(function(t){t.addEventListener('click',function(){show(t.dataset.tour);});});
+  document.querySelectorAll('.tour-side [data-side]').forEach(function(d){d.style.cursor='pointer';d.addEventListener('click',function(){show(d.dataset.side);});});
+})();
+</script>
+
 <section class="section section-border" id="how">
   <div class="container">
     <div class="section-head center">
