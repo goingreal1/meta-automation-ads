@@ -465,6 +465,7 @@ input,select,textarea{font:inherit}
       sb.from("ad_accounts").select("id,name,nickname,meta_pixel_id").order("created_at")
     ]);
     S.pages = pg.data || []; S.products = pr.data || []; S.accounts = ac.data || [];
+    try { var dm = await sb.from("site_domains").select("hostname,site_id,status").eq("status", "active"); S.domains = dm.data || []; } catch (e) { S.domains = []; }
     if (!S.pages.length) {
       var ins = await sb.from("site_pages").insert({ site_id: siteId, slug: "", title: "Home" }).select("*").single();
       if (ins.error) return fatal("Couldn't create the first page.");
@@ -1976,7 +1977,13 @@ input,select,textarea{font:inherit}
     } catch (e) { toast("Couldn't publish: " + esc(e.message || e)); }
     btn.disabled = false; btn.textContent = "Publish";
   }
-  function liveUrl(p) { return window.RV_siteUrl(S.site.slug, p && p.slug); }
+  // A live custom domain that shows this site is its main address; any other live domain of the company serves it at /s/<slug>.
+  function siteDomain() { return (S.domains || []).find(function (d) { return d.site_id === S.site.id; }) || null; }
+  function liveUrl(p) {
+    var d = siteDomain();
+    if (d) return "https://" + d.hostname + (p && p.slug ? "/" + p.slug : "");
+    return window.RV_siteUrl(S.site.slug, p && p.slug);
+  }
   function copy(t) { try { navigator.clipboard.writeText(t); } catch (e) {} }
 
   /* ---- image uploads -> Supabase storage (public bucket site-media) ---- */
@@ -2151,7 +2158,8 @@ input,select,textarea{font:inherit}
   var COLORS = ["#1a7a5e", "#0f766e", "#2563eb", "#7c3aed", "#db2777", "#e11d48", "#ea580c", "#ca8a04", "#111827"];
   function openSettings(tab) {
     var s = S.site, p = S.page;
-    $("#sName").value = s.name; $("#sUrl").value = window.RV_siteUrl(s.slug);
+    $("#sName").value = s.name; $("#sUrl").value = liveUrl();
+    $("#sUrlNote").textContent = siteDomain() ? "Live on your own domain. Manage domains in the dashboard under Settings → Domains." : ((S.domains || []).length ? "Tip: choose which of your domains shows this site in Settings → Domains." : "Your site goes live at this address when you publish. You can connect your own domain in Settings → Domains.");
     $("#sProduct").innerHTML = '<option value="">— No product (just a page) —</option>' + S.products.map(function (x) { return '<option value="' + x.id + '"' + (x.id === s.product_id ? " selected" : "") + ">" + esc(x.product_name) + (x.is_service ? " (service)" : "") + "</option>"; }).join("");
     $("#sAdAcct").innerHTML = '<option value="">— Use the product\'s ad account —</option>' + S.accounts.map(function (a) { return '<option value="' + a.id + '"' + (a.id === s.ad_account_id ? " selected" : "") + ">" + esc(a.nickname || a.name || a.id.slice(0, 8)) + (a.meta_pixel_id ? " · pixel " + esc(a.meta_pixel_id) : " · no pixel") + "</option>"; }).join("");
     $("#sPurchase").value = s.purchase_event; $("#sCall").checked = !!(s.settings && s.settings.confirmation_call);

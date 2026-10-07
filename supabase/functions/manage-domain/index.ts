@@ -2,10 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Custom domains for the website builder (Settings -> Domains).
-//   POST { action: "add",    hostname, media_buyer_id?, site_id? }   owner/admin
+//   POST { action: "add",    hostname, media_buyer_id?, site_id? }   owner/admin (any buyer) or a media buyer (always theirs)
 //        { action: "check",  id }                                    owner/admin or the assigned buyer
 //        { action: "assign", id, media_buyer_id?, site_id? }         owner/admin (buyer + site) or the assigned buyer (site only)
-//        { action: "remove", id }                                    owner/admin
+//        { action: "remove", id }                                    owner/admin or the assigned buyer
 // The hostname is registered on the dedicated sites Vercel project, which then serves it (api/site.js).
 // Secrets: VERCEL_API_TOKEN, VERCEL_SITES_PROJECT_ID (and optionally VERCEL_TEAM_ID).
 
@@ -99,13 +99,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (action === "add") {
-      if (!isAdmin) return json({ error: "Only an owner/admin can connect a domain." }, 403);
+      if (!isAdmin && !(me.role === "buyer" && me.media_buyer_id)) return json({ error: "Only an owner, admin or media buyer can connect a domain." }, 403);
       const hostname = normalizeHost(body.hostname);
       if (!/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(hostname)) return json({ error: "That doesn't look like a domain (example: shop.mybrand.com)." }, 400);
       if (/\.vercel\.app$|\.supabase\.co$/.test(hostname)) return json({ error: "Use your own domain, not a vercel.app address." }, 400);
-      const buyerId = body.media_buyer_id || null, siteId = body.site_id || null;
+      // A buyer's domain is always theirs, and can only show their own sites.
+      const buyerId = isAdmin ? (body.media_buyer_id || null) : me.media_buyer_id, siteId = body.site_id || null;
       if (!(await buyerOk(buyerId))) return json({ error: "Unknown media buyer." }, 400);
-      if (!(await siteOk(siteId, null))) return json({ error: "Unknown site." }, 400);
+      if (!(await siteOk(siteId, isAdmin ? null : me.media_buyer_id))) return json({ error: "Unknown site." }, 400);
 
       const { data: existing } = await admin.from("site_domains").select("id").eq("hostname", hostname).maybeSingle();
       if (existing) return json({ error: "This domain is already connected." }, 409);
@@ -160,9 +161,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "remove") {
-      if (!isAdmin) return json({ error: "Only an owner/admin can remove a domain." }, 403);
       const row = await loadRow(String(body.id || ""));
       if (!row) return json({ error: "Domain not found" }, 404);
+      if (!isAdmin && !(row.media_buyer_id && row.media_buyer_id === me.media_buyer_id)) return json({ error: "You can only remove your own domains." }, 403);
       if (VERCEL_TOKEN && VERCEL_PROJECT) await vercel(`/v9/projects/${VERCEL_PROJECT}/domains/${encodeURIComponent(row.hostname)}`, { method: "DELETE" });
       await admin.from("site_domains").delete().eq("id", row.id);
       return json({ ok: true });
