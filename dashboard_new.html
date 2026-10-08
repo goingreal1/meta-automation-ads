@@ -1357,6 +1357,68 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
   #bvBuilderOverlay[data-wz="creative"] #uploadBtn{display:none;}
   #bvBuilderOverlay .bv-builder-foot > div{flex:1;}
 }
+
+/* ── Assistant: chat-app look (also used by the floating panel) ── */
+.ch-msg.bot{white-space:normal;}
+.ch-msg.bot h4{font-size:15px;margin:10px 0 4px;}
+.ch-msg.bot ul,.ch-msg.bot ol{margin:6px 0 6px 20px;padding:0;}
+.ch-msg.bot li{margin:3px 0;}
+.ch-msg.bot code{background:var(--hover);border-radius:5px;padding:1px 5px;font-size:.92em;}
+.ch-code{position:relative;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin:10px 0;}
+.ch-code pre{margin:0;padding:14px 16px;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;line-height:1.55;}
+.ch-copy,.ch-acts button{border:1px solid var(--border);background:var(--panel);color:var(--text2);border-radius:8px;font-size:11.5px;padding:3px 9px;cursor:pointer;}
+.ch-copy{position:absolute;top:8px;right:8px;}
+.ch-acts{margin-top:6px;opacity:0;transition:opacity .15s;}
+.ch-msg.bot:hover .ch-acts,.ch-msg.bot:focus-within .ch-acts{opacity:1;}
+.ch-new{display:none;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;font-size:12.5px;padding:6px 12px;cursor:pointer;font-weight:500;}
+.ch-hello{display:none;}
+body.assist-on .chat-toggle{display:none !important;}
+
+.chat-panel.page{position:fixed;left:var(--ch-left,0px);right:0;top:62px;bottom:0;width:auto;height:auto;max-height:none;border:0;border-radius:0;box-shadow:none;background:var(--bg);transform:none;opacity:1;pointer-events:all;z-index:150;transition:none;align-items:stretch;}
+.chat-panel.page .ch-head{width:min(780px,100%);margin:0 auto;border:0;background:transparent;padding:14px 20px 4px;}
+.chat-panel.page .ch-avatar,.chat-panel.page .ch-back,.chat-panel.page .ch-x,.chat-panel.page .ch-status{display:none;}
+.chat-panel.page .ch-hmid{flex:1;}
+.chat-panel.page .ch-name{font-size:14px;font-weight:600;color:var(--text2);}
+.chat-panel.page .ch-new{display:inline-block;}
+.chat-panel.page .ch-acct{width:min(780px,100%);margin:0 auto;background:transparent;border:0;padding:0 20px;}
+.chat-panel.page .ch-msgs{width:min(780px,100%);margin:0 auto;padding:10px 20px 20px;gap:0;}
+.chat-panel.page .ch-msg{max-width:100%;font-size:15.5px;line-height:1.7;padding:0;border-radius:0;box-shadow:none;margin:0 0 22px;}
+.chat-panel.page .ch-msg.bot{background:transparent;align-self:stretch;color:var(--text);}
+.chat-panel.page .ch-msg.user{background:var(--panel2);color:var(--text);align-self:flex-end;max-width:85%;padding:11px 16px;border-radius:18px;border:1px solid var(--border);white-space:pre-wrap;}
+.chat-panel.page .ch-msg.bot.tail,.chat-panel.page .ch-msg.user.tail{margin-bottom:22px;}
+.chat-panel.page .ch-time{display:none;}
+.chat-panel.page .ch-pay-card,.chat-panel.page .ch-act-card{max-width:520px;}
+.chat-panel.page .ch-suggs{display:none;}
+.chat-panel.page .ch-inp{width:min(780px,100%);margin:0 auto;border:0;background:transparent;padding:0 20px calc(18px + env(safe-area-inset-bottom));position:relative;align-items:stretch;}
+.chat-panel.page .ch-inp textarea{min-height:58px;max-height:200px;padding:17px 62px 17px 20px;border-radius:22px;background:var(--panel);border:1px solid var(--border);box-shadow:0 2px 14px rgba(0,0,0,.07);font-size:15.5px;}
+.chat-panel.page .ch-inp textarea:focus{border-color:var(--accent);box-shadow:0 2px 18px rgba(24,119,242,.16);}
+.chat-panel.page .ch-inp button{position:absolute;right:32px;bottom:calc(30px + env(safe-area-inset-bottom));width:38px;height:38px;border-radius:12px;background:var(--accent);}
+.chat-panel.page .ch-inp button:disabled{background:var(--border);}
+/* empty state: greeting, centered input, suggestion cards */
+.chat-panel.page.empty{justify-content:center;}
+.chat-panel.page.empty .ch-head{position:absolute;top:0;left:50%;transform:translateX(-50%);}
+.chat-panel.page.empty .ch-msgs{flex:none;overflow:visible;order:1;padding-bottom:6px;}
+.chat-panel.page.empty .ch-inp{order:2;padding-bottom:10px;}
+.chat-panel.page.empty .ch-inp button{bottom:calc(22px + env(safe-area-inset-bottom));}
+.chat-panel.page.empty .ch-suggs{display:grid !important;order:3;width:min(780px,100%);margin:0 auto;grid-template-columns:1fr 1fr;gap:10px;padding:8px 20px 0;}
+.chat-panel.page.empty .ch-hello{display:block;font-family:'Fraunces',Georgia,serif;font-size:38px;font-weight:500;letter-spacing:-.02em;text-align:center;margin:0 0 10px;color:var(--text);}
+.chat-panel.page.empty #chWelcomeMsg{background:transparent;text-align:center;color:var(--text2);font-size:15px;margin:0 auto 18px;max-width:560px;align-self:center;}
+.chat-panel.page.empty #chWelcomeMsg .ch-acts{display:none;}
+.chat-panel.page .ch-sugg{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:14px;padding:13px 15px;font-size:13.5px;text-align:left;line-height:1.4;}
+.chat-panel.page .ch-sugg:hover{background:var(--hover);color:var(--text);border-color:var(--borderStrong,var(--border));}
+.chat-panel.page:not(.empty) #chWelcomeMsg,.chat-panel.page:not(.empty) .ch-hello{display:none;}
+@media(max-width:760px){
+  .chat-panel.page{top:56px;bottom:calc(64px + env(safe-area-inset-bottom));}
+  .chat-panel.page .ch-msg{font-size:15px;}
+  .chat-panel.page.empty{justify-content:flex-start;overflow-y:auto;padding-top:56px;}
+  .chat-panel.page.empty .ch-head{position:fixed;top:56px;left:0;right:0;transform:none;width:auto;padding:8px 14px;}
+  .chat-panel.page.empty .ch-hello{font-size:30px;margin-top:26px;}
+  .chat-panel.page.empty #chWelcomeMsg{display:none;}
+  .chat-panel.page.empty .ch-sugg:nth-child(n+5){display:none;}
+  .chat-panel.page.empty .ch-suggs{grid-template-columns:1fr;}
+  .chat-panel.page .ch-inp{padding:0 12px 10px;}
+  .chat-panel.page .ch-inp button{right:24px;bottom:22px;}
+}
 </style>
 </head>
 <body>
@@ -1419,6 +1481,7 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
     <div class="sidebar-group-lbl">Ads &amp; Growth</div>
     <div class="tab-btn" data-tab="campaigns"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 001 1h1l5 4V6l-5 4H4a1 1 0 00-1 1z"/><path d="M15.5 8.5a4 4 0 010 7"/><path d="M18.5 5.5a8 8 0 010 13"/></svg></span><span class="tab-label">Campaigns</span></div>
     <div class="tab-btn" data-tab="performance"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span><span class="tab-label">Ad Spend &amp; ROAS</span></div>
+    <div class="tab-btn" data-tab="assistant"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z"/><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7L19 15z"/></svg></span><span class="tab-label">Assistant</span></div>
     <div class="tab-btn" data-tab="leaderboard"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M5 4H3v2a4 4 0 004 4M19 4h2v2a4 4 0 01-4 4"/></svg></span><span class="tab-label">Leaderboard</span></div>
     <div class="tab-btn" data-tab="vault"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="tab-label">Creative Vault</span></div>
 
@@ -1453,10 +1516,12 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
       <div class="ch-name" id="chName">AI Assistant</div>
       <div class="ch-status" id="chStatus">Grounded in your live data</div>
     </div>
+    <button class="ch-new" onclick="chNew()" title="Start a new chat">＋ New chat</button>
     <button class="ch-x" onclick="toggleChat(false)" aria-label="Close chat">✕</button>
   </div>
   <div class="ch-acct" id="chAcct"></div>
   <div class="ch-msgs" id="chMsgs">
+    <div class="ch-hello" id="chHello"></div>
     <div class="ch-msg bot tail" id="chWelcomeMsg">Hey 👋 Ask me anything about your live data. What do you want to know?</div>
   </div>
   <div class="ch-suggs" id="chSuggs"></div>
@@ -2204,6 +2269,8 @@ document.getElementById("tabsBar").addEventListener("click", e => {
 async function render() {
   document.getElementById("lastSync").textContent = "synced " + new Date().toLocaleTimeString();
   const c = document.getElementById("mainContent");
+  if (activeTab === "assistant") { c.innerHTML = ""; bvAssistantPage(true); return; }
+  bvAssistantPage(false);
   
   // An ad account is only needed for ad-spend/campaign-performance tabs --
   // everything else (orders, order forms, products, conversations, website
@@ -11542,7 +11609,11 @@ function renderChatForRole(role) {
   document.getElementById("chName").textContent = preset.name;
   document.getElementById("chStatus").textContent = preset.status;
   document.getElementById("chWelcomeMsg").textContent = preset.welcome;
-  document.getElementById("chSuggs").innerHTML = preset.suggs
+  document.getElementById("chHello").textContent = chGreeting();
+  const extra = ["owner", "admin", "buyer"].includes(role)
+    ? [["Write 3 different Facebook ad copies for the product of mine that is most likely to sell. Use my product details and keep to Meta's ad rules.", "Write ad copy for my best product"], ["Suggest 3 new angles I should test next for my products and explain why.", "What should I test next?"]]
+    : [];
+  document.getElementById("chSuggs").innerHTML = [...extra, ...preset.suggs]
     .map(([q, label]) => `<button class="ch-sugg" onclick="askChat('${q.replace(/'/g, "\\'")}')">${escH(label)}</button>`)
     .join("");
 }
@@ -11585,7 +11656,91 @@ function chRefreshAcct() {
 }
 
 // Light formatting for the assistant's replies: **bold** only, everything else escaped.
-const chFmt = t => escH(String(t)).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+function chMd(raw) {
+  const blocks = [];
+  let t = String(raw ?? "").replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (m, c) => { blocks.push(c.replace(/\n$/, "")); return `\u0000B${blocks.length - 1}\u0000`; });
+  t = escH(t)
+    .replace(/^#{1,3}\s+(.+)$/gm, "<h4>$1</h4>")
+    .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<i>$2</i>")
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  const out = []; let list = null;
+  for (const ln of t.split("\n")) {
+    const ul = ln.match(/^\s*[-•*]\s+(.*)$/), ol = ln.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const kind = ul ? "ul" : "ol";
+      if (list !== kind) { if (list) out.push(`</${list}>`); out.push(`<${kind}>`); list = kind; }
+      out.push(`<li>${(ul || ol)[1]}</li>`);
+    } else {
+      if (list) { out.push(`</${list}>`); list = null; }
+      out.push(ln === "" ? "<br>" : ln + "<br>");
+    }
+  }
+  if (list) out.push(`</${list}>`);
+  return out.join("").replace(/(<br>){3,}/g, "<br><br>").replace(/<br>(<\/?(?:ul|ol|h4)>)/g, "$1").replace(/(<\/(?:ul|ol|h4)>)<br>/g, "$1").replace(/(<br>)+$/, "")
+    .replace(/\u0000B(\d+)\u0000/g, (m, i) => `<div class="ch-code"><button type="button" class="ch-copy" onclick="chCopyCode(this)">Copy</button><pre>${escH(blocks[+i])}</pre></div>`);
+}
+const chFmt = chMd;
+function chCopyText(txt, btn) {
+  const done = () => { if (!btn) return; const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 1400); };
+  try { navigator.clipboard.writeText(txt).then(done, done); } catch { done(); }
+}
+function chCopyCode(btn) { chCopyText(btn.parentNode.querySelector("pre").textContent, btn); }
+function chCopyMsg(btn) { chCopyText(btn.closest(".ch-msg").dataset.raw || "", btn); }
+function chDecorate(el, text) {
+  el.dataset.raw = text;
+  el.querySelector(".ch-acts")?.remove();
+  const a = document.createElement("div");
+  a.className = "ch-acts";
+  a.innerHTML = '<button type="button" onclick="chCopyMsg(this)">Copy</button>';
+  el.appendChild(a);
+}
+function chSyncEmpty() {
+  const msgs = document.getElementById("chMsgs");
+  const has = !!msgs.querySelector(".ch-msg.user");
+  document.getElementById("chatPanel").classList.toggle("empty", !has);
+}
+function chGreeting() {
+  const h = new Date().getHours();
+  const part = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+  const first = String(window.myProfile?.display_name || "").trim().split(/\s+/)[0];
+  return `Good ${part}${first ? ", " + first : ""}`;
+}
+function chNew() {
+  if (chBusy) return;
+  chatHistory = [];
+  const msgs = document.getElementById("chMsgs");
+  [...msgs.children].forEach(n => { if (n.id !== "chHello" && n.id !== "chWelcomeMsg") n.remove(); });
+  document.getElementById("chSuggs").style.display = "";
+  chLastTs = 0;
+  chSyncEmpty();
+  document.getElementById("chInput").focus();
+}
+
+// Full-page "Assistant" tab: the same chat, laid out like a chat app instead of a pop-up.
+let chPageMode = false;
+function chPlacePage() {
+  const sb = document.querySelector(".sidebar");
+  const mob = window.innerWidth <= 760;
+  document.getElementById("chatPanel").style.setProperty("--ch-left", mob || !sb ? "0px" : sb.getBoundingClientRect().right + "px");
+}
+function bvAssistantPage(on) {
+  const p = document.getElementById("chatPanel");
+  if (on === chPageMode) { if (on) chPlacePage(); return; }
+  chPageMode = on;
+  p.classList.toggle("page", on);
+  document.body.classList.toggle("assist-on", on);
+  if (on) {
+    chPlacePage();
+    chatOpen = true; p.classList.add("open");
+    chRefreshAcct(); chLoadInbox(); chSyncEmpty();
+    if (window.innerWidth > 760) setTimeout(() => document.getElementById("chInput").focus(), 60);
+  } else {
+    chatOpen = false; p.classList.remove("open"); chToggleIcon();
+  }
+}
+window.addEventListener("resize", () => { if (chPageMode) chPlacePage(); });
+setTimeout(() => { const sb = document.querySelector(".sidebar"); if (sb) new MutationObserver(() => setTimeout(() => chPageMode && chPlacePage(), 220)).observe(sb, { attributes: true, attributeFilter: ["class"] }); }, 0);
 let chLastTs = 0;
 function chStamp() {
   const now = Date.now();
@@ -11605,12 +11760,13 @@ function appendMsg(text, role) {
   if (prev && prev.classList.contains("ch-msg") && prev.classList.contains(role)) prev.classList.remove("tail");
   const d = document.createElement("div");
   d.className = "ch-msg " + role + " tail";
-  if (role === "bot") d.innerHTML = chFmt(text); else d.textContent = text;
+  if (role === "bot") { d.innerHTML = chFmt(text); if (text) chDecorate(d, text); } else d.textContent = text;
   msgs.appendChild(d);
+  chSyncEmpty();
   msgs.scrollTop = msgs.scrollHeight;
   return d;
 }
-function chSetBot(el, text) { el.classList.remove("typing"); el.innerHTML = chFmt(text); }
+function chSetBot(el, text) { el.classList.remove("typing"); el.innerHTML = chFmt(text); chDecorate(el, text); }
 
 // The assistant can respond with "quick replies" -- e.g. after it looks up
 // several ad accounts, one chip per account so picking one is a tap instead

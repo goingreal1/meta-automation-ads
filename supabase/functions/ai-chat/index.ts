@@ -41,6 +41,43 @@ function fmtNaira(n: number) {
 type ActiveAccount = { id: string; name: string; balance: number | null; lowThreshold: number | null };
 type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliveryAgentId: string | null; userId: string; displayName: string; authHeader: string; account: ActiveAccount | null; proposals: any[] };
 
+
+// ── BUSINESS KNOWLEDGE ──────────────────────────────────────────────────────
+// Nobody should have to write a system prompt. The assistant reads the company's own
+// products and website names, works out what kind of business this is (health, beauty,
+// food, fashion, electronics, services, anything) and writes for that business.
+async function buildBusinessBrief(companyId: string, companyName: string): Promise<string> {
+  const [{ data: products }, { data: sites }] = await Promise.all([
+    supabase.from("products")
+      .select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, is_active, landing_page_url")
+      .eq("company_id", companyId).order("is_active", { ascending: false }).limit(30),
+    supabase.from("sites").select("name, slug, status").eq("company_id", companyId).limit(20),
+  ]);
+  const clip = (t: unknown, n: number) => { const s = String(t ?? "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
+  const lines = (products ?? []).map((p: any) => {
+    const bits = [
+      `• ${p.product_name}${p.is_active === false ? " (inactive)" : ""}`,
+      p.default_order_value_naira ? `price ${fmtNaira(Number(p.default_order_value_naira))}` : "",
+      p.destination_type ? `sold via ${p.destination_type}` : "",
+      p.description ? `about: ${clip(p.description, 400)}` : "",
+      p.benefits ? `benefits: ${clip(p.benefits, 300)}` : "",
+      p.safety_notes ? `safety notes: ${clip(p.safety_notes, 200)}` : "",
+      p.nafdac_reg_no ? `NAFDAC no. ${p.nafdac_reg_no}` : "",
+    ].filter(Boolean);
+    return bits.join(" · ");
+  });
+  const siteLine = (sites ?? []).length ? `Websites: ${(sites ?? []).map((s: any) => `${s.name} (${s.status})`).join(", ")}.` : "";
+  return `BUSINESS: ${companyName}.\n` + (lines.length ? `PRODUCTS (their own catalogue, the only products you may talk about as theirs):\n${lines.join("\n")}` : "PRODUCTS: none added yet. If asked for ad copy, ask them to name the product, who it is for, and the price, or to add it under Products.") + (siteLine ? `\n${siteLine}` : "");
+}
+
+const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobody needs to teach you their niche):
+- First work out what kind of business this is from the products above (health and wellness, beauty and skincare, food and drinks, fashion, gadgets, home, services, courses, anything) and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
+- AD COPY: when asked for ad copy, write ready-to-use options, not advice about writing. Default to 3 variations with different angles (for example: problem and solution, social proof and result, offer and urgency, objection handling, a story). For each give: Primary text (hook in the first line, short lines, one clear benefit, one call to action), Headline (about 40 characters), Description (about 30 characters), and a call to action (for WhatsApp ads: "Send message"; for websites: Shop Now, Order Now or Learn More). Offer a Pidgin or Yoruba/Igbo/Hausa-flavoured variant only if it fits the audience or they ask. Put each variation in its own fenced block so it can be copied.
+- Use only facts from the product record or what the user told you: ingredients, price, delivery terms, guarantees, certificates. Never invent claims, testimonials, numbers, discounts or registration numbers. If something you need is missing, say what is missing in one short line and still give your best draft with clearly marked [placeholders].
+- META AD POLICY GUARDRAILS (a rejected ad costs the account): no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health condition, body, finances or identity ("Are you fat?", "Your diabetes..."); no medical cures or "treats/cures X" for supplements; no exaggerated or shocking claims; no misleading urgency; no asking for personal data in the ad itself. For health and wellness write about support, comfort, routine and customer experience, not cures. For beauty avoid promising permanent or overnight changes. For food mention freshness, taste, delivery and offers, and allergens where relevant. For financial or income offers be factual and avoid guarantees.
+- ADVICE: when asked what to do (launch, kill, scale, budget, testing), give a clear recommendation first, then the reason in a sentence or two, using the real numbers from the data or tools. If the data needed is not available, say so and say how to get it. Prefer testing one change at a time; give each new creative enough spend (about 2-3 times the target cost per result) before judging it; scale winners gradually.
+- Ask at most one short clarifying question, and only when you truly cannot proceed; otherwise act and note your assumption.`;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -113,6 +150,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Couldn't pull your data: " + (e as Error).message }, 500);
   }
 
+  const businessBrief = await buildBusinessBrief(ctx.companyId, companyName).catch(() => `BUSINESS: ${companyName}.`);
+
   const roleLabel: Record<string, string> = {
     owner: "the company owner", admin: "an admin", buyer: "a media buyer",
     customer_care: "a customer care agent", delivery_agent: "a delivery agent",
@@ -143,10 +182,21 @@ Rules:
 - Taking action on ads: use propose_status_change (pause/kill/resume an ad, ad set or campaign) and propose_budget_change (scale a daily budget). These NEVER execute directly — they put a confirm card in the chat and the person taps Confirm. So after calling one, say what you propose and why, and that it is waiting for their tap. Never say it is done. Get the ids from get_live_ads. You may propose several at once. Do not propose pausing something just because it is new — respect the min spend/hours in their thresholds.
 - Creating a whole new campaign from chat is coming soon; for now point them to the Create/Launch button.
 
+${businessBrief}
+
+${PLAYBOOK}
+
 DATA (JSON):
 ${JSON.stringify(data)}`;
 
   const TOOLS = [
+    {
+      type: "function", function: {
+        name: "get_product",
+        description: "Full details of one of the company's products (description, benefits, safety notes, price, landing page) by name. Use before writing ad copy, descriptions or answering detailed product questions when the short summary in the prompt is not enough.",
+        parameters: { type: "object", properties: { product_name: { type: "string", description: "Product name or part of it" } }, required: ["product_name"] },
+      },
+    },
     {
       type: "function", function: {
         name: "list_ad_accounts",
@@ -335,8 +385,8 @@ ${JSON.stringify(data)}`;
           messages,
           tools: TOOLS,
           tool_choice: "auto",
-          temperature: 0.3,
-          max_tokens: 900,
+          temperature: 0.5,
+          max_tokens: 1800,
         }),
       });
       const out = await r.json();
@@ -402,6 +452,16 @@ const slimMetrics = (m: any) => ({
 
 async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
   switch (name) {
+    case "get_product": {
+      const q = String(args?.product_name ?? "").trim();
+      if (!q) return { error: "product_name is required" };
+      const { data } = await supabase.from("products")
+        .select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, landing_page_url, is_active, stock_on_hand")
+        .eq("company_id", ctx.companyId).ilike("product_name", `%${q.replace(/[%_]/g, "")}%`).limit(3);
+      if (!data?.length) return { error: `No product matching "${q}". Ask which product they mean, or tell them to add it under Products.` };
+      return { products: data };
+    }
+
     case "get_live_ads": {
       if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can see live ads." };
       const acct = await accountFor(ctx, args?.ad_account_id);
