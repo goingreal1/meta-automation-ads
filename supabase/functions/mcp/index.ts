@@ -18,7 +18,6 @@ const DIRECT = `${SUPABASE_URL}/functions/v1/mcp`;
 // Revora's own address (a Vercel rewrite to this function). It carries the Revora favicon and logo, so Claude and ChatGPT show our brand.
 const SITE = "https://metaautomationads.vercel.app";
 const BRANDED = `${SITE}/mcp`;
-const resourceFor = (req: Request) => (/(^|\.)metaautomationads\.vercel\.app$/.test((req.headers.get("x-forwarded-host") ?? "").split(",")[0].trim()) ? BRANDED : DIRECT);
 const SUPPORTED = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const CORS: Record<string, string> = {
@@ -197,8 +196,11 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   const url = new URL(req.url);
-  const path = url.pathname.replace(/^.*?\/mcp(?=\/|$)/, "") || "/";
-  const RESOURCE = resourceFor(req);
+  let path = url.pathname.replace(/^.*?\/mcp(?=\/|$)/, "") || "/";
+  // The Vercel rewrite adds /_site, which tells us the person came in through Revora's own address.
+  const viaSite = path === "/_site" || path.startsWith("/_site/");
+  if (viaSite) path = path.slice(6) || "/";
+  const RESOURCE = viaSite ? BRANDED : DIRECT;
 
   if (path === "/.well-known/oauth-protected-resource" || path.startsWith("/.well-known/oauth-protected-resource/")) {
     return jres({ resource: RESOURCE, authorization_servers: [`${SUPABASE_URL}/auth/v1`], bearer_methods_supported: ["header"], resource_name: "Revora", scopes_supported: ["openid", "email", "profile"] });
