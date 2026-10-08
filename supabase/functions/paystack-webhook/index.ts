@@ -77,6 +77,19 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Revora's own subscription payments (started from Settings -> Billing). Idempotent on the reference.
+    if (event?.event === "charge.success" && event?.data?.metadata?.kind === "subscription") {
+      const d = event.data, md = d.metadata;
+      const plans: Record<string, number> = { media_buyer: 10000, business: 25000 };
+      const months = Number(md.months);
+      const due = plans[md.plan] * (months === 12 ? 10 : months);
+      if (plans[md.plan] && md.company_id && Number(d.amount) / 100 >= due) {
+        const { error } = await supabase.rpc("apply_subscription_payment", { p_reference: d.reference, p_company: md.company_id, p_plan: md.plan, p_months: months, p_amount: Number(d.amount) / 100, p_raw: d });
+        if (error) console.error("paystack-webhook subscription error:", error.message);
+      } else console.error("paystack-webhook: subscription payment did not match a plan", d.reference);
+      return new Response("ok", { status: 200 });
+    }
+
     if (event?.event === "charge.success" && event?.data?.channel === "dedicated_nuban") {
       const data = event.data;
       const customerCode = data.customer?.customer_code;
