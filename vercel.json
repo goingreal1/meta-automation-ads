@@ -108,6 +108,10 @@
   ],
   "rewrites": [
     {
+      "source": "/oauth/consent",
+      "destination": "/oauth/consent.html"
+    },
+    {
       "source": "/s/:slug",
       "destination": "/api/site?slug=:slug"
     },
