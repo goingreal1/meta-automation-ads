@@ -1627,6 +1627,11 @@ async function init() {
   for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
     document.querySelector(`[data-tab="${tab}"]`)?.style.setProperty("display", "none");
   }
+  // The business profile chosen at onboarding decides which parts of the app a person sees.
+  window.myCompany = (await supabaseClient.from("companies")
+    .select("id,name,account_type,business_types,sales_channels,fulfilment,description,team_size,buyers_count,monthly_ad_spend,copy_language,goals,team_roles,onboarding_completed_at")
+    .limit(1).maybeSingle().then(r => r.data).catch(() => null)) || null;
+  bvApplyCompanyProfile();
   bvBuildBottomNav();
 
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
@@ -1686,6 +1691,21 @@ const BN_ITEMS = [
   { tab: "campaigns", label: "Ads" },
 ];
 const BN_MORE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+
+
+// Hide what this business will never use, so each seller sees their own app (not every module).
+function bvApplyCompanyProfile() {
+  const c = window.myCompany; if (!c) return;
+  const hide = new Set();
+  if (c.account_type === "personal") ["leaderboard", "approvals", "earnings", "riders", "support"].forEach(t => hide.add(t));
+  // Nothing to deliver (digital goods, services, pick-up) -> no riders/delivery tab
+  if (["digital", "none", "pickup"].includes(c.fulfilment)) hide.add("riders");
+  const only = (c.business_types || []);
+  if (only.length && only.every(t => ["courses_digital", "services", "real_estate"].includes(t))) hide.add("riders");
+  hide.forEach(t => document.querySelector(`[data-tab="${t}"]`)?.style.setProperty("display", "none"));
+  document.body.dataset.account = c.account_type || "company";
+  try { if (typeof bvSyncBottomNav === "function") bvSyncBottomNav(); } catch {}
+}
 
 function bvBuildBottomNav() {
   const nav = document.getElementById("bottomNav");
@@ -10749,6 +10769,7 @@ async function bvSetupState() {
   ]);
   const items = [];
   if (admin) items.push({ label: "Add your first media buyer", done: (buyers || []).length > 0, go: ["settings", "business"] });
+  if (admin && window.myCompany) items.unshift({ label: "Tell us about your business (1 minute)", done: !!window.myCompany.onboarding_completed_at, go: ["__profile"] });
   items.push({ label: "Connect a Meta ad account", done: mine.length > 0, go: ["settings", "accounts"] });
   items.push({ label: "Set the pixel and Facebook page on it", done: mine.some(a => a.meta_pixel_id && a.fb_page_id), go: ["settings", "accounts"] });
   items.push({ label: "Add a product", done: products > 0, go: ["products"] });
@@ -10770,7 +10791,7 @@ function bvSetupChecklistHtml(st, compact) {
     </div>`).join("")}</div>
   </div>`;
 }
-function bvSetupGo(tab, sec) { if (sec) bvSettingsSec = sec; bvGoToTab(tab); }
+function bvSetupGo(tab, sec) { if (tab === "__profile") { location.href = "setup-company.html?profile=1"; return; } if (sec) bvSettingsSec = sec; bvGoToTab(tab); }
 async function bvRenderSetupSlot() {
   const slot = document.getElementById("setupCheckSlot"); if (!slot) return;
   const st = await bvSetupState().catch(() => null);

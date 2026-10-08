@@ -32,6 +32,26 @@ input:focus,select:focus{outline:none;border-color:var(--accent);}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:rot .65s linear infinite;}
 @keyframes rot{to{transform:rotate(360deg);}}
 .center{text-align:center;padding:20px 0;color:var(--muted);}
+
+.wrap.wide{max-width:600px;}
+.steps{display:flex;gap:6px;margin-bottom:22px;}
+.steps i{flex:1;height:4px;border-radius:4px;background:var(--border);}
+.steps i.on{background:var(--accent);}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;}
+.cards.one{grid-template-columns:1fr;}
+.card{border:1px solid var(--border);border-radius:12px;padding:13px 14px;cursor:pointer;background:var(--panel);text-align:left;font:inherit;color:inherit;display:flex;gap:10px;align-items:flex-start;}
+.card:hover{border-color:var(--borderStrong);}
+.card.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentBg);}
+.card .ic{font-size:20px;line-height:1.1;flex:none;}
+.card b{display:block;font-size:13.5px;font-weight:600;}
+.card span.d{display:block;font-size:12px;color:var(--muted);margin-top:2px;}
+.lbl{font-size:12px;color:var(--text2);font-weight:600;margin:14px 0 8px;}
+.nav{display:flex;gap:10px;margin-top:22px;}
+.btn.ghost{background:transparent;color:var(--text2);border-color:var(--border);}
+textarea{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 14px;font-size:14px;font-family:inherit;width:100%;min-height:96px;resize:vertical;}
+textarea:focus{outline:none;border-color:var(--accent);}
+.skip{display:block;text-align:center;margin-top:14px;font-size:12.5px;color:var(--muted);cursor:pointer;background:none;border:0;width:100%;}
+@media(max-width:520px){.cards{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -46,6 +66,7 @@ const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const sb = window.supabase.createClient(SUPA_URL, ANON);
 const box = document.getElementById("box");
 const inviteToken = new URLSearchParams(location.search).get("invite");
+const profileMode = new URLSearchParams(location.search).get("profile") === "1";
 
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
@@ -53,7 +74,8 @@ async function init() {
   if (session) {
     // Already set up (e.g. they refreshed this page after joining) --
     // nothing to do here.
-    const { data: profile } = await sb.from("profiles").select("company_id").eq("id", session.user.id).maybeSingle();
+    const { data: profile } = await sb.from("profiles").select("company_id, role").eq("id", session.user.id).maybeSingle();
+    if (profile?.company_id && profileMode && ["owner", "admin"].includes(profile.role)) { renderWizard(session, true); return; }
     if (profile?.company_id) { window.location.href = "dashboard_new.html"; return; }
   }
 
@@ -63,7 +85,7 @@ async function init() {
     // No email field either: the invite already knows who this is for.
     renderJoin();
   } else if (session) {
-    renderCreate(session);
+    renderWizard(session, false);
   } else {
     window.location.href = "login.html";
   }
@@ -83,17 +105,126 @@ function renderJoin() {
   document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submitJoin(); });
 }
 
-function renderCreate(session) {
-  box.innerHTML = `
-    <h1>Set up your company</h1>
-    <div class="sub">This creates your own private workspace -- your data is never visible to any other company on this platform.</div>
-    <div id="msg" class="msg"></div>
-    <form id="f">
-      <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
-      <div class="field"><label>Company name</label><input id="company_name" placeholder="e.g. Quality Herb Nigeria" required></div>
-      <button type="submit" class="btn" id="btn">Create company</button>
-    </form>`;
-  document.getElementById("f").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(session); });
+const TYPES = [
+  ["health_wellness", "🌿", "Health & wellness", "Supplements, herbal, fitness"],
+  ["beauty_skincare", "✨", "Beauty & skincare", "Creams, hair, makeup"],
+  ["food_drinks", "🍲", "Food & drinks", "Meals, snacks, groceries"],
+  ["fashion_clothing", "👗", "Fashion & clothing", "Wears, fabrics, accessories"],
+  ["shoes_bags", "👟", "Shoes & bags", "Footwear, handbags"],
+  ["perfume_fragrance", "🧴", "Perfume & fragrance", "Body spray, oils"],
+  ["gadgets_electronics", "📱", "Gadgets & electronics", "Phones, accessories, appliances"],
+  ["home_living", "🛋️", "Home & living", "Furniture, kitchen, decor"],
+  ["baby_kids", "🧸", "Baby & kids", "Toys, baby care, school"],
+  ["agro_farm", "🌾", "Agro & farm", "Produce, livestock, inputs"],
+  ["services", "🛠️", "Services", "Agencies, repairs, bookings"],
+  ["courses_digital", "🎓", "Courses & digital", "Training, ebooks, software"],
+  ["real_estate", "🏠", "Real estate", "Land, rentals, property"],
+  ["other", "➕", "Something else", "Tell us below"],
+];
+const CHANNELS = [["whatsapp", "WhatsApp chats"], ["website_cod", "Website, pay on delivery"], ["website_prepaid", "Website, pay online"], ["social_dm", "Instagram / Facebook DMs"], ["marketplace", "Marketplaces"], ["in_person", "Shop / in person"]];
+const FULFIL = [["own_riders", "My own riders"], ["third_party_courier", "Courier companies"], ["pickup", "Customers pick up"], ["digital", "Nothing to deliver (digital or service)"]];
+const TEAM_ROLES = [["buyers", "Media buyers who run ads"], ["care", "Customer care"], ["delivery", "Delivery agents"], ["admins", "Admins / managers"]];
+const SIZES = ["1", "2-5", "6-20", "21-50", "50+"];
+const SPEND = [["not_yet", "Not running ads yet"], ["under_100k", "Under ₦100k"], ["100k-500k", "₦100k – ₦500k"], ["500k-2m", "₦500k – ₦2m"], ["over_2m", "Over ₦2m"]];
+const LANGS = [["pidgin_mix", "English with Pidgin flavour (recommended)"], ["english", "Plain English"], ["pidgin", "Mostly Pidgin"], ["yoruba_mix", "English with Yoruba flavour"], ["igbo_mix", "English with Igbo flavour"], ["hausa_mix", "English with Hausa flavour"]];
+const GOALS = [["launch_ads", "Launch and manage ads"], ["track_orders", "Track orders"], ["whatsapp_sales", "Sell on WhatsApp"], ["delivery", "Manage delivery"], ["team_reporting", "See my team's results"], ["build_website", "Build a sales page / store"], ["payments", "Collect payments"]];
+
+function renderWizard(session, isProfile) {
+  document.querySelector(".wrap").classList.add("wide");
+  const st = { step: 0, account_type: isProfile ? "company" : "", name: "", company_name: "", team_roles: [], team_size: "", buyers_count: "", business_types: [], sales_channels: [], fulfilment: "", description: "", monthly_ad_spend: "", copy_language: "pidgin_mix", goals: [] };
+  const steps = isProfile ? ["team", "sell", "about", "ai"] : ["type", "you", "sell", "about", "ai"];
+  const toggle = (arr, v) => { const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); };
+  const personal = () => st.account_type === "personal";
+
+  function cards(items, selected, key, multi, one) {
+    return `<div class="cards ${one ? "one" : ""}">${items.map(([v, ic, t, d]) => `<button type="button" class="card ${selected.includes ? (selected.includes(v) ? "on" : "") : selected === v ? "on" : ""}" data-k="${key}" data-v="${v}"><span class="ic">${ic}</span><span><b>${t}</b>${d ? `<span class="d">${d}</span>` : ""}</span></button>`).join("")}</div>`;
+  }
+  function chips(items, selected, key) {
+    return `<div class="cards">${items.map(([v, t]) => `<button type="button" class="card ${selected.includes ? (selected.includes(v) ? "on" : "") : selected === v ? "on" : ""}" data-k="${key}" data-v="${v}"><span><b>${t}</b></span></button>`).join("")}</div>`;
+  }
+
+  function body(name) {
+    if (name === "type") return `<h1>How will you use Revora?</h1><div class="sub">This sets up the right workspace for you. You can invite people later.</div>
+      ${cards([["company", "🏢", "A company or team", "Owner or manager with media buyers, customer care or riders"], ["personal", "🧑‍💻", "Just me, as a media buyer", "One person running ads and orders. No company needed"]], st.account_type, "account_type", false, true)}`;
+    if (name === "you") return `<h1>${personal() ? "About you" : "About you and your company"}</h1><div class="sub">${personal() ? "We'll create your personal workspace." : "This creates your own private workspace. Your data is never visible to any other company."}</div>
+      <div class="field"><label>Your name</label><input id="name" value="${st.name}" placeholder="Full name"></div>
+      ${personal() ? "" : `<div class="field"><label>Company name</label><input id="company_name" value="${st.company_name}" placeholder="e.g. Quality Herb Nigeria"></div>`}
+      ${personal() ? "" : teamBlock()}`;
+    if (name === "team") return `<h1>Your team</h1><div class="sub">Who will use Revora with you? You can invite them from Settings any time.</div>${teamBlock()}`;
+    if (name === "sell") return `<h1>What do you sell?</h1><div class="sub">Pick everything that applies. We tune the dashboard, your product forms and the AI to your business.</div>
+      ${cards(TYPES, st.business_types, "business_types", true)}
+      <div class="lbl">Where do you sell?</div>${chips(CHANNELS, st.sales_channels, "sales_channels")}
+      <div class="lbl">How do customers receive it?</div>${chips(FULFIL, st.fulfilment, "fulfilment")}`;
+    if (name === "about") return `<h1>Tell us about the business</h1><div class="sub">A few lines about what you sell and who buys it. The AI reads this when it writes your ads.</div>
+      <div class="field"><label>Company or product description</label><textarea id="description" placeholder="e.g. We sell natural body creams for dry skin in Lagos. Our customers are women 25-45 who order on WhatsApp and pay on delivery.">${st.description}</textarea></div>
+      <div class="lbl">Monthly ad spend</div>${chips(SPEND, st.monthly_ad_spend, "monthly_ad_spend")}`;
+    if (name === "ai") return `<h1>How should the AI write for you?</h1><div class="sub">Pick a style. You can change it any time, or ask for another language in chat.</div>
+      <div class="field"><label>Ad copy language</label><select id="copy_language">${LANGS.map(([v, t]) => `<option value="${v}" ${st.copy_language === v ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div class="lbl">What do you want to do first?</div>${chips(GOALS, st.goals, "goals")}`;
+    return "";
+  }
+  function teamBlock() {
+    return `<div class="lbl">Who will you add?</div>${chips(TEAM_ROLES, st.team_roles, "team_roles")}
+      <div class="lbl">Team size</div>${chips(SIZES.map(x => [x, x === "1" ? "Just me" : x + " people"]), st.team_size, "team_size")}
+      ${st.team_roles.includes("buyers") ? `<div class="field" style="margin-top:12px"><label>How many media buyers?</label><input id="buyers_count" type="number" min="1" value="${st.buyers_count}" placeholder="e.g. 3"></div>` : ""}`;
+  }
+  function read() {
+    for (const id of ["name", "company_name", "description", "copy_language", "buyers_count"]) { const el = document.getElementById(id); if (el) st[id] = el.value; }
+  }
+  function valid(name) {
+    if (name === "type" && !st.account_type) return "Choose how you will use Revora.";
+    if (name === "you") { if (!st.name.trim()) return "Enter your name."; if (!personal() && !st.company_name.trim()) return "Enter your company name."; }
+    if (name === "sell" && !st.business_types.length) return "Pick at least one thing you sell.";
+    return "";
+  }
+  function draw() {
+    const name = steps[st.step], last = st.step === steps.length - 1;
+    box.innerHTML = `<div class="steps">${steps.map((_, i) => `<i class="${i <= st.step ? "on" : ""}"></i>`).join("")}</div>
+      <div id="msg" class="msg"></div>${body(name)}
+      <div class="nav">${st.step > 0 ? '<button type="button" class="btn ghost" id="back" style="width:auto;padding:12px 18px">Back</button>' : ""}<button type="button" class="btn" id="next">${last ? (isProfile ? "Save" : "Finish setup") : "Continue"}</button></div>
+      ${isProfile ? '<button type="button" class="skip" id="later">Skip for now</button>' : ""}`;
+    box.querySelectorAll(".card").forEach(c => c.addEventListener("click", () => {
+      read();
+      const k = c.dataset.k, v = c.dataset.v;
+      if (Array.isArray(st[k])) toggle(st[k], v); else st[k] = v;
+      draw();
+    }));
+    document.getElementById("back")?.addEventListener("click", () => { read(); st.step--; draw(); });
+    document.getElementById("later")?.addEventListener("click", () => { localStorage.setItem("rv_onb_snooze", String(Date.now() + 3 * 86400000)); location.href = "dashboard_new.html"; });
+    document.getElementById("next").addEventListener("click", async () => {
+      read();
+      const err = valid(name);
+      const msg = document.getElementById("msg");
+      if (err) { msg.textContent = err; msg.className = "msg err"; return; }
+      if (!last) { st.step++; draw(); return; }
+      await submit();
+    });
+  }
+  async function submit() {
+    const btn = document.getElementById("next"), msg = document.getElementById("msg");
+    btn.disabled = true; btn.innerHTML = '<div class="spin"></div> Setting up…';
+    const profile = {
+      account_type: st.account_type, business_types: st.business_types, sales_channels: st.sales_channels, fulfilment: st.fulfilment || undefined,
+      description: st.description, team_size: personal() ? "1" : st.team_size || undefined, buyers_count: personal() ? 1 : (st.buyers_count || undefined),
+      monthly_ad_spend: st.monthly_ad_spend || undefined, copy_language: st.copy_language, goals: st.goals,
+      team_roles: personal() ? [] : st.team_roles,
+    };
+    try {
+      const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(isProfile ? { mode: "profile", profile } : { mode: "create", display_name: st.name.trim() || undefined, company_name: personal() ? undefined : st.company_name.trim(), profile }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      msg.textContent = "All set! Taking you to your dashboard…"; msg.className = "msg ok";
+      setTimeout(() => location.href = "dashboard_new.html", 600);
+    } catch (e) {
+      msg.textContent = e.message; msg.className = "msg err";
+      btn.disabled = false; btn.textContent = isProfile ? "Save" : "Finish setup";
+    }
+  }
+  draw();
 }
 
 function working(on) {
@@ -149,24 +280,6 @@ async function submitJoin() {
     finish(msg, "All set! Redirecting…");
   } catch (err) {
     fail(btn, msg, err, "Join team");
-  }
-}
-
-async function submitCreate(session) {
-  const { btn, msg } = working();
-  try {
-    const name = document.getElementById("name").value.trim();
-    const companyName = document.getElementById("company_name").value.trim();
-    const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ mode: "create", display_name: name || undefined, company_name: companyName }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    finish(msg, "All set! Redirecting…");
-  } catch (err) {
-    fail(btn, msg, err, "Create company");
   }
 }
 
