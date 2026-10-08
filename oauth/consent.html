@@ -35,7 +35,8 @@ async function main(){
     <p>It will be able to act as you, within your company's data:</p>
     <ul><li>See your ad accounts, ads, results, products and saved copy</li><li>Write copy, pause or resume ads, change budgets</li><li>Propose campaigns. Launching always needs your explicit approval.</li></ul>
     ${scopes.length?`<p style="font-size:13px">Scopes: ${esc(scopes.join(", "))}</p>`:""}
-    <button class="p" id="ok">Allow</button> <button class="s" id="no">Cancel</button><p id="err"></p>`;
+    <button class="p" id="ok">Allow</button> <button class="s" id="no">Cancel</button> <button class="s" id="sw">Not you? Switch account</button><p id="err"></p>`;
+  document.getElementById("sw").onclick = async()=>{ await sb.auth.signOut(); signIn(); };
   document.getElementById("ok").onclick = async()=>{ const r = await sb.auth.oauth.approveAuthorization(id); r.error ? err(r.error.message) : go(r.data.redirect_url); };
   document.getElementById("no").onclick = async()=>{ const r = await sb.auth.oauth.denyAuthorization(id); r.error ? err(r.error.message) : go(r.data.redirect_url); };
 }

@@ -96,7 +96,7 @@ async function chatTool(tool: string, args: any, c: Ctx, needAccount: boolean) {
 const TOOLS: Tool[] = [
   { name: "get_playbook", title: "Revora media buyer playbook", description: "Read this FIRST when the person wants to launch, review or scale ads. It is how a senior media buyer works with Revora: the order of steps, the rules, what never to do.", inputSchema: OBJ({}), annotations: { readOnlyHint: true }, run: async () => ({ playbook: PLAYBOOK }) },
   { name: "whoami", title: "Who am I connected as", description: "The signed-in person, their company and role.", inputSchema: OBJ({}), annotations: { readOnlyHint: true },
-    run: async (_a, c) => { const { data: co } = await admin.from("companies").select("name, business_types, plan, trial_ends_at, plan_expires_at, copy_language").eq("id", c.companyId).maybeSingle(); return { name: c.displayName, email: c.email, role: c.role, company: co?.name, business_types: co?.business_types, plan: co?.plan, trial_ends_at: co?.trial_ends_at, plan_expires_at: co?.plan_expires_at, copy_language: co?.copy_language }; } },
+    run: async (_a, c) => { if (!c.companyId) return { email: c.email, setup_complete: false, next: SETUP_NEEDED }; const { data: co } = await admin.from("companies").select("name, business_types, plan, trial_ends_at, plan_expires_at, copy_language").eq("id", c.companyId).maybeSingle(); return { name: c.displayName, email: c.email, role: c.role, company: co?.name, business_types: co?.business_types, plan: co?.plan, trial_ends_at: co?.trial_ends_at, plan_expires_at: co?.plan_expires_at, copy_language: co?.copy_language }; } },
   { name: "list_ad_accounts", title: "List ad accounts", description: "The person's Meta ad accounts with balance and status.", inputSchema: OBJ({}), annotations: { readOnlyHint: true }, run: (a, c) => chatTool("list_ad_accounts", a, c, false) },
   { name: "get_live_ads", title: "Live ads from Meta", description: "Every campaign, ad set and ad in an ad account with status, spend, messages or purchases, cost per result, CTR, and whether it breaks the person's kill rules. Use for any question about what is working.", inputSchema: OBJ({ ...accountProp, range: { type: "string", enum: ["today", "yesterday", "last3", "last7", "last30", "lifetime"] }, only_active: { type: "boolean" } }), annotations: { readOnlyHint: true, openWorldHint: true }, run: (a, c) => chatTool("get_live_ads", a, c, true) },
   { name: "get_account_performance", title: "Ad account performance", description: "KPIs for an ad account over some days: spend, orders, cost per order, CTR, per ad set.", inputSchema: OBJ({ ad_account_name: str("Name or nickname of the ad account"), days: { type: "number" } }, ["ad_account_name"]), annotations: { readOnlyHint: true }, run: (a, c) => chatTool("get_ad_account_performance", a, c, false) },
@@ -135,6 +135,7 @@ const TOOLS: Tool[] = [
   { name: "duplicate_ad", title: "Duplicate an ad or ad set", description: "Copy an ad or ad set inside the same campaign. For a WINNER: the original keeps running and the copy goes live (to scale it). For a BAD ad: set pause_original true to relaunch it as a fresh copy and switch the old one off.", inputSchema: OBJ({ ...accountProp, level: { type: "string", enum: ["ad", "adset"] }, object_id: str("Meta id from get_live_ads"), object_name: str("Name, for the log"), pause_original: { type: "boolean", description: "True only for a bad ad being relaunched." } }, ["level", "object_id"]), annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }, write: true,
     run: async (a, c) => { const acct = await pickAccount(a, c); if ("error" in acct) return acct; const r: any = await fn("ai-chat", { action: "duplicate", ad_account_id: acct.id, level: a?.level, object_id: String(a?.object_id), object_name: a?.object_name, start_paused: false }, c); if (r?.ok && a?.pause_original === true) { const off: any = await fn("ads-manager", { action: "set_status", ad_account_id: acct.id, level: a?.level, object_id: String(a?.object_id), status: "PAUSED", reason: "Relaunched as a fresh copy via connected assistant" }, c); return { ...r, original_paused: !!off?.ok, ...(off?.ok ? {} : { warning: "The fresh copy is live but the old one could not be switched off: " + (off?.error || "Meta refused") }) }; } return r; } },
 ];
+const SETUP_NEEDED = `This Revora login has not finished setting up yet. Tell the person to open ${SITE}/setup-company.html and choose Personal or Company (it takes a minute), then come back and ask again.`;
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 const LIMITS = { write_per_day: 80, launch_per_day: 5 };
 
@@ -153,6 +154,7 @@ function clip(args: any) { try { const s = JSON.stringify(args ?? {}); return s.
 async function callTool(name: string, args: any, c: Ctx, client: string) {
   const t = BY_NAME.get(name);
   if (!t) return { isError: true, content: [{ type: "text", text: `Unknown tool ${name}.` }] };
+  if (!c.companyId && name !== "get_playbook" && name !== "whoami") return { isError: true, content: [{ type: "text", text: SETUP_NEEDED }] };
   const lim = await overLimit(t, c);
   if (lim) return { isError: true, content: [{ type: "text", text: lim }] };
   let out: any, ok = true;
@@ -212,8 +214,8 @@ Deno.serve(async (req: Request) => {
   const { data: ud, error: ue } = await admin.auth.getUser(token);
   if (ue || !ud?.user) return unauthorized(RESOURCE, "Your sign-in expired. Reconnect Revora.");
   const { data: p } = await admin.from("profiles").select("company_id, role, display_name, media_buyer_id").eq("id", ud.user.id).maybeSingle();
-  if (!p?.company_id) return jres({ error: "no_company", error_description: "This account has no Revora company yet. Finish sign-up at the dashboard first." }, 403);
-  const c: Ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId: p.company_id, role: p.role, mediaBuyerId: p.media_buyer_id, displayName: p.display_name || "" };
+  // Anyone with a Revora login can connect. An account that has not finished onboarding connects fine; its tools explain what is left to do.
+  const c: Ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId: p?.company_id ?? "", role: p?.role ?? "", mediaBuyerId: p?.media_buyer_id ?? null, displayName: p?.display_name || "" };
 
   if (req.method === "GET") return new Response(null, { status: 405, headers: { ...CORS, Allow: "POST" } });
   if (req.method === "DELETE") return new Response(null, { status: 204, headers: CORS });
