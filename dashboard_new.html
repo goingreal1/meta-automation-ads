@@ -11636,7 +11636,20 @@ function renderChatForRole(role) {
     : [];
   document.getElementById("chSuggs").innerHTML = [...extra, ...preset.suggs]
     .map(([q, label]) => `<button class="ch-sugg" onclick="askChat('${q.replace(/'/g, "\\'")}')">${escH(label)}</button>`)
-    .join("");
+    .join("") + (["owner", "admin", "buyer"].includes(role) ? `<button class="ch-sugg" onclick="bvImportAds()">Teach the AI from my past ads</button>` : "");
+}
+// Pulls the copy and results of every ad in the active ad account into the AI's library.
+async function bvImportAds() {
+  if (chBusy) return;
+  if (!activeAccountId) { appendMsg("Pick an ad account at the top first, then try again.", "bot"); return; }
+  const share = ["owner", "admin"].includes(window.myProfile?.role) && confirm("Also let the AI use the winning ads from this account (copy and results only, never your name) to help other sellers in the same niche?\n\nOK = share, Cancel = keep private.");
+  appendMsg("Teach the AI from my past ads", "user");
+  const m = appendMsg("", "bot");
+  m.innerHTML = '<span class="ch-typing"><i></i><i></i><i></i></span>';
+  try {
+    const r = await sbFn("ai-chat", { action: "import_library", ad_account_id: activeAccountId, share_to_niche: share });
+    chSetBot(m, r?.error ? "I couldn't read the ads: " + r.error : `Done. I read ${r.scanned} ads and saved ${r.imported} with their copy (${r.with_results} have results). From now on I write in the style of what worked here and avoid what flopped.${r.shared ? " The winners are shared anonymously with your niche." : ""}`);
+  } catch (e) { chSetBot(m, "I couldn't read the ads: " + (e.message || e)); }
 }
 
 let chatOpen = false;
