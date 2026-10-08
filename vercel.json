@@ -108,6 +108,14 @@
   ],
   "rewrites": [
     {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource/mcp",
+      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
+    },
+    {
       "source": "/mcp",
       "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site"
     },
