@@ -131,14 +131,15 @@ async function buildBusinessBrief(companyId: string, companyName: string): Promi
 const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobody needs to teach you their niche):
 - Work out the kind of business from the profile and products above and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
 - WRITING AD COPY (primary text, headlines, descriptions, hooks, CTAs): ALWAYS call write_ad_copy and show what it returns exactly as written, with at most one short line before it (which ad to test first and why). Do not write ad copy yourself, and do not shorten or rewrite its output. Pass the product name, the platform goal (WhatsApp or website) and any angle or language the person asked for.
-- Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
+- PRODUCT FIRST: before any ad copy be completely sure which product it is for. If the person names a product, use exactly that one; if they do not and there is more than one, ask. If write_ad_copy replies that it needs info, ask the person that one question, save their answer with save_product_facts, then try again. Never write copy for a product from the business type alone.\n- Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
 - META AD POLICY: no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health, body, finances or identity; no medical cures; no shocking or misleading claims; no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures.
 - ADVICE: when asked what to do (launch, kill, scale, budget, testing), give a clear recommendation first, then the reason in a sentence or two with the real numbers. If the data needed is not available, say so and say how to get it. Test one change at a time; give each new creative about 2-3 times the target cost per result in spend before judging; scale winners gradually.
 - If they ask for a different language or tone in chat (for example "write it in full Pidgin" or "in Yoruba"), do that for that request.
 - Ask at most one short clarifying question, and only when you truly cannot proceed.`;
 
 // ── Examples from the person's own past ads ───────────────────────────────
-type CopyEx = { text: string; headline: string; description: string; spend: number | null; cost: number | null; ctr: number | null; note: string };
+type CopyEx = { text: string; headline: string; description: string; spend: number | null; cost: number | null; ctr: number | null; note: string; product?: string | null; same?: boolean };
+const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 function adCopyFromCreative(cr: any): { text: string; headline: string; description: string } {
   const ld = cr?.object_story_spec?.link_data ?? cr?.object_story_spec?.video_data ?? {};
@@ -149,7 +150,7 @@ function adCopyFromCreative(cr: any): { text: string; headline: string; descript
   return { text, headline, description };
 }
 
-async function getCopyExamples(ctx: Ctx): Promise<{ winners: CopyEx[]; losers: CopyEx[]; others: CopyEx[]; source: string }> {
+async function getCopyExamples(ctx: Ctx, productName = ""): Promise<{ winners: CopyEx[]; losers: CopyEx[]; others: CopyEx[]; source: string }> {
   const out = { winners: [] as CopyEx[], losers: [] as CopyEx[], others: [] as CopyEx[], source: "none" };
   const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n) + "…" : t);
   // 1. Live from the person's selected ad account: real copy + real results.
@@ -174,30 +175,42 @@ async function getCopyExamples(ctx: Ctx): Promise<{ winners: CopyEx[]; losers: C
           const c = adCopyFromCreative(ad.creative);
           if (c.text.length < 40) continue;
           const m = perf.get(String(ad.id));
-          rows.push({ text: clip(c.text, 1100), headline: c.headline, description: c.description, spend: m ? Number(m.spend) : null, cost: m?.cost_per_result != null ? Number(m.cost_per_result) : null, ctr: m?.ctr != null ? Number(m.ctr) : null, note: m?.kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message" });
+          const tgt = norm(productName);
+          rows.push({ text: clip(c.text, 1100), headline: c.headline, description: c.description, spend: m ? Number(m.spend) : null, cost: m?.cost_per_result != null ? Number(m.cost_per_result) : null, ctr: m?.ctr != null ? Number(m.ctr) : null, note: m?.kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message", product: tgt && !norm(`${ad.name} ${c.headline} ${c.text}`).includes(tgt) ? "another product" : null, same: tgt ? norm(`${ad.name} ${c.headline} ${c.text}`).includes(tgt) : undefined });
         }
-        const judged = rows.filter((r) => r.spend != null && r.spend >= 1500);
+        const judged = rows.filter((r) => r.spend != null && r.spend >= 1500 && r.same !== false);
         out.winners = judged.filter((r) => r.cost != null).sort((a, b) => (a.cost as number) - (b.cost as number)).slice(0, 5);
         const winSet = new Set(out.winners);
         out.losers = judged.filter((r) => !winSet.has(r) && (r.cost == null || (r.spend as number) >= 3000)).sort((a, b) => ((b.cost ?? 1e9) as number) - ((a.cost ?? 1e9) as number)).slice(0, 3);
-        out.others = rows.filter((r) => !winSet.has(r) && !out.losers.includes(r)).slice(0, 4);
+        out.others = rows.filter((r) => !winSet.has(r) && !out.losers.includes(r)).sort((a, b) => Number(b.same !== false) - Number(a.same !== false)).slice(0, 4);
         if (rows.length) out.source = "this ad account";
       }
     }
   } catch (_e) { /* fall through to the company's saved copy */ }
   // 2. Ads this seller imported into their library (kept even after the ads are paused or deleted).
+  // The seller's library follows the PERSON, not the ad account: their own past ads first (so it survives switching accounts),
+  // then the rest of the company's. Rows about the same product are used as proof; rows about other products are style only.
   if (out.winners.length + out.others.length < 3) {
-    const { data: lib } = await supabase.from("ad_library").select("primary_text, headline, description, spend, cost_per_result, ctr, result_kind")
-      .eq("company_id", ctx.companyId).order("cost_per_result", { ascending: true, nullsFirst: false }).limit(60).then((r: any) => r).catch(() => ({ data: [] }));
-    const rows: CopyEx[] = (lib ?? []).map((l: any) => ({ text: clip(String(l.primary_text), 1100), headline: l.headline ?? "", description: l.description ?? "", spend: l.spend != null ? Number(l.spend) : null, cost: l.cost_per_result != null ? Number(l.cost_per_result) : null, ctr: l.ctr != null ? Number(l.ctr) : null, note: l.result_kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message" }));
-    const judged = rows.filter((r) => r.cost != null && (r.spend ?? 0) >= 1500);
+    const cols = "primary_text, headline, description, spend, cost_per_result, ctr, result_kind, product_name, media_buyer_id, source";
+    const { data: lib } = await supabase.from("ad_library").select(cols)
+      .eq("company_id", ctx.companyId).neq("source", "ai_draft").order("cost_per_result", { ascending: true, nullsFirst: false }).limit(150).then((r: any) => r).catch(() => ({ data: [] }));
+    const target = norm(productName);
+    const mine = (l: any) => ctx.role === "buyer" ? (l.media_buyer_id === ctx.mediaBuyerId ? 0 : 1) : 0;
+    const rows: CopyEx[] = (lib ?? []).slice().sort((a: any, b: any) => mine(a) - mine(b)).map((l: any) => ({
+      text: clip(String(l.primary_text), 1100), headline: l.headline ?? "", description: l.description ?? "",
+      spend: l.spend != null ? Number(l.spend) : null, cost: l.cost_per_result != null ? Number(l.cost_per_result) : null, ctr: l.ctr != null ? Number(l.ctr) : null,
+      note: l.result_kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message", product: l.product_name ?? null,
+      same: !!target && (norm(l.product_name) === target || norm(l.primary_text).includes(target)),
+    }));
+    // When we know the product, only same-product ads count as winners or losers; the rest is tone reference.
+    const pool = target ? rows.filter((r) => r.same) : rows;
+    const judged = pool.filter((r) => r.cost != null && (r.spend ?? 0) >= 1500);
     if (!out.winners.length) out.winners = judged.sort((a, b) => (a.cost as number) - (b.cost as number)).slice(0, 5);
     const used = new Set(out.winners);
-    if (!out.losers.length) out.losers = rows.filter((r) => !used.has(r) && (r.spend ?? 0) >= 3000 && (r.cost == null || r.cost > 0)).sort((a, b) => ((b.cost ?? 1e9) as number) - ((a.cost ?? 1e9) as number)).slice(0, 3);
-    out.others.push(...rows.filter((r) => !used.has(r) && !out.losers.includes(r)).slice(0, 4));
+    if (!out.losers.length) out.losers = pool.filter((r) => !used.has(r) && (r.spend ?? 0) >= 3000 && (r.cost == null || r.cost > 0)).sort((a, b) => ((b.cost ?? 1e9) as number) - ((a.cost ?? 1e9) as number)).slice(0, 3);
+    out.others.push(...rows.filter((r) => !used.has(r) && !out.losers.includes(r)).sort((a, b) => Number(!!b.same) - Number(!!a.same)).slice(0, 4));
     if (rows.length && out.source === "none") out.source = "this seller's ad library";
   }
-  // 3. Proven copy other sellers in the same niche chose to share (copy and results only, never names).
   if (out.winners.length < 2) {
     const { data: co } = await supabase.from("companies").select("business_types").eq("id", ctx.companyId).maybeSingle();
     const niche = (co?.business_types ?? [])[0];
@@ -205,7 +218,7 @@ async function getCopyExamples(ctx: Ctx): Promise<{ winners: CopyEx[]; losers: C
       const { data: pool } = await supabase.from("ad_library").select("primary_text, headline, description, spend, cost_per_result, ctr, result_kind")
         .eq("share_to_niche", true).eq("niche", niche).neq("company_id", ctx.companyId).gte("spend", 3000).not("cost_per_result", "is", null)
         .order("cost_per_result", { ascending: true }).limit(3).then((r: any) => r).catch(() => ({ data: [] }));
-      for (const l of pool ?? []) out.winners.push({ text: clip(String(l.primary_text), 1100), headline: l.headline ?? "", description: l.description ?? "", spend: Number(l.spend), cost: Number(l.cost_per_result), ctr: l.ctr != null ? Number(l.ctr) : null, note: l.result_kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message" });
+      for (const l of pool ?? []) out.winners.push({ text: clip(String(l.primary_text), 1100), headline: l.headline ?? "", description: l.description ?? "", spend: Number(l.spend), cost: Number(l.cost_per_result), ctr: l.ctr != null ? Number(l.ctr) : null, note: l.result_kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message", product: "another seller's ad", same: false });
       if (pool?.length && out.source === "none") out.source = "proven ads in this niche";
     }
   }
@@ -240,6 +253,8 @@ async function importLibrary(body: any, p: { companyId: string; role: string; me
   }
   const { data: co } = await supabase.from("companies").select("business_types").eq("id", p.companyId).maybeSingle();
   const niche = (co?.business_types ?? [])[0] ?? null;
+  const { data: prods } = await supabase.from("products").select("id, product_name").eq("company_id", p.companyId);
+  const productOf = (txt: string) => { const t = norm(txt); const hit = (prods ?? []).filter((x: any) => norm(x.product_name).length > 2 && t.includes(norm(x.product_name))).sort((a: any, b: any) => b.product_name.length - a.product_name.length)[0]; return hit ? { id: hit.id, name: hit.product_name } : null; };
   const share = body?.share_to_niche === true && ["owner", "admin"].includes(p.role);
   const fields = "id,name,effective_status,creative{body,title,object_story_spec,asset_feed_spec},insights.date_preset(maximum){spend,ctr,actions,cost_per_action_type}";
   let url: string | null = `https://graph.facebook.com/v21.0/act_${actId}/ads?fields=${encodeURIComponent(fields)}&limit=50&access_token=${token}`;
@@ -259,7 +274,9 @@ async function importLibrary(body: any, p: { companyId: string; role: string; me
       const hit = buy ?? msg;
       const kind = buy ? "purchase" : msg ? "message" : null;
       const costRow = (ins?.cost_per_action_type ?? []).find((a: any) => a.action_type === hit?.action_type);
+      const prod = productOf(`${ad.name ?? ""} ${c.headline} ${c.text}`);
       rows.push({
+        product_id: prod?.id ?? null, product_name: prod?.name ?? null, source: "meta_import",
         company_id: p.companyId, media_buyer_id: acct.media_buyer_id, ad_account_id: acct.id, meta_ad_id: String(ad.id), name: ad.name ?? null,
         primary_text: c.text, headline: c.headline || null, description: c.description || null, niche, effective_status: ad.effective_status ?? null,
         spend: ins?.spend != null ? Number(ins.spend) : null, results: hit ? Number(hit.value) : null, cost_per_result: costRow ? Number(costRow.value) : null,
@@ -275,12 +292,41 @@ async function importLibrary(body: any, p: { companyId: string; role: string; me
   return { imported: rows.length, scanned: seen, with_results: rows.filter((r) => r.cost_per_result != null).length, shared: share };
 }
 
+// Saves copy the person chose to keep (from a chat message) to their own library, reusable on any ad account.
+async function saveCopy(body: any, p: { companyId: string; role: string; mediaBuyerId: string | null }) {
+  const md = String(body?.raw_markdown ?? "").slice(0, 20000);
+  if (!md.trim()) throw new Error("Nothing to save.");
+  const { data: prods } = await supabase.from("products").select("id, product_name").eq("company_id", p.companyId);
+  const { data: co } = await supabase.from("companies").select("business_types").eq("id", p.companyId).maybeSingle();
+  const chunks = md.split(/^#{2,3}\s*Ad\s*\d+[^\n]*$/mi).slice(1);
+  const rows: any[] = [];
+  for (const ch of chunks.length ? chunks : [md]) {
+    const code = ch.match(/```[a-z]*\n([\s\S]*?)```/i);
+    const primary = (code ? code[1] : "").trim();
+    if (primary.length < 30) continue;
+    const hl = ch.match(/\*\*Headlines?:\*\*\s*([\s\S]*?)(?:\n\s*\*\*|$)/i);
+    const headline = hl ? (hl[1].split("\n").map((x) => x.replace(/^[\s\-*\d.)]+/, "").trim()).find(Boolean) ?? "") : "";
+    const ds = ch.match(/\*\*Description:\*\*\s*(.+)/i);
+    const t = norm(ch);
+    const prod = (prods ?? []).filter((x: any) => norm(x.product_name).length > 2 && t.includes(norm(x.product_name))).sort((a: any, b: any) => b.product_name.length - a.product_name.length)[0];
+    rows.push({
+      company_id: p.companyId, media_buyer_id: p.mediaBuyerId, meta_ad_id: "saved-" + crypto.randomUUID(), name: "Saved from the assistant",
+      primary_text: primary, headline: headline.slice(0, 200) || null, description: ds ? ds[1].trim().slice(0, 200) : null,
+      niche: (co?.business_types ?? [])[0] ?? null, source: "saved", product_id: prod?.id ?? null, product_name: prod?.product_name ?? null, share_to_niche: false,
+    });
+  }
+  if (!rows.length) throw new Error("I couldn't find ad copy in that message.");
+  const { error } = await supabase.from("ad_library").insert(rows);
+  if (error) throw new Error("Could not save: " + error.message);
+  return { saved: rows.length, products: [...new Set(rows.map((r) => r.product_name).filter(Boolean))] };
+}
+
 function renderExamples(ex: Awaited<ReturnType<typeof getCopyExamples>>): string {
-  const fmt = (e: CopyEx, i: number) => `#${i + 1}${e.cost != null ? ` (${e.note}: ${fmtNaira(e.cost)} on ${fmtNaira(e.spend ?? 0)} spend${e.ctr != null ? `, CTR ${e.ctr.toFixed(1)}%` : ""})` : ""}\nPrimary text: ${e.text}${e.headline ? `\nHeadline: ${e.headline}` : ""}${e.description ? `\nDescription: ${e.description}` : ""}`;
+  const fmt = (e: CopyEx, i: number) => `#${i + 1}${e.same === false ? ` [DIFFERENT PRODUCT${e.product && e.product !== "another product" ? ": " + e.product : ""}. Borrow rhythm and voice only, never its product, claims or words]` : ""}${e.cost != null ? ` (${e.note}: ${fmtNaira(e.cost)} on ${fmtNaira(e.spend ?? 0)} spend${e.ctr != null ? `, CTR ${e.ctr.toFixed(1)}%` : ""})` : ""}\nPrimary text: ${e.text}${e.headline ? `\nHeadline: ${e.headline}` : ""}${e.description ? `\nDescription: ${e.description}` : ""}`;
   const parts: string[] = [];
   if (ex.winners.length) parts.push(`ADS THAT WORKED FOR THIS SELLER (best results first). Study their voice, hooks, rhythm, length and what they promise. Write in this seller's own proven style. Never copy lines:\n${ex.winners.map(fmt).join("\n\n")}`);
   if (ex.losers.length) parts.push(`ADS THAT DID NOT WORK (spent money, weak results). Avoid what made them flat:\n${ex.losers.map(fmt).join("\n\n")}`);
-  if (ex.others.length) parts.push(`OTHER ADS FROM THIS SELLER (no results available). Use only for tone and the facts they state:\n${ex.others.map(fmt).join("\n\n")}`);
+  if (ex.others.length) parts.push(`OTHER ADS FROM THIS SELLER (no results available). Use only for tone (and for facts only if the ad is not marked DIFFERENT PRODUCT):\n${ex.others.map(fmt).join("\n\n")}`);
   return parts.join("\n\n") || "No past ads found for this seller yet. Lean on the product record and the niche knowledge.";
 }
 
@@ -296,27 +342,44 @@ async function callOpenAI(messages: any[], temperature: number, maxTokens: numbe
 
 // Two passes: a wild writer that finds hooks, then a strict editor that fixes weak lines and policy risk.
 async function writeAdCopy(args: any, ctx: Ctx, brief: { text: string; language: string }): Promise<unknown> {
+  const PCOLS = "id, product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, landing_page_url, is_active";
   const productName = String(args?.product_name ?? "").trim();
+  const { data: all } = await supabase.from("products").select(PCOLS).eq("company_id", ctx.companyId).order("is_active", { ascending: false });
+  const names = [...new Set((all ?? []).map((x: any) => String(x.product_name)))];
   let product: any = null;
   if (productName) {
-    const { data } = await supabase.from("products")
-      .select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, landing_page_url")
-      .eq("company_id", ctx.companyId).ilike("product_name", `%${productName.replace(/[%_]/g, "")}%`).limit(1);
-    product = data?.[0] ?? null;
+    const q = norm(productName);
+    const hits = (all ?? []).filter((x: any) => norm(x.product_name) === q).concat((all ?? []).filter((x: any) => norm(x.product_name) !== q && (norm(x.product_name).includes(q) || q.includes(norm(x.product_name)))));
+    // Several rows can share a name (duplicates): prefer the one with the most detail.
+    product = hits.sort((x: any, y: any) => (String(y.description ?? "").length + String(y.benefits ?? "").length) - (String(x.description ?? "").length + String(x.benefits ?? "").length))[0] ?? null;
+    if (!product && !args?.facts) return { needs_info: true, message: `I could not find a product called "${productName}" in this workspace. Ask which one they mean${names.length ? ` (their products: ${names.join(", ")})` : ""}, or ask them to tell you what it is. Do not write copy yet.` };
+  } else if (!args?.facts) {
+    const active = (all ?? []).filter((x: any) => x.is_active !== false);
+    if (active.length === 1) product = active[0];
+    else return { needs_info: true, message: `Ask which product the ads are for${names.length ? ` (their products: ${names.join(", ")})` : ""}. Do not guess and do not write copy yet.` };
   }
-  if (!product && !args?.facts) {
-    const { data: any1 } = await supabase.from("products").select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, landing_page_url").eq("company_id", ctx.companyId).eq("is_active", true).limit(1);
-    product = any1?.[0] ?? null;
+  // What do we actually know about this product? The record, past ads that name it, or what the person just told us.
+  let known = "";
+  if (product) {
+    const bits = [product.description && `About: ${product.description}`, product.benefits && `Benefits: ${product.benefits}`, product.safety_notes && `Safety notes: ${product.safety_notes}`].filter(Boolean);
+    known = bits.join("\n");
+    if (!known && !args?.facts) {
+      const { data: past } = await supabase.from("ad_library").select("primary_text, headline").eq("company_id", ctx.companyId).ilike("product_name", product.product_name).neq("source", "ai_draft").limit(3);
+      if (past?.length) known = "From the seller's own past ads for this product (treat as the truth about what it is):\n" + past.map((r: any) => `- ${String(r.headline ?? "")} | ${String(r.primary_text).slice(0, 500)}`).join("\n");
+    }
+    if (!known && !args?.facts) return { needs_info: true, product: product.product_name, message: `The record for "${product.product_name}" has no description, benefits or past ads, so you do not know what it is. Do NOT write copy and do NOT guess from the business type. Ask the person ONE short message: what the product is, what it helps with, who it is for, and its top 3 benefits. When they answer, call save_product_facts and then write_ad_copy.` };
   }
+  const goalFactsFromUser = args?.facts ? String(args.facts).slice(0, 1200) : "";
   const goal = args?.goal === "website" ? "website (people click through to order)" : "WhatsApp (people tap to chat and order)";
   const cta = args?.goal === "website" ? "Shop Now, Order Now or Learn More" : "Send message";
   const count = Math.min(Math.max(Number(args?.count) || 3, 1), 5);
   const langKey = typeof args?.language === "string" && LANGUAGE_RULES[args.language] ? args.language : brief.language;
   const langRule = typeof args?.language_note === "string" && args.language_note.trim() ? `LANGUAGE: ${String(args.language_note).slice(0, 200)}` : LANGUAGE_RULES[langKey];
-  const examples = renderExamples(await getCopyExamples(ctx));
-  const productText = product
-    ? `PRODUCT: ${product.product_name}${product.default_order_value_naira ? ` · price ${fmtNaira(Number(product.default_order_value_naira))}` : ""}\nAbout: ${product.description ?? "-"}\nBenefits: ${product.benefits ?? "-"}\nSafety notes: ${product.safety_notes ?? "-"}${product.nafdac_reg_no ? `\nNAFDAC no.: ${product.nafdac_reg_no}` : ""}`
-    : `PRODUCT / OFFER FACTS (from the user): ${String(args?.facts ?? "none given").slice(0, 1200)}`;
+  const examples = renderExamples(await getCopyExamples(ctx, product?.product_name ?? productName));
+  const productText = `PRODUCT LOCK. Every ad is about this ONE product and nothing else:
+NAME: ${product?.product_name ?? productName ?? "(from the person's facts)"}${product?.default_order_value_naira ? ` · price ${fmtNaira(Number(product.default_order_value_naira))}` : ""}
+${known ? `WHAT WE KNOW:\n${known}` : ""}${goalFactsFromUser ? `\nTOLD BY THE PERSON IN CHAT:\n${goalFactsFromUser}` : ""}${product?.nafdac_reg_no ? `\nNAFDAC no.: ${product.nafdac_reg_no}` : ""}
+The business may sell several kinds of products and the niche notes above are general. They NEVER decide what this product is. Only the facts above do. Do not mention, imply or borrow any other product, ingredient, body area or use (for example do not write about skin, cream or hair unless the facts say so). If something is not in the facts, leave it out or use a [placeholder].`;
   const ask = `Write ${count} complete Facebook/Instagram ads for the product below. Ad goal: ${goal}. ${args?.angle ? `Requested angle: ${String(args.angle).slice(0, 200)}.` : "Each ad uses a different angle and a different hook technique."} ${args?.notes ? `Extra notes: ${String(args.notes).slice(0, 400)}` : ""}`;
   const context = `${brief.text}\n\n${productText}\n\n${examples}\n\n${COPY_CRAFT}\n\n${langRule}\n\nMETA POLICY: no guaranteed results; no before-and-after claims; never imply you know the viewer's health, body, finances or identity; no medical cures; no fake urgency; no invented facts, testimonials, discounts or registration numbers (use [placeholders] where a fact is missing).`;
 
@@ -329,7 +392,7 @@ async function writeAdCopy(args: any, ctx: Ctx, brief: { text: string; language:
   // Pass 2: ruthless editor (cool)
   const final = await callOpenAI([
     { role: "system", content: "You are a ruthless senior ad editor. You improve copy without losing its energy." },
-    { role: "user", content: `${context}\n\nHere are the drafts:\n\n${draft}\n\nEDIT THEM into the final version. Rules: keep ${count} ads. For each line ask "could this be about any product?" and rewrite if yes. Remove every banned phrase. Make hooks sharper and more specific, keep the long-form length and the bouncy rhythm, check every claim against the product record (remove anything not supported), fix any Meta policy risk, keep the language rule. Output ONLY this markdown for each ad, nothing else:\n\n### Ad N: <angle name>\n**Hook options:** (3 short lines, the first is the one used)\n**Primary text:**\n\`\`\`\n<full primary text>\n\`\`\`\n**Headlines:** (3 options, about 40 characters each)\n**Description:** <about 30 characters>\n**CTA button:** ${cta}\n**Why it should work:** <one sentence>` },
+    { role: "user", content: `${context}\n\nHere are the drafts:\n\n${draft}\n\nEDIT THEM into the final version. Rules: keep ${count} ads. FIRST run a PRODUCT CHECK: every ad must be only about the locked product; delete or rewrite any sentence that mentions another product type, use, ingredient or body area not in the facts. Then, for each line ask "could this be about any product?" and rewrite if yes. Remove every banned phrase. Make hooks sharper and more specific, keep the long-form length and the bouncy rhythm, check every claim against the product record (remove anything not supported), fix any Meta policy risk, keep the language rule. Output ONLY this markdown for each ad, nothing else:\n\n### Ad N: <angle name>\n**Hook options:** (3 short lines, the first is the one used)\n**Primary text:**\n\`\`\`\n<full primary text>\n\`\`\`\n**Headlines:** (3 options, about 40 characters each)\n**Description:** <about 30 characters>\n**CTA button:** ${cta}\n**Why it should work:** <one sentence>` },
   ], 0.45, 3600);
   return { copy_markdown: final, note: "Show copy_markdown exactly as written. Do not rewrite or shorten it." };
 }
@@ -357,6 +420,11 @@ Deno.serve(async (req: Request) => {
   if (body?.action === "import_library") {
     if (!["owner", "admin", "buyer"].includes(profile.role)) return json({ error: "Only owners, admins and buyers can import ads." }, 403);
     try { return json(await importLibrary(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id })); }
+    catch (e) { return json({ error: (e as Error).message }, 500); }
+  }
+  if (body?.action === "save_copy") {
+    if (!["owner", "admin", "buyer"].includes(profile.role)) return json({ error: "Only owners, admins and buyers can save copy." }, 403);
+    try { return json(await saveCopy(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id })); }
     catch (e) { return json({ error: (e as Error).message }, 500); }
   }
   const question = (body?.question || "").toString().trim();
@@ -469,6 +537,22 @@ ${JSON.stringify(data)}`;
             notes: { type: "string", description: "Anything else the person asked for (offer, audience, tone)." },
           },
           required: [],
+        },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "save_product_facts",
+        description: "Save what the person told you about a product (what it is, benefits, safety notes) onto its product record so ad copy is always about the right product. Use it right after they answer your question about an unfamiliar or empty product. Use only their words, no embellishment.",
+        parameters: {
+          type: "object",
+          properties: {
+            product_name: { type: "string" },
+            description: { type: "string", description: "What the product is and what it is for, in plain words, as the person said it." },
+            benefits: { type: "string", description: "Its main benefits, short lines." },
+            safety_notes: { type: "string" },
+          },
+          required: ["product_name", "description"],
         },
       },
     },
@@ -734,6 +818,20 @@ const slimMetrics = (m: any) => ({
 
 async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
   switch (name) {
+    case "save_product_facts": {
+      if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can edit products." };
+      const q = String(args?.product_name ?? "").trim();
+      if (!q || !String(args?.description ?? "").trim()) return { error: "product_name and description are required." };
+      const { data: rows } = await supabase.from("products").select("id, product_name").eq("company_id", ctx.companyId).ilike("product_name", `%${q.replace(/[%_]/g, "")}%`).limit(5);
+      if (!rows?.length) return { error: `No product matching "${q}".` };
+      const patch: Record<string, string> = { description: String(args.description).trim().slice(0, 2000) };
+      if (args.benefits) patch.benefits = String(args.benefits).trim().slice(0, 2000);
+      if (args.safety_notes) patch.safety_notes = String(args.safety_notes).trim().slice(0, 1000);
+      const { error } = await supabase.from("products").update(patch).in("id", rows.map((r: any) => r.id));
+      if (error) return { error: error.message };
+      return { ok: true, updated: rows.length, note: "Saved. Now call write_ad_copy for this product." };
+    }
+
     case "get_product": {
       const q = String(args?.product_name ?? "").trim();
       if (!q) return { error: "product_name is required" };

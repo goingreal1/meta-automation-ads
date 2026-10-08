@@ -11638,6 +11638,14 @@ function renderChatForRole(role) {
     .map(([q, label]) => `<button class="ch-sugg" onclick="askChat('${q.replace(/'/g, "\\'")}')">${escH(label)}</button>`)
     .join("") + (["owner", "admin", "buyer"].includes(role) ? `<button class="ch-sugg" onclick="bvImportAds()">Teach the AI from my past ads</button>` : "");
 }
+// Keeps the ad copy in a chat message in the person's own library, so it can be reused on any ad account and by the launcher.
+async function bvSaveCopy(btn) {
+  const msg = btn.closest(".ch-msg"); if (!msg) return;
+  btn.disabled = true; const old = btn.textContent; btn.textContent = "Saving…";
+  const r = await sbFn("ai-chat", { action: "save_copy", raw_markdown: msg.dataset.raw || "" });
+  btn.textContent = r?.saved ? `Saved ${r.saved} ad${r.saved > 1 ? "s" : ""}` : (r?.error || "Could not save");
+  if (!r?.saved) { btn.disabled = false; setTimeout(() => { btn.textContent = old; }, 2500); }
+}
 // Pulls the copy and results of every ad in the active ad account into the AI's library.
 async function bvImportAds() {
   if (chBusy) return;
@@ -11726,7 +11734,7 @@ function chDecorate(el, text) {
   el.querySelector(".ch-acts")?.remove();
   const a = document.createElement("div");
   a.className = "ch-acts";
-  a.innerHTML = '<button type="button" onclick="chCopyMsg(this)">Copy</button>';
+  a.innerHTML = '<button type="button" onclick="chCopyMsg(this)">Copy</button>' + (/primary text/i.test(text) && /```/.test(text) ? '<button type="button" onclick="bvSaveCopy(this)">Save to my library</button>' : "");
   el.appendChild(a);
 }
 function chSyncEmpty() {
