@@ -132,7 +132,7 @@ const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobo
 - Work out the kind of business from the profile and products above and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
 - WRITING AD COPY (primary text, headlines, descriptions, hooks, CTAs): ALWAYS call write_ad_copy and show what it returns exactly as written, with at most one short line before it (which ad to test first and why). Do not write ad copy yourself, and do not shorten or rewrite its output. Pass the product name, the platform goal (WhatsApp or website) and any angle or language the person asked for.
 - PRODUCT FIRST: before any ad copy be completely sure which product it is for. If the person names a product, use exactly that one; if they do not and there is more than one, ask. If write_ad_copy replies that it needs info, ask the person that one question, save their answer with save_product_facts, then try again. Never write copy for a product from the business type alone.
-- RUNNING ADS FOR THEM (you are their personal senior media buyer): when they ask to launch ads, do it by conversation and cards. Order: (1) know the product (see PRODUCT FIRST); (2) decide what you can yourself, and use ONE ask_questions card for only what you cannot (where ads send people, how many ad sets, who should see it, daily budget if not given); (3) if they have not given copy, call write_ad_copy; (4) call show_creatives with the first ad's copy, then wait for their pick; (5) turn plain audience wishes into real targeting with search_audiences (interests, job types like business owners or students, cities) and Nigerian state names; (6) call plan_campaign. Default structure when they leave it to you: 3 ad sets (an interest audience, a broad audience, one more angle), 3 ads per ad set, the budget split by expected value. You can never launch: only their tap on Approve on the plan card launches, so never say anything is live until they tell you it is. Use check_pixel for any question about the pixel or tracking.
+- RUNNING ADS FOR THEM (you are their personal senior media buyer): when they ask to launch ads, do it by conversation and cards. Order: (1) know the product (see PRODUCT FIRST); (2) ALWAYS ask, with ONE ask_questions card, anything the person has not already told you: where ads send people (their WEBSITE to buy, or WHATSAPP chat), daily budget per ad set, who should see it and where, how many ad sets and ads. Never assume a destination or budget, and never call plan_campaign until they have answered; (3) if they have not given copy, call write_ad_copy; (4) call show_creatives with the first ad's copy, then wait for their pick. Creatives are listed per product with every image and video (vault uploads AND the product photo); say how many of each exist and that none is a video if so. One creative can be reused in several ads, so 3 creatives can make 5 ads with different copy (use ads[]); (5) turn plain audience wishes into real targeting with search_audiences (interests, job types like business owners or students, cities) and Nigerian state names; (6) call plan_campaign. If they explicitly say to decide the structure, use: 3 ad sets (an interest audience, a broad audience, one more angle), 3 ads per ad set, the budget split by expected value. You can never launch: only their tap on Approve on the plan card launches, so never say anything is live until they tell you it is. Use check_pixel for any question about the pixel or tracking.
 - EXPLAINING RESULTS: never dump a list of metrics. Start with a one-sentence answer, then explain in plain words what the few numbers that matter mean (spend, results, cost per result against their target), then call review_ads_card for the Keep, Watch and Stop groups with real ids and tap buttons. Do not repeat the card's contents in text. Judge ads only after about 2 to 3 times the target cost per result in spend. To scale a winner: raise budget 20 percent, or duplicate it into the same campaign (the winner keeps running and the copy goes live; never kill a winner). A BAD ad is relaunched: offer duplicate (a fresh live copy) and the old one is switched off in the same tap. Only bad ads are ever stopped.
 - Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
 - META AD POLICY: no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health, body, finances or identity; no medical cures; no shocking or misleading claims; no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures.
@@ -350,28 +350,35 @@ function askQuestionsTool(args: any, ctx: Ctx) {
   return { ok: true, note: "The question card is on screen. Write ONE short line before it, then stop and wait for their answers. Do not ask the same questions in text." };
 }
 
+const productKey = (n: unknown) => String(n ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// One list of every image/video the person owns, from the creative_library view (vault uploads + product photos), grouped by product name so duplicate product rows never hide anything.
+async function loadCreativeLibrary(companyId: string, productName?: string | null) {
+  const key = productKey(productName);
+  const { data } = await supabase.from("creative_library").select("library_id, source, product_id, product_name, product_key, kind, url, name, times_used, last_uploaded").eq("company_id", companyId).limit(500);
+  const seen = new Set<string>(); const rows: any[] = [];
+  for (const r of (data ?? []).slice().sort((a: any, b: any) => (key && b.product_key === key ? 1 : 0) - (key && a.product_key === key ? 1 : 0) || String(b.last_uploaded).localeCompare(String(a.last_uploaded)))) {
+    if (!/^https:\/\//.test(String(r.url)) || seen.has(r.url)) continue;
+    seen.add(r.url);
+    rows.push({ id: r.library_id, url: r.url, type: r.kind, name: r.name, source: r.source, product: r.product_name ?? null, match: !!key && r.product_key === key, times_used: r.times_used ?? 0 });
+  }
+  return rows;
+}
+
 async function showCreativesTool(args: any, ctx: Ctx) {
-  let pid: string | null = null;
-  if (args?.product_name) {
-    const { data } = await supabase.from("products").select("id").eq("company_id", ctx.companyId).ilike("product_name", `%${String(args.product_name).replace(/[%_]/g, "")}%`).limit(1);
-    pid = data?.[0]?.id ?? null;
-  }
-  const { data } = await supabase.from("creative_assets").select("id, file_name, public_url, asset_type, product_id, uploaded_at")
-    .eq("company_id", ctx.companyId).not("public_url", "is", null).order("uploaded_at", { ascending: false }).limit(150);
-  const rank = (r: any) => (pid && r.product_id === pid ? 0 : 1);
-  const seen = new Set<string>(); const assets: any[] = [];
-  for (const r of (data ?? []).slice().sort((a: any, b: any) => rank(a) - rank(b))) {
-    if (!/^https:\/\//.test(String(r.public_url)) || seen.has(r.public_url)) continue;
-    seen.add(r.public_url);
-    assets.push({ id: r.id, url: r.public_url, type: r.asset_type === "video" ? "video" : "image", name: r.file_name, match: !!pid && r.product_id === pid });
-    if (assets.length >= 12) break;
-  }
+  const all = await loadCreativeLibrary(ctx.companyId, args?.product_name);
+  const hasName = !!productKey(args?.product_name);
+  const assets = [...all.filter((a) => a.match), ...all.filter((a) => !a.match)].slice(0, 24);
+  const matched = assets.filter((a) => a.match);
   ctx.cards.push({
     type: "creatives", product: String(args?.product_name || "").slice(0, 80), assets,
-    preselect: assets.filter((a) => a.match).slice(0, 3).map((a) => a.id),
+    preselect: matched.slice(0, 6).map((a) => a.id),
     copy: { primary_text: String(args?.primary_text || "").slice(0, 2000), headline: String(args?.headline || "").slice(0, 200), description: String(args?.description || "").slice(0, 200) },
   });
-  return { ok: true, found: assets.length, note: "The creative card is on screen (existing creatives to tick, upload, or generate). Write one short line, then stop and wait for their choice." };
+  return {
+    ok: true, found: assets.length, for_this_product: hasName ? { images: matched.filter((a) => a.type === "image").length, videos: matched.filter((a) => a.type === "video").length, items: matched.map((a) => ({ id: a.id, type: a.type, source: a.source, name: a.name })) } : undefined,
+    note: "The creative card is on screen. It lists EVERY image and video for this product, including the product photo. State the exact counts in plain words (e.g. 3 vault images + 1 product photo, no video) and say when there is no video. A creative may be reused across several ads. Write one short line, then stop and wait for their choice.",
+  };
 }
 
 async function searchAudiencesTool(args: any, ctx: Ctx) {
@@ -430,13 +437,15 @@ async function planCard(plan: any, planId: string, ctx: { authHeader: string; ac
     return { label: a.label, who: whoText(a), where: whereText(a), budget: a.budget_naira, reach, states: a.states || [], age_min: a.age_min, age_max: a.age_max };
   }));
   const total = rows.reduce((s: number, r: any) => s + r.budget, 0);
-  const { data: kr } = await supabase.from("kill_rules").select("kind, enabled, max_cost_per_result, min_spend").eq("profile_id", ctx.userId).limit(5).then((x: any) => x, () => ({ data: [] }));
-  const rule = (kr ?? []).find((r: any) => r.enabled);
+  const { data: kr } = await supabase.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend").eq("profile_id", ctx.userId).limit(5).then((x: any) => x, () => ({ data: [] }));
+  const wantKind = plan.destination === "website" ? "purchase" : "messaging";
+  const rule = (kr ?? []).find((r: any) => r.enabled && r.kind === wantKind);
+  const adsPerSet = Array.isArray(plan.ads) && plan.ads.length ? plan.ads.length : plan.asset_ids.length;
   return {
     type: "plan", plan_id: planId, status: "draft", title: `${plan.product_name} · ${plan.destination === "website" ? "Website orders" : "WhatsApp messages"}`,
-    summary: `1 campaign · ${rows.length} ad set${rows.length > 1 ? "s" : ""} · ${rows.length * plan.asset_ids.length} ads · ${fmtNaira(total)} a day`,
-    adsets: rows, creatives: `${plan.asset_ids.length} creative${plan.asset_ids.length > 1 ? "s" : ""} per ad set, ${plan.copies.length} copy version${plan.copies.length > 1 ? "s" : ""}`,
-    pixel: plan.pixel_ok === null ? null : plan.pixel_ok, rules: rule ? `Your kill rule: pause an ad when it passes ${fmtNaira(Number(rule.min_spend))} spend with cost per result above ${fmtNaira(Number(rule.max_cost_per_result))}.` : "No kill rule set yet. Set one in Settings so ads that do not work are paused for you.",
+    summary: `1 campaign · ${rows.length} ad set${rows.length > 1 ? "s" : ""} · ${rows.length * adsPerSet} ads · ${fmtNaira(total)} a day`,
+    adsets: rows, creatives: `${adsPerSet} ad${adsPerSet > 1 ? "s" : ""} per ad set from ${plan.asset_ids.length} creative${plan.asset_ids.length > 1 ? "s" : ""} and ${plan.copies.length} copy version${plan.copies.length > 1 ? "s" : ""}`,
+    pixel: plan.pixel_ok === null ? null : plan.pixel_ok, rules: rule ? `Your ${plan.destination === "website" ? "website purchase" : "WhatsApp message"} kill rule: ${rule.auto_kill === false ? "flag" : "pause"} an ad when it passes ${fmtNaira(Number(rule.min_spend))} spend with cost per ${plan.destination === "website" ? "purchase" : "message"} above ${fmtNaira(Number(rule.max_cost_per_result))}.` : `No ${plan.destination === "website" ? "website purchase" : "WhatsApp message"} kill rule set yet, so nothing will be paused automatically for this campaign. Set one in Settings.`,
     warnings: plan.warnings || [], campaign_name: plan.campaign_name,
   };
 }
@@ -451,29 +460,58 @@ async function planCampaignTool(args: any, ctx: Ctx) {
   const { data: acct } = await supabase.from("ad_accounts").select("id, whatsapp_number, meta_pixel_id, fb_page_id, balance_naira").eq("id", ctx.account.id).eq("company_id", ctx.companyId).maybeSingle();
   if (!acct) return { error: "That ad account is not available." };
   if (!acct.fb_page_id) return { needs_info: true, message: "This ad account has no Facebook page saved, so ads cannot be created. Tell the person to connect the page in Settings, Ad accounts." };
-  const dest = args?.destination === "website" ? "website" : "whatsapp";
+  if (args?.destination !== "website" && args?.destination !== "whatsapp") return { needs_info: true, message: "Ask whether people should land on their WEBSITE (to buy) or message them on WHATSAPP. Do not assume." };
+  if (args?.person_confirmed !== true) return { needs_info: true, message: "The person has not confirmed the setup yet. Ask (one ask_questions card) for anything missing: destination, daily budget per ad set, who to reach and where, and which creatives; then call again with person_confirmed true only if they said it." };
+  const dest = args.destination as "website" | "whatsapp";
   const wa = String(acct.whatsapp_number || product.whatsapp_number || "").replace(/[^\d]/g, "");
   const link = String(args?.landing_url || product.landing_page_url || "").trim();
   if (dest === "whatsapp" && !wa) return { needs_info: true, message: "No WhatsApp number is saved on this ad account or product. Ask which WhatsApp number people should message." };
   if (dest === "website" && !/^https:\/\//.test(link)) return { needs_info: true, message: "Need the website link people should land on. Ask for it." };
-  const ids = [...new Set((Array.isArray(args?.asset_ids) ? args.asset_ids : []).map(String).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)))].slice(0, 6);
-  const { data: assets } = ids.length ? await supabase.from("creative_assets").select("id").eq("company_id", ctx.companyId).in("id", ids) : { data: [] as any[] };
-  const assetIds = ids.filter((i) => (assets ?? []).some((a: any) => a.id === i));
+  const wanted = [...new Set([...(Array.isArray(args?.asset_ids) ? args.asset_ids : []), ...(Array.isArray(args?.ads) ? args.ads.map((x: any) => x?.asset_id) : [])].map(String))].slice(0, 12);
+  const idMap = new Map<string, string>(); // token the person picked -> creative_assets.id
+  const direct = wanted.filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+  if (direct.length) {
+    const { data: rows } = await supabase.from("creative_assets").select("id, public_url").eq("company_id", ctx.companyId).in("id", direct);
+    for (const r of rows ?? []) idMap.set(r.id, r.id);
+    // a library id is the representative row of its image; if only a sibling row was passed it still resolves above
+  }
+  for (const tok of wanted.filter((x) => /^product:[0-9a-f-]{36}:(photo|ad)$/i.test(x))) {
+    const [, pid, which] = tok.split(":");
+    const { data: pr } = await supabase.from("products").select("id, product_name, product_image_url, ad_image_url").eq("id", pid).eq("company_id", ctx.companyId).maybeSingle();
+    const url = which === "ad" ? pr?.ad_image_url : pr?.product_image_url;
+    if (!pr || !/^https:\/\//.test(String(url ?? ""))) continue;
+    const { data: ex } = await supabase.from("creative_assets").select("id").eq("company_id", ctx.companyId).eq("public_url", url).limit(1);
+    let cid = ex?.[0]?.id as string | undefined;
+    if (!cid) {
+      const m = String(url).match(/\/object\/public\/creative-vault\/(.+)$/);
+      const { data: ins } = await supabase.from("creative_assets").insert({ file_name: `${pr.product_name} ${which === "ad" ? "ad image" : "photo"}`, storage_path: m ? decodeURIComponent(m[1]) : null, public_url: url, asset_type: "image", product_id: pr.id, company_id: ctx.companyId, uploaded_by: "ai_chat", test_status: "untested", uploaded_at: new Date().toISOString() }).select("id").single();
+      cid = ins?.id;
+    }
+    if (cid) idMap.set(tok, cid);
+  }
+  const resolve = (t: unknown) => idMap.get(String(t));
+  const assetIds = [...new Set([...idMap.values()])];
   if (!assetIds.length) return { needs_info: true, message: "No creatives chosen yet. Call show_creatives and wait for the person to choose." };
-  const copies = (Array.isArray(args?.copies) ? args.copies : []).map((c: any) => ({ primary_text: String(c?.primary_text || "").trim().slice(0, 2000), headline: String(c?.headline || "").trim().slice(0, 200), description: String(c?.description || "").trim().slice(0, 200) })).filter((c: any) => c.primary_text.length >= 30).slice(0, 5);
+  const copies = (Array.isArray(args?.copies) ? args.copies : []).map((c: any) => ({ primary_text: String(c?.primary_text || "").trim().slice(0, 2000), headline: String(c?.headline || "").trim().slice(0, 200), description: String(c?.description || "").trim().slice(0, 200) })).filter((c: any) => c.primary_text.length >= 30).slice(0, 8);
   if (!copies.length) return { needs_info: true, message: "No ad copy yet. Call write_ad_copy first (or use the copy the person chose) and pass it in copies." };
+  // Each ad = one creative + one copy. A creative may appear in several ads (reuse). Without an explicit list, every creative gets the next copy in turn.
+  let ads: { asset_id: string; copy_index: number }[] = (Array.isArray(args?.ads) ? args.ads : [])
+    .map((x: any) => ({ asset_id: resolve(x?.asset_id) as string, copy_index: Math.round(Number(x?.copy_index) || 0) }))
+    .filter((x: any) => x.asset_id && x.copy_index >= 0 && x.copy_index < copies.length).slice(0, 12);
+  if (Array.isArray(args?.ads) && args.ads.length && ads.length !== Math.min(args.ads.length, 12)) return { needs_info: true, message: `Some ads point to a creative or copy that does not exist (copy_index is 0 to ${copies.length - 1}). Fix the ads list and call again.` };
+  if (!ads.length) ads = assetIds.map((id, j) => ({ asset_id: id, copy_index: j % copies.length }));
   const adsets = (Array.isArray(args?.adsets) ? args.adsets : []).slice(0, 6).map((a: any, i: number) => {
     const amin = Math.min(Math.max(Math.round(Number(a?.age_min) || 25), 18), 65);
     const amax = Math.min(Math.max(Math.round(Number(a?.age_max) || 55), amin), 65);
     return {
-      label: String(a?.label || `Ad set ${i + 1}`).slice(0, 60), budget_naira: Math.min(Math.max(norm0(a?.budget_naira) || 3000, 1000), 500000),
+      label: String(a?.label || `Ad set ${i + 1}`).slice(0, 60), budget_naira: Math.min(Math.max(norm0(a?.budget_naira), 1000), 500000),
       age_min: amin, age_max: amax, gender: ["all", "male", "female"].includes(a?.gender) ? a.gender : "all",
       states: (Array.isArray(a?.states) ? a.states : []).map((s: any) => String(s).replace(/ state$/i, "").trim()).filter(Boolean).slice(0, 12),
       cities: (Array.isArray(a?.cities) ? a.cities : []).filter((c: any) => /^\d+$/.test(String(c?.key))).map((c: any) => ({ key: String(c.key), name: String(c.name || ""), region: String(c.region || ""), radius: 17 })).slice(0, 10),
       interests: (Array.isArray(a?.interests) ? a.interests : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name || "") })).slice(0, 8),
     };
   });
-  if (!adsets.length) return { needs_info: true, message: "No ad sets given. Plan at least one ad set (who, where, daily budget)." };
+  if (!adsets.length || (Array.isArray(args.adsets) ? args.adsets : []).some((a: any) => !(Number(a?.budget_naira) >= 1000))) return { needs_info: true, message: "Every ad set needs a daily budget the person stated (at least ₦1,000). Ask for it; never pick one yourself." };
   const warnings: string[] = [];
   const total = adsets.reduce((s: number, a: any) => s + a.budget_naira, 0);
   if (acct.balance_naira != null && Number(acct.balance_naira) < total) warnings.push(`The account balance is about ${fmtNaira(Number(acct.balance_naira))}, less than one day of this plan (${fmtNaira(total)}). Top up before launching.`);
@@ -481,7 +519,7 @@ async function planCampaignTool(args: any, ctx: Ctx) {
   const plan = {
     product_id: product.id, product_name: product.product_name, ad_account_id: acct.id, destination: dest, whatsapp_number: dest === "whatsapp" ? wa : null, landing_url: dest === "website" ? link : null,
     campaign_name: String(args?.campaign_name || `${product.product_name} ${new Date().toISOString().slice(0, 10)}`).slice(0, 100),
-    cta: String(args?.cta || (dest === "whatsapp" ? "WHATSAPP_MESSAGE" : "SHOP_NOW")).slice(0, 40), asset_ids: assetIds, copies, adsets, warnings, pixel_ok: dest === "website" ? !!acct.meta_pixel_id : null,
+    cta: String(args?.cta || (dest === "whatsapp" ? "WHATSAPP_MESSAGE" : "SHOP_NOW")).slice(0, 40), asset_ids: assetIds, ads, copies, adsets, warnings, pixel_ok: dest === "website" ? !!acct.meta_pixel_id : null,
   };
   const { data: row, error } = await supabase.from("ai_plans").insert({ company_id: ctx.companyId, user_id: ctx.userId, ad_account_id: acct.id, plan }).select("id").single();
   if (error || !row) return { error: "Could not save the plan: " + (error?.message ?? "unknown") };
@@ -556,13 +594,14 @@ async function planAction(body: any, p: { companyId: string; role: string; media
   if (!claim.data?.length) throw new Error("This plan is already being launched.");
   try {
     const { data: srcs } = await supabase.from("creative_assets").select("id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format").eq("company_id", p.companyId).in("id", plan.asset_ids);
-    const sources = plan.asset_ids.map((id: string) => (srcs ?? []).find((s: any) => s.id === id)).filter(Boolean);
-    if (!sources.length) throw new Error("The chosen creatives are no longer available.");
+    const planAds: { asset_id: string; copy_index: number }[] = Array.isArray(plan.ads) && plan.ads.length ? plan.ads : plan.asset_ids.map((id: string, j: number) => ({ asset_id: id, copy_index: j % plan.copies.length }));
+    const sources = planAds.map((x) => (srcs ?? []).find((s: any) => s.id === x.asset_id));
+    if (!sources.length || sources.some((x: any) => !x)) throw new Error("The chosen creatives are no longer available.");
     const batch = crypto.randomUUID();
     const ids: string[] = [];
     for (let i = 0; i < plan.adsets.length; i++) {
       for (let j = 0; j < sources.length; j++) {
-        const s: any = sources[j], c = plan.copies[j % plan.copies.length];
+        const s: any = sources[j], c = plan.copies[planAds[j].copy_index] ?? plan.copies[0];
         const { data: ins, error } = await supabase.from("creative_assets").insert({
           file_name: s.file_name, storage_path: s.storage_path, public_url: s.public_url, asset_type: s.asset_type, meta_video_id: s.meta_video_id ?? null, meta_image_hash: s.meta_image_hash ?? null,
           mechanism: s.mechanism, format: s.format, primary_text: c.primary_text, headline: c.headline, description: c.description, cta_type: plan.cta,
@@ -905,17 +944,19 @@ ${JSON.stringify(data)}`;
     {
       type: "function", function: {
         name: "plan_campaign",
-        description: "Build the campaign plan and show it as a card with Approve, Edit and Cancel buttons. It does NOT launch anything: only the person's tap on Approve launches. Needs: product, destination, 1-6 ad sets (who, where, daily budget), the chosen creative ids, and the ad copy versions. Never call it before copy and creatives exist.",
+        description: "Build the campaign plan and show it as a card with Approve, Edit and Cancel buttons. It does NOT launch anything: only the person's tap on Approve launches. Needs, all stated by the person: product, destination (website or WhatsApp), 1-6 ad sets (who, where, daily budget), the chosen creative ids, how many ads per ad set (use ads[] to reuse creatives), and the ad copy versions. Never call it before copy and creatives exist.",
         parameters: { type: "object", properties: {
           product_name: { type: "string" }, destination: { type: "string", enum: ["whatsapp", "website"] }, landing_url: { type: "string" }, campaign_name: { type: "string" },
-          asset_ids: { type: "array", items: { type: "string" }, description: "Creative ids the person chose on the creative card." },
+          asset_ids: { type: "array", items: { type: "string" }, description: "Creative ids the person chose on the creative card (ids as shown on the card, including product:<uuid>:photo)." },
+          ads: { type: "array", description: "The exact ads per ad set when the person wants more ads than creatives: one entry per ad. A creative can appear in several ads (reuse). Example for 3 creatives and 5 copies: [{asset_id:A,copy_index:0},{asset_id:B,copy_index:1},{asset_id:C,copy_index:2},{asset_id:A,copy_index:3},{asset_id:B,copy_index:4}]. Count the entries: that is the number of ads per ad set.", items: { type: "object", properties: { asset_id: { type: "string" }, copy_index: { type: "number" } }, required: ["asset_id", "copy_index"] } },
+          person_confirmed: { type: "boolean", description: "true ONLY when the person themselves stated destination (website or WhatsApp), the daily budget per ad set, who/where, and the creatives. Never guess; ask first." },
           copies: { type: "array", items: { type: "object", properties: { primary_text: { type: "string" }, headline: { type: "string" }, description: { type: "string" } }, required: ["primary_text"] } },
           adsets: { type: "array", items: { type: "object", properties: {
             label: { type: "string" }, budget_naira: { type: "number" }, age_min: { type: "number" }, age_max: { type: "number" }, gender: { type: "string", enum: ["all", "male", "female"] },
             states: { type: "array", items: { type: "string" } }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, name: { type: "string" }, region: { type: "string" } } } },
             interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } },
           }, required: ["label", "budget_naira"] } },
-        }, required: ["product_name", "adsets", "asset_ids", "copies"] },
+        }, required: ["product_name", "destination", "adsets", "asset_ids", "copies", "person_confirmed"] },
       },
     },
     {
@@ -1203,7 +1244,7 @@ async function accountFor(ctx: Ctx, requested?: string): Promise<ActiveAccount |
 const r0 = (n: number | null | undefined, d = 0) => (n == null ? null : Number(Number(n).toFixed(d)));
 const slimMetrics = (m: any) => ({
   spend: r0(m.spend), messages: m.kind === "messaging" ? m.conversations : undefined, purchases: m.kind === "purchase" ? m.purchases : undefined,
-  cost_per_result: r0(m.cost_per_result), reach: m.reach, frequency: r0(m.frequency, 2), ctr_percent: r0(m.ctr, 2), impressions: m.impressions, link_clicks: m.clicks,
+  cost_per_result: r0(m.cost_per_result), reach: m.reach, frequency: r0(m.frequency, 2), ctr_percent_all_clicks: r0(m.ctr, 2), impressions: m.impressions, link_clicks: m.clicks,
 });
 
 async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
@@ -1349,7 +1390,7 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
       const sinceIso = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString().slice(0, 10);
       const { data: metrics, error: metErr } = await supabase.from("daily_metrics")
         .select("ad_set_id, spend_naira, impressions, clicks, ctr, orders, cost_per_order_naira, metric_date")
-        .in("ad_set_id", adSetIds).gte("metric_date", sinceIso);
+        .in("ad_set_id", adSetIds).is("ad_set_ad_id", null).gte("metric_date", sinceIso);
       if (metErr) return { error: metErr.message };
 
       const adSetNameById = new Map((adSets || []).map(a => [a.id, a.adset_name]));
@@ -1648,6 +1689,7 @@ async function runQueryData(args: any, ctx: Ctx): Promise<unknown> {
 
   let q = supabase.from(table).select(cfg.columns.join(", ")).eq("company_id", ctx.companyId);
 
+  if (table === "daily_metrics") q = q.is("ad_set_ad_id", null); // ad-set grain only; ad rows would double count
   if (ctx.role === "buyer" && cfg.buyerCol) q = q.eq(cfg.buyerCol, ctx.mediaBuyerId);
   if (ctx.role === "delivery_agent") {
     if (table !== "orders" || !cfg.deliveryCol) return { error: "As a delivery agent you can only query your own orders." };
@@ -1694,7 +1736,7 @@ async function buildAdminContext(companyId: string, sinceIso: string) {
   const [{ data: buyers }, { data: adSets }, { data: metrics }, { data: orders }, { data: calls }, { data: approvals }, { data: creatives }] = await Promise.all([
     supabase.from("media_buyers").select("id, name, code").eq("company_id", companyId).eq("active", true),
     supabase.from("ad_sets").select("id, adset_name, media_buyer_id, creative_id, status, campaign_id").eq("company_id", companyId).limit(500),
-    supabase.from("daily_metrics").select("ad_set_id, spend_naira, orders, ctr, cost_per_order_naira, metric_date").eq("company_id", companyId).gte("metric_date", sinceIso.slice(0, 10)).limit(2000),
+    supabase.from("daily_metrics").select("ad_set_id, spend_naira, orders, ctr, cost_per_order_naira, metric_date").eq("company_id", companyId).is("ad_set_ad_id", null).gte("metric_date", sinceIso.slice(0, 10)).limit(2000),
     supabase.from("orders").select("id, media_buyer_id, ad_set_id, creative_id, order_status, order_value_naira, possible_duplicate, followup_attempts, ordered_at").eq("company_id", companyId).gte("ordered_at", sinceIso).limit(2000),
     supabase.from("voice_calls").select("status, needs_human").eq("company_id", companyId).gte("created_at", sinceIso).limit(2000),
     supabase.from("pending_approvals").select("id").eq("company_id", companyId).eq("status", "pending"),
@@ -1761,7 +1803,7 @@ async function buildBuyerContext(companyId: string, mediaBuyerId: string | null,
   ]);
   const adSetIds = (adSets || []).map(a => a.id);
   const { data: metrics } = adSetIds.length
-    ? await supabase.from("daily_metrics").select("ad_set_id, spend_naira, ctr, cost_per_order_naira, orders, metric_date").in("ad_set_id", adSetIds).gte("metric_date", sinceIso.slice(0, 10)).limit(2000)
+    ? await supabase.from("daily_metrics").select("ad_set_id, spend_naira, ctr, cost_per_order_naira, orders, metric_date").in("ad_set_id", adSetIds).is("ad_set_ad_id", null).gte("metric_date", sinceIso.slice(0, 10)).limit(2000)
     : { data: [] as any[] };
 
   const adSetById = new Map((adSets || []).map(a => [a.id, a]));
