@@ -108,6 +108,18 @@
   ],
   "rewrites": [
     {
+      "source": "/mcp",
+      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp"
+    },
+    {
+      "source": "/mcp/:path*",
+      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/:path*"
+    },
+    {
+      "source": "/favicon.ico",
+      "destination": "/icons/favicon-32.png"
+    },
+    {
       "source": "/oauth/consent",
       "destination": "/oauth/consent.html"
     },
