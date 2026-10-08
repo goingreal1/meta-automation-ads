@@ -246,6 +246,30 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 .co-card div b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:3px;}
 .co-card a{color:var(--accent);}
 @media(max-width:900px){.pr-grid,.pay-grid{grid-template-columns:1fr;}.co-card{grid-template-columns:1fr;}}
+
+/* trial banner, trust strip, enterprise plan, security, FAQ */
+.trial-bar{max-width:1040px;margin:0 auto 26px;background:var(--accentBg);border:1px solid #c9dcfb;color:#0c4aa0;border-radius:14px;padding:12px 18px;text-align:center;font-weight:600;font-size:15px;}
+.pr-grid.four{grid-template-columns:repeat(4,1fr);max-width:1160px;}
+.pr-card .pr-price.custom{font-size:28px;}
+.trust{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:26px 0;background:#fff;}
+.trust-in{display:flex;align-items:center;justify-content:center;gap:14px 38px;flex-wrap:wrap;}
+.trust-lbl{width:100%;text-align:center;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:var(--text2);}
+.brand img{height:26px;width:auto;max-width:120px;object-fit:contain;filter:grayscale(1);opacity:.85;}
+.brand .nm{display:none;}
+.brand.noimg img{display:none;}.brand.noimg .nm{display:inline;}
+.tp-badge{display:none;}.tp-badge.on{display:inline-flex;}
+.sec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;max-width:1100px;margin:0 auto;}
+.sec-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:22px;}
+.sec-card h3{font-size:16px;margin-bottom:6px;}.sec-card p{color:var(--text2);font-size:14.5px;}
+.faq{max-width:780px;margin:0 auto;}
+.faq details{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:10px;}
+.faq summary{cursor:pointer;font-weight:600;font-size:16px;list-style:none;display:flex;justify-content:space-between;gap:14px;}
+.faq summary::after{content:"+";color:var(--accent);font-size:20px;line-height:1;}
+.faq details[open] summary::after{content:"–";}
+.faq details p{margin-top:10px;color:var(--text2);font-size:15.5px;}
+@media(max-width:1100px){.pr-grid.four{grid-template-columns:repeat(2,1fr);}.sec-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:640px){.pr-grid.four,.sec-grid{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -261,11 +285,12 @@ footer{background:var(--dark2);padding:60px 0 32px;}
       <a href="#how">How it works</a>
       <a href="#roles">Your team</a>
       <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
       <a href="#contact">Contact</a>
     </div>
     <div class="nav-actions">
       <a href="login.html" class="btn btn-ghost">Log in</a>
-      <a href="login.html?mode=signup" class="btn btn-dark">Get started</a>
+      <a href="login.html?mode=signup" class="btn btn-dark">Start free trial</a>
     </div>
   </div>
 </nav>
@@ -277,10 +302,10 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     <h1 class="serif">Ad spend, orders, and delivery —<br>finally one system<span class="dot">.</span></h1>
     <p>Revora connects what you spend on Meta Ads to the revenue it actually produces — campaigns, AI order confirmation, WhatsApp selling, delivery, and funding, in one place.</p>
     <div class="hero-ctas">
-      <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started</a>
-      <a href="login.html" class="btn btn-outline btn-lg">Log in</a>
+      <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Start 7-day free trial</a>
+      <a href="#contact" class="btn btn-outline btn-lg">Talk to us</a>
     </div>
-    <div class="hero-note">No credit card required · Set up your company in minutes</div>
+    <div class="hero-note">7-day free trial · No credit card required · Set up your company in minutes</div>
   </div>
   <figure class="photo hero-photo"><img src="images/landing/hero-office.jpg" alt="A media buyer reviewing ad spend, orders and delivery on a Revora dashboard in a bright office" width="1680" height="720" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
 
@@ -313,6 +338,18 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 </header>
 
 <!-- INTRO / PROBLEM STATEMENT -->
+<section class="trust" aria-label="Works with">
+  <div class="container trust-in">
+    <div class="trust-lbl">Works with the platforms you already use</div>
+    <span class="tp-badge" id="tpBadge"><img src="images/brands/meta-tech-provider.png" alt="Meta Tech Provider" style="height:34px" onload="document.getElementById('tpBadge').classList.add('on')" onerror="this.remove()"></span>
+    <span class="brand"><img src="images/brands/meta.svg" alt="Meta" onerror="this.parentNode.classList.add('noimg')"><span class="nm">Meta Ads</span></span>
+    <span class="brand"><img src="images/brands/whatsapp.svg" alt="WhatsApp Business Platform" onerror="this.parentNode.classList.add('noimg')"><span class="nm">WhatsApp Business Platform</span></span>
+    <span class="brand"><img src="images/brands/google.svg" alt="Google" onerror="this.parentNode.classList.add('noimg')"><span class="nm">Google Analytics &amp; Tag Manager</span></span>
+    <span class="brand"><img src="images/brands/clarity.svg" alt="Microsoft Clarity" onerror="this.parentNode.classList.add('noimg')"><span class="nm">Microsoft Clarity</span></span>
+    <span class="brand"><img src="images/brands/paystack.svg" alt="Paystack" onerror="this.parentNode.classList.add('noimg')"><span class="nm">Paystack</span></span>
+  </div>
+</section>
+
 <section class="intro" id="platform">
   <p>Most teams run ads in one tab, track orders in a spreadsheet, confirm customers by hand, and reconcile delivery and cash days later — if at all.</p>
   <p><strong>Revora is the one place that actually connects them</strong> — so a naira spent on an ad can be traced all the way to a naira collected on delivery.</p>
@@ -581,18 +618,25 @@ footer{background:var(--dark2);padding:60px 0 32px;}
       <h2 class="serif">Simple monthly plans, priced in naira</h2>
       <p>Revora is business software. You pay a monthly subscription for the dashboard. Payments you collect and ad money you spend are separate and are never marked up by us.</p>
     </div>
-    <div class="pr-grid">
+    <div class="trial-bar">Every plan starts with a free 7-day trial. No credit card needed.</div>
+    <div class="pr-grid four">
       <div class="pr-card">
         <h3>Media buyer</h3><p class="sub">For one media buyer running their own ads and orders.</p>
         <div class="pr-price">₦10,000<small> / month</small></div>
         <ul><li>1 media buyer login</li><li>Connect your Meta ad accounts and track real ROAS</li><li>Order forms and websites</li><li>WhatsApp conversations on your own number</li><li>Delivery and order tracking</li></ul>
-        <a href="login.html?mode=signup" class="btn btn-dark">Get started</a>
+        <a href="login.html?mode=signup" class="btn btn-dark">Start free trial</a>
       </div>
       <div class="pr-card hot">
         <h3>Business</h3><p class="sub">For a seller with a team of buyers, agents and customer care.</p>
         <div class="pr-price">₦25,000<small> / month</small></div>
         <ul><li>Admin plus up to 5 media buyers</li><li>Delivery agents and customer-care logins</li><li>Leaderboard, approvals and team roles</li><li>Customer payment collection with virtual accounts</li><li>Automatic order and payment confirmation</li></ul>
-        <a href="login.html?mode=signup" class="btn btn-primary">Get started</a>
+        <a href="login.html?mode=signup" class="btn btn-primary">Start free trial</a>
+      </div>
+      <div class="pr-card">
+        <h3>Enterprise</h3><p class="sub">For companies with a large team of media buyers.</p>
+        <div class="pr-price custom">Custom</div>
+        <ul><li>Unlimited media buyers and team members</li><li>Volume pricing per buyer</li><li>Guided onboarding for your whole team</li><li>Priority support on WhatsApp and email</li><li>Invoice billing on request</li></ul>
+        <a href="mailto:hello@pipinstallsofi.com?subject=Revora%20Enterprise" class="btn btn-dark">Contact sales</a>
       </div>
       <div class="pr-card">
         <h3>Ads setup service</h3><p class="sub">We set up and launch your Facebook and Instagram ads for you.</p>
@@ -638,11 +682,42 @@ footer{background:var(--dark2);padding:60px 0 32px;}
   </div>
 </section>
 
+
+<section class="section section-border" id="security">
+  <div class="container">
+    <div class="section-head center">
+      <div class="section-eyebrow">Trust &amp; security</div>
+      <h2 class="serif">Built so one business never sees another's data</h2>
+      <p>Your company's data is separated from every other company and shown to each team member by role.</p>
+    </div>
+    <div class="sec-grid">
+      <div class="sec-card"><h3>Role-based access</h3><p>Admins, media buyers, customer care and delivery agents each see only what their job needs.</p></div>
+      <div class="sec-card"><h3>Company isolation</h3><p>Every record belongs to one company and is locked to it at the database level.</p></div>
+      <div class="sec-card"><h3>Your Meta access stays yours</h3><p>You choose which ad accounts and numbers to share, and you can remove access any time. Access tokens are kept on our servers, never in your browser.</p></div>
+      <div class="sec-card"><h3>Regulated payment partners</h3><p>Payments run through Paystack. Revora is not a bank and does not keep card details.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-border" id="faq">
+  <div class="container">
+    <div class="section-head center"><div class="section-eyebrow">FAQ</div><h2 class="serif">Questions we hear most</h2></div>
+    <div class="faq">
+      <details><summary>How does the 7-day free trial work?</summary><p>Create your company and use every feature for 7 days, with no credit card. If you want to continue, pick a plan. If you don't, you can export or delete your data.</p></details>
+      <details><summary>Do I need to give you access to my Facebook account?</summary><p>No. You log in with Facebook and choose which ad accounts, pages and WhatsApp numbers to share, or you can share an ad account through Business Manager using our Business ID. You can remove access any time.</p></details>
+      <details><summary>Can I use my own WhatsApp number?</summary><p>Yes. You connect your own WhatsApp Business number inside Revora. Messages go from your number, to your customers.</p></details>
+      <details><summary>How do I get paid by my customers?</summary><p>Each buyer can receive a dedicated virtual account for customer payments. Payments are matched to orders automatically. The money goes to the seller, not to Revora.</p></details>
+      <details><summary>What if I have many media buyers?</summary><p>Choose the Enterprise plan: unlimited media buyers, volume pricing and guided onboarding. <a href="mailto:hello@pipinstallsofi.com?subject=Revora%20Enterprise" style="color:var(--accent);">Contact sales</a>.</p></details>
+      <details><summary>What is your refund policy?</summary><p>You can cancel any time and keep access for the month you paid for. Mistakes and undelivered service are refunded. Read the full <a href="refund.html" style="color:var(--accent);">refund policy</a>.</p></details>
+    </div>
+  </div>
+</section>
+
 <section class="cta-section">
   <div class="cta-bg"><img src="images/landing/cta-bg.jpg" alt="" width="1920" height="800" loading="lazy" onerror="this.parentNode.remove()"></div>
   <div class="container cta-inner">
     <h2 class="serif">Connect your ad spend to real revenue</h2>
-    <p>Set up your company and invite your team in minutes.</p>
+    <p>Start your 7-day free trial. Set up your company and invite your team in minutes.</p>
     <div class="hero-ctas">
       <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
       <a href="login.html" class="btn btn-outline btn-lg" style="color:#fff;border-color:#3d3a30;">Log in</a>
