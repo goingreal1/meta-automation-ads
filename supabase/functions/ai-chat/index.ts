@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Powers the "AI Assistant" chat panel in dashboard_new.html.
+// Powers the "AI Assistant" chat panel in dashboard_new.html and, through action run_tool, the MCP server.
 //
 // Two layers of grounding:
 //  1. An upfront role-scoped DATA snapshot (buildXContext below) so common
@@ -133,7 +133,7 @@ const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobo
 - WRITING AD COPY (primary text, headlines, descriptions, hooks, CTAs): ALWAYS call write_ad_copy and show what it returns exactly as written, with at most one short line before it (which ad to test first and why). Do not write ad copy yourself, and do not shorten or rewrite its output. Pass the product name, the platform goal (WhatsApp or website) and any angle or language the person asked for.
 - PRODUCT FIRST: before any ad copy be completely sure which product it is for. If the person names a product, use exactly that one; if they do not and there is more than one, ask. If write_ad_copy replies that it needs info, ask the person that one question, save their answer with save_product_facts, then try again. Never write copy for a product from the business type alone.
 - RUNNING ADS FOR THEM (you are their personal senior media buyer): when they ask to launch ads, do it by conversation and cards. Order: (1) know the product (see PRODUCT FIRST); (2) decide what you can yourself, and use ONE ask_questions card for only what you cannot (where ads send people, how many ad sets, who should see it, daily budget if not given); (3) if they have not given copy, call write_ad_copy; (4) call show_creatives with the first ad's copy, then wait for their pick; (5) turn plain audience wishes into real targeting with search_audiences (interests, job types like business owners or students, cities) and Nigerian state names; (6) call plan_campaign. Default structure when they leave it to you: 3 ad sets (an interest audience, a broad audience, one more angle), 3 ads per ad set, the budget split by expected value. You can never launch: only their tap on Approve on the plan card launches, so never say anything is live until they tell you it is. Use check_pixel for any question about the pixel or tracking.
-- EXPLAINING RESULTS: never dump a list of metrics. Start with a one-sentence answer, then explain in plain words what the few numbers that matter mean (spend, results, cost per result against their target), then call review_ads_card for the Keep, Watch and Stop groups with real ids and tap buttons. Do not repeat the card's contents in text. Judge ads only after about 2 to 3 times the target cost per result in spend. To scale a winner: raise budget 20 percent, or duplicate it into the same campaign (duplicate is created paused).
+- EXPLAINING RESULTS: never dump a list of metrics. Start with a one-sentence answer, then explain in plain words what the few numbers that matter mean (spend, results, cost per result against their target), then call review_ads_card for the Keep, Watch and Stop groups with real ids and tap buttons. Do not repeat the card's contents in text. Judge ads only after about 2 to 3 times the target cost per result in spend. To scale a winner: raise budget 20 percent, or duplicate it into the same campaign (the winner keeps running and the copy goes live; never kill a winner). A BAD ad is relaunched: offer duplicate (a fresh live copy) and the old one is switched off in the same tap. Only bad ads are ever stopped.
 - Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
 - META AD POLICY: no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health, body, finances or identity; no medical cures; no shocking or misleading claims; no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures.
 - ADVICE: when asked what to do (launch, kill, scale, budget, testing), give a clear recommendation first, then the reason in a sentence or two with the real numbers. If the data needed is not available, say so and say how to get it. Test one change at a time; give each new creative about 2-3 times the target cost per result in spend before judging; scale winners gradually.
@@ -592,6 +592,24 @@ async function planAction(body: any, p: { companyId: string; role: string; media
   }
 }
 
+// What a connected assistant (the MCP server) needs to write ads itself: the product facts, the seller's own winners and losers, the language and the craft rules.
+async function copyContextTool(args: any, ctx: Ctx) {
+  const name = String(args?.product_name ?? "").trim();
+  const { data: all } = await supabase.from("products").select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, is_active").eq("company_id", ctx.companyId);
+  const q = norm(name);
+  const product = (all ?? []).filter((x: any) => q && (norm(x.product_name) === q || norm(x.product_name).includes(q) || q.includes(norm(x.product_name))))
+    .sort((a: any, b: any) => (String(b.description ?? "").length + String(b.benefits ?? "").length) - (String(a.description ?? "").length + String(a.benefits ?? "").length))[0];
+  if (!product) return { needs_info: true, message: `No product called "${name}". Their products: ${[...new Set((all ?? []).map((x: any) => x.product_name))].join(", ") || "none yet"}. Ask which one.` };
+  const known = product.description || product.benefits;
+  const prof = await loadProfileBrief(ctx.companyId);
+  const ex = renderExamples(await getCopyExamples(ctx, product.product_name));
+  return {
+    product, product_facts_missing: !known,
+    instructions: known ? "Write the ads yourself using ONLY these product facts. Every ad is about this one product. Never borrow another product's claims." : "The record has no description or benefits. Do NOT write copy yet. Ask the user what the product is, who it is for and its top 3 benefits, save them with save_product_facts, then call this again.",
+    language_rule: LANGUAGE_RULES[prof.language], business_and_niche: prof.text, examples_from_their_own_ads: ex, craft_rules: COPY_CRAFT,
+  };
+}
+
 function renderExamples(ex: Awaited<ReturnType<typeof getCopyExamples>>): string {
   const fmt = (e: CopyEx, i: number) => `#${i + 1}${e.same === false ? ` [DIFFERENT PRODUCT${e.product && e.product !== "another product" ? ": " + e.product : ""}. Borrow rhythm and voice only, never its product, claims or words]` : ""}${e.cost != null ? ` (${e.note}: ${fmtNaira(e.cost)} on ${fmtNaira(e.spend ?? 0)} spend${e.ctr != null ? `, CTR ${e.ctr.toFixed(1)}%` : ""})` : ""}\nPrimary text: ${e.text}${e.headline ? `\nHeadline: ${e.headline}` : ""}${e.description ? `\nDescription: ${e.description}` : ""}`;
   const parts: string[] = [];
@@ -706,6 +724,32 @@ Deno.serve(async (req: Request) => {
     if (!["owner", "admin", "buyer"].includes(profile.role)) return json({ error: "Only owners, admins and buyers can duplicate ads." }, 403);
     try { return json(await duplicateObject(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id })); }
     catch (e) { return json({ error: (e as Error).message }, 400); }
+  }
+  if (body?.action === "run_tool") {
+    // Used by the MCP server: the same tools the dashboard assistant has, same scoping, nothing that moves money.
+    const ALLOWED = new Set(["list_ad_accounts", "get_ad_account_performance", "get_live_ads", "query_data", "get_wallet_balance", "get_product", "check_pixel", "search_audiences", "estimate_reach", "show_creatives", "write_ad_copy", "get_copy_context", "save_product_facts", "plan_campaign"]);
+    const tool = String(body?.tool ?? "");
+    if (!ALLOWED.has(tool)) return json({ error: "That tool is not available here." }, 400);
+    const rctx: Ctx = { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id, deliveryAgentId: profile.delivery_agent_id, userId: user.id, displayName: profile.display_name || "", authHeader, account: null, proposals: [], cards: [] };
+    const aid = typeof body?.ad_account_id === "string" ? body.ad_account_id : "";
+    if (/^[0-9a-f-]{36}$/i.test(aid)) {
+      let aq = supabase.from("ad_accounts").select("id, name, nickname, balance_naira, low_balance_threshold_naira, media_buyer_id").eq("id", aid).eq("company_id", rctx.companyId);
+      if (rctx.role === "buyer") aq = aq.eq("media_buyer_id", rctx.mediaBuyerId);
+      const { data: a } = await aq.maybeSingle();
+      if (a) rctx.account = { id: a.id, name: a.nickname || a.name || a.id, balance: a.balance_naira ?? null, lowThreshold: a.low_balance_threshold_naira ?? null };
+    }
+    const targs = body?.args && typeof body.args === "object" ? body.args : {};
+    try {
+      let result: unknown;
+      if (tool === "write_ad_copy") {
+        if (!OPENAI_API_KEY) return json({ error: "AI copy is not switched on." }, 400);
+        const { data: cn } = await supabase.from("companies").select("name").eq("id", rctx.companyId).maybeSingle();
+        const brief = await buildBusinessBrief(rctx.companyId, cn?.name || "the company");
+        result = await writeAdCopy(targs, rctx, brief);
+      } else if (tool === "get_copy_context") result = await copyContextTool(targs, rctx);
+      else result = await runTool(tool, targs, rctx);
+      return json({ result, cards: rctx.cards });
+    } catch (e) { return json({ error: (e as Error).message }, 500); }
   }
   const question = (body?.question || "").toString().trim();
   if (!question) return json({ error: "A question is required" }, 400);
