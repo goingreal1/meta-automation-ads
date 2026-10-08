@@ -1102,7 +1102,7 @@ html{-webkit-text-size-adjust:100%;}
   .set-nav-btn.active{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
   .set-body{flex:1;min-width:0;}
   .set-body [data-sec]{display:none;}
-  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"]{display:block;}
+  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"]{display:block;}
   @media (max-width:760px){.set-wrap{flex-direction:column;}.set-nav{flex-direction:row;overflow-x:auto;min-width:0;width:100%;position:static;}.set-nav-btn{white-space:nowrap;}}
   .setup-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:2px 0 12px;}
   .setup-bar>div{height:100%;background:var(--accent);border-radius:99px;}
@@ -1419,6 +1419,27 @@ body.assist-on .chat-toggle{display:none !important;}
   .chat-panel.page .ch-inp{padding:0 12px 10px;}
   .chat-panel.page .ch-inp button{right:24px;bottom:22px;}
 }
+
+/* ── Billing: trial pill, plan cards, lock screen ── */
+#bvBillPill{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:60;display:none;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--accentBdr);color:var(--text);padding:6px 8px 6px 14px;border-radius:999px;font-size:12.5px;box-shadow:0 4px 18px rgba(0,0,0,.12);max-width:calc(100vw - 24px);}
+#bvBillPill.on{display:flex;}
+#bvBillPill.warn{border-color:#f5a524;}
+#bvBillPill button{border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;}
+.bill-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:14px 0;}
+.bill-plan{border:1px solid var(--border);border-radius:14px;padding:16px;background:var(--panel);display:flex;flex-direction:column;gap:6px;}
+.bill-plan.sug{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentBg);}
+.bill-plan h4{margin:0;font-size:15px;}
+.bill-plan .pr{font-size:24px;font-weight:700;}
+.bill-plan .pr small{font-size:12px;font-weight:500;color:var(--muted);}
+.bill-plan ul{margin:6px 0 10px;padding-left:18px;font-size:12.5px;color:var(--text2);display:flex;flex-direction:column;gap:3px;}
+.bill-plan .tag{align-self:flex-start;font-size:10.5px;font-weight:700;color:var(--accent);background:var(--accentBg);border-radius:999px;padding:2px 8px;}
+.bill-months{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px;}
+.bill-months button{border:1px solid var(--border);background:var(--panel2);color:var(--text);font:inherit;font-size:12px;padding:5px 11px;border-radius:999px;cursor:pointer;}
+.bill-months button.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+#bvLock{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:16px;overflow:auto;}
+#bvLock.on{display:flex;}
+#bvLock .lk{background:var(--bg);border:1px solid var(--border);border-radius:18px;max-width:900px;width:100%;padding:24px;max-height:94vh;overflow:auto;}
+#bvLock h2{margin:0 0 6px;font-size:21px;}
 </style>
 </head>
 <body>
@@ -1633,6 +1654,7 @@ async function init() {
     .limit(1).maybeSingle().then(r => r.data).catch(() => null)) || null;
   bvApplyCompanyProfile();
   bvBuildBottomNav();
+  bvLoadBilling();
 
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
   // with ?meta_oauth=connected|error&detail=... once a buyer finishes
@@ -1705,6 +1727,94 @@ function bvApplyCompanyProfile() {
   hide.forEach(t => document.querySelector(`[data-tab="${t}"]`)?.style.setProperty("display", "none"));
   document.body.dataset.account = c.account_type || "company";
   try { if (typeof bvSyncBottomNav === "function") bvSyncBottomNav(); } catch {}
+}
+
+
+// ── BILLING + 7-DAY TRIAL ────────────────────────────────────────────────────
+// State comes from paystack-balance (action billing_status). Prices live on the server.
+const BV_PLAN_COPY = {
+  media_buyer: { name: "Media buyer", price: 10000, pts: ["1 media buyer login", "Meta ad accounts and real ROAS", "Order forms and websites", "WhatsApp on your own number"] },
+  business: { name: "Business", price: 25000, pts: ["Admin plus up to 5 media buyers", "Delivery agents and customer care", "Leaderboard, approvals, team roles", "Virtual accounts and auto payment confirmation"] },
+};
+let bvBillMonths = 1;
+function bvMonthsPrice(plan, m) { return BV_PLAN_COPY[plan].price * (m === 12 ? 10 : m); }
+function bvPlanCards(b) {
+  const sug = b?.suggested_plan;
+  const canPay = b?.can_manage !== false;
+  const monthsRow = `<div class="bill-months">${[1, 3, 6, 12].map(m => `<button type="button" class="${m === bvBillMonths ? "on" : ""}" onclick="bvBillMonths=${m};bvRepaintPlans()">${m === 12 ? "12 months (2 free)" : m + (m === 1 ? " month" : " months")}</button>`).join("")}</div>`;
+  const cards = Object.entries(BV_PLAN_COPY).map(([id, p]) => `
+    <div class="bill-plan ${sug === id ? "sug" : ""}">
+      ${sug === id ? '<span class="tag">Suggested for you</span>' : ""}
+      <h4>${p.name}</h4>
+      <div class="pr">${fN(bvMonthsPrice(id, bvBillMonths))}<small> / ${bvBillMonths === 12 ? "year" : bvBillMonths + " mo"}</small></div>
+      <ul>${p.pts.map(x => `<li>${x}</li>`).join("")}</ul>
+      ${canPay ? `<button type="button" class="btn btn-a" onclick="bvSubscribe('${id}',this)">Pay with Paystack</button>` : `<div style="font-size:12px;color:var(--muted)">Ask your account owner to pay.</div>`}
+    </div>`).join("");
+  const ent = `<div class="bill-plan"><h4>Enterprise</h4><div class="pr" style="font-size:18px">Custom</div><ul><li>Unlimited media buyers</li><li>Volume pricing and invoices</li><li>Guided onboarding</li></ul><a class="btn btn-g" href="mailto:hello@pipinstallsofi.com?subject=Revora%20Enterprise" style="text-align:center">Contact sales</a></div>`;
+  return monthsRow + `<div class="bill-plans">${cards}${ent}</div>`;
+}
+function bvRepaintPlans() {
+  const b = window.myBilling; if (!b) return;
+  document.querySelectorAll(".bvPlansSlot").forEach(el => el.innerHTML = bvPlanCards(b));
+}
+async function bvSubscribe(plan, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Opening Paystack…"; }
+  const r = await sbFn("paystack-balance", { action: "subscribe", plan, months: bvBillMonths, access_token: sessionData.access_token, return_url: location.origin + location.pathname + "?billing=done" });
+  if (r?.authorization_url) { location.href = r.authorization_url; return; }
+  alert(r?.error || "Could not start the payment. Try again.");
+  if (btn) { btn.disabled = false; btn.textContent = "Pay with Paystack"; }
+}
+function bvPaintBilling() {
+  const b = window.myBilling; if (!b) return;
+  let pill = document.getElementById("bvBillPill");
+  if (!pill) { pill = document.createElement("div"); pill.id = "bvBillPill"; document.body.appendChild(pill); }
+  let lock = document.getElementById("bvLock");
+  if (!lock) { lock = document.createElement("div"); lock.id = "bvLock"; document.body.appendChild(lock); }
+  const show = b.state === "trialing" || (b.state === "active" && b.days_left <= 5);
+  pill.classList.toggle("on", show && b.can_manage !== false);
+  pill.classList.toggle("warn", b.days_left <= 2);
+  if (show) pill.innerHTML = `<span>${b.state === "trialing" ? `Free trial: <b>${b.days_left} day${b.days_left === 1 ? "" : "s"}</b> left` : `Your plan renews in <b>${b.days_left} day${b.days_left === 1 ? "" : "s"}</b>`}</span><button type="button" onclick="bvOpenBilling()">${b.state === "trialing" ? "Choose a plan" : "Renew"}</button>`;
+  const locked = b.state === "expired";
+  lock.classList.toggle("on", locked);
+  if (locked) lock.innerHTML = `<div class="lk">
+    <h2>${b.plan === "trial" ? "Your free trial has ended" : "Your plan has expired"}</h2>
+    <div style="color:var(--text2);font-size:13.5px">Nothing has been deleted. Your ads, orders, products and websites are safe and come back the moment you pick a plan.</div>
+    <div class="bvPlansSlot">${bvPlanCards(b)}</div>
+    <div style="display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+      <span>Payments are processed by Paystack. Need an invoice or a bigger plan? <a href="mailto:hello@pipinstallsofi.com" style="color:var(--accent)">hello@pipinstallsofi.com</a></span>
+      <a href="#" onclick="event.preventDefault();supabaseClient.auth.signOut().then(()=>location.href='login.html')" style="color:var(--muted)">Sign out</a>
+    </div></div>`;
+  document.body.style.overflow = locked ? "hidden" : "";
+  if (document.getElementById("billingPanel")) bvRenderBillingPanel();
+}
+function bvOpenBilling() {
+  bvSettingsSec = "billing";
+  const t = document.querySelector('[data-tab="settings"]'); if (t) t.click();
+}
+async function bvLoadBilling() {
+  try {
+    const q = new URLSearchParams(location.search), ref = q.get("reference") || q.get("trxref");
+    if (q.get("billing") === "done" && ref) {
+      const v = await sbFn("paystack-balance", { action: "verify", reference: ref, access_token: sessionData.access_token });
+      history.replaceState(null, "", location.pathname);
+      window.bvBillToast = v?.ok ? { ok: true, text: "Payment received. Your plan is active." } : { ok: false, text: v?.error || "We could not confirm that payment yet. If you were charged, it will activate within a few minutes." };
+    }
+    const r = await sbFn("paystack-balance", { action: "billing_status", access_token: sessionData.access_token });
+    if (r && !r.error) { window.myBilling = r; bvPaintBilling(); }
+    if (window.bvBillToast) { bvOpenBilling(); }
+  } catch (e) { console.warn("billing", e); }
+}
+function bvRenderBillingPanel() {
+  const el = document.getElementById("billingPanel"); const b = window.myBilling;
+  if (!el) return;
+  if (!b) { el.innerHTML = '<div class="ph"><div class="ph-title">Billing</div></div><div style="color:var(--muted);font-size:12.5px">Loading…</div>'; return; }
+  const fmt = d => d ? new Date(d).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "";
+  const status = b.state === "comped" ? "Full access (no charge)" : b.state === "trialing" ? `Free trial, ${b.days_left} day${b.days_left === 1 ? "" : "s"} left (ends ${fmt(b.trial_ends_at)})` : b.state === "active" ? `${BV_PLAN_COPY[b.plan]?.name || b.plan} plan, paid until ${fmt(b.plan_expires_at)}` : "Expired";
+  const toast = window.bvBillToast; delete window.bvBillToast;
+  el.innerHTML = `<div class="ph"><div class="ph-title">Billing</div><div class="ph-count">${escH(b.company || "")}</div></div>
+    ${toast ? `<div class="msg ${toast.ok ? "ok" : "err"}" style="display:block;margin-bottom:12px;">${toast.ok ? "✅" : "❌"} ${escH(toast.text)}</div>` : ""}
+    <div style="font-size:13.5px;margin-bottom:4px"><b>${escH(status)}</b></div>
+    ${b.state === "comped" ? '<div style="font-size:12px;color:var(--muted)">Your workspace is on the house.</div>' : `<div style="font-size:12px;color:var(--muted)">Pay for 1, 3, 6 or 12 months at a time. We remind you before it ends and never delete your data.</div><div class="bvPlansSlot">${bvPlanCards(b)}</div>`}`;
 }
 
 function bvBuildBottomNav() {
@@ -2329,7 +2439,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderBillingPanel(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -10745,6 +10855,7 @@ function bvSettingsSections(isAdmin) {
     { id: "domains", icon: "🌐", label: "Domains" },
     { id: "automation", icon: "⚙️", label: "Automation & alerts" },
     { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
+    ...(isAdmin ? [{ id: "billing", icon: "💳", label: "Billing" }] : []),
   ];
   return list;
 }
@@ -10835,6 +10946,8 @@ async function renderSettings(el) {
     <div class="panel" data-sec="automation" id="killRulesPanel"></div>
 
     <div class="panel" data-sec="domains" id="domainsPanel"></div>
+
+    ${isAdmin ? '<div class="panel" data-sec="billing" id="billingPanel"></div>' : ""}
 
     <div class="panel" data-sec="automation" id="aiAgentPanel"></div>
 
