@@ -276,7 +276,7 @@ Deno.serve(async (req: Request) => {
     let capiSuccess = false;
 
     // Send to Meta CAPI
-    if (capiAccessToken && capiPixelId && siteRow?.purchase_event !== 'none') {
+    if (capiAccessToken && capiPixelId && siteRow?.purchase_event !== 'none' && siteRow?.purchase_event !== 'paid') {
       const capiPayload = {
         data: [
           {
