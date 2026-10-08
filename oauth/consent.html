@@ -12,7 +12,7 @@ button{padding:11px 18px;border-radius:10px;border:0;font:inherit;cursor:pointer
 .p{background:var(--ac);color:#fff}.s{background:transparent;color:var(--mu)}
 #err{color:#d70015}
 </style></head><body><div class="c" id="app"><p>Loading…</p></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3"></script>
 <script>
 const sb = supabase.createClient("https://rrkhkhgdxhmogxxtbvyt.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc");
 const app = document.getElementById("app");
@@ -23,11 +23,12 @@ async function main(){
   if(!id){ app.innerHTML = "<h1>Nothing to approve</h1><p>Open this page from the app you are connecting.</p>"; return; }
   const { data:{ session } } = await sb.auth.getSession();
   if(!session) return signIn();
+  if(!sb.auth.oauth){ app.innerHTML = "<h1>Could not load</h1><p>The sign-in library is out of date. Reload the page.</p>"; return; }
   const { data, error } = await sb.auth.oauth.getAuthorizationDetails(id);
   if(error || !data){ app.innerHTML = "<h1>Request expired</h1><p>"+esc(error?.message||"Go back and try connecting again.")+"</p>"; return; }
   // Already approved earlier: Supabase hands back the redirect straight away.
   if(data.redirect_url) return go(data.redirect_url);
-  const scopes = (data.scope||"").split(/\s+/).filter(Boolean);
+  const scopes = String(Array.isArray(data.scope)?data.scope.join(" "):(data.scope||"")).split(/\s+/).filter(Boolean);
   app.innerHTML = `<h1>Connect ${esc(data.client?.name||"this app")} to Revora?</h1>
     <p>Signed in as ${esc(session.user.email)}.</p>
     <p>It will be able to act as you, within your company's data:</p>
@@ -47,5 +48,5 @@ function signIn(){
     error ? err(error.message) : main();
   };
 }
-main();
+main().catch(e=>{ app.innerHTML = "<h1>Something went wrong</h1><p>"+esc(e&&e.message||e)+"</p>"; });
 </script></body></html>
