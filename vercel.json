@@ -109,11 +109,11 @@
   "rewrites": [
     {
       "source": "/mcp",
-      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp"
+      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site"
     },
     {
       "source": "/mcp/:path*",
-      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/:path*"
+      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/:path*"
     },
     {
       "source": "/favicon.ico",
