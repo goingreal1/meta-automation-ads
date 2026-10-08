@@ -39,7 +39,7 @@ function fmtNaira(n: number) {
 }
 
 type ActiveAccount = { id: string; name: string; balance: number | null; lowThreshold: number | null };
-type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliveryAgentId: string | null; userId: string; displayName: string; authHeader: string; account: ActiveAccount | null; proposals: any[] };
+type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliveryAgentId: string | null; userId: string; displayName: string; authHeader: string; account: ActiveAccount | null; proposals: any[]; cards: any[] };
 
 
 // ── BUSINESS KNOWLEDGE ──────────────────────────────────────────────────────
@@ -131,7 +131,10 @@ async function buildBusinessBrief(companyId: string, companyName: string): Promi
 const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobody needs to teach you their niche):
 - Work out the kind of business from the profile and products above and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
 - WRITING AD COPY (primary text, headlines, descriptions, hooks, CTAs): ALWAYS call write_ad_copy and show what it returns exactly as written, with at most one short line before it (which ad to test first and why). Do not write ad copy yourself, and do not shorten or rewrite its output. Pass the product name, the platform goal (WhatsApp or website) and any angle or language the person asked for.
-- PRODUCT FIRST: before any ad copy be completely sure which product it is for. If the person names a product, use exactly that one; if they do not and there is more than one, ask. If write_ad_copy replies that it needs info, ask the person that one question, save their answer with save_product_facts, then try again. Never write copy for a product from the business type alone.\n- Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
+- PRODUCT FIRST: before any ad copy be completely sure which product it is for. If the person names a product, use exactly that one; if they do not and there is more than one, ask. If write_ad_copy replies that it needs info, ask the person that one question, save their answer with save_product_facts, then try again. Never write copy for a product from the business type alone.
+- RUNNING ADS FOR THEM (you are their personal senior media buyer): when they ask to launch ads, do it by conversation and cards. Order: (1) know the product (see PRODUCT FIRST); (2) decide what you can yourself, and use ONE ask_questions card for only what you cannot (where ads send people, how many ad sets, who should see it, daily budget if not given); (3) if they have not given copy, call write_ad_copy; (4) call show_creatives with the first ad's copy, then wait for their pick; (5) turn plain audience wishes into real targeting with search_audiences (interests, job types like business owners or students, cities) and Nigerian state names; (6) call plan_campaign. Default structure when they leave it to you: 3 ad sets (an interest audience, a broad audience, one more angle), 3 ads per ad set, the budget split by expected value. You can never launch: only their tap on Approve on the plan card launches, so never say anything is live until they tell you it is. Use check_pixel for any question about the pixel or tracking.
+- EXPLAINING RESULTS: never dump a list of metrics. Start with a one-sentence answer, then explain in plain words what the few numbers that matter mean (spend, results, cost per result against their target), then call review_ads_card for the Keep, Watch and Stop groups with real ids and tap buttons. Do not repeat the card's contents in text. Judge ads only after about 2 to 3 times the target cost per result in spend. To scale a winner: raise budget 20 percent, or duplicate it into the same campaign (duplicate is created paused).
+- Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
 - META AD POLICY: no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health, body, finances or identity; no medical cures; no shocking or misleading claims; no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures.
 - ADVICE: when asked what to do (launch, kill, scale, budget, testing), give a clear recommendation first, then the reason in a sentence or two with the real numbers. If the data needed is not available, say so and say how to get it. Test one change at a time; give each new creative about 2-3 times the target cost per result in spend before judging; scale winners gradually.
 - If they ask for a different language or tone in chat (for example "write it in full Pidgin" or "in Yoruba"), do that for that request.
@@ -321,6 +324,274 @@ async function saveCopy(body: any, p: { companyId: string; role: string; mediaBu
   return { saved: rows.length, products: [...new Set(rows.map((r) => r.product_name).filter(Boolean))] };
 }
 
+// ── CARDS, CAMPAIGN PLANS AND LAUNCH ───────────────────────────────────────
+// Tools return interactive cards (questions, creatives, plan, review) next to the text answer.
+// Nothing here spends money by itself: launching happens only from the plan card's Approve button
+// (action approve_plan), never from a model tool call.
+const AM = (auth: string, body: any) => fetch(ADS_URL, { method: "POST", headers: { Authorization: auth, "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()).catch(() => null);
+const GRAPH = "https://graph.facebook.com/v21.0";
+
+async function tokenForAccount(acct: any, companyId: string): Promise<string> {
+  if (acct?.meta_connection_id) {
+    const { data: conn } = await supabase.from("meta_connections").select("access_token, status").eq("id", acct.meta_connection_id).eq("company_id", companyId).maybeSingle();
+    if (conn?.status === "active" && conn.access_token) return conn.access_token;
+  }
+  return META_TOKEN_SHARED;
+}
+
+function askQuestionsTool(args: any, ctx: Ctx) {
+  const qs = (Array.isArray(args?.questions) ? args.questions : []).slice(0, 4).map((q: any, i: number) => ({
+    id: String(q?.id || `q${i + 1}`).slice(0, 30), label: String(q?.label || "").slice(0, 160),
+    options: (Array.isArray(q?.options) ? q.options : []).map((o: any) => String(o).slice(0, 60)).slice(0, 8),
+    multi: q?.multi === true, recommended: q?.recommended ? String(q.recommended).slice(0, 60) : null,
+  })).filter((q: any) => q.label && q.options.length >= 2);
+  if (!qs.length) return { error: "Each question needs a label and at least two options." };
+  ctx.cards.push({ type: "questions", title: String(args?.title || "A few quick questions").slice(0, 80), subtitle: String(args?.subtitle || "Tap to answer. You can change anything later.").slice(0, 120), questions: qs });
+  return { ok: true, note: "The question card is on screen. Write ONE short line before it, then stop and wait for their answers. Do not ask the same questions in text." };
+}
+
+async function showCreativesTool(args: any, ctx: Ctx) {
+  let pid: string | null = null;
+  if (args?.product_name) {
+    const { data } = await supabase.from("products").select("id").eq("company_id", ctx.companyId).ilike("product_name", `%${String(args.product_name).replace(/[%_]/g, "")}%`).limit(1);
+    pid = data?.[0]?.id ?? null;
+  }
+  const { data } = await supabase.from("creative_assets").select("id, file_name, public_url, asset_type, product_id, uploaded_at")
+    .eq("company_id", ctx.companyId).not("public_url", "is", null).order("uploaded_at", { ascending: false }).limit(150);
+  const rank = (r: any) => (pid && r.product_id === pid ? 0 : 1);
+  const seen = new Set<string>(); const assets: any[] = [];
+  for (const r of (data ?? []).slice().sort((a: any, b: any) => rank(a) - rank(b))) {
+    if (!/^https:\/\//.test(String(r.public_url)) || seen.has(r.public_url)) continue;
+    seen.add(r.public_url);
+    assets.push({ id: r.id, url: r.public_url, type: r.asset_type === "video" ? "video" : "image", name: r.file_name, match: !!pid && r.product_id === pid });
+    if (assets.length >= 12) break;
+  }
+  ctx.cards.push({
+    type: "creatives", product: String(args?.product_name || "").slice(0, 80), assets,
+    preselect: assets.filter((a) => a.match).slice(0, 3).map((a) => a.id),
+    copy: { primary_text: String(args?.primary_text || "").slice(0, 2000), headline: String(args?.headline || "").slice(0, 200), description: String(args?.description || "").slice(0, 200) },
+  });
+  return { ok: true, found: assets.length, note: "The creative card is on screen (existing creatives to tick, upload, or generate). Write one short line, then stop and wait for their choice." };
+}
+
+async function searchAudiencesTool(args: any, ctx: Ctx) {
+  if (!ctx.account) return { error: "No ad account is selected." };
+  const r = await AM(ctx.authHeader, { action: "targeting_search", ad_account_id: ctx.account.id, q: String(args?.query || ""), kind: args?.kind === "city" ? "city" : "interest" });
+  if (!r?.ok) return { error: r?.error || "Search failed." };
+  return { results: (r.results || []).slice(0, 10), note: "Use the id and name exactly as returned when planning." };
+}
+
+async function estimateReachTool(args: any, ctx: Ctx) {
+  if (!ctx.account) return { error: "No ad account is selected." };
+  const r = await AM(ctx.authHeader, { action: "reach_estimate", ad_account_id: ctx.account.id, states: args?.states, cities: args?.cities, interests: args?.interests, age_min: args?.age_min, age_max: args?.age_max, gender: args?.gender });
+  if (!r?.ok) return { error: r?.error || "Meta could not estimate that." };
+  return { people_lower: r.lower, people_upper: r.upper, ready: r.ready };
+}
+
+async function checkPixelTool(ctx: Ctx) {
+  if (!ctx.account) return { error: "No ad account is selected." };
+  const { data: acct } = await supabase.from("ad_accounts").select("meta_pixel_id, meta_connection_id, pixel_name").eq("id", ctx.account.id).eq("company_id", ctx.companyId).maybeSingle();
+  const pixel = String(acct?.meta_pixel_id ?? "").match(/\d+/)?.[0];
+  if (!pixel) return { connected: false, note: "No pixel is saved on this ad account. It can be set in Settings, Ad accounts." };
+  const token = await tokenForAccount(acct, ctx.companyId);
+  const info = await fetch(`${GRAPH}/${pixel}?fields=name,last_fired_time,is_unavailable&access_token=${token}`).then((r) => r.json()).catch(() => null);
+  if (info?.error) return { connected: true, pixel_id: pixel, error: "Meta would not show this pixel with the saved login: " + String(info.error.message).slice(0, 160) };
+  const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+  const st = await fetch(`${GRAPH}/${pixel}/stats?aggregation=event&start_time=${since}&access_token=${token}`).then((r) => r.json()).catch(() => null);
+  const events: Record<string, number> = {};
+  for (const bucket of st?.data ?? []) for (const e of bucket?.data ?? []) events[e.value] = (events[e.value] || 0) + Number(e.count || 0);
+  const last = info?.last_fired_time ? new Date(info.last_fired_time) : null;
+  const hoursAgo = last ? Math.round((Date.now() - last.getTime()) / 3600_000) : null;
+  const firing = hoursAgo != null && hoursAgo < 48;
+  return {
+    connected: true, pixel_id: pixel, name: info?.name ?? acct?.pixel_name ?? null, firing, last_fired_hours_ago: hoursAgo, events_last_7_days: events,
+    purchase_events_last_7_days: events["Purchase"] ?? 0,
+    verdict: firing ? (events["Purchase"] ? "Pixel is firing and Purchase events are arriving." : "Pixel is firing, but no Purchase event in 7 days. Check the order form or the paid-purchase setting.") : "Pixel has not fired in the last 2 days, so ads cannot optimise for orders until it does.",
+  };
+}
+
+const norm0 = (n: unknown) => Math.max(0, Math.round(Number(n) || 0));
+function whoText(a: any) {
+  const g = a.gender === "female" ? "Women" : a.gender === "male" ? "Men" : "Everyone";
+  const ints = (a.interests || []).map((i: any) => i.name).slice(0, 3).join(", ");
+  return `${g} ${a.age_min} to ${a.age_max}${ints ? `, ${ints}` : ""}`;
+}
+function whereText(a: any) {
+  const p = [...(a.states || []), ...(a.cities || []).map((c: any) => c.name)];
+  return p.length ? p.join(", ") : "All Nigeria";
+}
+async function planCard(plan: any, planId: string, ctx: { authHeader: string; accountId: string; companyId: string; userId: string }, estimate = true) {
+  const rows = await Promise.all((plan.adsets || []).map(async (a: any) => {
+    let reach: string | null = null;
+    if (estimate) {
+      const r = await AM(ctx.authHeader, { action: "reach_estimate", ad_account_id: ctx.accountId, states: a.states, cities: a.cities, interests: a.interests, age_min: a.age_min, age_max: a.age_max, gender: a.gender, optimization_goal: plan.destination === "website" ? "LINK_CLICKS" : "CONVERSATIONS" });
+      if (r?.ok && r.upper) reach = `${r.lower ? (r.lower / 1e6).toFixed(1) : "0"}M to ${(r.upper / 1e6).toFixed(1)}M`;
+    }
+    return { label: a.label, who: whoText(a), where: whereText(a), budget: a.budget_naira, reach, states: a.states || [], age_min: a.age_min, age_max: a.age_max };
+  }));
+  const total = rows.reduce((s: number, r: any) => s + r.budget, 0);
+  const { data: kr } = await supabase.from("kill_rules").select("kind, enabled, max_cost_per_result, min_spend").eq("profile_id", ctx.userId).limit(5).then((x: any) => x, () => ({ data: [] }));
+  const rule = (kr ?? []).find((r: any) => r.enabled);
+  return {
+    type: "plan", plan_id: planId, status: "draft", title: `${plan.product_name} · ${plan.destination === "website" ? "Website orders" : "WhatsApp messages"}`,
+    summary: `1 campaign · ${rows.length} ad set${rows.length > 1 ? "s" : ""} · ${rows.length * plan.asset_ids.length} ads · ${fmtNaira(total)} a day`,
+    adsets: rows, creatives: `${plan.asset_ids.length} creative${plan.asset_ids.length > 1 ? "s" : ""} per ad set, ${plan.copies.length} copy version${plan.copies.length > 1 ? "s" : ""}`,
+    pixel: plan.pixel_ok === null ? null : plan.pixel_ok, rules: rule ? `Your kill rule: pause an ad when it passes ${fmtNaira(Number(rule.min_spend))} spend with cost per result above ${fmtNaira(Number(rule.max_cost_per_result))}.` : "No kill rule set yet. Set one in Settings so ads that do not work are paused for you.",
+    warnings: plan.warnings || [], campaign_name: plan.campaign_name,
+  };
+}
+
+async function planCampaignTool(args: any, ctx: Ctx) {
+  if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can plan campaigns." };
+  if (!ctx.account) return { error: "No ad account is selected. Ask the person to pick one at the top of the dashboard." };
+  const pname = String(args?.product_name ?? "").trim();
+  const { data: prods } = await supabase.from("products").select("id, product_name, whatsapp_number, landing_page_url").eq("company_id", ctx.companyId).ilike("product_name", `%${pname.replace(/[%_]/g, "")}%`).limit(5);
+  const product = (prods ?? [])[0];
+  if (!pname || !product) return { needs_info: true, message: "Which product is this campaign for? Ask, using their product names." };
+  const { data: acct } = await supabase.from("ad_accounts").select("id, whatsapp_number, meta_pixel_id, fb_page_id, balance_naira").eq("id", ctx.account.id).eq("company_id", ctx.companyId).maybeSingle();
+  if (!acct) return { error: "That ad account is not available." };
+  if (!acct.fb_page_id) return { needs_info: true, message: "This ad account has no Facebook page saved, so ads cannot be created. Tell the person to connect the page in Settings, Ad accounts." };
+  const dest = args?.destination === "website" ? "website" : "whatsapp";
+  const wa = String(acct.whatsapp_number || product.whatsapp_number || "").replace(/[^\d]/g, "");
+  const link = String(args?.landing_url || product.landing_page_url || "").trim();
+  if (dest === "whatsapp" && !wa) return { needs_info: true, message: "No WhatsApp number is saved on this ad account or product. Ask which WhatsApp number people should message." };
+  if (dest === "website" && !/^https:\/\//.test(link)) return { needs_info: true, message: "Need the website link people should land on. Ask for it." };
+  const ids = [...new Set((Array.isArray(args?.asset_ids) ? args.asset_ids : []).map(String).filter((x: string) => /^[0-9a-f-]{36}$/i.test(x)))].slice(0, 6);
+  const { data: assets } = ids.length ? await supabase.from("creative_assets").select("id").eq("company_id", ctx.companyId).in("id", ids) : { data: [] as any[] };
+  const assetIds = ids.filter((i) => (assets ?? []).some((a: any) => a.id === i));
+  if (!assetIds.length) return { needs_info: true, message: "No creatives chosen yet. Call show_creatives and wait for the person to choose." };
+  const copies = (Array.isArray(args?.copies) ? args.copies : []).map((c: any) => ({ primary_text: String(c?.primary_text || "").trim().slice(0, 2000), headline: String(c?.headline || "").trim().slice(0, 200), description: String(c?.description || "").trim().slice(0, 200) })).filter((c: any) => c.primary_text.length >= 30).slice(0, 5);
+  if (!copies.length) return { needs_info: true, message: "No ad copy yet. Call write_ad_copy first (or use the copy the person chose) and pass it in copies." };
+  const adsets = (Array.isArray(args?.adsets) ? args.adsets : []).slice(0, 6).map((a: any, i: number) => {
+    const amin = Math.min(Math.max(Math.round(Number(a?.age_min) || 25), 18), 65);
+    const amax = Math.min(Math.max(Math.round(Number(a?.age_max) || 55), amin), 65);
+    return {
+      label: String(a?.label || `Ad set ${i + 1}`).slice(0, 60), budget_naira: Math.min(Math.max(norm0(a?.budget_naira) || 3000, 1000), 500000),
+      age_min: amin, age_max: amax, gender: ["all", "male", "female"].includes(a?.gender) ? a.gender : "all",
+      states: (Array.isArray(a?.states) ? a.states : []).map((s: any) => String(s).replace(/ state$/i, "").trim()).filter(Boolean).slice(0, 12),
+      cities: (Array.isArray(a?.cities) ? a.cities : []).filter((c: any) => /^\d+$/.test(String(c?.key))).map((c: any) => ({ key: String(c.key), name: String(c.name || ""), region: String(c.region || ""), radius: 17 })).slice(0, 10),
+      interests: (Array.isArray(a?.interests) ? a.interests : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name || "") })).slice(0, 8),
+    };
+  });
+  if (!adsets.length) return { needs_info: true, message: "No ad sets given. Plan at least one ad set (who, where, daily budget)." };
+  const warnings: string[] = [];
+  const total = adsets.reduce((s: number, a: any) => s + a.budget_naira, 0);
+  if (acct.balance_naira != null && Number(acct.balance_naira) < total) warnings.push(`The account balance is about ${fmtNaira(Number(acct.balance_naira))}, less than one day of this plan (${fmtNaira(total)}). Top up before launching.`);
+  if (!acct.meta_pixel_id && dest === "website") warnings.push("No pixel is saved on this ad account, so a website campaign cannot track orders.");
+  const plan = {
+    product_id: product.id, product_name: product.product_name, ad_account_id: acct.id, destination: dest, whatsapp_number: dest === "whatsapp" ? wa : null, landing_url: dest === "website" ? link : null,
+    campaign_name: String(args?.campaign_name || `${product.product_name} ${new Date().toISOString().slice(0, 10)}`).slice(0, 100),
+    cta: String(args?.cta || (dest === "whatsapp" ? "WHATSAPP_MESSAGE" : "SHOP_NOW")).slice(0, 40), asset_ids: assetIds, copies, adsets, warnings, pixel_ok: dest === "website" ? !!acct.meta_pixel_id : null,
+  };
+  const { data: row, error } = await supabase.from("ai_plans").insert({ company_id: ctx.companyId, user_id: ctx.userId, ad_account_id: acct.id, plan }).select("id").single();
+  if (error || !row) return { error: "Could not save the plan: " + (error?.message ?? "unknown") };
+  ctx.cards.push(await planCard(plan, row.id, { authHeader: ctx.authHeader, accountId: acct.id, companyId: ctx.companyId, userId: ctx.userId }));
+  return { ok: true, plan_id: row.id, note: "The plan card is on screen with Approve, Edit and Cancel buttons. Write one or two sentences on why you chose this structure, then stop. You CANNOT launch: only the person's tap on Approve launches. Never say it is live." };
+}
+
+function reviewCardTool(args: any, ctx: Ctx) {
+  const clean = (arr: any) => (Array.isArray(arr) ? arr : []).slice(0, 6).map((x: any) => ({
+    id: /^\d+$/.test(String(x?.id)) ? String(x.id) : null, level: x?.level === "adset" ? "adset" : "ad", name: String(x?.name || "").slice(0, 80), why: String(x?.why || "").slice(0, 220),
+    actions: (Array.isArray(x?.actions) ? x.actions : []).slice(0, 3).map((a: any) => ({
+      kind: ["pause", "resume", "budget", "duplicate"].includes(a?.kind) ? a.kind : null, label: String(a?.label || "").slice(0, 40),
+      new_daily_budget: a?.new_daily_budget ? norm0(a.new_daily_budget) : null, current_daily_budget: a?.current_daily_budget ? norm0(a.current_daily_budget) : null,
+    })).filter((a: any) => a.kind && a.label),
+  }));
+  ctx.cards.push({
+    type: "review", account_id: ctx.account?.id ?? null, headline: String(args?.headline || "").slice(0, 160),
+    keep: clean(args?.keep), watch: { count: norm0(args?.watch_count), note: String(args?.watch_note || "").slice(0, 200) }, stop: clean(args?.stop),
+  });
+  return { ok: true, note: "The review card is on screen. Do not repeat its contents. Write the one-sentence answer and a short plain-words explanation of what the numbers mean (what you wrote as headline, total spend, results and cost per result against their target), then stop." };
+}
+
+async function duplicateObject(body: any, p: { companyId: string; role: string; mediaBuyerId: string | null }) {
+  const level = body?.level === "adset" ? "adset" : "ad";
+  const objectId = String(body?.object_id ?? "");
+  if (!/^\d+$/.test(objectId)) throw new Error("Invalid id.");
+  let q = supabase.from("ad_accounts").select("id, meta_connection_id, media_buyer_id").eq("id", String(body?.ad_account_id ?? "")).eq("company_id", p.companyId);
+  if (p.role === "buyer") q = q.eq("media_buyer_id", p.mediaBuyerId);
+  const { data: acct } = await q.maybeSingle();
+  if (!acct) throw new Error("That ad account is not yours.");
+  const token = await tokenForAccount(acct, p.companyId);
+  const form = new URLSearchParams({ access_token: token, status_option: body?.start_paused === false ? "INHERITED_FROM_SOURCE" : "PAUSED" });
+  if (level === "adset") form.set("deep_copy", "true");
+  const r = await fetch(`${GRAPH}/${objectId}/copies`, { method: "POST", body: form }).then((x) => x.json()).catch(() => null);
+  if (!r || r.error) throw new Error("Meta: " + (r?.error?.error_user_msg || r?.error?.message || "could not duplicate").slice(0, 200));
+  const newId = r.copied_ad_id || r.copied_adset_id || r.ad_object_ids?.[0]?.copied_id || null;
+  await supabase.from("ad_kill_log").insert({ company_id: p.companyId, ad_account_id: acct.id, level, meta_object_id: objectId, object_name: String(body?.object_name || ""), action: "duplicated", source: "ai_chat", reason: "Duplicated by the AI media buyer after the person tapped it" }).then(() => {}, () => {});
+  return { ok: true, new_id: newId, note: "Copied as paused. Turn it on when you are ready." };
+}
+
+async function planAction(body: any, p: { companyId: string; role: string; mediaBuyerId: string | null; userId: string; authHeader: string }) {
+  if (!["owner", "admin", "buyer"].includes(p.role)) throw new Error("Only owners, admins and media buyers can launch.");
+  const { data: row } = await supabase.from("ai_plans").select("id, plan, status, user_id, ad_account_id").eq("id", String(body?.plan_id ?? "")).eq("company_id", p.companyId).maybeSingle();
+  if (!row) throw new Error("That plan was not found.");
+  if (row.user_id !== p.userId && !["owner", "admin"].includes(p.role)) throw new Error("This plan belongs to someone else.");
+  const plan = row.plan;
+  if (body.action === "cancel_plan") { await supabase.from("ai_plans").update({ status: "cancelled" }).eq("id", row.id).eq("status", "draft"); return { ok: true }; }
+  if (row.status !== "draft") throw new Error(row.status === "launched" ? "This plan is already launched." : "This plan can no longer be changed.");
+  let q = supabase.from("ad_accounts").select("id, media_buyer_id").eq("id", row.ad_account_id).eq("company_id", p.companyId);
+  if (p.role === "buyer") q = q.eq("media_buyer_id", p.mediaBuyerId);
+  const { data: acct } = await q.maybeSingle();
+  if (!acct) throw new Error("That ad account is not yours.");
+
+  if (body.action === "update_plan") {
+    const e = body.edits || {};
+    if (typeof e.campaign_name === "string" && e.campaign_name.trim()) plan.campaign_name = e.campaign_name.trim().slice(0, 100);
+    (Array.isArray(e.adsets) ? e.adsets : []).forEach((ea: any, i: number) => {
+      const a = plan.adsets[i]; if (!a) return;
+      if (ea.budget_naira != null) a.budget_naira = Math.min(Math.max(norm0(ea.budget_naira), 1000), 500000);
+      if (ea.age_min != null) a.age_min = Math.min(Math.max(norm0(ea.age_min), 18), 65);
+      if (ea.age_max != null) a.age_max = Math.min(Math.max(norm0(ea.age_max), a.age_min), 65);
+      if (Array.isArray(ea.states)) a.states = ea.states.map((s: any) => String(s).replace(/ state$/i, "").trim()).filter(Boolean).slice(0, 12);
+      if (ea.remove === true && plan.adsets.length > 1) a.__remove = true;
+    });
+    plan.adsets = plan.adsets.filter((a: any) => !a.__remove);
+    await supabase.from("ai_plans").update({ plan }).eq("id", row.id);
+    return { ok: true, card: await planCard(plan, row.id, { authHeader: p.authHeader, accountId: acct.id, companyId: p.companyId, userId: p.userId }) };
+  }
+
+  // approve_plan: the only path that creates anything on Meta. Same rows the campaign builder writes, then the same launcher.
+  const claim = await supabase.from("ai_plans").update({ status: "launching" }).eq("id", row.id).eq("status", "draft").select("id");
+  if (!claim.data?.length) throw new Error("This plan is already being launched.");
+  try {
+    const { data: srcs } = await supabase.from("creative_assets").select("id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format").eq("company_id", p.companyId).in("id", plan.asset_ids);
+    const sources = plan.asset_ids.map((id: string) => (srcs ?? []).find((s: any) => s.id === id)).filter(Boolean);
+    if (!sources.length) throw new Error("The chosen creatives are no longer available.");
+    const batch = crypto.randomUUID();
+    const ids: string[] = [];
+    for (let i = 0; i < plan.adsets.length; i++) {
+      for (let j = 0; j < sources.length; j++) {
+        const s: any = sources[j], c = plan.copies[j % plan.copies.length];
+        const { data: ins, error } = await supabase.from("creative_assets").insert({
+          file_name: s.file_name, storage_path: s.storage_path, public_url: s.public_url, asset_type: s.asset_type, meta_video_id: s.meta_video_id ?? null, meta_image_hash: s.meta_image_hash ?? null,
+          mechanism: s.mechanism, format: s.format, primary_text: c.primary_text, headline: c.headline, description: c.description, cta_type: plan.cta,
+          uploaded_by: "ai_chat", ad_account_id: acct.id, company_id: p.companyId, test_status: "untested", uploaded_at: new Date().toISOString(),
+          ad_set_sort_order: i, ad_name: `${plan.product_name} · ${plan.adsets[i].label} · Ad ${j + 1}`.slice(0, 120),
+          product_id: plan.product_id, destination_type: plan.destination, whatsapp_number: plan.whatsapp_number, landing_page_url: plan.landing_url,
+          campaign_name: plan.campaign_name, campaign_objective: "OUTCOME_SALES", budget_type: "abo", launch_batch_id: batch,
+        }).select("id").single();
+        if (error || !ins) throw new Error("Could not stage an ad: " + (error?.message ?? "unknown"));
+        ids.push(ins.id);
+      }
+    }
+    const cfgs = plan.adsets.map((a: any, i: number) => ({
+      creative_id: ids[0], company_id: p.companyId, label: a.label, budget_naira: a.budget_naira, age_min: a.age_min, age_max: a.age_max, gender: a.gender,
+      geo_type: a.states.length || a.cities.length ? "states" : "nationwide", states: a.states.length ? a.states : null, cities: a.cities.length ? a.cities : null,
+      interests: a.interests.length ? a.interests : null, sort_order: i, advantage_audience: !a.interests.length,
+    }));
+    const { error: cErr } = await supabase.from("ad_set_configs").insert(cfgs);
+    if (cErr) throw new Error("Could not save the ad sets: " + cErr.message);
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-auto-launch-tests`, { method: "POST", headers: { Authorization: p.authHeader, "Content-Type": "application/json" }, body: JSON.stringify({ creative_ids: ids }) }).then((r) => r.json()).catch(() => null);
+    if (!res || res.error) throw new Error(res?.error || "The launcher did not answer.");
+    await supabase.from("ai_plans").update({ status: "launched", launched_at: new Date().toISOString(), result: res }).eq("id", row.id);
+    return { ok: true, message: res.message || "Launched.", ads: ids.length, ad_sets: plan.adsets.length };
+  } catch (e) {
+    await supabase.from("ai_plans").update({ status: "draft" }).eq("id", row.id);
+    throw e;
+  }
+}
+
 function renderExamples(ex: Awaited<ReturnType<typeof getCopyExamples>>): string {
   const fmt = (e: CopyEx, i: number) => `#${i + 1}${e.same === false ? ` [DIFFERENT PRODUCT${e.product && e.product !== "another product" ? ": " + e.product : ""}. Borrow rhythm and voice only, never its product, claims or words]` : ""}${e.cost != null ? ` (${e.note}: ${fmtNaira(e.cost)} on ${fmtNaira(e.spend ?? 0)} spend${e.ctr != null ? `, CTR ${e.ctr.toFixed(1)}%` : ""})` : ""}\nPrimary text: ${e.text}${e.headline ? `\nHeadline: ${e.headline}` : ""}${e.description ? `\nDescription: ${e.description}` : ""}`;
   const parts: string[] = [];
@@ -427,6 +698,15 @@ Deno.serve(async (req: Request) => {
     try { return json(await saveCopy(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id })); }
     catch (e) { return json({ error: (e as Error).message }, 500); }
   }
+  if (["approve_plan", "update_plan", "cancel_plan"].includes(body?.action)) {
+    try { return json(await planAction(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id, userId: user.id, authHeader })); }
+    catch (e) { return json({ error: (e as Error).message }, 400); }
+  }
+  if (body?.action === "duplicate") {
+    if (!["owner", "admin", "buyer"].includes(profile.role)) return json({ error: "Only owners, admins and buyers can duplicate ads." }, 403);
+    try { return json(await duplicateObject(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id })); }
+    catch (e) { return json({ error: (e as Error).message }, 400); }
+  }
   const question = (body?.question || "").toString().trim();
   if (!question) return json({ error: "A question is required" }, 400);
   // Short rolling history from the frontend (role/content pairs only) so a
@@ -445,7 +725,7 @@ Deno.serve(async (req: Request) => {
   const ctx: Ctx = {
     companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id,
     deliveryAgentId: profile.delivery_agent_id, userId: user.id, displayName: profile.display_name || "",
-    authHeader, account: null, proposals: [],
+    authHeader, account: null, proposals: [], cards: [],
   };
 
   // The ad account the person currently has switched in on the dashboard.
@@ -523,7 +803,7 @@ ${JSON.stringify(data)}`;
     {
       type: "function", function: {
         name: "write_ad_copy",
-        description: "Write finished ad copy (long-form primary text, headlines, description, hooks, CTA) for a product. It reads the seller's past ads, product record and niche, writes in two passes and returns polished markdown. ALWAYS use this for any request to write ad copy, hooks, headlines or descriptions. Show its copy_markdown exactly as returned.",
+        description: "Write finished ad copy (long-form primary text, headlines, description, hooks, CTA) for a product. It reads the seller's past ads, product record and niche, writes in two passes and returns polished markdown. ALWAYS use this for any request to write ad copy, hooks, headlines or descriptions. Show its copy_markdown exactly as returned. If it returns needs_info, ask the person that question instead.",
         parameters: {
           type: "object",
           properties: {
@@ -538,6 +818,72 @@ ${JSON.stringify(data)}`;
           },
           required: [],
         },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "ask_questions",
+        description: "Show the person a card of 1-4 quick tap-to-answer questions (each with 2-8 short options) instead of asking in text. Use whenever you need choices from them, such as where ads should send people, how many ad sets, who should see the ads. Pre-mark your recommendation. Never ask what you can decide yourself.",
+        parameters: { type: "object", properties: {
+          title: { type: "string" }, subtitle: { type: "string" },
+          questions: { type: "array", items: { type: "object", properties: { id: { type: "string" }, label: { type: "string" }, options: { type: "array", items: { type: "string" } }, multi: { type: "boolean" }, recommended: { type: "string" } }, required: ["label", "options"] } },
+        }, required: ["questions"] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "show_creatives",
+        description: "Show a card with the person's existing creatives for a product (tick to use), an upload button and a generate button, plus the ad copy to review. Call it after the copy is written. Pass the first ad's primary text, headline and description so they appear editable on the card.",
+        parameters: { type: "object", properties: { product_name: { type: "string" }, primary_text: { type: "string" }, headline: { type: "string" }, description: { type: "string" } }, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "search_audiences",
+        description: "Find real Meta targeting options. kind 'interest' returns interests and job-type audiences (id + name + size) for plain descriptions like business owners, students, new mums, gut health. kind 'city' returns Nigerian cities (key, name, region). Use the exact id and name when planning.",
+        parameters: { type: "object", properties: { query: { type: "string" }, kind: { type: "string", enum: ["interest", "city"] } }, required: ["query"] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "estimate_reach",
+        description: "Ask Meta how many people an audience reaches (states, cities, interests, ages, gender).",
+        parameters: { type: "object", properties: { states: { type: "array", items: { type: "string" } }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, radius: { type: "number" } } } }, interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } }, age_min: { type: "number" }, age_max: { type: "number" }, gender: { type: "string", enum: ["all", "male", "female"] } }, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "check_pixel",
+        description: "Check whether the selected ad account's Meta pixel is connected and firing, with event counts for the last 7 days (PageView, Purchase and so on) and a plain verdict.",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "plan_campaign",
+        description: "Build the campaign plan and show it as a card with Approve, Edit and Cancel buttons. It does NOT launch anything: only the person's tap on Approve launches. Needs: product, destination, 1-6 ad sets (who, where, daily budget), the chosen creative ids, and the ad copy versions. Never call it before copy and creatives exist.",
+        parameters: { type: "object", properties: {
+          product_name: { type: "string" }, destination: { type: "string", enum: ["whatsapp", "website"] }, landing_url: { type: "string" }, campaign_name: { type: "string" },
+          asset_ids: { type: "array", items: { type: "string" }, description: "Creative ids the person chose on the creative card." },
+          copies: { type: "array", items: { type: "object", properties: { primary_text: { type: "string" }, headline: { type: "string" }, description: { type: "string" } }, required: ["primary_text"] } },
+          adsets: { type: "array", items: { type: "object", properties: {
+            label: { type: "string" }, budget_naira: { type: "number" }, age_min: { type: "number" }, age_max: { type: "number" }, gender: { type: "string", enum: ["all", "male", "female"] },
+            states: { type: "array", items: { type: "string" } }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, name: { type: "string" }, region: { type: "string" } } } },
+            interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } },
+          }, required: ["label", "budget_naira"] } },
+        }, required: ["product_name", "adsets", "asset_ids", "copies"] },
+      },
+    },
+    {
+      type: "function", function: {
+        name: "review_ads_card",
+        description: "After get_live_ads, show the review card: ads to KEEP (and scale or duplicate), how many to WATCH, and ads to STOP, each with a plain reason and tap buttons. Action kinds: pause, resume, budget (give new_daily_budget and current_daily_budget in Naira), duplicate. Use real ids from get_live_ads.",
+        parameters: { type: "object", properties: {
+          headline: { type: "string", description: "One sentence answer, e.g. One ad is carrying the campaign and one is wasting money." },
+          keep: { type: "array", items: { type: "object", properties: { id: { type: "string" }, level: { type: "string", enum: ["ad", "adset"] }, name: { type: "string" }, why: { type: "string" }, actions: { type: "array", items: { type: "object", properties: { kind: { type: "string", enum: ["pause", "resume", "budget", "duplicate"] }, label: { type: "string" }, new_daily_budget: { type: "number" }, current_daily_budget: { type: "number" } } } } }, required: ["id", "name", "why"] } },
+          watch_count: { type: "number" }, watch_note: { type: "string" },
+          stop: { type: "array", items: { type: "object", properties: { id: { type: "string" }, level: { type: "string", enum: ["ad", "adset"] }, name: { type: "string" }, why: { type: "string" }, actions: { type: "array", items: { type: "object", properties: { kind: { type: "string" }, label: { type: "string" } } } } }, required: ["id", "name", "why"] } },
+        }, required: ["headline"] },
       },
     },
     {
@@ -738,7 +1084,7 @@ ${JSON.stringify(data)}`;
   let pendingPayment: unknown = null;
 
   try {
-    for (let step = 0; step < 6; step++) {
+    for (let step = 0; step < 8; step++) {
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
@@ -763,7 +1109,7 @@ ${JSON.stringify(data)}`;
       messages.push(msg);
 
       if (!msg.tool_calls || !msg.tool_calls.length) {
-        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies, pending_payment: pendingPayment, proposals: ctx.proposals, active_account: ctx.account ? { id: ctx.account.id, name: ctx.account.name } : null });
+        return json({ answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.", quick_replies: quickReplies, pending_payment: pendingPayment, proposals: ctx.proposals, cards: ctx.cards, active_account: ctx.account ? { id: ctx.account.id, name: ctx.account.name } : null });
       }
 
       for (const tc of msg.tool_calls) {
@@ -818,6 +1164,14 @@ const slimMetrics = (m: any) => ({
 
 async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
   switch (name) {
+    case "ask_questions": return askQuestionsTool(args, ctx);
+    case "show_creatives": return await showCreativesTool(args, ctx);
+    case "search_audiences": return await searchAudiencesTool(args, ctx);
+    case "estimate_reach": return await estimateReachTool(args, ctx);
+    case "check_pixel": return await checkPixelTool(ctx);
+    case "plan_campaign": return await planCampaignTool(args, ctx);
+    case "review_ads_card": return reviewCardTool(args, ctx);
+
     case "save_product_facts": {
       if (!["owner", "admin", "buyer"].includes(ctx.role)) return { error: "Only owners, admins and media buyers can edit products." };
       const q = String(args?.product_name ?? "").trim();

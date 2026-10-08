@@ -1384,7 +1384,7 @@ body.assist-on .chat-toggle{display:none !important;}
 .chat-panel.page .ch-msgs{width:min(780px,100%);margin:0 auto;padding:10px 20px 20px;gap:0;}
 .chat-panel.page .ch-msg{max-width:100%;font-size:15.5px;line-height:1.7;padding:0;border-radius:0;box-shadow:none;margin:0 0 22px;}
 .chat-panel.page .ch-msg.bot{background:transparent;align-self:stretch;color:var(--text);}
-.chat-panel.page .ch-msg.user{background:var(--panel2);color:var(--text);align-self:flex-end;max-width:85%;padding:11px 16px;border-radius:18px;border:1px solid var(--border);white-space:pre-wrap;}
+.chat-panel.page .ch-msg.user{background:var(--accent);color:#fff;align-self:flex-end;max-width:85%;padding:11px 16px;border-radius:18px 18px 4px 18px;border:0;white-space:pre-wrap;}
 .chat-panel.page .ch-msg.bot.tail,.chat-panel.page .ch-msg.user.tail{margin-bottom:22px;}
 .chat-panel.page .ch-time{display:none;}
 .chat-panel.page .ch-pay-card,.chat-panel.page .ch-act-card{max-width:520px;}
@@ -1440,6 +1440,76 @@ body.assist-on .chat-toggle{display:none !important;}
 #bvLock.on{display:flex;}
 #bvLock .lk{background:var(--bg);border:1px solid var(--border);border-radius:18px;max-width:900px;width:100%;padding:24px;max-height:94vh;overflow:auto;}
 #bvLock h2{margin:0 0 6px;font-size:21px;}
+
+/* ── Chat cards: questions, creatives, plan, review ── */
+.cc{align-self:stretch;max-width:100%;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);margin:6px 0;font-size:13.5px;}
+.chat-panel.page .cc{max-width:720px;}
+.cc h4{margin:0 0 2px;font-size:14.5px;font-weight:700;color:var(--text);}
+.cc .cc-sub{color:var(--text2);font-size:12.5px;margin-bottom:12px;}
+.cc .cc-q{margin-bottom:12px;}.cc .cc-q label{display:block;font-weight:600;font-size:12.5px;margin-bottom:6px;color:var(--text);}
+.cc-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.cc-chip{border:1px solid var(--borderStrong,var(--border));background:var(--panel);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;color:var(--text);cursor:pointer;}
+.cc-chip.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.cc-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}.cc-sp{flex:1;}
+.cc-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--borderStrong,var(--border));background:var(--panel);border-radius:10px;padding:8px 14px;font:inherit;font-weight:600;font-size:13px;color:var(--text);cursor:pointer;}
+.cc-btn.p{background:var(--accent);border-color:var(--accent);color:#fff;}.cc-btn.g{background:#1a9a4a;border-color:#1a9a4a;color:#fff;}.cc-btn.s{padding:5px 10px;font-size:12px;border-radius:8px;}
+.cc-btn:disabled{opacity:.55;cursor:default;}
+.cc-thumbs{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;}
+.cc-th{width:78px;height:78px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);position:relative;overflow:hidden;cursor:pointer;padding:0;}
+.cc-th img,.cc-th video{width:100%;height:100%;object-fit:cover;display:block;}
+.cc-th.sel{outline:2px solid var(--accent);outline-offset:1px;}
+.cc-th.sel:after{content:"✓";position:absolute;right:4px;top:4px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;}
+.cc-th.up{border:1.5px dashed var(--borderStrong,var(--border));display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:22px;}
+.cc-lbl{font-size:12px;color:var(--muted);font-weight:600;margin:12px 0 4px;}
+.cc textarea,.cc input[type=text],.cc input[type=number]{width:100%;border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:9px 12px;font:inherit;font-size:13px;color:var(--text);box-sizing:border-box;}
+.cc textarea{min-height:92px;resize:vertical;}
+.cc-f{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+.cc-fld{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:8px 11px;}.cc-fld span{display:block;font-size:11px;color:var(--muted);}.cc-fld b{font-size:13px;font-weight:600;}.cc-fld.w{grid-column:1/-1;}
+.cc table{width:100%;border-collapse:collapse;font-size:13px;}.cc td,.cc th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;}.cc th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.cc-tag{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;display:inline-block;}
+.cc-keep{background:rgba(26,154,74,.10);color:#1a9a4a;}.cc-watch{background:rgba(245,165,36,.16);color:#b7791f;}.cc-stop{background:rgba(217,48,37,.09);color:#d93025;}
+.cc-warn{background:rgba(245,165,36,.14);color:#8a5a12;border-radius:10px;padding:8px 11px;font-size:12.5px;margin-top:10px;}
+.cc-note{font-size:11.5px;color:var(--muted);margin:6px 2px;}
+.cc-item{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);}.cc-item:last-of-type{border-bottom:0;}
+.cc-item small{display:block;color:var(--text2);font-size:12px;margin-top:2px;}
+.cc-res{margin-top:10px;font-size:12.5px;}
+@media(max-width:760px){.cc-f{grid-template-columns:1fr;}.cc table,.cc thead{font-size:12px;}.cc-item{flex-direction:column;align-items:flex-start;}}
+
+/* ── Catalog ── */
+.cat-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.cat-chip{border:1px solid var(--borderStrong,var(--border));background:var(--panel);border-radius:999px;padding:6px 13px;font:inherit;font-size:12.5px;color:var(--text);cursor:pointer;}
+.cat-chip.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.cat-search{margin-left:auto;border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;color:var(--text);width:230px;max-width:100%;}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;}
+.cat-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;cursor:pointer;transition:box-shadow .15s,transform .15s;text-align:left;padding:0;font:inherit;color:var(--text);}
+.cat-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.08);transform:translateY(-1px);}
+.cat-im{height:136px;background:linear-gradient(135deg,#e9e0cc,#cfe3d2);display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);font-size:30px;}
+.cat-im img{width:100%;height:100%;object-fit:cover;display:block;}
+.cat-bd{padding:12px;}.cat-bd b{display:block;font-size:14px;}.cat-bd small{color:var(--text2);font-size:12px;}
+.cat-tag{display:inline-block;margin-top:8px;font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;}
+.cat-ok{background:rgba(26,154,74,.10);color:#1a9a4a;}.cat-warn{background:rgba(245,165,36,.16);color:#b7791f;}.cat-off{background:var(--panel2);color:var(--muted);}
+.cat-add{border-style:dashed;background:var(--panel2);}
+.cat-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:6px 0 16px;overflow-x:auto;}
+.cat-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:9px 14px;font:inherit;font-weight:600;color:var(--text2);cursor:pointer;white-space:nowrap;}
+.cat-tabs button.on{color:var(--accent);border-color:var(--accent);}
+.cat-two{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;}
+@media(max-width:900px){.cat-two{grid-template-columns:1fr;}}
+.cat-lbl{font-size:12px;color:var(--muted);font-weight:600;margin:14px 0 4px;}
+.cat-in{width:100%;box-sizing:border-box;border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:9px 12px;font:inherit;font-size:13.5px;color:var(--text);}
+textarea.cat-in{min-height:78px;resize:vertical;}
+.cat-row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.cat-more{border:1px dashed var(--borderStrong,var(--border));border-radius:12px;padding:12px 14px;margin-top:16px;}
+.cat-more summary{cursor:pointer;font-weight:600;color:var(--text);}.cat-more summary span{color:var(--text2);font-weight:400;font-size:12.5px;}
+.cat-panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.cat-panel h4{margin:0 0 2px;font-size:14.5px;}.cat-panel .sub{color:var(--text2);font-size:12.5px;margin-bottom:10px;}
+.cat-photo{width:100%;aspect-ratio:1.3;border-radius:14px;background:var(--panel2);border:1px dashed var(--borderStrong,var(--border));display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--muted);cursor:pointer;}
+.cat-photo img{width:100%;height:100%;object-fit:cover;}
+.cat-check{display:grid;gap:6px;font-size:13px;margin-top:8px;}.cat-check .y{color:#1a9a4a;}.cat-check .n{color:#b7791f;}
+.cat-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;}
+.cat-th{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--panel2);}
+.cat-th .i{aspect-ratio:1;display:block;}.cat-th img,.cat-th video{width:100%;height:100%;object-fit:cover;display:block;}.cat-th small{display:block;padding:5px 8px;font-size:11px;color:var(--text2);}
+.cat-copy{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--panel);}.cat-copy b{font-size:13px;}.cat-copy p{margin:4px 0 0;color:var(--text2);font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.cat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}.cat-tile{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;}.cat-tile span{display:block;color:var(--muted);font-size:12px;}.cat-tile b{font-size:22px;}
 </style>
 </head>
 <body>
@@ -1504,12 +1574,13 @@ body.assist-on .chat-toggle{display:none !important;}
     <div class="tab-btn" data-tab="performance"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg></span><span class="tab-label">Ad Spend &amp; ROAS</span></div>
     <div class="tab-btn" data-tab="assistant"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z"/><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7L19 15z"/></svg></span><span class="tab-label">Assistant</span></div>
     <div class="tab-btn" data-tab="leaderboard"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z"/><path d="M5 4H3v2a4 4 0 004 4M19 4h2v2a4 4 0 01-4 4"/></svg></span><span class="tab-label">Leaderboard</span></div>
-    <div class="tab-btn" data-tab="vault"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="tab-label">Creative Vault</span></div>
+    <div class="tab-btn" style="display:none" data-tab="vault"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="tab-label">Creative Vault</span></div>
 
     <div class="sidebar-group-lbl">Business</div>
     <div class="tab-btn" data-tab="wallet"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 010-4h14v4"/><path d="M3 5v14a2 2 0 002 2h16v-5"/><path d="M18 12a2 2 0 000 4h4v-4z"/></svg></span><span class="tab-label">Wallet</span></div>
-    <div class="tab-btn" data-tab="products"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span class="tab-label">Products</span></div>
-    <div class="tab-btn" data-tab="shop"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 11a2 2 0 0 1-2 1.7H7.5a2 2 0 0 1-2-1.7L4 7z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg></span><span class="tab-label">Shop</span></div>
+    <div class="tab-btn" data-tab="catalog"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span class="tab-label">Catalog</span></div>
+    <div class="tab-btn" style="display:none" data-tab="products"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span><span class="tab-label">Products</span></div>
+    <div class="tab-btn" style="display:none" data-tab="shop"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16l-1.5 11a2 2 0 0 1-2 1.7H7.5a2 2 0 0 1-2-1.7L4 7z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg></span><span class="tab-label">Shop</span></div>
     <div class="tab-btn" data-tab="conversations"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="tab-label">Conversations</span></div>
     <div class="tab-btn" data-tab="websites"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h8"/></svg></span><span class="tab-label">Websites</span></div>
     <div class="tab-btn" data-tab="website-leads"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></span><span class="tab-label">Website Leads</span></div>
@@ -1642,8 +1713,8 @@ async function init() {
   // it) RLS leaves empty anyway. Hide what's not theirs instead of leaving
   // them to discover that the hard way.
   const HIDDEN_TABS_BY_ROLE = {
-    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "conversations", "websites", "website-leads", "approvals", "earnings"],
-    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "shop", "websites", "approvals", "earnings"],
+    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "catalog", "shop", "conversations", "websites", "website-leads", "approvals", "earnings"],
+    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "catalog", "shop", "websites", "approvals", "earnings"],
   };
   for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
     document.querySelector(`[data-tab="${tab}"]`)?.style.setProperty("display", "none");
@@ -2386,6 +2457,8 @@ document.getElementById("tabsBar").addEventListener("click", e => {
   const t = e.target.closest(".tab-btn");
   if (!t) return;
   activeTab = t.dataset.tab;
+  window.bvLegacyOk = false;
+  if (activeTab === "catalog") window.bvCat.pid = null;
   // Clicking into Campaigns from elsewhere should always land on the list,
   // not wherever the drill-down was left -- only "bvBackToCampaignsList"/
   // the breadcrumb buttons inside the tab itself should preserve a detail view.
@@ -2401,6 +2474,10 @@ async function render() {
   const c = document.getElementById("mainContent");
   if (activeTab === "assistant") { c.innerHTML = ""; bvAssistantPage(true); return; }
   bvAssistantPage(false);
+  if (["products", "shop", "vault"].includes(activeTab) && !window.bvLegacyOk) {
+    activeTab = "catalog";
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "catalog"));
+  }
   
   // An ad account is only needed for ad-spend/campaign-performance tabs --
   // everything else (orders, order forms, products, conversations, website
@@ -2423,11 +2500,12 @@ async function render() {
   try {
     if      (activeTab === "overview")  await renderOverview(c);
     else if (activeTab === "wallet")    await renderWallet(c);
+    else if (activeTab === "catalog")   await renderCatalog(c);
     else if (activeTab === "vault")     await renderVault(c);
     else if (activeTab === "campaigns") await renderCampaigns(c);
     else if (activeTab === "performance") await renderPerformance(c);
     else if (activeTab === "leaderboard") await renderLeaderboard(c);
-    else if (activeTab === "products")  await renderProducts(c);
+    else if (activeTab === "products")  { await renderProducts(c); c.insertAdjacentHTML("afterbegin", `<button type="button" class="btn btn-g" style="margin-bottom:12px" onclick="window.bvLegacyOk=false;bvGoToTab('catalog')">← Back to Catalog</button>`); }
     else if (activeTab === "shop")      await renderShop(c);
     else if (activeTab === "orders")    await renderOrders(c);
     else if (activeTab === "calllogs")  await renderCallLogs(c);
@@ -6729,6 +6807,187 @@ async function renderPerformance(el, fromDate, toDate, force = false) {
 }
 
 // ── TAB: PRODUCTS ─────────────────────────────────────────────────────────────
+
+// ── CATALOG: one place for products, their creatives, sales pages and results ──────────────
+window.bvCat = window.bvCat || { pid: null, tab: "details", q: "", f: "all" };
+const BV_CAT_NICHE = {
+  health: { types: ["health_wellness", "beauty_skincare", "baby_kids"], nafdac: true, extra: "How to use it, and safety notes" },
+  food: { types: ["food_drinks", "agro_farm"], nafdac: true, extra: "Ingredients, allergens and shelf life" },
+  fashion: { types: ["fashion_clothing", "shoes_bags"], extra: "Sizes, colours and fabric" },
+  perfume: { types: ["perfume_fragrance"], extra: "Scent notes and bottle size" },
+  gadgets: { types: ["gadgets_electronics"], extra: "Specs and warranty" },
+  home: { types: ["home_living"], extra: "Size, material and setup" },
+  service: { types: ["services", "courses_digital", "real_estate"], extra: "What is included" },
+};
+function bvCatNiche(p) {
+  const t = window.myCompany?.business_types || [];
+  for (const k in BV_CAT_NICHE) if (BV_CAT_NICHE[k].types.some(x => t.includes(x))) return BV_CAT_NICHE[k];
+  return { nafdac: !!p?.nafdac_reg_no, extra: "Extra details" };
+}
+function bvCatStatus(p) {
+  if (p.is_active === false) return ["Inactive", "cat-off"];
+  if (!p.product_image_url) return ["Add a photo", "cat-warn"];
+  if (!p.description) return ["Add a description", "cat-warn"];
+  return ["Ready for ads", "cat-ok"];
+}
+async function renderCatalog(el) {
+  const [prods, assets, sites] = await Promise.all([
+    sbQuery("products", "order=created_at.desc"),
+    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name,test_status,uploaded_at&order=uploaded_at.desc&limit=600").catch(() => []),
+    sbQuery("sites", "select=id,name,slug,status,product_id").catch(() => []),
+  ]);
+  window.bvCatData = { prods: prods || [], assets: assets || [], sites: sites || [] };
+  if (window.bvCat.pid && window.bvCatData.prods.some(p => p.id === window.bvCat.pid)) return bvCatProduct(el);
+  window.bvCat.pid = null;
+  bvCatList(el);
+}
+function bvCatList(el) {
+  const st = window.bvCat, { prods, assets, sites } = window.bvCatData;
+  const need = prods.filter(p => bvCatStatus(p)[1] === "cat-warn").length;
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title">Catalog</div><div class="sh-actions"><button type="button" class="btn btn-a" onclick="bvCatAdd()">+ Add product</button></div></div>
+    <div style="color:var(--text2);margin:-6px 0 16px;font-size:13.5px;">Everything you sell, with its photos, ads and sales page in one place.</div>
+    <div class="cat-top">
+      <button class="cat-chip ${st.f === "all" ? "on" : ""}" data-f="all">All ${prods.length}</button>
+      <button class="cat-chip ${st.f === "active" ? "on" : ""}" data-f="active">Active</button>
+      <button class="cat-chip ${st.f === "need" ? "on" : ""}" data-f="need">Needs details ${need}</button>
+      <input class="cat-search" id="catQ" placeholder="Search products" value="${escH(st.q)}">
+    </div><div class="cat-grid" id="catGrid"></div>`;
+  const paint = () => {
+    const q = st.q.trim().toLowerCase();
+    const list = prods.filter(p => (!q || p.product_name.toLowerCase().includes(q)) && (st.f === "all" || (st.f === "active" && p.is_active !== false) || (st.f === "need" && bvCatStatus(p)[1] === "cat-warn")));
+    document.getElementById("catGrid").innerHTML = list.map(p => {
+      const [lbl, cls] = bvCatStatus(p), na = assets.filter(a => a.product_id === p.id).length, ns = sites.filter(x => x.product_id === p.id).length;
+      return `<button type="button" class="cat-card" onclick="bvCatOpen('${p.id}')"><div class="cat-im">${p.product_image_url ? `<img src="${escH(p.product_image_url)}" alt="">` : "📦"}</div>
+        <div class="cat-bd"><b>${escH(p.product_name)}</b><small>${p.currency && p.currency !== "NGN" ? escH(p.currency) + " " + p.default_order_value_naira : fN(p.default_order_value_naira)} · ${na} creative${na === 1 ? "" : "s"} · ${ns} page${ns === 1 ? "" : "s"}</small><span class="cat-tag ${cls}">${lbl}</span></div></button>`;
+    }).join("") + `<button type="button" class="cat-card cat-add" onclick="bvCatAdd()"><div class="cat-im" style="background:transparent;font-size:34px">+</div><div class="cat-bd"><b>Add a product</b><small>A photo, a name and a price is enough to start</small></div></button>`;
+  };
+  paint();
+  el.querySelectorAll(".cat-chip").forEach(b => b.onclick = () => { st.f = b.dataset.f; el.querySelectorAll(".cat-chip").forEach(x => x.classList.toggle("on", x === b)); paint(); });
+  document.getElementById("catQ").oninput = e => { st.q = e.target.value; paint(); };
+}
+function bvCatOpen(id) { window.bvCat.pid = id; window.bvCat.tab = "details"; render(); }
+function bvCatAdd() {
+  bvCloseModal();
+  const o = document.createElement("div"); o.id = "bvModalOverlay"; o.className = "bv-overlay"; o.onclick = e => { if (e.target === o) bvCloseModal(); };
+  o.innerHTML = `<div class="bv-modal" style="max-width:420px;"><div class="ph"><div class="ph-title">Add a product</div><button type="button" class="btn btn-g" onclick="bvCloseModal()">✕</button></div>
+    <div class="cat-lbl">Product name</div><input class="cat-in" id="ca_name" placeholder="e.g. Lunessa">
+    <div class="cat-lbl">Price (₦)</div><input class="cat-in" id="ca_price" type="number" min="0" placeholder="12500">
+    <div class="cat-lbl">What it is, in one line <span style="font-weight:500">(the AI reads this)</span></div><input class="cat-in" id="ca_desc" placeholder="e.g. Herbal drink for bloating and constipation">
+    <div id="ca_msg" style="margin-top:10px"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end"><button type="button" class="btn btn-g" onclick="bvCloseModal()">Cancel</button><button type="button" class="btn btn-a" id="ca_go">Add product</button></div></div>`;
+  document.body.appendChild(o);
+  document.getElementById("ca_go").onclick = async () => {
+    const name = document.getElementById("ca_name").value.trim(), price = Number(document.getElementById("ca_price").value);
+    const msg = document.getElementById("ca_msg");
+    if (!name) { msg.innerHTML = '<div class="msg err">Give it a name.</div>'; return; }
+    if (!(price > 0)) { msg.innerHTML = '<div class="msg err">Enter the price.</div>'; return; }
+    const b = document.getElementById("ca_go"); b.disabled = true; b.textContent = "Adding…";
+    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, currency: "NGN", is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
+    if (error) { msg.innerHTML = `<div class="msg err">${escH(error.message)}</div>`; b.disabled = false; b.textContent = "Add product"; return; }
+    bvCloseModal(); bvCatOpen(data.id);
+  };
+}
+function bvCatLegacy(id) { window.bvLegacyOk = true; activeTab = "products"; document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "catalog")); render().then(() => { try { bvEditProduct(id); } catch (e) {} }); }
+function bvCatAskAI(name) {
+  activeTab = "assistant"; document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "assistant")); render();
+  setTimeout(() => askChat(`Launch ads for ${name}`), 500);
+}
+async function bvCatProduct(el) {
+  const st = window.bvCat, { prods, assets, sites } = window.bvCatData;
+  const p = prods.find(x => x.id === st.pid); if (!p) return bvCatList(el);
+  const mine = assets.filter(a => a.product_id === p.id), pages = sites.filter(x => x.product_id === p.id);
+  const nz = bvCatNiche(p);
+  el.innerHTML = `
+    <div class="sh"><div class="sh-title"><button type="button" class="btn btn-g" style="margin-right:10px;padding:5px 10px" onclick="bvCat.pid=null;render()">← Catalog</button>${escH(p.product_name)}</div>
+      <div class="sh-actions"><button type="button" class="btn btn-g" onclick="bvCatAskAI('${escH(p.product_name).replace(/'/g, "\\'")}')">✨ Ask AI to launch ads</button><button type="button" class="btn btn-a" id="catSave">Save</button></div></div>
+    <div class="cat-tabs">${[["details", "Details"], ["creatives", `Creatives · ${mine.length}`], ["page", `Sales page${pages.length ? " · " + pages.length : ""}`], ["results", "Results"]].map(([k, l]) => `<button type="button" data-t="${k}" class="${st.tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <div id="catBody"></div>`;
+  el.querySelectorAll(".cat-tabs button").forEach(b => b.onclick = () => { st.tab = b.dataset.t; bvCatProduct(el); });
+  const body = document.getElementById("catBody"), save = document.getElementById("catSave");
+  save.style.display = st.tab === "details" ? "" : "none";
+  if (st.tab === "details") {
+    const checks = [[!!p.description, "Name, price and description"], [!!p.product_image_url, "A product photo"], [mine.length > 0, `${mine.length} creative${mine.length === 1 ? "" : "s"}`], [!!p.benefits, "Top benefits written"]];
+    body.innerHTML = `<div class="cat-two"><div>
+      <div class="cat-lbl" style="margin-top:0">Name</div><input class="cat-in" id="cd_name" value="${escH(p.product_name)}">
+      <div class="cat-row2"><div><div class="cat-lbl">Price</div><input class="cat-in" id="cd_price" type="number" min="0" value="${p.default_order_value_naira ?? ""}"></div>
+        <div><div class="cat-lbl">In stock <span style="font-weight:500">(blank = not tracked)</span></div><input class="cat-in" id="cd_stock" type="number" min="0" value="${p.stock_on_hand ?? ""}"></div></div>
+      <div class="cat-lbl">What it is (the AI reads this, so be clear)</div><textarea class="cat-in" id="cd_desc">${escH(p.description || "")}</textarea>
+      <div class="cat-lbl">Top benefits</div><textarea class="cat-in" id="cd_benefits" style="min-height:60px">${escH(p.benefits || "")}</textarea>
+      <div class="cat-lbl">Where people order</div>
+      <div class="cat-row2"><select class="cat-in" id="cd_dest"><option value="whatsapp" ${p.destination_type !== "website" ? "selected" : ""}>WhatsApp chat</option><option value="website" ${p.destination_type === "website" ? "selected" : ""}>Website order form</option></select>
+        <input class="cat-in" id="cd_wa" placeholder="WhatsApp number, e.g. 2348012345678" value="${escH(p.whatsapp_number || "")}"></div>
+      <input class="cat-in" id="cd_url" style="margin-top:8px" placeholder="Website link (for website orders)" value="${escH(p.landing_page_url || "")}">
+      <details class="cat-more" ${p.safety_notes || p.nafdac_reg_no ? "open" : ""}><summary>More details <span>for ${escH((window.myCompany?.business_types || [])[0]?.replace(/_/g, " ") || "your product")}</span></summary>
+        <div class="cat-lbl">${escH(nz.extra)}</div><textarea class="cat-in" id="cd_safety">${escH(p.safety_notes || "")}</textarea>
+        ${nz.nafdac || p.nafdac_reg_no ? `<div class="cat-lbl">NAFDAC number</div><input class="cat-in" id="cd_nafdac" value="${escH(p.nafdac_reg_no || "")}">` : ""}
+        <div style="margin-top:12px"><button type="button" class="btn btn-g" onclick="bvCatLegacy('${p.id}')">Packages, bank details and WhatsApp bot settings →</button></div>
+      </details>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-size:13px"><input type="checkbox" id="cd_active" ${p.is_active !== false ? "checked" : ""}> Active (shown in order forms and ads)</label>
+      <div id="cd_msg" style="margin-top:10px"></div></div>
+      <div><div class="cat-lbl" style="margin-top:0">Photo</div>
+        <div class="cat-photo" id="cd_photo">${p.product_image_url ? `<img src="${escH(p.product_image_url)}" alt="">` : "Click to add a photo"}</div><input type="file" accept="image/*" id="cd_file" hidden>
+        <div class="cat-panel" style="margin-top:14px"><h4>Ready for ads</h4><div class="sub">What the assistant knows about this product</div>
+          <div class="cat-check">${checks.map(([ok, t]) => `<span class="${ok ? "y" : "n"}">${ok ? "✓" : "•"} ${escH(t)}</span>`).join("")}</div></div></div></div>`;
+    const file = document.getElementById("cd_file");
+    document.getElementById("cd_photo").onclick = () => file.click();
+    file.onchange = async () => {
+      if (!file.files[0]) return;
+      const box = document.getElementById("cd_photo"); box.textContent = "Uploading…";
+      const fd = new FormData(); fd.append("file", file.files[0]); fd.append("product_id", p.id);
+      try {
+        const r = await fetch(`${SUPA_URL}/functions/v1/upload-product-image`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json());
+        if (r.error) throw new Error(r.error);
+        p.product_image_url = r.product_image_url; box.innerHTML = `<img src="${escH(r.product_image_url)}" alt="">`;
+      } catch (e) { box.textContent = "Could not upload: " + e.message; }
+    };
+    save.onclick = async () => {
+      const g = id => document.getElementById(id)?.value ?? "";
+      const name = g("cd_name").trim(), price = Number(g("cd_price"));
+      const msg = document.getElementById("cd_msg");
+      if (!name || !(price >= 0)) { msg.innerHTML = '<div class="msg err">Name and price are needed.</div>'; return; }
+      const fields = { product_name: name, default_order_value_naira: price, stock_on_hand: g("cd_stock") === "" ? null : Number(g("cd_stock")), description: g("cd_desc").trim() || null, benefits: g("cd_benefits").trim() || null,
+        destination_type: g("cd_dest"), whatsapp_number: g("cd_wa").replace(/[^\d]/g, "") || null, landing_page_url: g("cd_url").trim() || null, safety_notes: g("cd_safety").trim() || null,
+        is_active: document.getElementById("cd_active").checked, ...(document.getElementById("cd_nafdac") ? { nafdac_reg_no: g("cd_nafdac").trim() || null } : {}) };
+      save.disabled = true; save.textContent = "Saving…";
+      const { error } = await supabaseClient.from("products").update(fields).eq("id", p.id);
+      save.disabled = false; save.textContent = "Save";
+      if (error) { msg.innerHTML = `<div class="msg err">${escH(error.message)}</div>`; return; }
+      Object.assign(p, fields); bvToast("Saved."); bvCatProduct(el);
+    };
+  } else if (st.tab === "creatives") {
+    const lib = await sbQuery("ad_library", `select=id,headline,primary_text,cost_per_result,source&product_id=eq.${p.id}&order=imported_at.desc&limit=8`, { allAccounts: true }).catch(() => []);
+    body.innerHTML = `<div class="cat-two"><div class="cat-panel"><div class="ph" style="margin-bottom:6px"><div class="ph-title">Images and videos</div><button type="button" class="btn btn-g" id="cc_up">Upload</button><input type="file" id="cc_file" accept="image/*,video/*" multiple hidden></div>
+        <div class="sub" style="color:var(--text2);font-size:12.5px;margin-bottom:10px">Used by your campaigns and by the assistant when it plans ads.</div><div id="cc_msg"></div>
+        ${mine.length ? `<div class="cat-thumbs">${mine.slice(0, 40).map(a => `<div class="cat-th"><div class="i">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}" muted preload="metadata"></video>` : `<img src="${escH(a.public_url)}" loading="lazy" alt="">`}</div><small>${escH(({ untested: "Not used yet", testing: "Testing", winner: "Winner", winning: "Winner" })[a.test_status] || a.test_status || "")}</small></div>`).join("")}</div>` : `<div style="color:var(--muted);padding:14px 0">No creatives yet. Upload a few and the assistant can launch them for you.</div>`}</div>
+      <div><div class="cat-panel"><h4>Saved ad copy</h4><div class="sub">Copy you saved, and your past ads that worked</div>
+        ${(lib || []).length ? lib.map(c => `<div class="cat-copy"><b>${escH(c.headline || "Ad copy")}</b>${c.cost_per_result ? ` <span style="color:var(--green,#1a9a4a);font-size:12px">${fN(c.cost_per_result)} per result</span>` : ""}<p>${escH(c.primary_text)}</p></div>`).join("") : `<div style="color:var(--muted);font-size:13px">Nothing saved yet. Ask the assistant to write copy and tap “Save to my library”.</div>`}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn btn-a" onclick="bvCatAskAI('${escH(p.product_name).replace(/'/g, "\\'")}')">✨ Launch ads with AI</button><button type="button" class="btn btn-g" onclick="bvOpenObjectiveGateModal()">New campaign (manual)</button></div></div></div>`;
+    const fi = document.getElementById("cc_file");
+    document.getElementById("cc_up").onclick = () => { if (!activeAccountId) { document.getElementById("cc_msg").innerHTML = '<div class="msg err">Pick an ad account at the top first.</div>'; return; } fi.click(); };
+    fi.onchange = async () => {
+      const m = document.getElementById("cc_msg");
+      for (const f of [...fi.files]) {
+        m.innerHTML = `<div class="msg">Uploading ${escH(f.name)}…</div>`;
+        const fd = new FormData(); fd.append("file", f); fd.append("product_id", p.id); fd.append("uploaded_by", "dashboard"); fd.append("ad_account_id", activeAccountId);
+        const r = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json()).catch(e => ({ error: e.message }));
+        if (r.error) { m.innerHTML = `<div class="msg err">${escH(f.name)}: ${escH(r.error)}</div>`; return; }
+      }
+      renderCatalog(el);
+    };
+  } else if (st.tab === "page") {
+    body.innerHTML = `<div class="cat-panel"><div class="ph" style="margin-bottom:6px"><div class="ph-title">Sales pages for ${escH(p.product_name)}</div><button type="button" class="btn btn-a" onclick="bvGoToTab('websites')">+ Create a sales page</button></div>
+      ${pages.length ? pages.map(x => `<div class="cat-copy" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><b>${escH(x.name)}</b><p style="-webkit-line-clamp:1">${escH(x.status || "")}${x.slug ? " · /" + escH(x.slug) : ""}</p></div><button type="button" class="btn btn-g" onclick="bvWebEdit('${x.id}')">Edit</button></div>`).join("") : `<div style="color:var(--muted);padding:10px 0">No sales page yet.</div>`}
+      <div style="margin-top:14px"><button type="button" class="btn btn-g" onclick="bvOrderLinkModal('${p.id}','${escH(p.product_name).replace(/'/g, "\\'")}')">🔗 Get the order form link</button></div></div>`;
+  } else {
+    const orders = await sbQuery("orders", `select=order_status,order_value_naira,ordered_at&product_id=eq.${p.id}&order=ordered_at.desc&limit=1000`, { allAccounts: true }).catch(() => []);
+    const since = Date.now() - 30 * 864e5, o30 = (orders || []).filter(o => new Date(o.ordered_at).getTime() >= since), del = o30.filter(o => o.order_status === "delivered");
+    const val = del.reduce((s, o) => s + Number(o.order_value_naira || 0), 0);
+    body.innerHTML = `<div class="cat-tiles"><div class="cat-tile"><span>Orders · 30 days</span><b>${o30.length}</b></div><div class="cat-tile"><span>Delivered</span><b>${del.length}</b></div><div class="cat-tile"><span>Delivery rate</span><b>${o30.length ? Math.round(del.length / o30.length * 100) + "%" : "—"}</b></div><div class="cat-tile"><span>Delivered value</span><b>${fN(val)}</b></div></div>
+      <div style="color:var(--muted);font-size:12.5px;margin-top:12px">Ad spend and cost per result are on the Campaigns tab. Ask the assistant “how are my ${escH(p.product_name)} ads doing?” for a plain-words review.</div>`;
+  }
+}
+
 async function renderProducts(el) {
   const [prods, creatives] = await Promise.all([
     sbQuery("products", "order=created_at.desc"),
@@ -12166,13 +12425,173 @@ async function chLoadInbox() {
 }
 
 let chBusy = false;
-async function askChat(q) {
+
+// ── CHAT CARDS ────────────────────────────────────────────────────────────────
+// The assistant returns cards next to its text. Cards are plain UI: answering one just sends a normal message,
+// and the only thing that ever launches ads is the Approve button on a plan card.
+function ccEl(html) { const d = document.createElement("div"); d.className = "cc"; d.innerHTML = html; return d; }
+function ccDone(card, text) {
+  card.querySelectorAll("button,input,textarea").forEach(b => b.disabled = true);
+  card.querySelectorAll(".cc-row.act").forEach(r => r.remove());
+  if (text) { const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "var(--muted)"; n.textContent = text; card.appendChild(n); }
+}
+function appendCards(list) {
+  const msgs = document.getElementById("chMsgs");
+  for (const c of list || []) {
+    let el = null;
+    try {
+      if (c.type === "questions") el = ccQuestions(c);
+      else if (c.type === "creatives") el = ccCreatives(c);
+      else if (c.type === "plan") el = ccPlan(c);
+      else if (c.type === "review") el = ccReview(c);
+    } catch (e) { console.warn("card", e); }
+    if (el) msgs.appendChild(el);
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function ccQuestions(c) {
+  const card = ccEl(`<h4>${escH(c.title)}</h4><div class="cc-sub">${escH(c.subtitle || "")}</div>
+    ${c.questions.map((q, qi) => `<div class="cc-q" data-qi="${qi}"><label>${escH(q.label)}</label><div class="cc-chips">${q.options.map(o => `<button type="button" class="cc-chip ${q.recommended === o ? "on" : ""}" data-v="${escH(o)}">${escH(o)}${q.recommended === o ? " (recommended)" : ""}</button>`).join("")}</div></div>`).join("")}
+    <div class="cc-row act"><span class="cc-sp"></span><button type="button" class="cc-btn skip">Skip, you decide</button><button type="button" class="cc-btn p go">Continue</button></div>`);
+  card.querySelectorAll(".cc-q").forEach(qe => {
+    const q = c.questions[+qe.dataset.qi];
+    qe.querySelectorAll(".cc-chip").forEach(ch => ch.onclick = () => {
+      if (q.multi) ch.classList.toggle("on");
+      else { qe.querySelectorAll(".cc-chip").forEach(x => x.classList.remove("on")); ch.classList.add("on"); }
+    });
+  });
+  card.querySelector(".skip").onclick = () => { ccDone(card, "You decide."); askChat("You decide the rest, use your best judgement.", "Skip, you decide"); };
+  card.querySelector(".go").onclick = () => {
+    const ans = [...card.querySelectorAll(".cc-q")].map(qe => {
+      const q = c.questions[+qe.dataset.qi];
+      const v = [...qe.querySelectorAll(".cc-chip.on")].map(x => x.dataset.v);
+      return v.length ? `${q.label} ${v.join(", ")}` : null;
+    }).filter(Boolean);
+    ccDone(card, "Answered.");
+    askChat("My answers: " + (ans.join(" | ") || "no preference, you decide."), ans.length ? "Here are my answers" : "You decide");
+  };
+  return card;
+}
+
+function ccCreatives(c) {
+  const card = ccEl(`<h4>Creatives${c.product ? " for " + escH(c.product) : ""}</h4><div class="cc-sub">Tick the ones to use. Each ad set gets one ad per creative.</div>
+    <div class="cc-thumbs"></div>
+    <div class="cc-row"><button type="button" class="cc-btn s up">Upload image or video</button><button type="button" class="cc-btn s" disabled title="Coming soon">Make with AI (soon)</button><input type="file" accept="image/*,video/*" multiple hidden></div>
+    <div class="cc-lbl">Primary text <span style="font-weight:500">(edit if you like)</span></div><textarea class="pt">${escH(c.copy?.primary_text || "")}</textarea>
+    <div class="cc-f"><div class="cc-fld"><span>Headline</span><input type="text" class="hl" value="${escH(c.copy?.headline || "")}"></div><div class="cc-fld"><span>Description</span><input type="text" class="ds" value="${escH(c.copy?.description || "")}"></div></div>
+    <div class="cc-row act" style="margin-top:12px"><span class="cc-sp"></span><button type="button" class="cc-btn p use">Use these</button></div><div class="cc-res"></div>`);
+  const box = card.querySelector(".cc-thumbs"), sel = new Set(c.preselect || []);
+  const add = a => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "cc-th" + (sel.has(a.id) ? " sel" : ""); b.dataset.id = a.id; b.title = a.name || "";
+    b.innerHTML = a.type === "video" ? `<video src="${escH(a.url)}" muted preload="metadata"></video>` : `<img src="${escH(a.url)}" loading="lazy" alt="">`;
+    b.onclick = () => { if (sel.has(a.id)) sel.delete(a.id); else sel.add(a.id); b.classList.toggle("sel"); };
+    box.appendChild(b);
+  };
+  (c.assets || []).forEach(add);
+  if (!(c.assets || []).length) box.innerHTML = '<div style="color:var(--muted);font-size:12.5px">No creatives saved yet. Upload one to continue.</div>';
+  const fi = card.querySelector('input[type=file]'), res = card.querySelector(".cc-res");
+  card.querySelector(".up").onclick = () => fi.click();
+  fi.onchange = async () => {
+    for (const f of [...fi.files]) {
+      res.textContent = "Uploading " + f.name + "…";
+      const fd = new FormData(); fd.append("file", f); fd.append("uploaded_by", "ai_chat"); fd.append("ad_account_id", activeAccountId || "");
+      fd.append("cta_type", "WHATSAPP_MESSAGE");
+      try {
+        const r = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json());
+        if (r.error || !r.asset?.id) throw new Error(r.error || "upload failed");
+        if (box.querySelector("div")) box.innerHTML = "";
+        sel.add(r.asset.id); add({ id: r.asset.id, url: r.asset.public_url, type: /video/.test(r.asset.asset_type || f.type) ? "video" : "image", name: f.name }); res.textContent = "";
+      } catch (e) { res.style.color = "#d93025"; res.textContent = "Could not upload " + f.name + ": " + e.message; }
+    }
+    fi.value = "";
+  };
+  card.querySelector(".use").onclick = () => {
+    if (!sel.size) { res.style.color = "#d93025"; res.textContent = "Pick at least one creative."; return; }
+    const pt = card.querySelector(".pt").value.trim(), hl = card.querySelector(".hl").value.trim(), ds = card.querySelector(".ds").value.trim();
+    const n = sel.size;
+    ccDone(card, `Using ${n} creative${n > 1 ? "s" : ""}.`);
+    askChat(`I chose these creatives (ids: ${[...sel].join(",")}). Use this ad copy. Primary text: ${pt} | Headline: ${hl} | Description: ${ds}. Now plan the campaign.`, `Use these ${n} creative${n > 1 ? "s" : ""}`);
+  };
+  return card;
+}
+
+function ccPlan(c) {
+  const card = ccEl("");
+  const paint = (c) => {
+    const rows = c.adsets.map(a => `<tr><td><b>${escH(a.label)}</b></td><td>${escH(a.who)}</td><td>${escH(a.where)}</td><td>${fN(a.budget)}</td><td>${a.reach ? "≈ " + escH(a.reach) : "—"}</td></tr>`).join("");
+    card.innerHTML = `<div class="cc-row"><h4 style="font-size:16px;margin:0">${escH(c.title)}</h4><span class="cc-sp"></span><span class="cc-tag cc-watch">Draft</span></div>
+      <div class="cc-sub">${escH(c.summary)}</div>
+      <table><thead><tr><th>Ad set</th><th>Who</th><th>Where</th><th>Budget</th><th>Reach</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="cc-f"><div class="cc-fld"><span>Creatives</span><b>${escH(c.creatives)}</b></div>
+        <div class="cc-fld"><span>Tracking</span><b style="color:${c.pixel === false ? "#d93025" : "#1a9a4a"}">${c.pixel === null ? "● WhatsApp messages counted by Meta" : c.pixel ? "● Pixel saved on this account" : "● No pixel saved"}</b></div>
+        <div class="cc-fld w"><span>Rules I will follow</span><b>${escH(c.rules)}</b></div></div>
+      ${(c.warnings || []).map(w => `<div class="cc-warn">⚠️ ${escH(w)}</div>`).join("")}
+      <div class="cc-row act" style="margin-top:14px"><button type="button" class="cc-btn no">Cancel</button><span class="cc-sp"></span><button type="button" class="cc-btn ed">Edit plan</button><button type="button" class="cc-btn g ok">Approve and launch</button></div>
+      <div class="cc-res"></div><div class="cc-note">Approving creates the campaign and turns it on right away.</div>`;
+    const res = card.querySelector(".cc-res");
+    card.querySelector(".no").onclick = async () => { await sbFn("ai-chat", { action: "cancel_plan", plan_id: c.plan_id }); ccDone(card, "Plan cancelled."); };
+    card.querySelector(".ok").onclick = async (ev) => {
+      const b = ev.target; b.disabled = true; b.textContent = "Launching…";
+      const r = await sbFn("ai-chat", { action: "approve_plan", plan_id: c.plan_id });
+      if (r?.ok) {
+        ccDone(card, "");
+        const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "#1a9a4a"; n.innerHTML = `✅ Launched: ${r.ad_sets} ad set${r.ad_sets > 1 ? "s" : ""}, ${r.ads} ads. ${escH(r.message || "")}`; card.appendChild(n);
+        chatHistory.push({ role: "user", content: `[I approved the plan and it launched: ${r.message || "ok"}]` });
+        setTimeout(() => { try { render(); } catch {} }, 600);
+      } else { b.disabled = false; b.textContent = "Try again"; res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not launch."); }
+    };
+    card.querySelector(".ed").onclick = () => edit(c);
+  };
+  const edit = (c) => {
+    card.innerHTML = `<h4>Edit plan</h4><div class="cc-sub">Change what you need, then save. Reach is re-checked.</div>
+      <div class="cc-lbl">Campaign name</div><input type="text" class="cn" value="${escH(c.campaign_name || "")}">
+      ${c.adsets.map((a, i) => `<div class="cc-f" data-i="${i}" style="border-top:1px solid var(--border);padding-top:10px;margin-top:12px"><div class="cc-fld w"><span>${escH(a.label)}</span><b>${escH(a.who)}</b></div>
+        <div class="cc-fld"><span>Daily budget (₦)</span><input type="number" class="eb" value="${a.budget}"></div><div class="cc-fld"><span>Ages</span><div class="cc-row"><input type="number" class="amin" value="${a.age_min}" style="width:70px"><input type="number" class="amax" value="${a.age_max}" style="width:70px"></div></div>
+        <div class="cc-fld w"><span>States (comma separated, empty = all Nigeria)</span><input type="text" class="es" value="${escH((a.states || []).join(", "))}"></div>
+        ${c.adsets.length > 1 ? `<label class="cc-fld w" style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="rm" style="width:auto"> Remove this ad set</label>` : ""}</div>`).join("")}
+      <div class="cc-row" style="margin-top:14px"><button type="button" class="cc-btn bk">Back</button><span class="cc-sp"></span><button type="button" class="cc-btn p sv">Save changes</button></div><div class="cc-res"></div>`;
+    card.querySelector(".bk").onclick = () => paint(c);
+    card.querySelector(".sv").onclick = async (ev) => {
+      const b = ev.target; b.disabled = true; b.textContent = "Saving…";
+      const edits = { campaign_name: card.querySelector(".cn").value, adsets: [...card.querySelectorAll("[data-i]")].map(e => ({
+        budget_naira: +e.querySelector(".eb").value, age_min: +e.querySelector(".amin").value, age_max: +e.querySelector(".amax").value,
+        states: e.querySelector(".es").value.split(",").map(x => x.trim()).filter(Boolean), remove: !!e.querySelector(".rm")?.checked })) };
+      const r = await sbFn("ai-chat", { action: "update_plan", plan_id: c.plan_id, edits });
+      if (r?.card) { c = r.card; paint(c); } else { b.disabled = false; b.textContent = "Save changes"; card.querySelector(".cc-res").textContent = r?.error || "Could not save."; }
+    };
+  };
+  paint(c);
+  return card;
+}
+
+function ccReview(c) {
+  const grp = (tag, cls, items, label) => items.length ? `<div class="cc-row" style="margin:10px 0 4px"><span class="cc-tag ${cls}">${tag}</span><span style="color:var(--text2);font-size:12.5px">${items.length} ${label}</span></div>` +
+    items.map((x, i) => `<div class="cc-item"><div style="min-width:0"><b>${escH(x.name)}</b><small>${escH(x.why)}</small></div><div class="cc-row">${x.actions.map((a, k) => `<button type="button" class="cc-btn s" data-g="${tag}" data-i="${i}" data-k="${k}">${escH(a.label)}</button>`).join("")}</div></div>`).join("") : "";
+  const card = ccEl(`${grp("KEEP AND SCALE", "cc-keep", c.keep, "ad" + (c.keep.length > 1 ? "s" : ""))}
+    ${c.watch.count ? `<div class="cc-row" style="margin:12px 0 4px"><span class="cc-tag cc-watch">WATCH</span><span style="color:var(--text2);font-size:12.5px">${c.watch.count} ads, ${escH(c.watch.note || "too early to judge")}</span></div>` : ""}
+    ${grp("STOP", "cc-stop", c.stop, "ad" + (c.stop.length > 1 ? "s" : ""))}<div class="cc-res"></div>`);
+  card.querySelectorAll("button[data-g]").forEach(btn => btn.onclick = async () => {
+    const x = (btn.dataset.g === "STOP" ? c.stop : c.keep)[+btn.dataset.i], a = x.actions[+btn.dataset.k];
+    if (!x.id || !c.account_id) return;
+    btn.disabled = true; const old = btn.textContent; btn.textContent = "Working…";
+    let r;
+    if (a.kind === "pause" || a.kind === "resume") r = await amCall({ action: "set_status", ad_account_id: c.account_id, level: x.level, object_id: x.id, status: a.kind === "pause" ? "PAUSED" : "ACTIVE", reason: "Via AI chat review: " + x.why });
+    else if (a.kind === "budget" && a.new_daily_budget) r = await amCall({ action: "set_budget", ad_account_id: c.account_id, level: x.level === "ad" ? "adset" : x.level, object_id: x.id, daily_budget: a.new_daily_budget, reason: "Via AI chat review" });
+    else if (a.kind === "duplicate") r = await sbFn("ai-chat", { action: "duplicate", ad_account_id: c.account_id, level: x.level, object_id: x.id, object_name: x.name });
+    if (r?.ok) { btn.textContent = "Done ✓"; chatHistory.push({ role: "user", content: `[I tapped "${a.label}" on ${x.name}: done]` }); }
+    else { btn.disabled = false; btn.textContent = old; const rs = card.querySelector(".cc-res"); rs.style.color = "#d93025"; rs.textContent = "❌ " + (r?.error || "Meta did not accept that."); }
+  });
+  return card;
+}
+
+async function askChat(q, display) {
   if (chBusy) return;
   chBusy = true;
   document.getElementById("chSend").disabled = true;
   document.getElementById("chSuggs").style.display = "none";
   chRefreshAcct();
-  appendMsg(q, "user");
+  appendMsg(display || q, "user");
   const thinking = appendMsg("", "bot");
   thinking.classList.add("typing");
   thinking.innerHTML = '<span class="ch-typing"><i></i><i></i><i></i></span>';
@@ -12185,6 +12604,7 @@ async function askChat(q) {
       chatHistory.push({ role: "user", content: q }, { role: "assistant", content: r.answer });
       if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
       appendProposalCards(r.proposals);
+      appendCards(r.cards);
       appendQuickReplies(r.quick_replies);
       appendPendingPaymentCard(r.pending_payment);
     } else {
