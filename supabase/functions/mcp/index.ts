@@ -14,7 +14,11 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 const VERSION = "1.0.0";
-const RESOURCE = `${SUPABASE_URL}/functions/v1/mcp`;
+const DIRECT = `${SUPABASE_URL}/functions/v1/mcp`;
+// Revora's own address (a Vercel rewrite to this function). It carries the Revora favicon and logo, so Claude and ChatGPT show our brand.
+const SITE = "https://metaautomationads.vercel.app";
+const BRANDED = `${SITE}/mcp`;
+const resourceFor = (req: Request) => (/(^|\.)metaautomationads\.vercel\.app$/.test((req.headers.get("x-forwarded-host") ?? "").split(",")[0].trim()) ? BRANDED : DIRECT);
 const SUPPORTED = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const CORS: Record<string, string> = {
@@ -25,8 +29,8 @@ const CORS: Record<string, string> = {
 };
 const jres = (obj: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...CORS, ...extra } });
-const unauthorized = (msg = "Sign in to Revora to use this connector.") =>
-  jres({ error: "unauthorized", error_description: msg }, 401, { "WWW-Authenticate": `Bearer resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"` });
+const unauthorized = (resource: string, msg = "Sign in to Revora to use this connector.") =>
+  jres({ error: "unauthorized", error_description: msg }, 401, { "WWW-Authenticate": `Bearer resource_metadata="${resource}/.well-known/oauth-protected-resource"` });
 
 // ── playbook handed to any connected assistant ─────────────────────────────
 const PLAYBOOK = `REVORA MEDIA BUYER PLAYBOOK (follow this when running ads for the person)
@@ -87,7 +91,7 @@ async function chatTool(tool: string, args: any, c: Ctx, needAccount: boolean) {
   }
   const r = await fn("ai-chat", { action: "run_tool", tool, args, ad_account_id }, c);
   if (r?.error) return { error: r.error };
-  return { ...(r?.result && typeof r.result === "object" ? r.result : { result: r?.result }), ...(r?.cards?.length ? { cards: r.cards } : {}) };
+  return { ...(Array.isArray(r?.result) ? { items: r.result } : r?.result && typeof r.result === "object" ? r.result : { result: r?.result }), ...(r?.cards?.length ? { cards: r.cards } : {}) };
 }
 
 const TOOLS: Tool[] = [
@@ -173,7 +177,7 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
   switch (msg.method) {
     case "initialize": {
       const want = String(msg?.params?.protocolVersion ?? "");
-      return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION }, instructions: INSTRUCTIONS });
+      return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION, websiteUrl: SITE, icons: [{ src: `${SITE}/icons/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }, { src: `${SITE}/icons/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] }, instructions: INSTRUCTIONS });
     }
     case "ping": return reply({});
     case "tools/list": return reply({ tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations })) });
@@ -194,16 +198,17 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   const url = new URL(req.url);
   const path = url.pathname.replace(/^.*?\/mcp(?=\/|$)/, "") || "/";
+  const RESOURCE = resourceFor(req);
 
   if (path === "/.well-known/oauth-protected-resource" || path.startsWith("/.well-known/oauth-protected-resource/")) {
     return jres({ resource: RESOURCE, authorization_servers: [`${SUPABASE_URL}/auth/v1`], bearer_methods_supported: ["header"], resource_name: "Revora", scopes_supported: ["openid", "email", "profile"] });
   }
-  if (path === "/health" || (req.method === "GET" && path === "/")) return jres({ ok: true, service: "revora-mcp", version: VERSION, tools: TOOLS.length });
+  if (path === "/health" || (req.method === "GET" && path === "/")) return jres({ ok: true, service: "revora-mcp", version: VERSION, tools: TOOLS.length, resource: RESOURCE });
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!token) return unauthorized();
+  if (!token) return unauthorized(RESOURCE);
   const { data: ud, error: ue } = await admin.auth.getUser(token);
-  if (ue || !ud?.user) return unauthorized("Your sign-in expired. Reconnect Revora.");
+  if (ue || !ud?.user) return unauthorized(RESOURCE, "Your sign-in expired. Reconnect Revora.");
   const { data: p } = await admin.from("profiles").select("company_id, role, display_name, media_buyer_id").eq("id", ud.user.id).maybeSingle();
   if (!p?.company_id) return jres({ error: "no_company", error_description: "This account has no Revora company yet. Finish sign-up at the dashboard first." }, 403);
   const c: Ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId: p.company_id, role: p.role, mediaBuyerId: p.media_buyer_id, displayName: p.display_name || "" };
