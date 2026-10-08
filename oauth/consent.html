@@ -25,6 +25,13 @@ async function main(){
   const { data:{ session } } = await sb.auth.getSession();
   if(!session) return signIn();
   if(!sb.auth.oauth){ app.innerHTML = "<h1>Could not load</h1><p>The sign-in library is out of date. Reload the page.</p>"; return; }
+  // Only accounts that already belong to a Revora company can use the connector.
+  const { data: prof } = await sb.from("profiles").select("company_id").eq("id", session.user.id).maybeSingle();
+  if(!prof || !prof.company_id){
+    app.innerHTML = `<img class="logo" src="/icons/icon-192.png" alt="Revora"><h1>This account has no Revora workspace</h1><p>You are signed in as ${esc(session.user.email)}, which has not finished setting up a Revora company.</p><button class="p" id="sw">Sign in with a different account</button>`;
+    document.getElementById("sw").onclick = async()=>{ await sb.auth.signOut(); signIn(); };
+    return;
+  }
   const { data, error } = await sb.auth.oauth.getAuthorizationDetails(id);
   if(error || !data){ app.innerHTML = "<h1>Request expired</h1><p>"+esc(error?.message||"Go back and try connecting again.")+"</p>"; return; }
   // Already approved earlier: Supabase hands back the redirect straight away.
@@ -35,7 +42,8 @@ async function main(){
     <p>It will be able to act as you, within your company's data:</p>
     <ul><li>See your ad accounts, ads, results, products and saved copy</li><li>Write copy, pause or resume ads, change budgets</li><li>Propose campaigns. Launching always needs your explicit approval.</li></ul>
     ${scopes.length?`<p style="font-size:13px">Scopes: ${esc(scopes.join(", "))}</p>`:""}
-    <button class="p" id="ok">Allow</button> <button class="s" id="no">Cancel</button><p id="err"></p>`;
+    <button class="p" id="ok">Allow</button> <button class="s" id="no">Cancel</button> <button class="s" id="sw">Not you? Switch account</button><p id="err"></p>`;
+  document.getElementById("sw").onclick = async()=>{ await sb.auth.signOut(); signIn(); };
   document.getElementById("ok").onclick = async()=>{ const r = await sb.auth.oauth.approveAuthorization(id); r.error ? err(r.error.message) : go(r.data.redirect_url); };
   document.getElementById("no").onclick = async()=>{ const r = await sb.auth.oauth.denyAuthorization(id); r.error ? err(r.error.message) : go(r.data.redirect_url); };
 }
