@@ -19,3 +19,7 @@ select cron.schedule('pull-meta-metrics-every-30min', '*/30 * * * *', $$select n
   url := 'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/pull-meta-metrics',
   headers := jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')),
   body := '{}'::jsonb, timeout_milliseconds := 120000)$$);
+
+-- The alerts sweep authenticates with the shared cron secret in a header (the old job sent it somewhere the function never read, so it always returned 401).
+select cron.alter_job((select jobid from cron.job where jobname = 'check-low-ad-balances-every-30min'),
+  command := $$select net.http_post(url:='https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/check-low-ad-balances', headers:=jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')), body:='{}'::jsonb, timeout_milliseconds:=120000)$$);
