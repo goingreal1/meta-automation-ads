@@ -43,15 +43,70 @@ type Ctx = { companyId: string; role: string; mediaBuyerId: string | null; deliv
 
 
 // ── BUSINESS KNOWLEDGE ──────────────────────────────────────────────────────
-// Nobody should have to write a system prompt. The assistant reads the company's own
-// products and website names, works out what kind of business this is (health, beauty,
-// food, fashion, electronics, services, anything) and writes for that business.
-async function buildBusinessBrief(companyId: string, companyName: string): Promise<string> {
-  const [{ data: products }, { data: sites }] = await Promise.all([
+// Nobody should have to write a system prompt. The assistant reads the company's profile (from
+// onboarding) and its own products, works out what kind of business this is and writes for it.
+const META_TOKEN_SHARED = Deno.env.get("META_ACCESS_TOKEN") ?? "";
+
+const VERTICALS: Record<string, string> = {
+  health_wellness: "Health & wellness: sell comfort, routine, energy and peace of mind, never cures. Hooks come from daily moments (morning, work, after meals, sleep). Proof = ingredients, how to use, NAFDAC number (only if in the record), customer experience. Objections: 'is it safe?', 'will it work for me?', 'is it original?'. Never diagnose, name diseases as promises, or show before/after.",
+  beauty_skincare: "Beauty & skincare: sell the feeling and the routine (soft, glowing, confident), texture, scent, how it fits a busy day. Proof = ingredients, skin-type fit, how long a pack lasts, customer reviews if provided. Objections: 'will it suit my skin?', 'is it fake?', 'how long till I see change?'. Avoid unrealistic or overnight promises and negative comments about the viewer's body or skin.",
+  food_drinks: "Food & drinks: make people hungry. Sensory words (smoky, crispy, hot, fresh), the moment (lunch break, weekend, family), freshness, portion, delivery time, hygiene. Proof = ingredients, kitchen, delivery area and time, bulk/party pricing. Objections: 'is it fresh?', 'will it reach me on time?', 'is it clean?'. Mention allergens where relevant.",
+  fashion_clothing: "Fashion & clothing: sell the compliment and the occasion (owambe, office, date, Sunday service), fit, fabric, sizes, colours, how it looks on real bodies. Proof = size range, fabric, quick delivery, exchange policy if provided. Objections: 'will it fit?', 'is the colour the same?', 'will it fade or tear?'. Show variety and scarcity honestly (limited pieces).",
+  shoes_bags: "Shoes & bags: sell comfort, durability, how it completes an outfit, sizes and colours. Proof = material, sole/stitching, size chart, wear-all-day comfort. Objections: 'is it original leather?', 'will my size fit?', 'will it last?'. Use scenes: standing all day, long commute, event night.",
+  perfume_fragrance: "Perfume & fragrance: sell identity and memory without claiming to know the viewer. Describe notes in plain words (fresh, sweet, woody), longevity, occasions, gifting. Proof = notes, lasting hours (only if provided), bottle size. Objections: 'will it last?', 'is it original?', 'will I like the smell?'. Gifting and bundle hooks work well.",
+  gadgets_electronics: "Gadgets & electronics: sell what it lets people do (battery all day, no more NEPA stress, faster work), specs in plain language, warranty and originality. Proof = specs, warranty, what's in the box, delivery and testing before payment. Objections: 'is it original?', 'what if it spoils?', 'can I test it?'. Compare to the annoying old way, not to brands.",
+  home_living: "Home & living: sell how the home feels and the problem removed (clutter, heat, stress, cleaning time). Proof = size, material, easy setup, delivery and assembly. Objections: 'will it fit my space?', 'is it sturdy?', 'delivery damage?'.",
+  baby_kids: "Baby & kids: parents want safe, easy and loved by the child. Calm, reassuring tone, never fear-based. Proof = material, age range, safety notes from the record. Objections: 'is it safe?', 'will my child like it?'. Avoid health claims about children.",
+  agro_farm: "Agro & farm: sell yield, freshness, price per quantity and reliability. Proof = quantity, source, delivery or pick-up, bulk pricing. Objections: 'quality?', 'can I trust delivery?'. Plain, practical, numbers first.",
+  services: "Services: sell the outcome and the process. Hooks come from the pain of the old way, a before/after in time or effort (not a guaranteed result), and clear next steps. Proof = process, timeline, what's included, past work if provided. Objections: 'is it worth it?', 'what if it fails?', 'who will do it?'. CTA = book, message or call.",
+  courses_digital: "Courses & digital: sell the skill and the change in what the person can do, not the content list. Proof = what they will build, who it's for, time needed, support. Objections: 'will I finish?', 'is it for beginners?', 'is it worth the money?'. No income guarantees.",
+  real_estate: "Real estate: sell the lifestyle and the security of the asset. Plain facts first: location, size, price, title/document status as provided, payment plan. Objections: 'is the title clean?', 'how do I inspect?'. Never invent documents or guarantees of returns.",
+  other: "General business: work out what the customer is really buying, the situation they are in, and what stops them. Lead with the customer's moment, not the product.",
+};
+
+const LANGUAGE_RULES: Record<string, string> = {
+  pidgin_mix: "LANGUAGE: English with natural Nigerian Pidgin flavour mixed in where it makes the line stronger (not every line). Authentic, not a caricature. Keep it easy for any Nigerian to read.",
+  english: "LANGUAGE: plain, warm Nigerian English. No Pidgin unless asked.",
+  pidgin: "LANGUAGE: mostly Nigerian Pidgin, readable and natural, with simple English words where Pidgin would be unclear.",
+  yoruba_mix: "LANGUAGE: English with light Yoruba expressions where natural. Keep spelling simple and correct.",
+  igbo_mix: "LANGUAGE: English with light Igbo expressions where natural. Keep spelling simple and correct.",
+  hausa_mix: "LANGUAGE: English with light Hausa expressions where natural. Keep spelling simple and correct.",
+};
+
+const COPY_CRAFT = `COPY CRAFT (this is what separates a scroll-stopper from a boring ad):
+LENGTH AND SHAPE: primary text is LONG-FORM but easy to read: usually 120-260 words, in short paragraphs of 1-2 lines with white space, rhythm that goes short, long, short, and every line earning its place. Not a wall of text, not a one-liner.
+STRUCTURE: (1) HOOK: first 1-2 lines, visible before "See more"; it must stop the thumb. (2) RELATE: a scene the buyer recognises, in their words. (3) TURN: the moment things could be different, with the product as the answer. (4) DETAILS/PROOF: 3-6 concrete benefits or facts from the product record, as short lines or emoji bullets. (5) EASE: why ordering is safe and simple (pay on delivery, delivery area, quick reply), ONLY if true for this business. (6) ONE CALL TO ACTION with the exact next step.
+HOOK TECHNIQUES (use a different one per ad): a specific number or detail; a scene ("It's 6pm in traffic and..."); a contrast (old way vs new way); a myth-bust; a confession or story opener (only if the story is supplied); a curiosity gap; a call-out of a SITUATION (never of a person's body, health, finances or identity); a question that names a moment; a local expression or Pidgin line that sounds like real talk; a time-bound or limited offer (only if real).
+BANNED: "Are you tired of", "Say goodbye to", "game changer", "revolutionary", "unlock", "look no further", "in today's world", "we are pleased to", generic adjectives with no proof, shouting in capitals, more than 6 emojis.
+HEADLINES: at most about 40 characters, benefit, curiosity or offer, not a repeat of the hook. DESCRIPTION: at most about 30 characters, a supporting fact.
+EVERY LINE must be specific: a number, a sense, a moment or a proof. If a line could be about any product, rewrite it.`;
+
+async function loadProfileBrief(companyId: string): Promise<{ text: string; language: string; types: string[] }> {
+  const { data: c } = await supabase.from("companies")
+    .select("name, account_type, business_types, sales_channels, fulfilment, description, team_size, buyers_count, monthly_ad_spend, copy_language, country")
+    .eq("id", companyId).maybeSingle();
+  const types: string[] = c?.business_types ?? [];
+  const lang = c?.copy_language && LANGUAGE_RULES[c.copy_language] ? c.copy_language : "pidgin_mix";
+  const bits = [
+    c?.description ? `About the business (their words): ${String(c.description).slice(0, 800)}` : "",
+    types.length ? `Business type: ${types.join(", ").replace(/_/g, " ")}` : "",
+    c?.sales_channels?.length ? `Sells via: ${c.sales_channels.join(", ").replace(/_/g, " ")}` : "",
+    c?.fulfilment ? `Delivery: ${String(c.fulfilment).replace(/_/g, " ")}` : "",
+    c?.account_type === "personal" ? "This is a single media buyer working on their own." : (c?.team_size ? `Team size: ${c.team_size}${c?.buyers_count ? `, ${c.buyers_count} media buyers` : ""}` : ""),
+    c?.monthly_ad_spend ? `Monthly ad spend: ${String(c.monthly_ad_spend).replace(/_/g, " ")}` : "",
+  ].filter(Boolean);
+  const packs = types.map((t) => VERTICALS[t]).filter(Boolean);
+  const text = (bits.length ? bits.join("\n") + "\n" : "") + (packs.length ? `NICHE KNOWLEDGE (use it, do not recite it):\n${packs.join("\n")}\n` : "");
+  return { text, language: lang, types };
+}
+
+async function buildBusinessBrief(companyId: string, companyName: string): Promise<{ text: string; language: string }> {
+  const [{ data: products }, { data: sites }, profile] = await Promise.all([
     supabase.from("products")
       .select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, is_active, landing_page_url")
       .eq("company_id", companyId).order("is_active", { ascending: false }).limit(30),
     supabase.from("sites").select("name, slug, status").eq("company_id", companyId).limit(20),
+    loadProfileBrief(companyId),
   ]);
   const clip = (t: unknown, n: number) => { const s = String(t ?? "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n) + "…" : s; };
   const lines = (products ?? []).map((p: any) => {
@@ -67,16 +122,141 @@ async function buildBusinessBrief(companyId: string, companyName: string): Promi
     return bits.join(" · ");
   });
   const siteLine = (sites ?? []).length ? `Websites: ${(sites ?? []).map((s: any) => `${s.name} (${s.status})`).join(", ")}.` : "";
-  return `BUSINESS: ${companyName}.\n` + (lines.length ? `PRODUCTS (their own catalogue, the only products you may talk about as theirs):\n${lines.join("\n")}` : "PRODUCTS: none added yet. If asked for ad copy, ask them to name the product, who it is for, and the price, or to add it under Products.") + (siteLine ? `\n${siteLine}` : "");
+  const text = `BUSINESS: ${companyName}.\n${profile.text}` +
+    (lines.length ? `PRODUCTS (their own catalogue, the only products you may talk about as theirs):\n${lines.join("\n")}` : "PRODUCTS: none added yet. If asked for ad copy, ask them to name the product, who it is for, and the price, or to add it under Products.") +
+    (siteLine ? `\n${siteLine}` : "");
+  return { text, language: profile.language };
 }
 
 const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobody needs to teach you their niche):
-- First work out what kind of business this is from the products above (health and wellness, beauty and skincare, food and drinks, fashion, gadgets, home, services, courses, anything) and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
-- AD COPY: when asked for ad copy, write ready-to-use options, not advice about writing. Default to 3 variations with different angles (for example: problem and solution, social proof and result, offer and urgency, objection handling, a story). For each give: Primary text (hook in the first line, short lines, one clear benefit, one call to action), Headline (about 40 characters), Description (about 30 characters), and a call to action (for WhatsApp ads: "Send message"; for websites: Shop Now, Order Now or Learn More). Offer a Pidgin or Yoruba/Igbo/Hausa-flavoured variant only if it fits the audience or they ask. Put each variation in its own fenced block so it can be copied.
-- Use only facts from the product record or what the user told you: ingredients, price, delivery terms, guarantees, certificates. Never invent claims, testimonials, numbers, discounts or registration numbers. If something you need is missing, say what is missing in one short line and still give your best draft with clearly marked [placeholders].
-- META AD POLICY GUARDRAILS (a rejected ad costs the account): no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health condition, body, finances or identity ("Are you fat?", "Your diabetes..."); no medical cures or "treats/cures X" for supplements; no exaggerated or shocking claims; no misleading urgency; no asking for personal data in the ad itself. For health and wellness write about support, comfort, routine and customer experience, not cures. For beauty avoid promising permanent or overnight changes. For food mention freshness, taste, delivery and offers, and allergens where relevant. For financial or income offers be factual and avoid guarantees.
-- ADVICE: when asked what to do (launch, kill, scale, budget, testing), give a clear recommendation first, then the reason in a sentence or two, using the real numbers from the data or tools. If the data needed is not available, say so and say how to get it. Prefer testing one change at a time; give each new creative enough spend (about 2-3 times the target cost per result) before judging it; scale winners gradually.
-- Ask at most one short clarifying question, and only when you truly cannot proceed; otherwise act and note your assumption.`;
+- Work out the kind of business from the profile and products above and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
+- WRITING AD COPY (primary text, headlines, descriptions, hooks, CTAs): ALWAYS call write_ad_copy and show what it returns exactly as written, with at most one short line before it (which ad to test first and why). Do not write ad copy yourself, and do not shorten or rewrite its output. Pass the product name, the platform goal (WhatsApp or website) and any angle or language the person asked for.
+- Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
+- META AD POLICY: no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health, body, finances or identity; no medical cures; no shocking or misleading claims; no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures.
+- ADVICE: when asked what to do (launch, kill, scale, budget, testing), give a clear recommendation first, then the reason in a sentence or two with the real numbers. If the data needed is not available, say so and say how to get it. Test one change at a time; give each new creative about 2-3 times the target cost per result in spend before judging; scale winners gradually.
+- If they ask for a different language or tone in chat (for example "write it in full Pidgin" or "in Yoruba"), do that for that request.
+- Ask at most one short clarifying question, and only when you truly cannot proceed.`;
+
+// ── Examples from the person's own past ads ───────────────────────────────
+type CopyEx = { text: string; headline: string; description: string; spend: number | null; cost: number | null; ctr: number | null; note: string };
+
+function adCopyFromCreative(cr: any): { text: string; headline: string; description: string } {
+  const ld = cr?.object_story_spec?.link_data ?? cr?.object_story_spec?.video_data ?? {};
+  const afs = cr?.asset_feed_spec ?? {};
+  const text = String(cr?.body ?? ld.message ?? ld.description ?? afs?.bodies?.[0]?.text ?? "").trim();
+  const headline = String(cr?.title ?? ld.name ?? ld.title ?? afs?.titles?.[0]?.text ?? "").trim();
+  const description = String(ld.link_description ?? afs?.descriptions?.[0]?.text ?? "").trim();
+  return { text, headline, description };
+}
+
+async function getCopyExamples(ctx: Ctx): Promise<{ winners: CopyEx[]; losers: CopyEx[]; others: CopyEx[]; source: string }> {
+  const out = { winners: [] as CopyEx[], losers: [] as CopyEx[], others: [] as CopyEx[], source: "none" };
+  const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n) + "…" : t);
+  // 1. Live from the person's selected ad account: real copy + real results.
+  try {
+    if (ctx.account && ["owner", "admin", "buyer"].includes(ctx.role)) {
+      const { data: acct } = await supabase.from("ad_accounts").select("meta_ad_account_id, meta_connection_id").eq("id", ctx.account.id).eq("company_id", ctx.companyId).maybeSingle();
+      const actId = String(acct?.meta_ad_account_id ?? "").replace(/^act_/, "");
+      if (/^\d+$/.test(actId)) {
+        let token = META_TOKEN_SHARED;
+        if (acct?.meta_connection_id) {
+          const { data: conn } = await supabase.from("meta_connections").select("access_token, status").eq("id", acct.meta_connection_id).maybeSingle();
+          if (conn?.status === "active" && conn.access_token) token = conn.access_token;
+        }
+        const fields = "id,name,effective_status,creative{body,title,object_story_spec,asset_feed_spec}";
+        const [adsRes, perfRes] = await Promise.all([
+          fetch(`https://graph.facebook.com/v21.0/act_${actId}/ads?fields=${encodeURIComponent(fields)}&limit=120&access_token=${token}`).then((r) => r.json()).catch(() => null),
+          fetch(ADS_URL, { method: "POST", headers: { Authorization: ctx.authHeader, "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", ad_account_id: ctx.account.id, range: "last30" }) }).then((r) => r.json()).catch(() => null),
+        ]);
+        const perf = new Map<string, any>((perfRes?.ads ?? []).map((a: any) => [String(a.id), a]));
+        const rows: CopyEx[] = [];
+        for (const ad of adsRes?.data ?? []) {
+          const c = adCopyFromCreative(ad.creative);
+          if (c.text.length < 40) continue;
+          const m = perf.get(String(ad.id));
+          rows.push({ text: clip(c.text, 1100), headline: c.headline, description: c.description, spend: m ? Number(m.spend) : null, cost: m?.cost_per_result != null ? Number(m.cost_per_result) : null, ctr: m?.ctr != null ? Number(m.ctr) : null, note: m?.kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message" });
+        }
+        const judged = rows.filter((r) => r.spend != null && r.spend >= 1500);
+        out.winners = judged.filter((r) => r.cost != null).sort((a, b) => (a.cost as number) - (b.cost as number)).slice(0, 5);
+        const winSet = new Set(out.winners);
+        out.losers = judged.filter((r) => !winSet.has(r) && (r.cost == null || (r.spend as number) >= 3000)).sort((a, b) => ((b.cost ?? 1e9) as number) - ((a.cost ?? 1e9) as number)).slice(0, 3);
+        out.others = rows.filter((r) => !winSet.has(r) && !out.losers.includes(r)).slice(0, 4);
+        if (rows.length) out.source = "this ad account";
+      }
+    }
+  } catch (_e) { /* fall through to the company's saved copy */ }
+  // 2. The company's own saved ads (no live results), when the account gave us little.
+  if (out.winners.length + out.others.length < 3) {
+    const { data: saved } = await supabase.from("creatives").select("primary_text, headline").eq("company_id", ctx.companyId).order("created_at", { ascending: false }).limit(40).then((r: any) => r).catch(() => ({ data: [] }));
+    for (const s of saved ?? []) {
+      const t = String(s.primary_text ?? "").trim();
+      if (t.length < 60) continue;
+      out.others.push({ text: clip(t, 1100), headline: String(s.headline ?? ""), description: "", spend: null, cost: null, ctr: null, note: "no results on file" });
+      if (out.others.length >= 6) break;
+    }
+    if (out.others.length && out.source === "none") out.source = "the company's saved ads";
+  }
+  return out;
+}
+
+function renderExamples(ex: Awaited<ReturnType<typeof getCopyExamples>>): string {
+  const fmt = (e: CopyEx, i: number) => `#${i + 1}${e.cost != null ? ` (${e.note}: ${fmtNaira(e.cost)} on ${fmtNaira(e.spend ?? 0)} spend${e.ctr != null ? `, CTR ${e.ctr.toFixed(1)}%` : ""})` : ""}\nPrimary text: ${e.text}${e.headline ? `\nHeadline: ${e.headline}` : ""}${e.description ? `\nDescription: ${e.description}` : ""}`;
+  const parts: string[] = [];
+  if (ex.winners.length) parts.push(`ADS THAT WORKED FOR THIS SELLER (best results first). Study their voice, hooks, rhythm, length and what they promise. Write in this seller's own proven style. Never copy lines:\n${ex.winners.map(fmt).join("\n\n")}`);
+  if (ex.losers.length) parts.push(`ADS THAT DID NOT WORK (spent money, weak results). Avoid what made them flat:\n${ex.losers.map(fmt).join("\n\n")}`);
+  if (ex.others.length) parts.push(`OTHER ADS FROM THIS SELLER (no results available). Use only for tone and the facts they state:\n${ex.others.map(fmt).join("\n\n")}`);
+  return parts.join("\n\n") || "No past ads found for this seller yet. Lean on the product record and the niche knowledge.";
+}
+
+async function callOpenAI(messages: any[], temperature: number, maxTokens: number): Promise<string> {
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST", headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "gpt-4o", messages, temperature, max_tokens: maxTokens }),
+  });
+  const o = await r.json();
+  if (!r.ok) throw new Error(o?.error?.message || "AI request failed");
+  return String(o?.choices?.[0]?.message?.content ?? "").trim();
+}
+
+// Two passes: a wild writer that finds hooks, then a strict editor that fixes weak lines and policy risk.
+async function writeAdCopy(args: any, ctx: Ctx, brief: { text: string; language: string }): Promise<unknown> {
+  const productName = String(args?.product_name ?? "").trim();
+  let product: any = null;
+  if (productName) {
+    const { data } = await supabase.from("products")
+      .select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, landing_page_url")
+      .eq("company_id", ctx.companyId).ilike("product_name", `%${productName.replace(/[%_]/g, "")}%`).limit(1);
+    product = data?.[0] ?? null;
+  }
+  if (!product && !args?.facts) {
+    const { data: any1 } = await supabase.from("products").select("product_name, default_order_value_naira, description, benefits, safety_notes, nafdac_reg_no, destination_type, landing_page_url").eq("company_id", ctx.companyId).eq("is_active", true).limit(1);
+    product = any1?.[0] ?? null;
+  }
+  const goal = args?.goal === "website" ? "website (people click through to order)" : "WhatsApp (people tap to chat and order)";
+  const cta = args?.goal === "website" ? "Shop Now, Order Now or Learn More" : "Send message";
+  const count = Math.min(Math.max(Number(args?.count) || 3, 1), 5);
+  const langKey = typeof args?.language === "string" && LANGUAGE_RULES[args.language] ? args.language : brief.language;
+  const langRule = typeof args?.language_note === "string" && args.language_note.trim() ? `LANGUAGE: ${String(args.language_note).slice(0, 200)}` : LANGUAGE_RULES[langKey];
+  const examples = renderExamples(await getCopyExamples(ctx));
+  const productText = product
+    ? `PRODUCT: ${product.product_name}${product.default_order_value_naira ? ` · price ${fmtNaira(Number(product.default_order_value_naira))}` : ""}\nAbout: ${product.description ?? "-"}\nBenefits: ${product.benefits ?? "-"}\nSafety notes: ${product.safety_notes ?? "-"}${product.nafdac_reg_no ? `\nNAFDAC no.: ${product.nafdac_reg_no}` : ""}`
+    : `PRODUCT / OFFER FACTS (from the user): ${String(args?.facts ?? "none given").slice(0, 1200)}`;
+  const ask = `Write ${count} complete Facebook/Instagram ads for the product below. Ad goal: ${goal}. ${args?.angle ? `Requested angle: ${String(args.angle).slice(0, 200)}.` : "Each ad uses a different angle and a different hook technique."} ${args?.notes ? `Extra notes: ${String(args.notes).slice(0, 400)}` : ""}`;
+  const context = `${brief.text}\n\n${productText}\n\n${examples}\n\n${COPY_CRAFT}\n\n${langRule}\n\nMETA POLICY: no guaranteed results; no before-and-after claims; never imply you know the viewer's health, body, finances or identity; no medical cures; no fake urgency; no invented facts, testimonials, discounts or registration numbers (use [placeholders] where a fact is missing).`;
+
+  // Pass 1: ideation (hot)
+  const draft = await callOpenAI([
+    { role: "system", content: "You are a world-class direct-response copywriter for Nigerian online sellers. You write scroll-stopping, bouncy, catchy, hooky long-form ad copy that reads like a real person talking, not like an advert. " + context },
+    { role: "user", content: `${ask}\n\nFirst list 12 DIFFERENT hook lines (each uses a different technique) numbered H1-H12, no explanations. Then write the ${count} full ads. Each ad: "Hook options" (its chosen hook plus 2 alternates), "Primary text" (long-form per the craft rules), "Headline" (3 options), "Description", "CTA button" (${cta}).` },
+  ], 0.95, 3200);
+
+  // Pass 2: ruthless editor (cool)
+  const final = await callOpenAI([
+    { role: "system", content: "You are a ruthless senior ad editor. You improve copy without losing its energy." },
+    { role: "user", content: `${context}\n\nHere are the drafts:\n\n${draft}\n\nEDIT THEM into the final version. Rules: keep ${count} ads. For each line ask "could this be about any product?" and rewrite if yes. Remove every banned phrase. Make hooks sharper and more specific, keep the long-form length and the bouncy rhythm, check every claim against the product record (remove anything not supported), fix any Meta policy risk, keep the language rule. Output ONLY this markdown for each ad, nothing else:\n\n### Ad N: <angle name>\n**Hook options:** (3 short lines, the first is the one used)\n**Primary text:**\n\`\`\`\n<full primary text>\n\`\`\`\n**Headlines:** (3 options, about 40 characters each)\n**Description:** <about 30 characters>\n**CTA button:** ${cta}\n**Why it should work:** <one sentence>` },
+  ], 0.45, 3600);
+  return { copy_markdown: final, note: "Show copy_markdown exactly as written. Do not rewrite or shorten it." };
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -150,7 +330,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Couldn't pull your data: " + (e as Error).message }, 500);
   }
 
-  const businessBrief = await buildBusinessBrief(ctx.companyId, companyName).catch(() => `BUSINESS: ${companyName}.`);
+  const brief = await buildBusinessBrief(ctx.companyId, companyName).catch(() => ({ text: `BUSINESS: ${companyName}.`, language: "pidgin_mix" }));
+  const businessBrief = brief.text;
 
   const roleLabel: Record<string, string> = {
     owner: "the company owner", admin: "an admin", buyer: "a media buyer",
@@ -190,6 +371,26 @@ DATA (JSON):
 ${JSON.stringify(data)}`;
 
   const TOOLS = [
+    {
+      type: "function", function: {
+        name: "write_ad_copy",
+        description: "Write finished ad copy (long-form primary text, headlines, description, hooks, CTA) for a product. It reads the seller's past ads, product record and niche, writes in two passes and returns polished markdown. ALWAYS use this for any request to write ad copy, hooks, headlines or descriptions. Show its copy_markdown exactly as returned.",
+        parameters: {
+          type: "object",
+          properties: {
+            product_name: { type: "string", description: "Which product (name or part of it). Omit only if the person gave the facts themselves." },
+            facts: { type: "string", description: "Product or offer facts supplied by the person in chat, when there is no product record." },
+            goal: { type: "string", enum: ["whatsapp", "website"], description: "Where the ad sends people. Default whatsapp." },
+            count: { type: "number", description: "How many ads (1-5). Default 3." },
+            angle: { type: "string", description: "A specific angle the person asked for, if any." },
+            language: { type: "string", enum: ["pidgin_mix", "english", "pidgin", "yoruba_mix", "igbo_mix", "hausa_mix"], description: "Only if the person asked for a language different from their default." },
+            language_note: { type: "string", description: "Free-text language request, e.g. 'full Pidgin' or 'Yoruba and English'." },
+            notes: { type: "string", description: "Anything else the person asked for (offer, audience, tone)." },
+          },
+          required: [],
+        },
+      },
+    },
     {
       type: "function", function: {
         name: "get_product",
@@ -385,8 +586,8 @@ ${JSON.stringify(data)}`;
           messages,
           tools: TOOLS,
           tool_choice: "auto",
-          temperature: 0.5,
-          max_tokens: 1800,
+          temperature: 0.4,
+          max_tokens: 2200,
         }),
       });
       const out = await r.json();
@@ -403,7 +604,7 @@ ${JSON.stringify(data)}`;
       for (const tc of msg.tool_calls) {
         let args: any = {};
         try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* malformed args */ }
-        const result = await runTool(tc.function.name, args, ctx);
+        const result = tc.function.name === "write_ad_copy" ? await writeAdCopy(args, ctx, brief).catch((e) => ({ error: "Could not write the copy: " + (e as Error).message })) : await runTool(tc.function.name, args, ctx);
         if (tc.function.name === "list_ad_accounts" && Array.isArray(result) && result.length > 1) {
           quickReplies = result.slice(0, 6).map((a: any) => `What's the balance on ${a.name}?`);
         }
