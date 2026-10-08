@@ -12578,7 +12578,14 @@ function ccReview(c) {
     let r;
     if (a.kind === "pause" || a.kind === "resume") r = await amCall({ action: "set_status", ad_account_id: c.account_id, level: x.level, object_id: x.id, status: a.kind === "pause" ? "PAUSED" : "ACTIVE", reason: "Via AI chat review: " + x.why });
     else if (a.kind === "budget" && a.new_daily_budget) r = await amCall({ action: "set_budget", ad_account_id: c.account_id, level: x.level === "ad" ? "adset" : x.level, object_id: x.id, daily_budget: a.new_daily_budget, reason: "Via AI chat review" });
-    else if (a.kind === "duplicate") r = await sbFn("ai-chat", { action: "duplicate", ad_account_id: c.account_id, level: x.level, object_id: x.id, object_name: x.name });
+    else if (a.kind === "duplicate") {
+      // A winner is copied and keeps running; the copy goes live. A losing ad is relaunched fresh: copy it, then switch the old one off.
+      r = await sbFn("ai-chat", { action: "duplicate", ad_account_id: c.account_id, level: x.level, object_id: x.id, object_name: x.name, start_paused: false });
+      if (r?.ok && btn.dataset.g === "STOP") {
+        const off = await amCall({ action: "set_status", ad_account_id: c.account_id, level: x.level, object_id: x.id, status: "PAUSED", reason: "Relaunched as a fresh copy: " + x.why });
+        if (!off?.ok) r = { ok: false, error: "The fresh copy is live, but I could not switch the old ad off: " + (off?.error || "Meta did not accept it") };
+      }
+    }
     if (r?.ok) { btn.textContent = "Done ✓"; chatHistory.push({ role: "user", content: `[I tapped "${a.label}" on ${x.name}: done]` }); }
     else { btn.disabled = false; btn.textContent = old; const rs = card.querySelector(".cc-res"); rs.style.color = "#d93025"; rs.textContent = "❌ " + (r?.error || "Meta did not accept that."); }
   });
