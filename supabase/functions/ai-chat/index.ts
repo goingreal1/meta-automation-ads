@@ -185,7 +185,31 @@ async function getCopyExamples(ctx: Ctx): Promise<{ winners: CopyEx[]; losers: C
       }
     }
   } catch (_e) { /* fall through to the company's saved copy */ }
-  // 2. The company's own saved ads (no live results), when the account gave us little.
+  // 2. Ads this seller imported into their library (kept even after the ads are paused or deleted).
+  if (out.winners.length + out.others.length < 3) {
+    const { data: lib } = await supabase.from("ad_library").select("primary_text, headline, description, spend, cost_per_result, ctr, result_kind")
+      .eq("company_id", ctx.companyId).order("cost_per_result", { ascending: true, nullsFirst: false }).limit(60).then((r: any) => r).catch(() => ({ data: [] }));
+    const rows: CopyEx[] = (lib ?? []).map((l: any) => ({ text: clip(String(l.primary_text), 1100), headline: l.headline ?? "", description: l.description ?? "", spend: l.spend != null ? Number(l.spend) : null, cost: l.cost_per_result != null ? Number(l.cost_per_result) : null, ctr: l.ctr != null ? Number(l.ctr) : null, note: l.result_kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message" }));
+    const judged = rows.filter((r) => r.cost != null && (r.spend ?? 0) >= 1500);
+    if (!out.winners.length) out.winners = judged.sort((a, b) => (a.cost as number) - (b.cost as number)).slice(0, 5);
+    const used = new Set(out.winners);
+    if (!out.losers.length) out.losers = rows.filter((r) => !used.has(r) && (r.spend ?? 0) >= 3000 && (r.cost == null || r.cost > 0)).sort((a, b) => ((b.cost ?? 1e9) as number) - ((a.cost ?? 1e9) as number)).slice(0, 3);
+    out.others.push(...rows.filter((r) => !used.has(r) && !out.losers.includes(r)).slice(0, 4));
+    if (rows.length && out.source === "none") out.source = "this seller's ad library";
+  }
+  // 3. Proven copy other sellers in the same niche chose to share (copy and results only, never names).
+  if (out.winners.length < 2) {
+    const { data: co } = await supabase.from("companies").select("business_types").eq("id", ctx.companyId).maybeSingle();
+    const niche = (co?.business_types ?? [])[0];
+    if (niche) {
+      const { data: pool } = await supabase.from("ad_library").select("primary_text, headline, description, spend, cost_per_result, ctr, result_kind")
+        .eq("share_to_niche", true).eq("niche", niche).neq("company_id", ctx.companyId).gte("spend", 3000).not("cost_per_result", "is", null)
+        .order("cost_per_result", { ascending: true }).limit(3).then((r: any) => r).catch(() => ({ data: [] }));
+      for (const l of pool ?? []) out.winners.push({ text: clip(String(l.primary_text), 1100), headline: l.headline ?? "", description: l.description ?? "", spend: Number(l.spend), cost: Number(l.cost_per_result), ctr: l.ctr != null ? Number(l.ctr) : null, note: l.result_kind === "purchase" ? "cost per purchase" : "cost per WhatsApp message" });
+      if (pool?.length && out.source === "none") out.source = "proven ads in this niche";
+    }
+  }
+  // 4. The company's own saved ads (no live results), when still thin.
   if (out.winners.length + out.others.length < 3) {
     const { data: saved } = await supabase.from("creatives").select("primary_text, headline").eq("company_id", ctx.companyId).order("created_at", { ascending: false }).limit(40).then((r: any) => r).catch(() => ({ data: [] }));
     for (const s of saved ?? []) {
@@ -197,6 +221,58 @@ async function getCopyExamples(ctx: Ctx): Promise<{ winners: CopyEx[]; losers: C
     if (out.others.length && out.source === "none") out.source = "the company's saved ads";
   }
   return out;
+}
+
+// Pulls every ad (with its copy and lifetime results) from one of the seller's ad accounts into ad_library.
+async function importLibrary(body: any, p: { companyId: string; role: string; mediaBuyerId: string | null }) {
+  const id = String(body?.ad_account_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Pick an ad account first.");
+  let q = supabase.from("ad_accounts").select("id, meta_ad_account_id, meta_connection_id, media_buyer_id").eq("id", id).eq("company_id", p.companyId);
+  if (p.role === "buyer") q = q.eq("media_buyer_id", p.mediaBuyerId);
+  const { data: acct } = await q.maybeSingle();
+  if (!acct) throw new Error("That ad account isn't yours.");
+  const actId = String(acct.meta_ad_account_id ?? "").replace(/^act_/, "");
+  if (!/^\d+$/.test(actId)) throw new Error("This ad account has no Meta ID.");
+  let token = META_TOKEN_SHARED;
+  if (acct.meta_connection_id) {
+    const { data: conn } = await supabase.from("meta_connections").select("access_token, status").eq("id", acct.meta_connection_id).eq("company_id", p.companyId).maybeSingle();
+    if (conn?.status === "active" && conn.access_token) token = conn.access_token;
+  }
+  const { data: co } = await supabase.from("companies").select("business_types").eq("id", p.companyId).maybeSingle();
+  const niche = (co?.business_types ?? [])[0] ?? null;
+  const share = body?.share_to_niche === true && ["owner", "admin"].includes(p.role);
+  const fields = "id,name,effective_status,creative{body,title,object_story_spec,asset_feed_spec},insights.date_preset(maximum){spend,ctr,actions,cost_per_action_type}";
+  let url: string | null = `https://graph.facebook.com/v21.0/act_${actId}/ads?fields=${encodeURIComponent(fields)}&limit=50&access_token=${token}`;
+  const rows: any[] = []; let seen = 0;
+  for (let page = 0; url && page < 8; page++) {
+    const r = await fetch(url).then((x) => x.json());
+    if (r?.error) throw new Error("Meta: " + (r.error.message || "could not read the ads"));
+    for (const ad of r.data ?? []) {
+      seen++;
+      const c = adCopyFromCreative(ad.creative);
+      if (c.text.length < 30) continue;
+      const ins = ad.insights?.data?.[0];
+      const acts: any[] = ins?.actions ?? [];
+      const get = (t: string[]) => acts.find((a) => t.includes(a.action_type));
+      const buy = get(["purchase", "offsite_conversion.fb_pixel_purchase"]);
+      const msg = get(["onsite_conversion.messaging_conversation_started_7d"]);
+      const hit = buy ?? msg;
+      const kind = buy ? "purchase" : msg ? "message" : null;
+      const costRow = (ins?.cost_per_action_type ?? []).find((a: any) => a.action_type === hit?.action_type);
+      rows.push({
+        company_id: p.companyId, media_buyer_id: acct.media_buyer_id, ad_account_id: acct.id, meta_ad_id: String(ad.id), name: ad.name ?? null,
+        primary_text: c.text, headline: c.headline || null, description: c.description || null, niche, effective_status: ad.effective_status ?? null,
+        spend: ins?.spend != null ? Number(ins.spend) : null, results: hit ? Number(hit.value) : null, cost_per_result: costRow ? Number(costRow.value) : null,
+        ctr: ins?.ctr != null ? Number(ins.ctr) : null, result_kind: kind, share_to_niche: share, imported_at: new Date().toISOString(),
+      });
+    }
+    url = r?.paging?.next ?? null;
+  }
+  if (rows.length) {
+    const { error } = await supabase.from("ad_library").upsert(rows, { onConflict: "company_id,meta_ad_id" });
+    if (error) throw new Error("Could not save: " + error.message);
+  }
+  return { imported: rows.length, scanned: seen, with_results: rows.filter((r) => r.cost_per_result != null).length, shared: share };
 }
 
 function renderExamples(ex: Awaited<ReturnType<typeof getCopyExamples>>): string {
@@ -278,6 +354,11 @@ Deno.serve(async (req: Request) => {
 
   let body: any = {};
   try { body = await req.json(); } catch { /* no body */ }
+  if (body?.action === "import_library") {
+    if (!["owner", "admin", "buyer"].includes(profile.role)) return json({ error: "Only owners, admins and buyers can import ads." }, 403);
+    try { return json(await importLibrary(body, { companyId: profile.company_id, role: profile.role, mediaBuyerId: profile.media_buyer_id })); }
+    catch (e) { return json({ error: (e as Error).message }, 500); }
+  }
   const question = (body?.question || "").toString().trim();
   if (!question) return json({ error: "A question is required" }, 400);
   // Short rolling history from the frontend (role/content pairs only) so a
