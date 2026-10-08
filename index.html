@@ -225,6 +225,27 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 .tw b{font-size:22px;font-weight:700;}
 .tour-note{text-align:center;font-size:12px;color:var(--muted);margin-top:14px;}
 @media (max-width:760px){.tour-side{display:none;}.tk{grid-template-columns:1fr 1fr;}.tour-main{padding:14px;}.ttable{font-size:11px;}.tour-scroll{overflow-x:auto;}.tour-url{display:none;}}
+
+/* Pricing / payments / contact (business details for payment-provider review) */
+.pr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1040px;margin:0 auto;}
+.pr-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:28px 26px;display:flex;flex-direction:column;}
+.pr-card.hot{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentBg);}
+.pr-card h3{font-size:18px;font-weight:700;margin-bottom:6px;}
+.pr-price{font-size:34px;font-weight:700;letter-spacing:-.02em;margin:10px 0 2px;}
+.pr-price small{font-size:14px;font-weight:500;color:var(--text2);}
+.pr-card p.sub{color:var(--text2);font-size:14.5px;margin-bottom:16px;}
+.pr-card ul{list-style:none;margin:0 0 20px;padding:0;font-size:14.5px;}
+.pr-card li{padding:6px 0 6px 24px;position:relative;color:var(--text);}
+.pr-card li::before{content:"✓";position:absolute;left:0;color:var(--accent);font-weight:700;}
+.pr-card .btn{margin-top:auto;}
+.pr-note{text-align:center;color:var(--text2);font-size:14.5px;max-width:760px;margin:26px auto 0;}
+.pay-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:1040px;margin:0 auto;}
+.pay-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:26px;}
+.pay-card h3{font-size:17px;margin-bottom:8px;}.pay-card p{color:var(--text2);font-size:15px;}
+.co-card{max-width:760px;margin:0 auto;background:#fff;border:1px solid var(--border);border-radius:18px;padding:30px 32px;display:grid;grid-template-columns:1fr 1fr;gap:18px 32px;}
+.co-card div b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin-bottom:3px;}
+.co-card a{color:var(--accent);}
+@media(max-width:900px){.pr-grid,.pay-grid{grid-template-columns:1fr;}.co-card{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -239,6 +260,8 @@ footer{background:var(--dark2);padding:60px 0 32px;}
       <a href="#tour">Product</a>
       <a href="#how">How it works</a>
       <a href="#roles">Your team</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#contact">Contact</a>
     </div>
     <div class="nav-actions">
       <a href="login.html" class="btn btn-ghost">Log in</a>
@@ -254,7 +277,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     <h1 class="serif">Ad spend, orders, and delivery —<br>finally one system<span class="dot">.</span></h1>
     <p>Revora connects what you spend on Meta Ads to the revenue it actually produces — campaigns, AI order confirmation, WhatsApp selling, delivery, and funding, in one place.</p>
     <div class="hero-ctas">
-      <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started free</a>
+      <a href="login.html?mode=signup" class="btn btn-primary btn-lg">Get started</a>
       <a href="login.html" class="btn btn-outline btn-lg">Log in</a>
     </div>
     <div class="hero-note">No credit card required · Set up your company in minutes</div>
@@ -550,6 +573,71 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 </section>
 
 <!-- CTA -->
+
+<section class="section section-border" id="pricing">
+  <div class="container">
+    <div class="section-head center">
+      <div class="section-eyebrow">Pricing</div>
+      <h2 class="serif">Simple monthly plans, priced in naira</h2>
+      <p>Revora is business software. You pay a monthly subscription for the dashboard. Payments you collect and ad money you spend are separate and are never marked up by us.</p>
+    </div>
+    <div class="pr-grid">
+      <div class="pr-card">
+        <h3>Media buyer</h3><p class="sub">For one media buyer running their own ads and orders.</p>
+        <div class="pr-price">₦10,000<small> / month</small></div>
+        <ul><li>1 media buyer login</li><li>Connect your Meta ad accounts and track real ROAS</li><li>Order forms and websites</li><li>WhatsApp conversations on your own number</li><li>Delivery and order tracking</li></ul>
+        <a href="login.html?mode=signup" class="btn btn-dark">Get started</a>
+      </div>
+      <div class="pr-card hot">
+        <h3>Business</h3><p class="sub">For a seller with a team of buyers, agents and customer care.</p>
+        <div class="pr-price">₦25,000<small> / month</small></div>
+        <ul><li>Admin plus up to 5 media buyers</li><li>Delivery agents and customer-care logins</li><li>Leaderboard, approvals and team roles</li><li>Customer payment collection with virtual accounts</li><li>Automatic order and payment confirmation</li></ul>
+        <a href="login.html?mode=signup" class="btn btn-primary">Get started</a>
+      </div>
+      <div class="pr-card">
+        <h3>Ads setup service</h3><p class="sub">We set up and launch your Facebook and Instagram ads for you.</p>
+        <div class="pr-price">₦25,000<small> one-time</small></div>
+        <ul><li>Ad account set-up and first campaigns</li><li>You keep full ownership of your accounts</li><li>You pay for your own ad spend</li></ul>
+        <a href="#contact" class="btn btn-ghost">Contact us</a>
+      </div>
+    </div>
+    <p class="pr-note">Customer payments are processed by Paystack; Paystack's standard processing fee applies and is passed on at cost. Revora adds no fee on top. See our <a href="refund.html" style="color:var(--accent);">refund policy</a>.</p>
+  </div>
+</section>
+
+<section class="section section-border" id="payments">
+  <div class="container">
+    <div class="section-head center">
+      <div class="section-eyebrow">Payments</div>
+      <h2 class="serif">Collect payments and fund your ads</h2>
+      <p>Revora helps online sellers get paid and keep their ads running, using regulated Nigerian payment partners.</p>
+    </div>
+    <div class="pay-grid">
+      <div class="pay-card"><h3>Get paid by customers</h3><p>Each media buyer can receive a dedicated virtual account (provided by Paystack) to collect their own customers' payments. Money goes to the seller's own account. Revora is not a bank and does not hold customer funds.</p></div>
+      <div class="pay-card"><h3>Orders marked paid automatically</h3><p>When a customer pays, the payment is matched to the order and the order is marked paid. No screenshots and no manual checking.</p></div>
+      <div class="pay-card"><h3>Top up your Meta ad balance</h3><p>Sellers can fund their Meta (Facebook) ad account. Transfers are accepted only to verified Meta or Facebook account names, so ad money cannot be sent anywhere else.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-border" id="contact">
+  <div class="container">
+    <div class="section-head center">
+      <div class="section-eyebrow">Company</div>
+      <h2 class="serif">Who we are</h2>
+      <p>Revora is built and operated by Pip install -AI Technologies, a registered Nigerian company.</p>
+    </div>
+    <div class="co-card">
+      <div><b>Registered name</b>Pip install -AI Technologies</div>
+      <div><b>RC number</b>8553896</div>
+      <div><b>Address</b>Faith Bible Church, Akobo, Ibadan, Nigeria</div>
+      <div><b>Phone / WhatsApp</b><a href="tel:+2348104611794">+234 810 461 1794</a></div>
+      <div><b>Email</b><a href="mailto:hello@pipinstallsofi.com">hello@pipinstallsofi.com</a></div>
+      <div><b>Policies</b><a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a href="refund.html">Refunds</a></div>
+    </div>
+  </div>
+</section>
+
 <section class="cta-section">
   <div class="cta-bg"><img src="images/landing/cta-bg.jpg" alt="" width="1920" height="800" loading="lazy" onerror="this.parentNode.remove()"></div>
   <div class="container cta-inner">
@@ -585,6 +673,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
             <a href="login.html">Log in</a>
             <a href="login.html?mode=signup">Get started</a>
             <a href="privacy.html">Privacy</a>
+            <a href="refund.html">Refunds</a>
             <a href="terms.html">Terms</a>
             <a href="data-deletion.html">Delete your data</a>
           </div>
@@ -592,7 +681,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
       </div>
     </div>
     <div class="footer-bottom">
-      <div class="footer-copy">© <span id="yr"></span> Revora. All rights reserved.</div>
+      <div class="footer-copy">© <span id="yr"></span> Revora, a product of Pip install -AI Technologies (RC 8553896) · Faith Bible Church, Akobo, Ibadan, Nigeria · +234 810 461 1794 · hello@pipinstallsofi.com</div>
     </div>
   </div>
 </footer>
