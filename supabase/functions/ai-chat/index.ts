@@ -1324,6 +1324,24 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
       }
       const account = accounts[0];
 
+      // Live from Meta first: the synced daily_metrics table can lag or miss ad sets, which made spend look far too low.
+      const range = days <= 1 ? "today" : days <= 3 ? "last3" : days <= 7 ? "last7" : days <= 30 ? "last30" : "lifetime";
+      const live = await AM(ctx.authHeader, { action: "list", ad_account_id: account.id, range });
+      if (live?.ok && Array.isArray(live.campaigns)) {
+        const sum = (k: string) => live.campaigns.reduce((t: number, c: any) => t + Number(c[k] || 0), 0);
+        const spend = sum("spend"), imp = sum("impressions"), clicks = sum("clicks"), msgs = sum("conversations"), buys = sum("purchases");
+        return {
+          ad_account: account.name || account.nickname, source: "live from Meta", range_used: range, days_asked: days,
+          spend: fmtNaira(spend), messages: msgs, purchases: buys, impressions: imp, link_clicks: clicks,
+          ctr_pct: imp ? ((clicks / imp) * 100).toFixed(2) : "0.00",
+          per_campaign: live.campaigns.filter((c: any) => Number(c.spend || 0) > 0).map((c: any) => ({
+            campaign: c.name, status: c.effective_status, spend: fmtNaira(Number(c.spend || 0)), results: c.kind === "purchase" ? Number(c.purchases || 0) : Number(c.conversations || 0),
+            result_type: c.kind === "purchase" ? "purchases" : "messages", cost_per_result: c.cost_per_result != null ? fmtNaira(Number(c.cost_per_result)) : "n/a",
+          })),
+          note: range === "lifetime" && days > 30 ? "Lifetime figures, because more than 30 days was asked." : undefined,
+        };
+      }
+
       const { data: adSets } = await supabase.from("ad_sets").select("id, adset_name, status").eq("ad_account_id", account.id).eq("company_id", ctx.companyId);
       const adSetIds = (adSets || []).map(a => a.id);
       if (!adSetIds.length) return { ad_account: account.name || account.nickname, note: "This ad account has no ad sets yet, so there's no performance data." };
