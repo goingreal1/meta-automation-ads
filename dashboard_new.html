@@ -1384,7 +1384,7 @@ body.assist-on .chat-toggle{display:none !important;}
 .chat-panel.page .ch-msgs{width:min(780px,100%);margin:0 auto;padding:10px 20px 20px;gap:0;}
 .chat-panel.page .ch-msg{max-width:100%;font-size:15.5px;line-height:1.7;padding:0;border-radius:0;box-shadow:none;margin:0 0 22px;}
 .chat-panel.page .ch-msg.bot{background:transparent;align-self:stretch;color:var(--text);}
-.chat-panel.page .ch-msg.user{background:var(--panel2);color:var(--text);align-self:flex-end;max-width:85%;padding:11px 16px;border-radius:18px;border:1px solid var(--border);white-space:pre-wrap;}
+.chat-panel.page .ch-msg.user{background:var(--accent);color:#fff;align-self:flex-end;max-width:85%;padding:11px 16px;border-radius:18px 18px 4px 18px;border:0;white-space:pre-wrap;}
 .chat-panel.page .ch-msg.bot.tail,.chat-panel.page .ch-msg.user.tail{margin-bottom:22px;}
 .chat-panel.page .ch-time{display:none;}
 .chat-panel.page .ch-pay-card,.chat-panel.page .ch-act-card{max-width:520px;}
@@ -1440,6 +1440,40 @@ body.assist-on .chat-toggle{display:none !important;}
 #bvLock.on{display:flex;}
 #bvLock .lk{background:var(--bg);border:1px solid var(--border);border-radius:18px;max-width:900px;width:100%;padding:24px;max-height:94vh;overflow:auto;}
 #bvLock h2{margin:0 0 6px;font-size:21px;}
+
+/* ── Chat cards: questions, creatives, plan, review ── */
+.cc{align-self:stretch;max-width:100%;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);margin:6px 0;font-size:13.5px;}
+.chat-panel.page .cc{max-width:720px;}
+.cc h4{margin:0 0 2px;font-size:14.5px;font-weight:700;color:var(--text);}
+.cc .cc-sub{color:var(--text2);font-size:12.5px;margin-bottom:12px;}
+.cc .cc-q{margin-bottom:12px;}.cc .cc-q label{display:block;font-weight:600;font-size:12.5px;margin-bottom:6px;color:var(--text);}
+.cc-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.cc-chip{border:1px solid var(--borderStrong,var(--border));background:var(--panel);border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;color:var(--text);cursor:pointer;}
+.cc-chip.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.cc-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}.cc-sp{flex:1;}
+.cc-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--borderStrong,var(--border));background:var(--panel);border-radius:10px;padding:8px 14px;font:inherit;font-weight:600;font-size:13px;color:var(--text);cursor:pointer;}
+.cc-btn.p{background:var(--accent);border-color:var(--accent);color:#fff;}.cc-btn.g{background:#1a9a4a;border-color:#1a9a4a;color:#fff;}.cc-btn.s{padding:5px 10px;font-size:12px;border-radius:8px;}
+.cc-btn:disabled{opacity:.55;cursor:default;}
+.cc-thumbs{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;}
+.cc-th{width:78px;height:78px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);position:relative;overflow:hidden;cursor:pointer;padding:0;}
+.cc-th img,.cc-th video{width:100%;height:100%;object-fit:cover;display:block;}
+.cc-th.sel{outline:2px solid var(--accent);outline-offset:1px;}
+.cc-th.sel:after{content:"✓";position:absolute;right:4px;top:4px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;}
+.cc-th.up{border:1.5px dashed var(--borderStrong,var(--border));display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:22px;}
+.cc-lbl{font-size:12px;color:var(--muted);font-weight:600;margin:12px 0 4px;}
+.cc textarea,.cc input[type=text],.cc input[type=number]{width:100%;border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:9px 12px;font:inherit;font-size:13px;color:var(--text);box-sizing:border-box;}
+.cc textarea{min-height:92px;resize:vertical;}
+.cc-f{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;}
+.cc-fld{border:1px solid var(--border);background:var(--panel2);border-radius:10px;padding:8px 11px;}.cc-fld span{display:block;font-size:11px;color:var(--muted);}.cc-fld b{font-size:13px;font-weight:600;}.cc-fld.w{grid-column:1/-1;}
+.cc table{width:100%;border-collapse:collapse;font-size:13px;}.cc td,.cc th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;}.cc th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.cc-tag{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;display:inline-block;}
+.cc-keep{background:rgba(26,154,74,.10);color:#1a9a4a;}.cc-watch{background:rgba(245,165,36,.16);color:#b7791f;}.cc-stop{background:rgba(217,48,37,.09);color:#d93025;}
+.cc-warn{background:rgba(245,165,36,.14);color:#8a5a12;border-radius:10px;padding:8px 11px;font-size:12.5px;margin-top:10px;}
+.cc-note{font-size:11.5px;color:var(--muted);margin:6px 2px;}
+.cc-item{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);}.cc-item:last-of-type{border-bottom:0;}
+.cc-item small{display:block;color:var(--text2);font-size:12px;margin-top:2px;}
+.cc-res{margin-top:10px;font-size:12.5px;}
+@media(max-width:760px){.cc-f{grid-template-columns:1fr;}.cc table,.cc thead{font-size:12px;}.cc-item{flex-direction:column;align-items:flex-start;}}
 </style>
 </head>
 <body>
@@ -12166,13 +12200,173 @@ async function chLoadInbox() {
 }
 
 let chBusy = false;
-async function askChat(q) {
+
+// ── CHAT CARDS ────────────────────────────────────────────────────────────────
+// The assistant returns cards next to its text. Cards are plain UI: answering one just sends a normal message,
+// and the only thing that ever launches ads is the Approve button on a plan card.
+function ccEl(html) { const d = document.createElement("div"); d.className = "cc"; d.innerHTML = html; return d; }
+function ccDone(card, text) {
+  card.querySelectorAll("button,input,textarea").forEach(b => b.disabled = true);
+  card.querySelectorAll(".cc-row.act").forEach(r => r.remove());
+  if (text) { const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "var(--muted)"; n.textContent = text; card.appendChild(n); }
+}
+function appendCards(list) {
+  const msgs = document.getElementById("chMsgs");
+  for (const c of list || []) {
+    let el = null;
+    try {
+      if (c.type === "questions") el = ccQuestions(c);
+      else if (c.type === "creatives") el = ccCreatives(c);
+      else if (c.type === "plan") el = ccPlan(c);
+      else if (c.type === "review") el = ccReview(c);
+    } catch (e) { console.warn("card", e); }
+    if (el) msgs.appendChild(el);
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function ccQuestions(c) {
+  const card = ccEl(`<h4>${escH(c.title)}</h4><div class="cc-sub">${escH(c.subtitle || "")}</div>
+    ${c.questions.map((q, qi) => `<div class="cc-q" data-qi="${qi}"><label>${escH(q.label)}</label><div class="cc-chips">${q.options.map(o => `<button type="button" class="cc-chip ${q.recommended === o ? "on" : ""}" data-v="${escH(o)}">${escH(o)}${q.recommended === o ? " (recommended)" : ""}</button>`).join("")}</div></div>`).join("")}
+    <div class="cc-row act"><span class="cc-sp"></span><button type="button" class="cc-btn skip">Skip, you decide</button><button type="button" class="cc-btn p go">Continue</button></div>`);
+  card.querySelectorAll(".cc-q").forEach(qe => {
+    const q = c.questions[+qe.dataset.qi];
+    qe.querySelectorAll(".cc-chip").forEach(ch => ch.onclick = () => {
+      if (q.multi) ch.classList.toggle("on");
+      else { qe.querySelectorAll(".cc-chip").forEach(x => x.classList.remove("on")); ch.classList.add("on"); }
+    });
+  });
+  card.querySelector(".skip").onclick = () => { ccDone(card, "You decide."); askChat("You decide the rest, use your best judgement.", "Skip, you decide"); };
+  card.querySelector(".go").onclick = () => {
+    const ans = [...card.querySelectorAll(".cc-q")].map(qe => {
+      const q = c.questions[+qe.dataset.qi];
+      const v = [...qe.querySelectorAll(".cc-chip.on")].map(x => x.dataset.v);
+      return v.length ? `${q.label} ${v.join(", ")}` : null;
+    }).filter(Boolean);
+    ccDone(card, "Answered.");
+    askChat("My answers: " + (ans.join(" | ") || "no preference, you decide."), ans.length ? "Here are my answers" : "You decide");
+  };
+  return card;
+}
+
+function ccCreatives(c) {
+  const card = ccEl(`<h4>Creatives${c.product ? " for " + escH(c.product) : ""}</h4><div class="cc-sub">Tick the ones to use. Each ad set gets one ad per creative.</div>
+    <div class="cc-thumbs"></div>
+    <div class="cc-row"><button type="button" class="cc-btn s up">Upload image or video</button><button type="button" class="cc-btn s" disabled title="Coming soon">Make with AI (soon)</button><input type="file" accept="image/*,video/*" multiple hidden></div>
+    <div class="cc-lbl">Primary text <span style="font-weight:500">(edit if you like)</span></div><textarea class="pt">${escH(c.copy?.primary_text || "")}</textarea>
+    <div class="cc-f"><div class="cc-fld"><span>Headline</span><input type="text" class="hl" value="${escH(c.copy?.headline || "")}"></div><div class="cc-fld"><span>Description</span><input type="text" class="ds" value="${escH(c.copy?.description || "")}"></div></div>
+    <div class="cc-row act" style="margin-top:12px"><span class="cc-sp"></span><button type="button" class="cc-btn p use">Use these</button></div><div class="cc-res"></div>`);
+  const box = card.querySelector(".cc-thumbs"), sel = new Set(c.preselect || []);
+  const add = a => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "cc-th" + (sel.has(a.id) ? " sel" : ""); b.dataset.id = a.id; b.title = a.name || "";
+    b.innerHTML = a.type === "video" ? `<video src="${escH(a.url)}" muted preload="metadata"></video>` : `<img src="${escH(a.url)}" loading="lazy" alt="">`;
+    b.onclick = () => { if (sel.has(a.id)) sel.delete(a.id); else sel.add(a.id); b.classList.toggle("sel"); };
+    box.appendChild(b);
+  };
+  (c.assets || []).forEach(add);
+  if (!(c.assets || []).length) box.innerHTML = '<div style="color:var(--muted);font-size:12.5px">No creatives saved yet. Upload one to continue.</div>';
+  const fi = card.querySelector('input[type=file]'), res = card.querySelector(".cc-res");
+  card.querySelector(".up").onclick = () => fi.click();
+  fi.onchange = async () => {
+    for (const f of [...fi.files]) {
+      res.textContent = "Uploading " + f.name + "…";
+      const fd = new FormData(); fd.append("file", f); fd.append("uploaded_by", "ai_chat"); fd.append("ad_account_id", activeAccountId || "");
+      fd.append("cta_type", "WHATSAPP_MESSAGE");
+      try {
+        const r = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json());
+        if (r.error || !r.asset?.id) throw new Error(r.error || "upload failed");
+        if (box.querySelector("div")) box.innerHTML = "";
+        sel.add(r.asset.id); add({ id: r.asset.id, url: r.asset.public_url, type: /video/.test(r.asset.asset_type || f.type) ? "video" : "image", name: f.name }); res.textContent = "";
+      } catch (e) { res.style.color = "#d93025"; res.textContent = "Could not upload " + f.name + ": " + e.message; }
+    }
+    fi.value = "";
+  };
+  card.querySelector(".use").onclick = () => {
+    if (!sel.size) { res.style.color = "#d93025"; res.textContent = "Pick at least one creative."; return; }
+    const pt = card.querySelector(".pt").value.trim(), hl = card.querySelector(".hl").value.trim(), ds = card.querySelector(".ds").value.trim();
+    const n = sel.size;
+    ccDone(card, `Using ${n} creative${n > 1 ? "s" : ""}.`);
+    askChat(`I chose these creatives (ids: ${[...sel].join(",")}). Use this ad copy. Primary text: ${pt} | Headline: ${hl} | Description: ${ds}. Now plan the campaign.`, `Use these ${n} creative${n > 1 ? "s" : ""}`);
+  };
+  return card;
+}
+
+function ccPlan(c) {
+  const card = ccEl("");
+  const paint = (c) => {
+    const rows = c.adsets.map(a => `<tr><td><b>${escH(a.label)}</b></td><td>${escH(a.who)}</td><td>${escH(a.where)}</td><td>${fN(a.budget)}</td><td>${a.reach ? "≈ " + escH(a.reach) : "—"}</td></tr>`).join("");
+    card.innerHTML = `<div class="cc-row"><h4 style="font-size:16px;margin:0">${escH(c.title)}</h4><span class="cc-sp"></span><span class="cc-tag cc-watch">Draft</span></div>
+      <div class="cc-sub">${escH(c.summary)}</div>
+      <table><thead><tr><th>Ad set</th><th>Who</th><th>Where</th><th>Budget</th><th>Reach</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="cc-f"><div class="cc-fld"><span>Creatives</span><b>${escH(c.creatives)}</b></div>
+        <div class="cc-fld"><span>Tracking</span><b style="color:${c.pixel === false ? "#d93025" : "#1a9a4a"}">${c.pixel === null ? "● WhatsApp messages counted by Meta" : c.pixel ? "● Pixel saved on this account" : "● No pixel saved"}</b></div>
+        <div class="cc-fld w"><span>Rules I will follow</span><b>${escH(c.rules)}</b></div></div>
+      ${(c.warnings || []).map(w => `<div class="cc-warn">⚠️ ${escH(w)}</div>`).join("")}
+      <div class="cc-row act" style="margin-top:14px"><button type="button" class="cc-btn no">Cancel</button><span class="cc-sp"></span><button type="button" class="cc-btn ed">Edit plan</button><button type="button" class="cc-btn g ok">Approve and launch</button></div>
+      <div class="cc-res"></div><div class="cc-note">Approving creates the campaign and turns it on right away.</div>`;
+    const res = card.querySelector(".cc-res");
+    card.querySelector(".no").onclick = async () => { await sbFn("ai-chat", { action: "cancel_plan", plan_id: c.plan_id }); ccDone(card, "Plan cancelled."); };
+    card.querySelector(".ok").onclick = async (ev) => {
+      const b = ev.target; b.disabled = true; b.textContent = "Launching…";
+      const r = await sbFn("ai-chat", { action: "approve_plan", plan_id: c.plan_id });
+      if (r?.ok) {
+        ccDone(card, "");
+        const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "#1a9a4a"; n.innerHTML = `✅ Launched: ${r.ad_sets} ad set${r.ad_sets > 1 ? "s" : ""}, ${r.ads} ads. ${escH(r.message || "")}`; card.appendChild(n);
+        chatHistory.push({ role: "user", content: `[I approved the plan and it launched: ${r.message || "ok"}]` });
+        setTimeout(() => { try { render(); } catch {} }, 600);
+      } else { b.disabled = false; b.textContent = "Try again"; res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not launch."); }
+    };
+    card.querySelector(".ed").onclick = () => edit(c);
+  };
+  const edit = (c) => {
+    card.innerHTML = `<h4>Edit plan</h4><div class="cc-sub">Change what you need, then save. Reach is re-checked.</div>
+      <div class="cc-lbl">Campaign name</div><input type="text" class="cn" value="${escH(c.campaign_name || "")}">
+      ${c.adsets.map((a, i) => `<div class="cc-f" data-i="${i}" style="border-top:1px solid var(--border);padding-top:10px;margin-top:12px"><div class="cc-fld w"><span>${escH(a.label)}</span><b>${escH(a.who)}</b></div>
+        <div class="cc-fld"><span>Daily budget (₦)</span><input type="number" class="eb" value="${a.budget}"></div><div class="cc-fld"><span>Ages</span><div class="cc-row"><input type="number" class="amin" value="${a.age_min}" style="width:70px"><input type="number" class="amax" value="${a.age_max}" style="width:70px"></div></div>
+        <div class="cc-fld w"><span>States (comma separated, empty = all Nigeria)</span><input type="text" class="es" value="${escH((a.states || []).join(", "))}"></div>
+        ${c.adsets.length > 1 ? `<label class="cc-fld w" style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="rm" style="width:auto"> Remove this ad set</label>` : ""}</div>`).join("")}
+      <div class="cc-row" style="margin-top:14px"><button type="button" class="cc-btn bk">Back</button><span class="cc-sp"></span><button type="button" class="cc-btn p sv">Save changes</button></div><div class="cc-res"></div>`;
+    card.querySelector(".bk").onclick = () => paint(c);
+    card.querySelector(".sv").onclick = async (ev) => {
+      const b = ev.target; b.disabled = true; b.textContent = "Saving…";
+      const edits = { campaign_name: card.querySelector(".cn").value, adsets: [...card.querySelectorAll("[data-i]")].map(e => ({
+        budget_naira: +e.querySelector(".eb").value, age_min: +e.querySelector(".amin").value, age_max: +e.querySelector(".amax").value,
+        states: e.querySelector(".es").value.split(",").map(x => x.trim()).filter(Boolean), remove: !!e.querySelector(".rm")?.checked })) };
+      const r = await sbFn("ai-chat", { action: "update_plan", plan_id: c.plan_id, edits });
+      if (r?.card) { c = r.card; paint(c); } else { b.disabled = false; b.textContent = "Save changes"; card.querySelector(".cc-res").textContent = r?.error || "Could not save."; }
+    };
+  };
+  paint(c);
+  return card;
+}
+
+function ccReview(c) {
+  const grp = (tag, cls, items, label) => items.length ? `<div class="cc-row" style="margin:10px 0 4px"><span class="cc-tag ${cls}">${tag}</span><span style="color:var(--text2);font-size:12.5px">${items.length} ${label}</span></div>` +
+    items.map((x, i) => `<div class="cc-item"><div style="min-width:0"><b>${escH(x.name)}</b><small>${escH(x.why)}</small></div><div class="cc-row">${x.actions.map((a, k) => `<button type="button" class="cc-btn s" data-g="${tag}" data-i="${i}" data-k="${k}">${escH(a.label)}</button>`).join("")}</div></div>`).join("") : "";
+  const card = ccEl(`${grp("KEEP AND SCALE", "cc-keep", c.keep, "ad" + (c.keep.length > 1 ? "s" : ""))}
+    ${c.watch.count ? `<div class="cc-row" style="margin:12px 0 4px"><span class="cc-tag cc-watch">WATCH</span><span style="color:var(--text2);font-size:12.5px">${c.watch.count} ads, ${escH(c.watch.note || "too early to judge")}</span></div>` : ""}
+    ${grp("STOP", "cc-stop", c.stop, "ad" + (c.stop.length > 1 ? "s" : ""))}<div class="cc-res"></div>`);
+  card.querySelectorAll("button[data-g]").forEach(btn => btn.onclick = async () => {
+    const x = (btn.dataset.g === "STOP" ? c.stop : c.keep)[+btn.dataset.i], a = x.actions[+btn.dataset.k];
+    if (!x.id || !c.account_id) return;
+    btn.disabled = true; const old = btn.textContent; btn.textContent = "Working…";
+    let r;
+    if (a.kind === "pause" || a.kind === "resume") r = await amCall({ action: "set_status", ad_account_id: c.account_id, level: x.level, object_id: x.id, status: a.kind === "pause" ? "PAUSED" : "ACTIVE", reason: "Via AI chat review: " + x.why });
+    else if (a.kind === "budget" && a.new_daily_budget) r = await amCall({ action: "set_budget", ad_account_id: c.account_id, level: x.level === "ad" ? "adset" : x.level, object_id: x.id, daily_budget: a.new_daily_budget, reason: "Via AI chat review" });
+    else if (a.kind === "duplicate") r = await sbFn("ai-chat", { action: "duplicate", ad_account_id: c.account_id, level: x.level, object_id: x.id, object_name: x.name });
+    if (r?.ok) { btn.textContent = "Done ✓"; chatHistory.push({ role: "user", content: `[I tapped "${a.label}" on ${x.name}: done]` }); }
+    else { btn.disabled = false; btn.textContent = old; const rs = card.querySelector(".cc-res"); rs.style.color = "#d93025"; rs.textContent = "❌ " + (r?.error || "Meta did not accept that."); }
+  });
+  return card;
+}
+
+async function askChat(q, display) {
   if (chBusy) return;
   chBusy = true;
   document.getElementById("chSend").disabled = true;
   document.getElementById("chSuggs").style.display = "none";
   chRefreshAcct();
-  appendMsg(q, "user");
+  appendMsg(display || q, "user");
   const thinking = appendMsg("", "bot");
   thinking.classList.add("typing");
   thinking.innerHTML = '<span class="ch-typing"><i></i><i></i><i></i></span>';
@@ -12185,6 +12379,7 @@ async function askChat(q) {
       chatHistory.push({ role: "user", content: q }, { role: "assistant", content: r.answer });
       if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
       appendProposalCards(r.proposals);
+      appendCards(r.cards);
       appendQuickReplies(r.quick_replies);
       appendPendingPaymentCard(r.pending_payment);
     } else {
