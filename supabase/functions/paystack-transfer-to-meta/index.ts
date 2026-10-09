@@ -26,9 +26,9 @@ const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const PAYSTACK_BASE = "https://api.paystack.co";
-// Meta's billing accounts always carry "Meta" or "Facebook" as a whole word in the bank-resolved name. Whole words only, so a name
-// that merely contains it (e.g. "Metalworks Ltd") is refused; the approved-names list below tightens this further.
-const ALLOWED_NAME_PATTERN = /\b(facebook|meta)\b/i;
+// Meta billing account names carry "Meta" or "Facebook" (the bank may run words together, e.g. "Facebookads"), so any name containing
+// either is accepted. A company can tighten this to an exact list of approved names (transfer_allowed_names, below).
+const ALLOWED_NAME_PATTERN = /(facebook|meta)/i;
 
 function json(obj: unknown, status = 200) {
   return new Response(JSON.stringify(obj), {
