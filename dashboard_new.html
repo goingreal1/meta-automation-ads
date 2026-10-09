@@ -10893,7 +10893,11 @@ async function renderWallet(el) {
   // the columns it needs for sums) -- this one is for the transaction
   // ledger below, so it needs the order link and timestamp too. RLS scopes
   // it the same way: a buyer only ever gets their own.
-  const confirmedPayments = await sbQuery("payments", "select=id,amount_naira,paid_at,media_buyer_id,source,orders(customer_name)&status=eq.confirmed&order=paid_at.desc&limit=100").catch(() => []);
+  const confirmedPayments = await sbQuery("payments", "select=id,amount_naira,paid_at,media_buyer_id,source,held_for_buyer_id,sender_name,sender_bank,sender_account,narration,orders(customer_name)&status=eq.confirmed&order=paid_at.desc&limit=100").catch(() => []);
+  // Deposits that arrived in a buyer's account but could not be matched to an order. The company holds the money; the buyer can see it.
+  const heldDeposits = (confirmedPayments || []).filter(p => p.held_for_buyer_id && (isAdmin || p.held_for_buyer_id === myId));
+  const heldTotal = heldDeposits.reduce((s, p) => s + Number(p.amount_naira || 0), 0);
+  const heldFrom = p => [p.sender_name, p.sender_bank, p.sender_account].filter(Boolean).join(" · ") || "sender not shown";
 
   const myRevenue = myId ? (walletBalances[myId] || walletBlank()) : walletBlank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
@@ -10905,6 +10909,12 @@ async function renderWallet(el) {
   // debit. Buyers see only their own payments; admins see everything.
   const ledger = [];
   for (const p of confirmedPayments || []) {
+    if (p.held_for_buyer_id) {
+      if (!isAdmin && p.held_for_buyer_id !== myId) continue;
+      const bn = (buyers || []).find(b => b.id === p.held_for_buyer_id)?.name;
+      ledger.push({ date: p.paid_at, type: "credit", label: "Unmatched deposit (held by company)", detail: "From " + heldFrom(p), buyerName: bn, amount: p.amount_naira });
+      continue;
+    }
     if (p.source === "admin_topup") {
       if (!isAdmin) continue;
       ledger.push({ date: p.paid_at, type: "credit", label: "Company funding (admin deposit)", detail: null, buyerName: null, amount: p.amount_naira });
@@ -10959,6 +10969,24 @@ async function renderWallet(el) {
         </div>
       </div>
     </div>
+    ${heldDeposits.length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Unmatched deposits${isAdmin ? "" : " to your account"} (${fN(heldTotal)})</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">${isAdmin
+        ? "Money that arrived in a buyer's account but couldn't be matched to an order (often a POS or a different sender name). It is held in the company funding wallet. Trace it by sender, then match it to the right order."
+        : "Money paid into your account that couldn't be matched to an order yet (for example a POS payment or a different sender name). The company holds it for now. Tell your admin which customer it was so it can be matched to the order."}</div>
+      <div class="tbl-wrap"><table>
+        <tr><th>When</th>${isAdmin ? "<th>Buyer account</th>" : ""}<th>Sender</th><th>Bank</th><th>Account</th><th>Amount</th></tr>
+        ${heldDeposits.map(p => `<tr>
+          <td class="s">${p.paid_at ? new Date(p.paid_at).toLocaleString() : "—"}</td>
+          ${isAdmin ? `<td class="s">${escH((buyers || []).find(b => b.id === p.held_for_buyer_id)?.name || "—")}</td>` : ""}
+          <td class="s n">${escH(p.sender_name || "—")}</td>
+          <td class="s">${escH(p.sender_bank || "—")}</td>
+          <td class="n">${escH(p.sender_account || "—")}</td>
+          <td class="n">${fN(p.amount_naira)}</td>
+        </tr>`).join("")}
+      </table></div>
+    </div>` : ""}
     <div style="margin-bottom:18px;"><button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button></div>
 
     ${isAdmin ? `
