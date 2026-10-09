@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1877F2">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<title>Approve transfer · Revora</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f5f2;--panel:#fff;--border:#e7e3da;--text:#14130f;--text2:#55524a;--muted:#8c887c;--accent:#1877F2;--accentDk:#0c5dc7;--ok:#16a34a;--err:#dc2626;--warn:#b45309;}
+@media (prefers-color-scheme:dark){:root{--bg:#0f0f0e;--panel:#1a1a18;--border:#2e2d29;--text:#f2f0ea;--text2:#b9b5a8;--muted:#8c887c;}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px 20px;width:100%;max-width:400px}
+.brand{font-weight:700;font-size:13px;letter-spacing:.04em;color:var(--accent);margin-bottom:14px}
+h1{font-size:19px;font-weight:700;margin-bottom:4px}
+.sub{color:var(--text2);font-size:13px;margin-bottom:16px}
+.amt{font-size:34px;font-weight:700;letter-spacing:-.02em;margin:6px 0 2px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--border);font-size:14px}
+.row span:first-child{color:var(--muted)}.row b{text-align:right;word-break:break-word}
+label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin:18px 0 6px}
+.pin{width:100%;font-size:26px;letter-spacing:.5em;text-align:center;padding:12px;border:1.5px solid var(--border);border-radius:12px;background:transparent;color:var(--text);font-family:inherit}
+.pin:focus{outline:none;border-color:var(--accent)}
+button{width:100%;margin-top:16px;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#fff;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+.msg{margin-top:12px;font-size:13px;border-radius:10px;padding:10px 12px}
+.msg.err{background:rgba(220,38,38,.1);color:var(--err)}
+.msg.ok{background:rgba(22,163,74,.1);color:var(--ok)}
+.note{margin-top:14px;font-size:12px;color:var(--muted);text-align:center}
+.done{text-align:center;padding:8px 0}.done .tick{font-size:44px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="card" id="card"><div class="brand">REVORA</div><div class="sub" id="loading">Loading…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(function () {
+  var SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+  var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+  var API = SUPA_URL + "/functions/v1/mcp";
+  var card = document.getElementById("card");
+  var id = new URLSearchParams(location.search).get("a") || "";
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+  var sb = window.supabase.createClient(SUPA_URL, ANON);
+  var token = "";
+
+  function show(html) { card.innerHTML = '<div class="brand">REVORA</div>' + html; }
+  function fail(msg, extra) { show('<h1>Cannot approve</h1><div class="msg err">' + esc(msg) + '</div>' + (extra || "") + '<div class="note"><a href="dashboard_new.html">Open Revora</a></div>'); }
+  async function call(path, body) {
+    var r = await fetch(API + path, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    var j = await r.json().catch(function () { return { error: "Something went wrong. Try again." }; });
+    return { ok: r.ok, j: j };
+  }
+
+  async function init() {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return fail("This approval link is not valid.");
+    var s = (await sb.auth.getSession()).data.session;
+    if (!s) { location.replace("login.html?next=" + encodeURIComponent("approve.html?a=" + id)); return; }
+    token = s.access_token;
+    var res = await call("/pin/approval", { approval_id: id });
+    if (!res.ok) return fail(res.j.error || "Could not load this approval.");
+    var d = res.j;
+    if (d.approved) return doneView(d);
+    show(
+      '<h1>Approve this transfer</h1><div class="sub">Check the details, then enter your transfer PIN. Your PIN goes straight to Revora and is never shown to your AI assistant.</div>' +
+      '<div class="amt">' + esc(d.amount) + '</div>' +
+      '<div class="row"><span>To</span><b>' + esc(d.account_name || "—") + '</b></div>' +
+      '<div class="row"><span>Account</span><b>' + esc(d.account_number) + '</b></div>' +
+      '<div class="row"><span>Bank</span><b>' + esc(d.bank || "—") + '</b></div>' +
+      '<form id="f" autocomplete="off"><label for="pin">Transfer PIN</label>' +
+      '<input class="pin" id="pin" name="rv-transfer-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="••••" required>' +
+      '<button type="submit" id="go">Approve</button><div id="m"></div></form>' +
+      '<div class="note">Only approve if this is the transfer you asked for. This approval works once and expires in 10 minutes.</div>'
+    );
+    var pin = document.getElementById("pin"); pin.focus();
+    pin.addEventListener("input", function () { pin.value = pin.value.replace(/\D/g, "").slice(0, 6); });
+    document.getElementById("f").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var go = document.getElementById("go"), m = document.getElementById("m");
+      if (pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; return; }
+      go.disabled = true; go.textContent = "Checking…"; m.innerHTML = "";
+      var r = await call("/pin/approve", { approval_id: id, pin: pin.value });
+      pin.value = "";
+      if (r.ok && r.j.approved) return doneView(r.j);
+      go.disabled = false; go.textContent = "Approve";
+      var setup = /no transfer pin/i.test(r.j.error || "") ? ' <a href="dashboard_new.html">Set your PIN in Settings, Security.</a>' : "";
+      m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + setup + '</div>';
+    });
+  }
+  function doneView(d) {
+    show('<div class="done"><div class="tick">✅</div><h1>Approved</h1><div class="sub" style="margin-top:6px">' + esc(d.amount) + ' to ' + esc(d.account_name || d.account_number) + '.<br><br>Go back to your chat and tell your assistant <b>“done”</b>. It will send the money.</div></div>');
+  }
+  init().catch(function (e) { fail((e && e.message) || "Something went wrong."); });
+})();
+</script>
+</body>
+</html>

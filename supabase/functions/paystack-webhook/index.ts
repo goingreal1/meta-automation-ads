@@ -35,6 +35,17 @@ function normalizeName(s: string | undefined | null): string {
   return (s ?? "").toLowerCase().replace(/[^a-z\s]/g, "").trim();
 }
 
+// Same person, different word order or an extra middle name ("THANKGOD OLUWASEUN NDIDI" vs "Ndidi ThankGod Oluwaseun"):
+// every word of the shorter name must appear in the longer one, and at least two words must be shared (or the whole one-word name).
+function sameName(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+  const ta = a.split(/\s+/).filter(Boolean), tb = b.split(/\s+/).filter(Boolean);
+  const [small, big] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  const shared = small.filter((w) => big.includes(w)).length;
+  return shared === small.length && (shared >= 2 || small.length === 1);
+}
+
 async function notifyPaymentConfirmed(orderId: string) {
   try {
     await fetch(`${SUPABASE_URL}/functions/v1/send-payment-whatsapp`, {
@@ -175,7 +186,7 @@ Deno.serve(async (req: Request) => {
           .eq("amount_naira", amountNaira);
         const nameMatches = (pending ?? []).filter((p: any) => {
           const custName = normalizeName(p.orders?.customer_name);
-          return senderName && custName && (senderName.includes(custName) || custName.includes(senderName));
+          return sameName(senderName, custName);
         });
         if (nameMatches.length === 1) matchedOrderId = (nameMatches[0] as any).order_id;
       }
@@ -193,7 +204,7 @@ Deno.serve(async (req: Request) => {
         const unpaid = (open ?? []).filter((o: any) => !(o.payments ?? []).some((p: any) => p.status === "confirmed"));
         const byName = unpaid.filter((o: any) => {
           const custName = normalizeName(o.customer_name);
-          return senderName && custName && (senderName.includes(custName) || custName.includes(senderName));
+          return sameName(senderName, custName);
         });
         if (byName.length === 1) matchedOrderId = (byName[0] as any).id;
         else if (unpaid.length === 1 && (unpaid[0] as any).order_status === "valid") matchedOrderId = (unpaid[0] as any).id;

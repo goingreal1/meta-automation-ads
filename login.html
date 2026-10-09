@@ -241,6 +241,8 @@ input:focus {
   const statusMsg = document.getElementById('statusMsg');
   const confirmField = document.getElementById('confirmField');
   const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
+  // After logging in, go back to a transfer approval page if that is where the person came from (this one exact page shape only).
+  const nextUrl = (() => { const n = new URLSearchParams(window.location.search).get('next') || ''; return /^approve\.html\?a=[0-9a-f-]{36}$/i.test(n) ? n : ''; })();
   // Supabase's own confirmation email (sent automatically on signUp, separate
   // from our invite email) redirects the browser back here on click -- by
   // default to a generic Site URL with no idea an invite was in progress.
@@ -285,7 +287,7 @@ input:focus {
   async function checkSession() {
     const { data: { session } } = await supaClient.auth.getSession();
     if (session) {
-      window.location.href = setupUrl; // it redirects straight on to the dashboard once a company is confirmed
+      window.location.href = (nextUrl || setupUrl); // it redirects straight on to the dashboard once a company is confirmed
     }
   }
   checkSession();
@@ -323,7 +325,7 @@ input:focus {
         if (error) throw error;
         statusMsg.textContent = "Login successful. Redirecting...";
         statusMsg.className = "msg ok";
-        setTimeout(() => window.location.href = setupUrl, 800);
+        setTimeout(() => window.location.href = (nextUrl || setupUrl), 800);
       } else {
         // SIGNUP FLOW
         const confirmPass = document.getElementById('f_pass2').value;
@@ -333,7 +335,7 @@ input:focus {
         if (data.session) {
           statusMsg.textContent = "Account created. Redirecting...";
           statusMsg.className = "msg ok";
-          setTimeout(() => window.location.href = setupUrl, 800);
+          setTimeout(() => window.location.href = (nextUrl || setupUrl), 800);
         } else {
           statusMsg.textContent = "Check your email for the confirmation link.";
           statusMsg.className = "msg ok";
