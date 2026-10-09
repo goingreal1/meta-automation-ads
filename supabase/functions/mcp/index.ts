@@ -48,7 +48,7 @@ RUNNING ADS: judge an ad only after it has spent about 2 to 3 times the target c
 
 META RULES FOR COPY: no guaranteed results, no before-and-after claims, no implying you know a person's health, body, finances or identity, no medical cures, no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures. Use only facts from the product record or what the person told you. Never invent testimonials, numbers, discounts or registration numbers.
 
-IMAGES: first choice is to make the picture yourself with your own image tool (free for Revora) and pass it to import_chat_image, then approve_generated_image. If you cannot make images, generate_image makes new pictures from the person's own description (use_product_photo keeps the packaging right). They are previews until approve_generated_image saves them as creatives for a product; then plan_campaign can use them. Make what the person asks for; if the tool returns a heads_up, pass it on briefly and let them decide.\n\nADDING THINGS: create_product and set_kill_rules never save on the first call. They return a summary; explain it in plain words and only call again with confirmed true after the person clearly says yes. get_order_form_link gives the product's order page; get_daily_brief and get_alerts answer 'how are we doing' and 'what needs me'.\n\nSAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
+SEEING: you can look at pictures with view_image. Before writing copy or image prompts for a product, view its product photo; after generate_image or import_chat_image, view the preview to check it truly matches the product (packaging, colours, text) and tell the person honestly if it does not. Never draw or invent a product's look yourself, and never present a made-up image as the product.\n\nIMAGES: first choice is to make the picture yourself with your own image tool (free for Revora) and pass it to import_chat_image, then approve_generated_image. If you cannot make images, generate_image makes new pictures from the person's own description (use_product_photo keeps the packaging right). They are previews until approve_generated_image saves them as creatives for a product; then plan_campaign can use them. Make what the person asks for; if the tool returns a heads_up, pass it on briefly and let them decide.\n\nADDING THINGS: create_product and set_kill_rules never save on the first call. They return a summary; explain it in plain words and only call again with confirmed true after the person clearly says yes. get_order_form_link gives the product's order page; get_daily_brief and get_alerts answer 'how are we doing' and 'what needs me'.\n\nSAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
 
 // ── tool catalogue ────────────────────────────────────────────────────────────────────────────
 type Tool = {
@@ -293,6 +293,34 @@ const TOOLS: Tool[] = [
       const url = admin.storage.from("creative-vault").getPublicUrl(path).data.publicUrl;
       return { not_saved_yet: true, preview_url: url, table_markdown: `| Preview |\n|---|\n| ![preview](${url}) [open](${url}) |`, note: "Not saved as a creative yet. Show table_markdown exactly, ask if they want to keep it and for which product, then call approve_generated_image with preview_url and product_name." };
     } },
+  { name: "view_image", title: "Look at a product photo or creative", description: "Actually SEE a picture, so you never guess or invent what it looks like. Use it before writing copy or prompts for a product (pass product_name for its product photo), before using a creative (pass its url from list_creatives), and right after generate_image or import_chat_image (pass the preview_url) to check the result really matches the product, then describe it honestly. Never draw or imagine a product's packaging yourself. Images only, not videos.", inputSchema: OBJ({ product_name: str("Look at this product's own photo"), url: str("A preview_url / url from list_creatives, generate_image or import_chat_image") }, []), annotations: { readOnlyHint: true },
+    run: async (a, c) => {
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      let url = String(a?.url ?? "");
+      if (!url && a?.product_name) {
+        const { data: prods } = await admin.from("products").select("product_name, product_image_url").eq("company_id", c.companyId);
+        const hit = (prods ?? []).find((p: any) => norm(p.product_name) === norm(a.product_name)) ?? (prods ?? []).find((p: any) => norm(p.product_name).includes(norm(a.product_name)));
+        if (!hit) return { error: `No product called "${a.product_name}".` };
+        if (!hit.product_image_url) return { error: `${hit.product_name} has no product photo yet.` };
+        url = hit.product_image_url;
+      }
+      if (!/^https:\/\//.test(url)) return { error: "Pass product_name, or a url from list_creatives / generate_image." };
+      if (/\.(mp4|mov|webm|m4v)(\?|$)/i.test(url)) return { error: "That is a video; I can only show pictures. Ask the person to describe it." };
+      const gen = `${SUPABASE_URL}/storage/v1/object/public/creative-vault/generated/${c.companyId}/`;
+      let ok = url.startsWith(gen);
+      if (!ok) { const [{ data: lib }, { data: prods }] = await Promise.all([admin.from("creative_library").select("url").eq("company_id", c.companyId).eq("url", url).limit(1), admin.from("products").select("id").eq("company_id", c.companyId).or(`product_image_url.eq.${url},ad_image_url.eq.${url}`).limit(1)]); ok = !!(lib?.length || prods?.length); }
+      if (!ok) return { error: "That picture is not one of this company's products or creatives." };
+      const pub = `${SUPABASE_URL}/storage/v1/object/public/`;
+      let r: Response | null = url.startsWith(pub) ? await fetch(url.replace("/object/public/", "/render/image/public/") + "?width=768&quality=75").catch(() => null) : null;
+      if (!r?.ok) r = await fetch(url).catch(() => null);
+      if (!r?.ok) return { error: "Could not load that picture." };
+      const mime = (r.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      if (!/^image\/(png|jpeg|webp|gif)$/.test(mime)) return { error: "That file is not a picture I can show." };
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf.length > 3 * 1024 * 1024) return { error: "That picture is too big to show here (over 3 MB). Open it from the link instead.", url };
+      let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      return { __images: [{ data: btoa(bin), mimeType: mime }], viewed: url, note: "This is the real picture. Describe only what you actually see in it." };
+    } },
   { name: "approve_generated_image", title: "Keep a generated image as a creative", description: "Save a generated image into the person's creative vault so it can be used in campaigns. Pass the preview_url from generate_image. Pass product_name so it is linked to that product. It becomes a normal creative (use the returned creative_id as an asset_id in plan_campaign).", inputSchema: OBJ({ preview_url: str("The preview_url from generate_image"), product_name: str("Product to link it to") }, ["preview_url"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
     run: async (a, c) => {
       if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can do this." };
@@ -371,8 +399,9 @@ async function callTool(name: string, args: any, c: Ctx, client: string) {
   catch (e) { out = { error: (e as Error).message }; }
   if (out?.error) ok = false;
   if (t.write) await admin.from("mcp_audit").insert({ company_id: c.companyId, user_id: c.userId, tool: name, args: clip(args), ok, client }).then(() => {}, () => {});
+  const imgs: any[] = out?.__images ?? []; if (imgs.length) { out = { ...out }; delete out.__images; }
   const text = typeof out === "string" ? out : JSON.stringify(out, null, 1);
-  return { isError: !ok, content: [{ type: "text", text: text.length > 60000 ? text.slice(0, 60000) + "\n…(shortened)" : text }], ...(ok && out && typeof out === "object" && !Array.isArray(out) ? { structuredContent: out } : {}) };
+  return { isError: !ok, content: [{ type: "text", text: text.length > 60000 ? text.slice(0, 60000) + "\n…(shortened)" : text }, ...imgs.map((m) => ({ type: "image", data: m.data, mimeType: m.mimeType }))], ...(ok && out && typeof out === "object" && !Array.isArray(out) ? { structuredContent: out } : {}) };
 }
 
 // ── JSON-RPC ────────────────────────────────────────────────────────────────────────────────
