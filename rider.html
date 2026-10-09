@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f766e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Revora Rider">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<title>My deliveries · Revora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f2;--panel:#fff;--text:#14130f;--text2:#55524a;--muted:#8c887c;--line:#e7e3da;--accent:#0f766e;--accentBg:#e3f4f1;--warn:#b45309;--warnBg:#fef3c7;--danger:#b91c1c;--dangerBg:#fee2e2;--ok:#15803d;--okBg:#dcfce7}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1210;--panel:#181c1a;--text:#f2f1ec;--text2:#c2bfb4;--muted:#8d8a80;--line:#2a2f2c;--accent:#2dd4bf;--accentBg:#12302c;--warn:#fbbf24;--warnBg:#33270c;--danger:#f87171;--dangerBg:#3b1515;--ok:#4ade80;--okBg:#12301c}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.45;padding-bottom:84px}
+header{position:sticky;top:0;z-index:5;background:var(--accent);color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+header b{font-size:16px;font-weight:700}header small{display:block;font-size:12px;opacity:.85}
+.badge{background:#fff;color:var(--accent);border-radius:999px;font-weight:800;font-size:12px;padding:3px 10px}
+main{padding:14px 16px;max-width:560px;margin:0 auto}
+h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 2px 8px;font-weight:700}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.card.new{border:2px solid var(--accent)}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.name{font-weight:700;font-size:16px}.sub{color:var(--text2);font-size:13px}.amt{font-weight:800;font-size:17px;white-space:nowrap}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:3px 10px;margin:6px 6px 0 0}
+.p-ok{background:var(--okBg);color:var(--ok)}.p-warn{background:var(--warnBg);color:var(--warn)}.p-info{background:var(--accentBg);color:var(--accent)}.p-bad{background:var(--dangerBg);color:var(--danger)}
+.steps{display:flex;gap:6px;margin:12px 0 4px}.steps i{flex:1;height:5px;border-radius:3px;background:var(--line)}.steps i.on{background:var(--accent)}
+.stepl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:10px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button,.btn{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px 14px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px}
+.b1{background:var(--accent);color:#fff;flex:1 1 140px}.b2{background:var(--accentBg);color:var(--accent);flex:1 1 110px}.b3{background:transparent;color:var(--danger);border:1.5px solid var(--danger);flex:0 0 auto}
+button:disabled{opacity:.55}
+.addr{margin-top:8px;font-size:14px}.timer{font-weight:800;color:var(--warn)}
+.empty{text-align:center;color:var(--muted);padding:34px 10px}.empty b{display:block;font-size:34px;margin-bottom:6px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;background:none;color:var(--muted);border-radius:0;flex-direction:column;gap:2px;font-size:11.5px;min-height:58px;font-weight:600}
+nav button.on{color:var(--accent)}nav .ic{font-size:21px;line-height:1}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}.kpi b{display:block;font-size:20px}.kpi span{font-size:12px;color:var(--muted)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{background:var(--panel);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);max-height:88vh;overflow:auto}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:24px;font-weight:800;letter-spacing:.02em}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}select,input{font:inherit;width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--text)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:#111;color:#fff;border-radius:12px;padding:11px 16px;font-weight:600;z-index:30;max-width:90%;text-align:center}
+.link{color:var(--accent);font-weight:700;text-decoration:none}
+</style>
+</head>
+<body>
+<header><div><b id="hName">My deliveries</b><small id="hSub"></small></div><span class="badge" id="hBadge" style="display:none"></span></header>
+<main id="main"><div class="empty">Loading…</div></main>
+<nav>
+  <button data-tab="jobs" class="on"><span class="ic">📦</span>Jobs</button>
+  <button data-tab="history"><span class="ic">✅</span>Delivered</button>
+  <button data-tab="me"><span class="ic">👤</span>Me</button>
+</nav>
+<div id="modalHost"></div>
+<div id="toastHost"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+const sb = window.supabase.createClient(SUPA_URL, ANON);
+const STATES = ["Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno","Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","Federal Capital Territory","Gombe","Imo","Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa","Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba","Yobe","Zamfara"];
+const OFFER_MINUTES = 5;
+let me = null, agent = null, orders = [], tab = "jobs", company = "";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const naira = (n) => "₦" + Math.round(Number(n) || 0).toLocaleString("en-NG");
+const telOf = (p) => { const d = String(p || "").replace(/\D/g, ""); return d.startsWith("234") ? "+" + d : d.startsWith("0") ? "+234" + d.slice(1) : d.length === 10 ? "+234" + d : "+" + d; };
+const isPaid = (o) => (o.payments || []).some((p) => p.status === "confirmed");
+function toast(t, ms = 2600) { const d = document.createElement("div"); d.className = "toast"; d.textContent = t; $("toastHost").appendChild(d); setTimeout(() => d.remove(), ms); }
+
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.replace("login.html"); return; }
+  const { data: p } = await sb.from("profiles").select("company_id, role, display_name, delivery_agent_id, whatsapp_number").eq("id", session.user.id).maybeSingle();
+  if (!p?.company_id) { location.replace("setup-company.html"); return; }
+  if (p.role !== "delivery_agent") { location.replace("dashboard_new.html"); return; }
+  me = p;
+  const [{ data: co }, { data: ag }] = await Promise.all([
+    sb.from("companies").select("name").eq("id", p.company_id).maybeSingle(),
+    p.delivery_agent_id ? sb.from("delivery_agents").select("id, name, phone, state, city, active").eq("id", p.delivery_agent_id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  company = co?.name || ""; agent = ag || null;
+  $("hName").textContent = p.display_name || "My deliveries";
+  document.querySelectorAll("nav button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b)); draw(); });
+  await load();
+  setInterval(load, 15000);
+  setInterval(tick, 1000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  pushSync();
+}
+
+async function load() {
+  if (!me?.delivery_agent_id) { draw(); return; }
+  const { data } = await sb.from("orders")
+    .select("id, customer_name, customer_phone, customer_address, customer_city, customer_state, product_name, quantity, order_value_naira, order_status, delivery_stage, assignment_status, assignment_offered_at, delivered_at, ordered_at, payments(status)")
+    .eq("delivery_agent_id", me.delivery_agent_id).in("assignment_status", ["offered", "accepted"]).order("assignment_offered_at", { ascending: false }).limit(60);
+  const { data: done } = await sb.from("orders")
+    .select("id, customer_name, customer_city, customer_state, product_name, order_value_naira, delivered_at, payments(status)")
+    .eq("delivery_agent_id", me.delivery_agent_id).eq("order_status", "delivered").order("delivered_at", { ascending: false }).limit(60);
+  const before = new Set((orders || []).filter((o) => o.assignment_status === "offered").map((o) => o.id));
+  const prevActive = new Set((orders || []).filter((o) => o.assignment_status === "accepted").map((o) => o.id));
+  orders = data || [];
+  const delivered = done || [];
+  window._delivered = delivered;
+  const fresh = orders.filter((o) => o.assignment_status === "offered" && !before.has(o.id));
+  if (fresh.length && before.size + prevActive.size >= 0 && window._loadedOnce) { toast("📦 New delivery offered to you"); try { navigator.vibrate?.(200); } catch {} }
+  const nowDelivered = [...prevActive].filter((id) => delivered.some((d) => d.id === id));
+  if (nowDelivered.length && window._loadedOnce) toast("✅ Payment received — order marked delivered");
+  window._loadedOnce = true;
+  draw();
+}
+
+function draw() {
+  const offered = orders.filter((o) => o.assignment_status === "offered" && o.order_status !== "delivered");
+  const active = orders.filter((o) => o.assignment_status === "accepted" && o.order_status !== "delivered");
+  $("hSub").textContent = (agent?.state ? `${agent.state}${agent.city ? ", " + agent.city : ""}` : "Set your area in Me") + (company ? " · " + company : "");
+  const b = $("hBadge"); const n = offered.length; b.style.display = n ? "inline-block" : "none"; b.textContent = n + " new";
+  document.title = (n ? `(${n}) ` : "") + "My deliveries · Revora";
+  const main = $("main");
+  if (!me?.delivery_agent_id) { main.innerHTML = `<div class="empty"><b>🛵</b>Your rider profile isn't set up yet. Ask your admin to link it.</div>`; return; }
+  if (tab === "jobs") {
+    main.innerHTML = (agent && !agent.state ? `<div class="card new"><div class="name">📍 Where do you deliver?</div><div class="sub" style="margin:4px 0 8px">Orders go first to riders in the customer's state. Set yours so you get the right ones.</div><button class="b1" onclick="areaSheet()">Set my area</button></div>` : "")
+      + (offered.length ? `<h2>New for you</h2>` + offered.map(offerCard).join("") : "")
+      + `<h2>On your list (${active.length})</h2>` + (active.length ? active.map(activeCard).join("") : `<div class="empty"><b>🛵</b>Nothing to deliver right now.<br>New orders will show up here and buzz your phone.</div>`);
+  } else if (tab === "history") {
+    const d = window._delivered || [], m = new Date();
+    const mo = d.filter((o) => o.delivered_at && new Date(o.delivered_at).getMonth() === m.getMonth() && new Date(o.delivered_at).getFullYear() === m.getFullYear());
+    main.innerHTML = `<div class="kpis"><div class="kpi"><b>${mo.length}</b><span>delivered this month</span></div><div class="kpi"><b>${naira(mo.reduce((s, o) => s + Number(o.order_value_naira || 0), 0))}</b><span>order value this month</span></div></div>`
+      + (d.length ? d.map((o) => `<div class="card"><div class="row"><div><div class="name">${esc(o.customer_name)}</div><div class="sub">${esc(o.product_name || "")} · ${esc(o.customer_city || "")}${o.customer_state ? ", " + esc(o.customer_state) : ""}</div><div class="sub">${o.delivered_at ? new Date(o.delivered_at).toLocaleString() : ""}</div></div><div class="amt">${naira(o.order_value_naira)}</div></div><span class="pill ${isPaid(o) ? "p-ok" : "p-warn"}">${isPaid(o) ? "Paid ✓" : "Payment pending"}</span></div>`).join("") : `<div class="empty"><b>✅</b>Delivered orders will show here.</div>`);
+  } else {
+    main.innerHTML = `<div class="card"><div class="name">${esc(me.display_name || "")}</div><div class="sub">${esc(agent?.phone || me.whatsapp_number || "")}</div>
+      <h2 style="margin-top:14px">Delivery area</h2><div class="sub">${agent?.state ? esc(agent.state) + (agent.city ? ", " + esc(agent.city) : "") : "Not set"}</div><div class="btns"><button class="b2" onclick="areaSheet()">Change area</button></div></div>
+      <div class="card"><div class="name">Notifications</div><div class="sub" id="pushState" style="margin:4px 0 8px">Get a buzz the moment a delivery is offered to you.</div><div class="btns"><button class="b1" id="pushBtn" onclick="pushOn()">Turn on notifications</button></div></div>
+      <div class="card"><div class="name">How it works</div><div class="sub" style="margin-top:6px">1. A new order appears under <b>New for you</b>. Accept it within ${OFFER_MINUTES} minutes.<br>2. Call the customer, then tap <b>I'm on the way</b>. The customer is told automatically.<br>3. Tap <b>Payment account</b> to read out or send the buyer's account. When the transfer lands the order is marked delivered by itself.<br>4. Cash instead? Tap <b>Delivered</b> after you collect it.</div></div>
+      <div class="btns"><button class="b2" onclick="signOut()">Sign out</button></div>`;
+    pushState();
+  }
+}
+
+function offerCard(o) {
+  const left = Math.max(0, OFFER_MINUTES * 60 - Math.floor((Date.now() - new Date(o.assignment_offered_at).getTime()) / 1000));
+  return `<div class="card new"><div class="row"><div><div class="name">${esc(o.customer_city || "—")}${o.customer_state ? ", " + esc(o.customer_state) : ""}</div><div class="sub">${esc(o.product_name || "Order")}${o.quantity > 1 ? " × " + o.quantity : ""}</div></div><div class="amt">${naira(o.order_value_naira)}</div></div>
+    <div class="sub" style="margin-top:6px">Accept within <span class="timer" data-left="${left}" data-at="${new Date(o.assignment_offered_at).getTime()}">${fmt(left)}</span></div>
+    <div class="btns"><button class="b1" onclick="respond('${o.id}','accepted',this)">Accept</button><button class="b3" onclick="respond('${o.id}','declined',this)">Decline</button></div></div>`;
+}
+function activeCard(o) {
+  const stage = o.delivery_stage === "on_the_way" ? 2 : 1;
+  const addr = [o.customer_address, o.customer_city, o.customer_state].filter(Boolean).join(", ");
+  const tel = telOf(o.customer_phone);
+  return `<div class="card"><div class="row"><div><div class="name">${esc(o.customer_name || "Customer")}</div><div class="sub">${esc(o.product_name || "Order")}${o.quantity > 1 ? " × " + o.quantity : ""}</div></div><div class="amt">${naira(o.order_value_naira)}</div></div>
+    <span class="pill ${isPaid(o) ? "p-ok" : "p-warn"}">${isPaid(o) ? "Paid ✓" : "Awaiting payment"}</span>${o.order_status !== "valid" ? `<span class="pill p-info">${esc(o.order_status)}</span>` : ""}
+    <div class="steps"><i class="on"></i><i class="${stage >= 2 ? "on" : ""}"></i><i></i></div><div class="stepl"><span>Accepted</span><span>On the way</span><span>Delivered</span></div>
+    <div class="addr">📍 ${esc(addr || "No address given")}</div>
+    <div class="btns"><a class="btn b2" href="tel:${esc(tel)}">📞 Call</a><a class="btn b2" target="_blank" rel="noopener" href="https://wa.me/${esc(tel.replace("+", ""))}">💬 WhatsApp</a>${addr ? `<a class="btn b2" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}">🗺️ Map</a>` : ""}</div>
+    <div class="btns">${o.delivery_stage !== "on_the_way" ? `<button class="b1" onclick="step('${o.id}','on_the_way',this)">🛵 I'm on the way</button>` : ""}<button class="b2" onclick="payInfo('${o.id}')">💳 Payment account</button>${o.delivery_stage === "on_the_way" ? `<button class="b1" onclick="step('${o.id}','delivered',this)">✓ Delivered</button>` : ""}</div></div>`;
+}
+const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+function tick() { document.querySelectorAll(".timer").forEach((t) => { const left = Math.max(0, OFFER_MINUTES * 60 - Math.floor((Date.now() - Number(t.dataset.at)) / 1000)); t.textContent = left ? fmt(left) : "expired"; }); }
+
+async function respond(id, outcome, btn) {
+  btn.disabled = true;
+  if (outcome === "accepted") await sb.from("orders").update({ assignment_status: "accepted" }).eq("id", id).eq("assignment_status", "offered");
+  else await sb.from("orders").update({ delivery_agent_id: null, assignment_status: null }).eq("id", id).eq("assignment_status", "offered");
+  await sb.from("assignment_offers").update({ outcome, responded_at: new Date().toISOString() }).eq("order_id", id).eq("delivery_agent_id", me.delivery_agent_id).eq("outcome", "offered");
+  toast(outcome === "accepted" ? "Accepted. Call the customer." : "Declined");
+  load();
+}
+async function step(id, which, btn) {
+  if (which === "delivered" && !confirm("Mark this order as delivered?\n\nOnly do this once the customer has your item. If they have not paid yet, the customer is asked to.")) return;
+  btn.disabled = true;
+  const patch = which === "on_the_way" ? { delivery_stage: "on_the_way" } : { order_status: "delivered", delivered_at: new Date().toISOString() };
+  const { error } = await sb.from("orders").update(patch).eq("id", id);
+  if (error) { toast(error.message); btn.disabled = false; return; }
+  toast(which === "on_the_way" ? "Customer told you're on the way" : "Marked delivered");
+  load();
+}
+
+function sheet(html) { $("modalHost").innerHTML = `<div class="modal" onclick="if(event.target===this)closeSheet()"><div class="sheet">${html}</div></div>`; }
+function closeSheet() { $("modalHost").innerHTML = ""; }
+async function payInfo(id) {
+  sheet(`<div class="sub">Loading…</div>`);
+  const { data, error } = await sb.rpc("order_payment_details", { p_order_id: id });
+  if (error || !data) { sheet(`<div class="name">Could not load</div><div class="sub">${esc((error?.message || "").replace(/^.*?:\s*/, ""))}</div><div class="btns"><button class="b2" onclick="closeSheet()">Close</button></div>`); return; }
+  if (!data.account_number) { sheet(`<div class="name">No payment account yet</div><div class="sub">This order's buyer has no payment account. Ask your admin.</div><div class="btns"><button class="b2" onclick="closeSheet()">Close</button></div>`); return; }
+  const msg = `Hi ${data.customer_name || ""}, to pay ${naira(data.amount)} for your order, please transfer to:\n${data.bank}\n${data.account_number}\n${data.account_name}${data.code ? "\nPut this code in the narration: " + data.code : ""}`;
+  window._payMsg = msg;
+  sheet(`<div class="name">Payment account</div><div class="sub" style="margin-bottom:10px">For ${esc(data.customer_name || "the customer")} · ${naira(data.amount)}. When the transfer lands, the order is marked delivered by itself.</div>
+    <div class="mono">${esc(data.account_number)}</div><div class="sub" style="margin-top:2px"><b>${esc(data.bank || "")}</b> · ${esc(data.account_name || "")}</div>${data.code ? `<div class="sub" style="margin-top:6px">Narration code: <b>${esc(data.code)}</b></div>` : ""}
+    <div class="btns"><a class="btn b1" target="_blank" rel="noopener" href="https://wa.me/${esc(telOf(data.customer_phone).replace("+", ""))}?text=${encodeURIComponent(msg)}">Send on WhatsApp</a><button class="b2" onclick="navigator.clipboard?.writeText(window._payMsg);this.textContent='Copied'">Copy</button><button class="b2" onclick="closeSheet()">Close</button></div>`);
+}
+function areaSheet() {
+  sheet(`<div class="name">Where do you deliver?</div><div class="sub">Orders from this state are offered to you first. City is optional.</div>
+    <label>State</label><select id="aState"><option value="">Choose a state…</option>${STATES.map((s) => `<option ${agent?.state === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+    <label>City / area (optional)</label><input id="aCity" value="${esc(agent?.city || "")}" placeholder="e.g. Ibadan, Ikeja, Lekki">
+    <div id="aMsg" class="sub" style="margin-top:8px;color:var(--danger)"></div>
+    <div class="btns"><button class="b1" id="aSave">Save</button><button class="b2" onclick="closeSheet()">Cancel</button></div>`);
+  $("aSave").onclick = async () => {
+    const st = $("aState").value; if (!st) { $("aMsg").textContent = "Choose a state."; return; }
+    const { error } = await sb.rpc("set_delivery_agent_area", { p_agent_id: me.delivery_agent_id, p_state: st, p_city: $("aCity").value });
+    if (error) { $("aMsg").textContent = (error.message || "").replace(/^.*?:\s*/, ""); return; }
+    agent = { ...agent, state: st, city: $("aCity").value.trim() || null }; closeSheet(); toast("Area saved"); draw();
+  };
+}
+async function signOut() { await sb.auth.signOut(); location.replace("login.html"); }
+
+// ---- notifications (web push) ----------------------------------------------------------------
+const u8 = (s) => { const pad = "=".repeat((4 - (s.length % 4)) % 4); return Uint8Array.from(atob((s + pad).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)); };
+const PUSH_OK = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+async function saveSub(sub) { const j = sub.toJSON(); const { error } = await sb.rpc("register_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_user_agent: navigator.userAgent.slice(0, 200) }); if (error) throw new Error(error.message); }
+async function pushOn() {
+  try {
+    if (!PUSH_OK) throw new Error("This phone's browser can't do notifications. On iPhone, add this page to your Home Screen first.");
+    const perm = await Notification.requestPermission(); if (perm !== "granted") throw new Error("Notifications are blocked. Allow them in your phone settings for this site.");
+    const reg = await navigator.serviceWorker.ready;
+    const r = await fetch(`${SUPA_URL}/functions/v1/handle-whatsapp-reply?action=public_key`, { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }); const j = await r.json(); if (!j.publicKey) throw new Error("Could not get the notification key.");
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(j.publicKey) });
+    await saveSub(sub); toast("Notifications are on"); pushState();
+  } catch (e) { toast(e.message, 4200); }
+}
+async function pushSync() { try { if (PUSH_OK && Notification.permission === "granted") { const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); if (sub) await saveSub(sub); } } catch {} }
+async function pushState() { const el = $("pushState"), b = $("pushBtn"); if (!el) return; if (!PUSH_OK) { el.textContent = "Not available in this browser. On iPhone, use Share → Add to Home Screen, then open from there."; return; } const on = Notification.permission === "granted"; el.textContent = on ? "Notifications are on for this phone. You'll be buzzed when a delivery is offered." : "Get a buzz the moment a delivery is offered to you."; if (b) b.textContent = on ? "Notifications on ✓" : "Turn on notifications"; }
+
+boot();
+</script>
+</body>
+</html>

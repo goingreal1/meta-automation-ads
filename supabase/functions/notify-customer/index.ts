@@ -72,7 +72,21 @@ Deno.serve(async (req: Request) => {
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
   const orderId = String(body.order_id || ""), event = String(body.event || "");
-  if (!orderId || !(event in TPL || event === "paid_claimed")) return json({ error: "order_id and a valid event are required" }, 400);
+  if (!orderId || !(event in TPL || event === "paid_claimed" || event === "care_assigned")) return json({ error: "order_id and a valid event are required" }, 400);
+
+  // Staff alert, not a customer message: tell the customer-care agent an order was handed to them (web push).
+  if (event === "care_assigned") {
+    const { data: ord } = await admin.from("orders").select("id, company_id, customer_name, product_name, order_value_naira, care_agent_id").eq("id", orderId).maybeSingle();
+    if (!ord?.care_agent_id) return json({ ok: true, skipped: "no care agent" });
+    const k = `care_assigned_${ord.care_agent_id}`;
+    const { error: dup } = await admin.from("order_notifications").insert({ order_id: ord.id, company_id: ord.company_id, event: k, status: "sent" });
+    if (dup) return json({ ok: true, skipped: "already sent" });
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/handle-whatsapp-reply`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+      body: JSON.stringify({ audience: { company_id: ord.company_id, user_ids: [ord.care_agent_id] }, notification: { title: "New order to call", body: `${ord.customer_name || "Customer"} · ${ord.product_name || "order"} · ₦${Number(ord.order_value_naira ?? 0).toLocaleString("en-NG")}`, url: "/care.html", tag: `care-${ord.id}` } }),
+    }).catch(() => null);
+    return json({ ok: true, event, push: r?.status ?? "failed" });
+  }
 
   const { data: o } = await admin.from("orders")
     .select("id, company_id, customer_name, customer_phone, product_name, order_value_naira, order_status, delivery_agent_id, media_buyer_id, payment_narration_code, companies(name)")

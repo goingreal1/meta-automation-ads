@@ -136,6 +136,17 @@ Deno.serve(async (req: Request) => {
           company_id: order.company_id, order_id: order.id, delivery_agent_id: chosen.id, outcome: "offered",
         });
         summary.offered++;
+        // Buzz the rider's phone (web push through the shared push endpoint). A missing subscription just means no buzz.
+        try {
+          const { data: riders } = await supabase.from("profiles").select("id").eq("delivery_agent_id", chosen.id);
+          const uids = (riders ?? []).map((x: any) => x.id);
+          if (uids.length) {
+            await fetch(`${SUPABASE_URL}/functions/v1/handle-whatsapp-reply`, {
+              method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+              body: JSON.stringify({ audience: { company_id: order.company_id, user_ids: uids }, notification: { title: "New delivery for you", body: `${order.customer_city || order.customer_state || "New order"}: tap to accept within ${OFFER_TIMEOUT_MINUTES} minutes`, url: "/rider.html", tag: `offer-${order.id}` } }),
+            });
+          }
+        } catch (e) { console.error("rider push failed:", (e as Error).message); }
       } catch (err: any) {
         summary.errors.push(`order ${order.id}: ${err.message}`);
       }
