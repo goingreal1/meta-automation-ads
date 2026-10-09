@@ -48,7 +48,7 @@ RUNNING ADS: judge an ad only after it has spent about 2 to 3 times the target c
 
 META RULES FOR COPY: no guaranteed results, no before-and-after claims, no implying you know a person's health, body, finances or identity, no medical cures, no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures. Use only facts from the product record or what the person told you. Never invent testimonials, numbers, discounts or registration numbers.
 
-ADDING THINGS: create_product and set_kill_rules never save on the first call. They return a summary; explain it in plain words and only call again with confirmed true after the person clearly says yes. get_order_form_link gives the product's order page; get_daily_brief and get_alerts answer 'how are we doing' and 'what needs me'.\n\nSAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
+IMAGES: generate_image makes new pictures from the person's own description (use_product_photo keeps the packaging right). They are previews until approve_generated_image saves them as creatives for a product; then plan_campaign can use them. Make what the person asks for; if the tool returns a heads_up, pass it on briefly and let them decide.\n\nADDING THINGS: create_product and set_kill_rules never save on the first call. They return a summary; explain it in plain words and only call again with confirmed true after the person clearly says yes. get_order_form_link gives the product's order page; get_daily_brief and get_alerts answer 'how are we doing' and 'what needs me'.\n\nSAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
 
 // ── tool catalogue ──────────────────────────────────────────────────────────
 type Tool = {
@@ -225,6 +225,75 @@ const TOOLS: Tool[] = [
       });
       const by: Record<string, number> = {}; for (const o of orders ?? []) by[o.order_status] = (by[o.order_status] || 0) + 1;
       return { date: today, accounts: per, total_spent_today_naira: per.reduce((t, x) => t + x.spent_today_naira, 0), orders_today: (orders ?? []).length, orders_today_by_status: by, unread_alerts: unread ?? 0, note: "Spend and results come from Revora's synced numbers, which can be up to about 30 minutes behind Meta. Say that if it matters. For exact live numbers use get_live_ads." };
+    } },
+  { name: "generate_image", title: "Generate ad images", description: "Make 1 to 4 new images from the person's own description, with Revora's image model. They are NOT saved as creatives yet: show the preview table, ask which they like, then call approve_generated_image for the ones to keep (or discard_generated_image). Generate what the person asks for; the tool adds a short heads-up if Meta tends to reject something, but never refuse for that reason. Set use_product_photo true to base the picture on the product's own photo so the packaging looks right.", inputSchema: OBJ({ prompt: str("What the picture should show, in the person's own words (style, scene, text on it, colours)"), count: { type: "number", description: "How many options, 1 to 4. Default 2." }, size: { type: "string", enum: ["portrait", "square", "landscape"], description: "portrait suits Facebook and Instagram feeds and stories. Default portrait." }, product_name: str("The product this is for. Needed for use_product_photo and to attach the image to it when approved."), use_product_photo: { type: "boolean", description: "Use the product's own photo as the reference." } }, ["prompt"]), annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can generate images." };
+      const key = Deno.env.get("OPENAI_API_KEY") ?? "";
+      if (!key) return { error: "Image generation is not switched on for this workspace yet." };
+      const prompt = String(a?.prompt ?? "").trim().slice(0, 3000);
+      if (prompt.length < 5) return { error: "Describe the picture you want." };
+      const n = Math.min(Math.max(Math.round(Number(a?.count) || 2), 1), 4);
+      const cap = Number(Deno.env.get("IMAGE_DAILY_CAP") ?? "40");
+      const { data: used } = await admin.from("mcp_audit").select("args").eq("user_id", c.userId).eq("tool", "generate_image").eq("ok", true).gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+      const already = (used ?? []).reduce((t: number, r: any) => t + Math.min(Math.max(Math.round(Number(r.args?.count) || 2), 1), 4), 0);
+      if (already + n > cap) return { error: `Daily image limit reached (${cap} a day, ${already} used). It resets 24 hours after each request.` };
+      const size = a?.size === "square" ? "1024x1024" : a?.size === "landscape" ? "1536x1024" : "1024x1536";
+      const model = Deno.env.get("IMAGE_MODEL") ?? "gpt-image-1";
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      let product: any = null;
+      if (a?.product_name) { const { data: prods } = await admin.from("products").select("id, product_name, product_image_url").eq("company_id", c.companyId); product = (prods ?? []).find((p: any) => norm(p.product_name) === norm(a.product_name)) ?? null; }
+      let res: Response;
+      if (a?.use_product_photo === true && product?.product_image_url) {
+        const photo = await fetch(product.product_image_url);
+        if (!photo.ok) return { error: "Could not read the product photo to use as a reference." };
+        const fd = new FormData(); fd.append("model", model); fd.append("prompt", prompt); fd.append("n", String(n)); fd.append("size", size);
+        fd.append("image", new Blob([await photo.arrayBuffer()], { type: photo.headers.get("content-type") || "image/png" }), "product.png");
+        res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: fd });
+      } else {
+        res = await fetch("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, prompt, n, size }) });
+      }
+      const j: any = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(j?.data) || !j.data.length) return { error: "The image model could not make that: " + String(j?.error?.message ?? `status ${res.status}`).slice(0, 300) + " (If this says the key has no access to the image model, the workspace owner needs to enable it.)" };
+      const out: any[] = [];
+      for (const d of j.data) {
+        let bytes: Uint8Array | null = null;
+        if (d.b64_json) bytes = Uint8Array.from(atob(d.b64_json), (ch) => ch.charCodeAt(0));
+        else if (d.url) { const r = await fetch(d.url); if (r.ok) bytes = new Uint8Array(await r.arrayBuffer()); }
+        if (!bytes) continue;
+        const path = `generated/${c.companyId}/${crypto.randomUUID()}.png`;
+        const up = await admin.storage.from("creative-vault").upload(path, bytes, { contentType: "image/png" });
+        if (up.error) return { error: "Could not store the image: " + up.error.message };
+        out.push({ number: out.length + 1, preview_url: admin.storage.from("creative-vault").getPublicUrl(path).data.publicUrl });
+      }
+      if (!out.length) return { error: "The image model returned nothing usable. Try again." };
+      const heads = /before.{0,6}after|cure|heal(s|ing)?\b|weight.?loss|lose weight|diabet|cancer|belly fat/i.test(prompt) ? "Heads-up: Meta often rejects or limits ads that show before-and-after pictures, body changes or medical-cure claims. It was made as asked; the person decides." : undefined;
+      const table = ["| # | Preview |", "|---|---|", ...out.map((x) => `| ${x.number} | ![#${x.number}](${x.preview_url}) [open](${x.preview_url}) |`)].join("\n");
+      return { made: out.length, not_saved_yet: true, for_product: product?.product_name ?? null, table_markdown: table, options: out, heads_up: heads, note: "These are NOT saved as creatives yet. Show table_markdown exactly (pictures only from preview_url, never other images), ask which they like or what to change. To keep one call approve_generated_image with its preview_url; to remake with changes call generate_image again with their feedback; to drop one call discard_generated_image." };
+    } },
+  { name: "approve_generated_image", title: "Keep a generated image as a creative", description: "Save a generated image into the person's creative vault so it can be used in campaigns. Pass the preview_url from generate_image. Pass product_name so it is linked to that product. It becomes a normal creative (use the returned creative_id as an asset_id in plan_campaign).", inputSchema: OBJ({ preview_url: str("The preview_url from generate_image"), product_name: str("Product to link it to") }, ["preview_url"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can do this." };
+      const prefix = `${SUPABASE_URL}/storage/v1/object/public/creative-vault/generated/${c.companyId}/`;
+      const url = String(a?.preview_url ?? "");
+      if (!url.startsWith(prefix) || !/\.png$/.test(url)) return { error: "That is not one of your generated images. Use a preview_url from generate_image." };
+      const { data: have } = await admin.from("creative_assets").select("id").eq("company_id", c.companyId).eq("public_url", url).limit(1);
+      if (have?.length) return { ok: true, creative_id: have[0].id, note: "Already saved as a creative." };
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      let productId: string | null = null, productName: string | null = null;
+      if (a?.product_name) { const { data: prods } = await admin.from("products").select("id, product_name").eq("company_id", c.companyId); const hit = (prods ?? []).find((p: any) => norm(p.product_name) === norm(a.product_name)); if (!hit) return { error: `No product called "${a.product_name}".` }; productId = hit.id; productName = hit.product_name; }
+      const { data, error } = await admin.from("creative_assets").insert({ company_id: c.companyId, file_name: "AI generated image.png", storage_path: url.slice(`${SUPABASE_URL}/storage/v1/object/public/creative-vault/`.length), public_url: url, asset_type: "image", product_id: productId, uploaded_by: "ai_generated", test_status: "untested", uploaded_at: new Date().toISOString() }).select("id").single();
+      return error ? { error: error.message } : { ok: true, creative_id: data.id, linked_to_product: productName, note: productId ? "Saved to the creative vault for this product. Use creative_id as an asset_id in plan_campaign." : "Saved, but not linked to a product. Call assign_creative with the creative_id and a product name." };
+    } },
+  { name: "discard_generated_image", title: "Throw away a generated image", description: "Delete a generated image the person does not want. Pass its preview_url. Only works on images that were not saved as creatives.", inputSchema: OBJ({ preview_url: str("The preview_url from generate_image") }, ["preview_url"]), annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      const base = `${SUPABASE_URL}/storage/v1/object/public/creative-vault/`;
+      const url = String(a?.preview_url ?? "");
+      if (!url.startsWith(`${base}generated/${c.companyId}/`)) return { error: "That is not one of your generated images." };
+      const { data: saved } = await admin.from("creative_assets").select("id").eq("company_id", c.companyId).eq("public_url", url).limit(1);
+      if (saved?.length) return { error: "That image is already saved as a creative, so it was not deleted." };
+      const { error } = await admin.storage.from("creative-vault").remove([url.slice(base.length)]);
+      return error ? { error: error.message } : { ok: true, discarded: true };
     } },
   { name: "get_copy_context", title: "Context for writing ad copy", description: "Everything needed to write strong ads for ONE product: its facts, the person's own winning and losing ads, their language preference and the craft rules. Call this before writing any copy, then write it yourself. If it says facts are missing, ask the person instead of writing.", inputSchema: OBJ({ ...accountProp, product_name: str("Product name") }, ["product_name"]), annotations: { readOnlyHint: true }, run: (a, c) => chatTool("get_copy_context", a, c, true).then((r) => r) },
   { name: "write_ad_copy", title: "Write ad copy (Revora engine)", description: "Revora's own two-pass writer: long-form hooky copy in the person's language, learned from their past ads, locked to one product. Slower and uses Revora's AI quota; use get_copy_context and write it yourself if you prefer.", inputSchema: OBJ({ ...accountProp, product_name: str("Product name"), goal: { type: "string", enum: ["whatsapp", "website"] }, count: { type: "number" }, angle: str("A specific angle"), language_note: str("e.g. full Pidgin, or Yoruba and English"), notes: str("Anything else") }, ["product_name"]), annotations: { readOnlyHint: true, openWorldHint: true }, run: (a, c) => chatTool("write_ad_copy", a, c, true) },
