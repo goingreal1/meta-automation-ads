@@ -861,7 +861,7 @@ html{-webkit-text-size-adjust:100%;}
   /* The four screens already in the bar aren't repeated in the sheet (the bar
      still drives them through these same hidden buttons). */
   .sidebar .tab-btn[data-tab="overview"],.sidebar .tab-btn[data-tab="conversations"],
-  .sidebar .tab-btn[data-tab="orders"],.sidebar .tab-btn[data-tab="campaigns"]{display:none;}
+  .sidebar .tab-btn[data-tab="orders"]{display:none;}
   .sidebar .tab-btn .tab-label{white-space:normal;line-height:1.25;}
   /* Nothing floats over the open sheet. */
   body:has(.sidebar.mobile-open) .chat-toggle{display:none;}
@@ -1781,7 +1781,7 @@ const BN_ITEMS = [
   { tab: "overview", label: "Home" },
   { tab: "conversations", label: "Chats" },
   { tab: "orders", label: "Orders" },
-  { tab: "campaigns", label: "Ads" },
+  { tab: "campaigns", label: "Campaigns" },
 ];
 const BN_MORE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
 
@@ -3113,7 +3113,18 @@ async function bvOpenDraftsModal() {
   try { rows = await sbQuery("campaign_drafts", "select=id,name,ad_account_id,updated_at,state&order=updated_at.desc&limit=30"); } catch {}
   const body = document.getElementById("bvDraftsBody");
   if (!body) return;
-  if (!Array.isArray(rows) || !rows.length) { body.innerHTML = `<div class="empty" style="padding:20px;">No drafts yet. Start a campaign and it saves itself here.</div>`; return; }
+  // Plans planned by an AI assistant (Revora AI, ChatGPT or Claude through the connector) wait here until you approve them.
+  let aiPlans = [];
+  try { aiPlans = await sbQuery("ai_plans", "select=id,created_at&status=eq.draft&order=created_at.desc&limit=5"); } catch {}
+  const aiHost = document.createElement("div");
+  if (Array.isArray(aiPlans) && aiPlans.length) {
+    aiHost.innerHTML = `<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:4px 0 8px;">From your AI assistant (waiting for your approval)</div>`;
+    for (const pl of aiPlans) {
+      const r = await sbFn("ai-chat", { action: "update_plan", plan_id: pl.id, edits: {} }).catch(() => null);
+      if (r?.card) { const w = document.createElement("div"); w.style.marginBottom = "12px"; w.appendChild(ccPlan(r.card)); aiHost.appendChild(w); }
+    }
+  }
+  if (!Array.isArray(rows) || !rows.length) { body.innerHTML = aiHost.children.length ? "" : `<div class="empty" style="padding:20px;">No drafts yet. Start a campaign and it saves itself here.</div>`; if (aiHost.children.length) body.appendChild(aiHost); return; }
   body.innerHTML = rows.map(d => {
     const st = d.state || {}, n = (st.copies || []).length + (st.formFile ? 1 : 0), sets = (st.adsets || []).length || 1;
     const acct = accountsList.find(a => a.id === d.ad_account_id);
@@ -3124,6 +3135,10 @@ async function bvOpenDraftsModal() {
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 10px;font-size:12px;margin-left:6px;" onclick="bvDeleteDraftRow('${d.id}', this)" aria-label="Delete draft">🗑</button>
     </div>`;
   }).join("");
+  if (aiHost.children.length) {
+    aiHost.insertAdjacentHTML("beforeend", `<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px;">Drafts you started yourself</div>`);
+    body.prepend(aiHost);
+  }
 }
 async function bvDeleteDraftRow(id, btn) {
   if (!confirm("Delete this draft? This can't be undone.")) return;
@@ -3649,6 +3664,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
         fd.append("cta_type", copy.cta_type);
         fd.append("uploaded_by", "dashboard");
         fd.append("ad_account_id", activeAccountId);
+        if (typeof productId !== "undefined" && productId) fd.append("product_id", productId); // creatives belong to a product
 
         const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, {
           method: "POST",
@@ -7091,7 +7107,7 @@ async function renderProducts(el) {
         </div>
 
         <div class="field" id="vaultField" style="margin-top:18px;">
-          <label>🎨 Creative vault <span style="font-weight:400;color:var(--muted);">(images and videos for this product's ads, each with its own headline, primary text, description and button. The AI launches tests from these.)</span></label>
+          <label>🎨 Creative vault <span style="font-weight:400;color:var(--muted);">(AD creatives only: what you upload here is saved for THIS product and is the only thing used in its ads. The product photo above is never used in ads. Each creative has each with its own headline, primary text, description and button. The AI launches tests from these.)</span></label>
           <div id="vaultBox"><div style="font-size:11.5px;color:var(--muted);padding:12px;border:1px dashed var(--border);border-radius:10px;">Save the product first, then upload its creatives here.</div></div>
         </div>
         <button type="submit" class="btn btn-a btn-full" id="prodSubmitBtn" style="margin-top:14px;">+ Add product</button>
@@ -7248,7 +7264,7 @@ function bvEditProduct(id) {
   document.getElementById("prodFormTitle").textContent = `Editing: ${p.product_name}`;
   document.getElementById("prodSubmitBtn").textContent = "Save changes";
   document.getElementById("prodCancelEdit").style.display = "";
-  document.getElementById("prodImgHint").textContent = p.product_image_url ? "Click to replace the photo." : "Click to upload the product photo.";
+  document.getElementById("prodImgHint").textContent = p.product_image_url ? "Click to replace the photo." : "Click to upload the product photo. Customers see this on the order page and WhatsApp. It is NOT used in ads.";
   document.getElementById("prodImgPreview").innerHTML = p.product_image_url
     ? `<img src="${p.product_image_url}" style="width:100%;height:100%;object-fit:cover;">`
     : "No image";
@@ -7439,7 +7455,7 @@ async function bvRenderProductVault(productId) {
       <div style="font-size:10.5px;color:var(--muted);margin-top:8px;line-height:1.5;">When it's ready and the switch is on, the AI messages you in the AI chat (and sends a notification) with the creatives it wants to launch. Nothing goes live until you tap <b>Launch them</b>. It does the same right after it pauses an ad that was costing too much, to replace it.</div>
     </div>
     <div class="dz" id="vaultDrop" style="padding:16px;cursor:pointer;" onclick="document.getElementById('vaultFiles').click()">
-      <div class="dz-ico">⬆️</div><div class="dz-txt">Upload creatives (images or videos, as many as you like)</div>
+      <div class="dz-ico">⬆️</div><div class="dz-txt">Upload AD creatives for this product (images or videos)</div>
       <div class="dz-hint" id="vaultUpState">Then give each one its headline, primary text and description below.</div>
       <input type="file" id="vaultFiles" accept="video/*,image/*" multiple style="display:none;">
     </div>
@@ -7584,7 +7600,7 @@ async function bvUploadProductImage(inputEl) {
     const cached = (window.bvProductsCache || []).find(p => p.id === productId);
     if (cached) cached.product_image_url = r.product_image_url;
   } catch (err) {
-    hint.textContent = "Click to upload the product photo.";
+    hint.textContent = "Click to upload the product photo. Customers see this on the order page and WhatsApp. It is NOT used in ads.";
     msg.innerHTML = `<div class="msg err">❌ ${err.message}</div>`;
   } finally {
     btn.disabled = false;
@@ -12496,6 +12512,7 @@ function ccCreatives(c) {
     for (const f of [...fi.files]) {
       res.textContent = "Uploading " + f.name + "…";
       const fd = new FormData(); fd.append("file", f); fd.append("uploaded_by", "ai_chat"); fd.append("ad_account_id", activeAccountId || "");
+      const pr = (window.bvProductsCache || []).find(x => c.product && String(x.product_name).toLowerCase() === String(c.product).toLowerCase()); if (pr) fd.append("product_id", pr.id);
       fd.append("cta_type", "WHATSAPP_MESSAGE");
       try {
         const r = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json());
