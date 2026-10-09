@@ -63,15 +63,23 @@ async function ensureMediaBuyer(companyId: string, email: string, displayName: s
 }
 
 
+// Nigerian phone -> 234XXXXXXXXXX (how whatsapp_number is stored). null when it is not a valid number.
+function normPhone(raw: unknown): string | null {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 13 && d.startsWith("234")) return d;
+  if (d.length === 11 && d.startsWith("0")) return "234" + d.slice(1);
+  return null;
+}
+
 // Dedicated bank accounts are set up automatically: the company wallet when a company signs up, and a customer-payment
 // account for every media buyer (named "<company> <buyer>"). Failure here must never block sign-up; both are retried lazily.
-async function provisionAccounts(opts: { companyId?: string; mediaBuyerId?: string | null; email?: string | null }) {
+async function provisionAccounts(opts: { companyId?: string; mediaBuyerId?: string | null; email?: string | null; phone?: string | null }) {
   const post = (fnName: string, body: unknown) => fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify(body),
   }).then(async (r) => { if (!r.ok) console.error(`${fnName} failed:`, r.status, (await r.text()).slice(0, 200)); }).catch((e) => console.error(`${fnName} error:`, e));
   const jobs: Promise<unknown>[] = [];
-  if (opts.companyId) jobs.push(post("paystack-create-company-account", { company_id: opts.companyId, email: opts.email ?? undefined }));
-  if (opts.mediaBuyerId) jobs.push(post("paystack-create-account", { media_buyer_id: opts.mediaBuyerId, email: opts.email ?? undefined }));
+  if (opts.companyId) jobs.push(post("paystack-create-company-account", { company_id: opts.companyId, email: opts.email ?? undefined, phone: opts.phone ?? undefined }));
+  if (opts.mediaBuyerId) jobs.push(post("paystack-create-account", { media_buyer_id: opts.mediaBuyerId, email: opts.email ?? undefined, phone: opts.phone ?? undefined }));
   await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, 12000))]);
 }
 
@@ -141,6 +149,8 @@ Deno.serve(async (req: Request) => {
       const clean = cleanProfile(body?.profile);
       const personal = clean.account_type === "personal";
       const displayName = (body?.display_name as string | undefined)?.trim() || null;
+      const phone = normPhone(body?.phone);
+      if (body?.phone && !phone) return json({ error: "Enter a valid Nigerian phone number, e.g. 08012345678." }, 400);
       const companyName = (body?.company_name as string | undefined)?.trim() || (personal && displayName ? `${displayName}'s workspace` : "");
       if (!companyName) return json({ error: "company_name is required." }, 400);
 
@@ -154,18 +164,20 @@ Deno.serve(async (req: Request) => {
       const mediaBuyerId = personal ? await ensureMediaBuyer(company.id, user.email ?? "", displayName) : null;
 
       const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: user.id, company_id: company.id, role: "owner", display_name: displayName,
+        id: user.id, company_id: company.id, role: "owner", display_name: displayName, ...(phone ? { whatsapp_number: phone } : {}),
         ...(mediaBuyerId ? { media_buyer_id: mediaBuyerId } : {}),
       });
       if (profileErr) throw new Error(`Could not create owner profile: ${profileErr.message}`);
 
-      await provisionAccounts({ companyId: company.id, mediaBuyerId, email: user.email });
+      await provisionAccounts({ companyId: company.id, mediaBuyerId, email: user.email, phone });
 
       return json({ company_id: company.id, role: "owner", account_type: personal ? "personal" : "company" });
     }
 
     if (mode === "join") {
       const inviteToken = (body?.invite_token as string | undefined)?.trim();
+      const phone = normPhone(body?.phone);
+      if (body?.phone && !phone) return json({ error: "Enter a valid Nigerian phone number, e.g. 08012345678." }, 400);
       if (!inviteToken) return json({ error: "invite_token is required." }, 400);
 
       // Optimistic-locking consume: only succeeds if it's still unused. Two
@@ -187,11 +199,11 @@ Deno.serve(async (req: Request) => {
 
       const { error: profileErr } = await supabase.from("profiles").upsert({
         id: user.id, company_id: invite.company_id, role: invite.role,
-        media_buyer_id: mediaBuyerId, display_name: body?.display_name ?? null,
+        media_buyer_id: mediaBuyerId, display_name: body?.display_name ?? null, ...(phone ? { whatsapp_number: phone } : {}),
       });
       if (profileErr) throw new Error(`Could not create profile: ${profileErr.message}`);
 
-      if (mediaBuyerId) await provisionAccounts({ mediaBuyerId, email: user.email });
+      if (mediaBuyerId) await provisionAccounts({ mediaBuyerId, email: user.email, phone });
 
       return json({ company_id: invite.company_id, role: invite.role });
     }

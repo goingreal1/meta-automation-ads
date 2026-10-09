@@ -39,7 +39,7 @@ function normPhone(raw: unknown): string | null {
   const d = String(raw ?? "").replace(/\D/g, "");
   if (d.length === 13 && d.startsWith("234")) return "+" + d;
   if (d.length === 11 && d.startsWith("0")) return "+234" + d.slice(1);
-  if (d.length === 10) return "+234" + d;
+  if (d.length === 10 && !d.startsWith("0")) return "+234" + d;
   return null;
 }
 

@@ -91,6 +91,8 @@ async function init() {
   }
 }
 
+function phoneOk(v) { const d = String(v || "").replace(/\D/g, ""); return (d.length === 11 && d.startsWith("0")) || (d.length === 13 && d.startsWith("234")); }
+
 function renderJoin() {
   box.innerHTML = `
     <h1>Join your team</h1>
@@ -98,6 +100,7 @@ function renderJoin() {
     <div id="msg" class="msg"></div>
     <form id="f">
       <div class="field"><label>Your name</label><input id="name" placeholder="Full name" required></div>
+      <div class="field"><label>Phone / WhatsApp number</label><input id="phone" type="tel" inputmode="tel" placeholder="08012345678" required><div style="font-size:11.5px;color:var(--muted,#888);margin-top:4px">Used to open your Revora payment account and for important alerts.</div></div>
       <div class="field"><label>Set a password</label><input id="pass" type="password" placeholder="••••••••" required minlength="6"></div>
       <div class="field"><label>Confirm password</label><input id="pass2" type="password" placeholder="••••••••" required minlength="6"></div>
       <button type="submit" class="btn" id="btn">Join team</button>
@@ -131,7 +134,7 @@ const GOALS = [["launch_ads", "Launch and manage ads"], ["track_orders", "Track 
 
 function renderWizard(session, isProfile) {
   document.querySelector(".wrap").classList.add("wide");
-  const st = { step: 0, account_type: isProfile ? "company" : "", name: "", company_name: "", team_roles: [], team_size: "", buyers_count: "", business_types: [], sales_channels: [], fulfilment: "", description: "", monthly_ad_spend: "", copy_language: "pidgin_mix", goals: [] };
+  const st = { step: 0, account_type: isProfile ? "company" : "", name: "", phone: "", company_name: "", team_roles: [], team_size: "", buyers_count: "", business_types: [], sales_channels: [], fulfilment: "", description: "", monthly_ad_spend: "", copy_language: "pidgin_mix", goals: [] };
   const steps = isProfile ? ["team", "sell", "about", "ai"] : ["type", "you", "sell", "about", "ai"];
   const toggle = (arr, v) => { const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); };
   const personal = () => st.account_type === "personal";
@@ -148,6 +151,7 @@ function renderWizard(session, isProfile) {
       ${cards([["company", "🏢", "A company or team", "Owner or manager with media buyers, customer care or riders"], ["personal", "🧑‍💻", "Just me, as a media buyer", "One person running ads and orders. No company needed"]], st.account_type, "account_type", false, true)}`;
     if (name === "you") return `<h1>${personal() ? "About you" : "About you and your company"}</h1><div class="sub">${personal() ? "We'll create your personal workspace." : "This creates your own private workspace. Your data is never visible to any other company."}</div>
       <div class="field"><label>Your name</label><input id="name" value="${st.name}" placeholder="Full name"></div>
+      ${isProfile ? "" : `<div class="field"><label>Phone / WhatsApp number</label><input id="phone" type="tel" inputmode="tel" value="${st.phone}" placeholder="08012345678"><div style="font-size:11.5px;color:var(--muted,#888);margin-top:4px">Used to open your Revora payment account and for important alerts.</div></div>`}
       ${personal() ? "" : `<div class="field"><label>Company name</label><input id="company_name" value="${st.company_name}" placeholder="e.g. Quality Herb Nigeria"></div>`}
       ${personal() ? "" : teamBlock()}`;
     if (name === "team") return `<h1>Your team</h1><div class="sub">Who will use Revora with you? You can invite them from Settings any time.</div>${teamBlock()}`;
@@ -169,11 +173,11 @@ function renderWizard(session, isProfile) {
       ${st.team_roles.includes("buyers") ? `<div class="field" style="margin-top:12px"><label>How many media buyers?</label><input id="buyers_count" type="number" min="1" value="${st.buyers_count}" placeholder="e.g. 3"></div>` : ""}`;
   }
   function read() {
-    for (const id of ["name", "company_name", "description", "copy_language", "buyers_count"]) { const el = document.getElementById(id); if (el) st[id] = el.value; }
+    for (const id of ["name", "phone", "company_name", "description", "copy_language", "buyers_count"]) { const el = document.getElementById(id); if (el) st[id] = el.value; }
   }
   function valid(name) {
     if (name === "type" && !st.account_type) return "Choose how you will use Revora.";
-    if (name === "you") { if (!st.name.trim()) return "Enter your name."; if (!personal() && !st.company_name.trim()) return "Enter your company name."; }
+    if (name === "you") { if (!st.name.trim()) return "Enter your name."; if (!isProfile && !phoneOk(st.phone)) return "Enter a valid Nigerian phone number, e.g. 08012345678."; if (!personal() && !st.company_name.trim()) return "Enter your company name."; }
     if (name === "sell" && !st.business_types.length) return "Pick at least one thing you sell.";
     return "";
   }
@@ -213,7 +217,7 @@ function renderWizard(session, isProfile) {
       const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify(isProfile ? { mode: "profile", profile } : { mode: "create", display_name: st.name.trim() || undefined, company_name: personal() ? undefined : st.company_name.trim(), profile }),
+        body: JSON.stringify(isProfile ? { mode: "profile", profile } : { mode: "create", display_name: st.name.trim() || undefined, phone: st.phone.trim() || undefined, company_name: personal() ? undefined : st.company_name.trim(), profile }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -255,6 +259,8 @@ async function submitJoin() {
     const name = document.getElementById("name").value.trim();
     const pass = document.getElementById("pass").value;
     const pass2 = document.getElementById("pass2").value;
+    const phone = document.getElementById("phone").value.trim();
+    if (!phoneOk(phone)) throw new Error("Enter a valid Nigerian phone number, e.g. 08012345678.");
     if (pass !== pass2) throw new Error("Passwords don't match.");
 
     // Creates the account directly from this submit -- a real click, not
@@ -273,7 +279,7 @@ async function submitJoin() {
     const res = await fetch(`${SUPA_URL}/functions/v1/complete-signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${signInData.session.access_token}` },
-      body: JSON.stringify({ mode: "join", invite_token: inviteToken, display_name: name || undefined }),
+      body: JSON.stringify({ mode: "join", invite_token: inviteToken, display_name: name || undefined, phone }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
