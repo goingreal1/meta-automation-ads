@@ -8378,12 +8378,12 @@ async function renderRiders(el) {
       <div class="ph"><div class="ph-title">Agents</div><div class="ph-count">How AI-confirmed orders get routed to a rider by zone</div></div>
       ${!rows.length ? `<div class="empty"><div class="empty-ico">🛵</div>No delivery agents yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Agent</th><th>Zone</th><th>Phone</th><th>Assigned</th><th>Delivered</th><th>Rate</th><th>Revenue collected</th><th>Status</th></tr>
+        <tr><th>Agent</th><th>Area (state, city)</th><th>Phone</th><th>Assigned</th><th>Delivered</th><th>Rate</th><th>Revenue collected</th><th>Status</th></tr>
         ${rows.map(r => {
           const rate = r.assigned ? (r.delivered / r.assigned * 100).toFixed(0) : "0";
           return `<tr>
             <td class="s n">${escH(r.agent.name)}</td>
-            <td class="n">${escH(r.agent.zone || "—")}</td>
+            <td class="n">${escH(r.agent.state ? r.agent.state + (r.agent.city ? ", " + r.agent.city : "") : (r.agent.zone || "—"))} <button type="button" class="btn btn-g" style="padding:1px 7px;font-size:9px;margin-left:4px;" onclick="bvEditRiderArea('${r.agent.id}', '${escH(r.agent.state || "")}', '${escH(r.agent.city || "")}')">Edit</button></td>
             <td class="n">${escH(r.agent.phone || "—")}</td>
             <td>${r.assigned}</td>
             <td class="a">${r.delivered}</td>
@@ -8417,6 +8417,34 @@ async function renderRiders(el) {
 
 // A delivery agent's own view: what's assigned to them, what they've
 // delivered, and what that's worth -- no other agent's data in sight.
+// A rider's state (and optionally city): orders are offered to riders in the customer's state first. A rider sets their own; an admin can set anyone's.
+function bvEditRiderArea(agentId, state, city) {
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal">
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:6px;">Delivery area</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Orders from this state are offered to this rider first. Add a city to narrow it down (optional).</div>
+    <div class="field"><label>State</label><select id="bvRiderState"><option value="">Choose a state…</option>${BV_NG_STATES.map(x => `<option value="${escH(x.label)}" ${x.label === state ? "selected" : ""}>${escH(x.label)}</option>`).join("")}</select></div>
+    <div class="field"><label>City / area (optional)</label><input id="bvRiderCity" value="${escH(city || "")}" placeholder="e.g. Ibadan, Ikeja, Lekki"></div>
+    <div id="bvRiderMsg" style="font-size:11.5px;margin:8px 0;"></div>
+    <button type="button" class="btn btn-a" id="bvRiderSave">Save</button>
+  </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById("bvRiderSave").addEventListener("click", async (e) => {
+    const st = document.getElementById("bvRiderState").value, msg = document.getElementById("bvRiderMsg");
+    if (!st) { msg.style.color = "var(--danger)"; msg.textContent = "Choose a state."; return; }
+    e.target.disabled = true;
+    const { error } = await supabaseClient.rpc("set_delivery_agent_area", { p_agent_id: agentId, p_state: st, p_city: document.getElementById("bvRiderCity").value });
+    if (error) { msg.style.color = "var(--danger)"; msg.textContent = (error.message || "Could not save.").replace(/^.*?:\s*/, ""); e.target.disabled = false; return; }
+    bvCloseModal();
+    render();
+  });
+}
+
 function renderMyDeliveries(el, orders, agents) {
   const myAgent = agents.find(a => a.id === window.myProfile?.delivery_agent_id);
   const offered = orders.filter(o => o.assignment_status === "offered");
@@ -8431,6 +8459,13 @@ function renderMyDeliveries(el, orders, agents) {
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">My Deliveries</div><div class="sh-actions"><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
+
+    ${myAgent && !myAgent.state ? `
+    <div class="panel" style="border:1.5px solid var(--accent);margin-bottom:16px;">
+      <div class="ph"><div class="ph-title">📍 Where do you deliver?</div></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Orders are offered to riders in the customer's state (and city when you set one). Tell us your area so you get the right orders.</div>
+      <button type="button" class="btn btn-a" onclick="bvEditRiderArea('${myAgent.id}', '', '')">Set my area</button>
+    </div>` : ""}
 
     ${offered.length ? `
     <div class="panel" style="border:1.5px solid var(--accent);margin-bottom:16px;">
@@ -8457,7 +8492,7 @@ function renderMyDeliveries(el, orders, agents) {
 
     <div class="g2" style="margin-bottom:18px;">
       <div class="kc"><div class="kc-lbl">This month</div><div class="kc-val">${thisMonthDelivered.length} delivered</div><div class="kc-sub">${fN(thisMonthRevenue)}</div></div>
-      <div class="kc"><div class="kc-lbl">Your zone</div><div class="kc-val" style="font-size:16px;">${escH(myAgent?.zone || "—")}</div><div class="kc-sub">${escH(myAgent?.phone || "")}</div></div>
+      <div class="kc"><div class="kc-lbl">Your area</div><div class="kc-val" style="font-size:16px;">${escH(myAgent?.state ? myAgent.state + (myAgent.city ? ", " + myAgent.city : "") : (myAgent?.zone || "—"))}</div><div class="kc-sub">${escH(myAgent?.phone || "")}</div></div>
     </div>
 
     <div class="panel">
@@ -11240,7 +11275,11 @@ async function renderWallet(el) {
 
 // ── SETTINGS: sections + setup checklist ─────────────────────────────────────
 let bvSettingsSec = "accounts";
+function bvLimitedRole() { const r = window.myProfile?.role; return r === "delivery_agent" || r === "customer_care"; }
 function bvSettingsSections(isAdmin) {
+  // Riders and customer care have no ad accounts, pixels or domains: they only manage their own alerts.
+  const r = window.myProfile?.role;
+  if (r === "delivery_agent" || r === "customer_care") return [{ id: "automation", icon: "🔔", label: "Alerts & notifications" }];
   const list = [
     { id: "accounts", icon: "🔌", label: "Ad accounts" },
     { id: "domains", icon: "🌐", label: "Domains" },
@@ -11301,6 +11340,7 @@ async function bvRenderSetupSlot() {
 }
 
 async function renderSettings(el) {
+  if (bvLimitedRole()) bvSettingsSec = "automation";
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const [buyers, company, invites, teamMembers, partnerBizId] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
@@ -11314,6 +11354,7 @@ async function renderSettings(el) {
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Settings</div></div>
+    ${(window.myProfile?.role === "delivery_agent" || window.myProfile?.role === "customer_care") ? "<style>#fbConnectPanel,#killRulesPanel,#domainsPanel,#aiAgentPanel,[data-sec=accounts],[data-sec=business],[data-sec=domains],[data-sec=billing]{display:none!important}</style>" : ""}
     <div id="setupCheckSlot"></div>
     <div class="set-wrap">
     <nav class="set-nav" id="setNav">${bvSettingsSections(isAdmin).map(x => `<button type="button" class="set-nav-btn ${x.id === bvSettingsSec ? "active" : ""}" data-sec="${x.id}"><span>${x.icon}</span>${x.label}</button>`).join("")}</nav>
