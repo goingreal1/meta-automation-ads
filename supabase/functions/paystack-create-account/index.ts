@@ -48,6 +48,15 @@ async function paystackFetch(path: string, init: RequestInit) {
   return body;
 }
 
+// Live Paystack requires a phone number on every customer. Normalise Nigerian formats to +234XXXXXXXXXX.
+function normPhone(raw: unknown): string | null {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 13 && d.startsWith("234")) return "+" + d;
+  if (d.length === 11 && d.startsWith("0")) return "+234" + d.slice(1);
+  if (d.length === 10) return "+234" + d;
+  return null;
+}
+
 const SVC_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 // Internal-only: callers are other edge functions that send the service-role key.
@@ -72,7 +81,7 @@ Deno.serve(async (req: Request) => {
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { media_buyer_id, email: givenEmail } = await req.json();
+    const { media_buyer_id, email: givenEmail, phone: givenPhone } = await req.json();
     if (!media_buyer_id) return json({ error: "media_buyer_id is required" }, 400);
 
     const { data: buyer } = await supabase
@@ -95,19 +104,23 @@ Deno.serve(async (req: Request) => {
     // real TLD; ".com" passes.
     const email = typeof givenEmail === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(givenEmail) ? givenEmail : `buyer-${buyer.id}@noemail.example.com`;
 
+    const { data: prof } = await supabase.from("profiles").select("whatsapp_number").eq("media_buyer_id", buyer.id).maybeSingle();
+    const phone = normPhone(givenPhone) ?? normPhone(prof?.whatsapp_number);
+    if (!phone) return json({ error: "A phone number is needed to open this account (Paystack requires one). Add the buyer's WhatsApp number in their profile, then try again." }, 400);
+
     // first_name / last_name become the account name customers see when they pay.
-    const customer = await paystackFetch("/customer", {
-      method: "POST",
-      body: JSON.stringify({ email, first_name: (co?.name || "Revora").slice(0, 30), last_name: (buyer.name || buyer.code || "Buyer").slice(0, 30) }),
-    });
+    const names = { first_name: (co?.name || "Revora").slice(0, 30), last_name: (buyer.name || buyer.code || "Buyer").slice(0, 30), phone };
+    const customer = await paystackFetch("/customer", { method: "POST", body: JSON.stringify({ email, ...names }) });
     const customerCode = customer.data.customer_code;
+    // The customer may already exist from an earlier attempt without a phone: make sure it carries one.
+    await paystackFetch(`/customer/${customerCode}`, { method: "PUT", body: JSON.stringify(names) }).catch(() => {});
 
     let dva;
     try {
-      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: PAYSTACK_PREFERRED_BANK }) });
+      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: PAYSTACK_PREFERRED_BANK, ...names }) });
     } catch (e) {
       if (!IS_LIVE || PAYSTACK_PREFERRED_BANK === "titan-paystack") throw e;
-      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: "titan-paystack" }) });
+      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: "titan-paystack", ...names }) });
     }
     const accountNumber = dva.data.account_number;
     const bankName = dva.data.bank?.name ?? PAYSTACK_PREFERRED_BANK;

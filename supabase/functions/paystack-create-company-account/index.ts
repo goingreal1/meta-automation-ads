@@ -34,6 +34,15 @@ async function paystackFetch(path: string, init: RequestInit = {}) {
   return body;
 }
 
+// Live Paystack requires a phone number on every customer. Normalise Nigerian formats to +234XXXXXXXXXX.
+function normPhone(raw: unknown): string | null {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 13 && d.startsWith("234")) return "+" + d;
+  if (d.length === 11 && d.startsWith("0")) return "+234" + d.slice(1);
+  if (d.length === 10) return "+234" + d;
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -44,7 +53,7 @@ Deno.serve(async (req: Request) => {
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { access_token, company_id: svcCompanyId, email: givenEmail } = await req.json();
+    const { access_token, company_id: svcCompanyId, email: givenEmail, phone: givenPhone } = await req.json();
     // Internal callers (sign-up) pass the service-role key as the bearer token plus a company_id; everyone else is an owner/admin.
     const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
     let profile: { role: string; company_id: string } | null = null;
@@ -68,18 +77,20 @@ Deno.serve(async (req: Request) => {
     }
 
     const email = typeof givenEmail === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(givenEmail) ? givenEmail : `company-${company.id}@noemail.example.com`;
-    const customer = await paystackFetch("/customer", {
-      method: "POST",
-      body: JSON.stringify({ email, first_name: (company.name || "Company").slice(0, 30), last_name: "Wallet" }),
-    });
+    const { data: owners } = await supabase.from("profiles").select("whatsapp_number, role").eq("company_id", company.id).in("role", ["owner", "admin"]);
+    const phone = normPhone(givenPhone) ?? (owners ?? []).map((o: any) => normPhone(o.whatsapp_number)).find(Boolean) ?? null;
+    if (!phone) return json({ error: "A phone number is needed to open the company account (Paystack requires one). Add the owner's WhatsApp number in Settings, then try again." }, 400);
+    const names = { first_name: (company.name || "Company").slice(0, 30), last_name: "Wallet", phone };
+    const customer = await paystackFetch("/customer", { method: "POST", body: JSON.stringify({ email, ...names }) });
     const customerCode = customer.data.customer_code;
+    await paystackFetch(`/customer/${customerCode}`, { method: "PUT", body: JSON.stringify(names) }).catch(() => {});
 
     let dva;
     try {
-      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: PAYSTACK_PREFERRED_BANK }) });
+      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: PAYSTACK_PREFERRED_BANK, ...names }) });
     } catch (e) {
       if (!IS_LIVE || PAYSTACK_PREFERRED_BANK === "titan-paystack") throw e;
-      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: "titan-paystack" }) });
+      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: "titan-paystack", ...names }) });
     }
     const accountNumber = dva.data.account_number;
     const bankName = dva.data.bank?.name ?? PAYSTACK_PREFERRED_BANK;
