@@ -1102,7 +1102,7 @@ html{-webkit-text-size-adjust:100%;}
   .set-nav-btn.active{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
   .set-body{flex:1;min-width:0;}
   .set-body [data-sec]{display:none;}
-  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"]{display:block;}
+  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"],.set-body[data-active="security"] [data-sec="security"]{display:block;}
   @media (max-width:760px){.set-wrap{flex-direction:column;}.set-nav{flex-direction:row;overflow-x:auto;min-width:0;width:100%;position:static;}.set-nav-btn{white-space:nowrap;}}
   .setup-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:2px 0 12px;}
   .setup-bar>div{height:100%;background:var(--accent);border-radius:99px;}
@@ -6115,6 +6115,54 @@ async function bvRenderTransferNames() {
     const { error } = await supabaseClient.from("transfer_allowed_names").insert({ account_name: name });
     if (error) return bvToast(/duplicate|unique/i.test(error.message) ? "That name is already on the list." : error.message, "err");
     bvToast("Added"); bvRenderTransferNames();
+  };
+}
+
+// ── TRANSFER PIN (Settings → Security) ────────────────────────────────────────
+// The PIN that approves money sent through ChatGPT / Claude. It is checked by the server (hashed, locks after 5 wrong tries) and is only
+// ever typed here or on approve.html, never into an AI chat.
+async function bvPinApi(path, body) {
+  const r = await fetch(`${SUPA_URL}/functions/v1/mcp${path}`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({ error: "Something went wrong." }));
+  return { ok: r.ok, j };
+}
+async function bvRenderPinPanel() {
+  const el = document.getElementById("pinPanel"); if (!el) return;
+  const st = await bvPinApi("/pin/status");
+  const has = !!st.j?.has_pin;
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Transfer PIN</div><div class="ph-count">${has ? "set" : "not set"}</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Money sent through ChatGPT or Claude needs this PIN. You type it on a private Revora page, never in the chat, so the AI cannot see it. Use 4 to 6 digits.</div>
+    <form id="pinForm" autocomplete="off" style="max-width:320px;">
+      ${has ? `<div class="field"><label>Current PIN</label><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="pinCur" placeholder="Current PIN"></div>
+      <div style="font-size:11px;color:var(--muted);margin:-4px 0 8px;"><a href="#" id="pinForgot">Forgot your PIN? Use your account password instead</a></div>
+      <div class="field" id="pinPwWrap" style="display:none;"><label>Account password</label><input type="password" autocomplete="current-password" id="pinPw" placeholder="Your Revora password"></div>` : ""}
+      <div class="field"><label>${has ? "New PIN" : "Choose a PIN"}</label><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="pinNew" placeholder="4 to 6 digits" required></div>
+      <div class="field"><label>Repeat the PIN</label><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" id="pinNew2" placeholder="Same PIN again" required></div>
+      <button type="submit" class="btn btn-a" id="pinSave">${has ? "Change PIN" : "Set PIN"}</button>
+      <div id="pinMsg" style="margin-top:8px;"></div>
+    </form>`;
+  el.querySelectorAll('input[inputmode="numeric"]').forEach(i => i.addEventListener("input", () => { i.value = i.value.replace(/\D/g, "").slice(0, 6); }));
+  const forgot = document.getElementById("pinForgot");
+  if (forgot) forgot.onclick = e => { e.preventDefault(); const w = document.getElementById("pinPwWrap"), c = document.getElementById("pinCur"); const on = w.style.display === "none"; w.style.display = on ? "" : "none"; c.disabled = on; if (on) c.value = ""; };
+  document.getElementById("pinForm").onsubmit = async ev => {
+    ev.preventDefault();
+    const msg = document.getElementById("pinMsg"), btn = document.getElementById("pinSave");
+    const n1 = document.getElementById("pinNew").value, n2 = document.getElementById("pinNew2").value;
+    const err = t => { msg.innerHTML = `<div class="msg err" style="display:block;">${escH(t)}</div>`; };
+    if (!/^\d{4,6}$/.test(n1)) return err("The PIN must be 4 to 6 digits.");
+    if (n1 !== n2) return err("The two PINs do not match.");
+    const body = { pin: n1 };
+    if (has) {
+      const pw = document.getElementById("pinPw"), cur = document.getElementById("pinCur");
+      if (pw && pw.offsetParent !== null && pw.value) body.password = pw.value; else body.current_pin = cur.value;
+    }
+    btn.disabled = true; msg.innerHTML = "";
+    const r = await bvPinApi("/pin/set", body);
+    btn.disabled = false;
+    ["pinNew", "pinNew2", "pinCur", "pinPw"].forEach(id => { const x = document.getElementById(id); if (x) x.value = ""; });
+    if (!r.ok) return err(r.j?.error || "Could not save the PIN.");
+    bvToast(has ? "PIN changed" : "PIN set"); bvRenderPinPanel();
   };
 }
 
@@ -11381,6 +11429,7 @@ function bvSettingsSections(isAdmin) {
     { id: "automation", icon: "⚙️", label: "Automation & alerts" },
     { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
     ...(isAdmin ? [{ id: "billing", icon: "💳", label: "Billing" }] : []),
+    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "security", icon: "🔐", label: "Security" }] : []),
   ];
   return list;
 }
@@ -11559,6 +11608,7 @@ async function renderSettings(el) {
 
     ${!isAdmin ? "" : `
     <div class="panel" data-sec="business" id="transferNamesPanel"></div>
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
     <div class="panel" data-sec="business">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
@@ -11632,6 +11682,7 @@ async function renderSettings(el) {
   bvSettingsWire();
   bvRenderSetupSlot();
   bvRenderTransferNames();
+  bvRenderPinPanel();
 document.querySelectorAll(".connVerifyBtn").forEach(btn => {
     btn.addEventListener("click", () => bvVerifyAdAccountConnection(btn.dataset.aid));
   });
