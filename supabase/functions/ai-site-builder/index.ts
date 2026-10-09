@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { handlePage } from "./pages.ts";
 
 // AI site builder. The model never writes HTML: it only
 //   plan  -> picks which of OUR ready-made blocks to use, in order, plus brand colours and fonts
@@ -70,7 +71,6 @@ const RULES = `Hard rules for all copy:
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  if (!OPENAI_API_KEY) return json({ error: "AI isn't set up on the server yet." }, 503);
 
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return json({ error: "Please sign in again." }, 401);
@@ -82,6 +82,14 @@ Deno.serve(async (req: Request) => {
   let body: any = {};
   try { body = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
   const mode = String(body.mode || "");
+  // Pages built by an assistant through the MCP: no AI call here, so no AI quota is used (see pages.ts)
+  if (mode.startsWith("page_")) {
+    const { data: me } = await admin.from("profiles").select("role").eq("id", u.user.id).maybeSingle();
+    if (!["owner", "admin", "buyer"].includes(String(me?.role))) return json({ error: "Only owners, admins and media buyers can build pages." }, 403);
+    const r = await handlePage(admin, mode, body, prof.company_id, u.user.id);
+    return json(r.body, r.status);
+  }
+  if (!OPENAI_API_KEY) return json({ error: "AI isn't set up on the server yet." }, 503);
   if (!["plan", "copy", "edit"].includes(mode)) return json({ error: "Unknown mode" }, 400);
 
   // daily limit per company (a page build = 2 calls, an edit = 1)

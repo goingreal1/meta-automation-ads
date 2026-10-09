@@ -58,6 +58,9 @@ Deno.serve(async (req: Request) => {
       }
     }
   }
+  // A private test link (?preview=1&pt=<token>) lets people without a login review a draft; the token is never sent to the public.
+  const pt = url.searchParams.get("pt") || "";
+  if (wantPreview && !isOwner && pt && pt === (site.settings as any)?.preview_token) isOwner = true;
   if (site.status !== "published" && !isOwner) return json({ error: "Site not found" }, 404);
 
   const { data: page } = await supabase
@@ -117,7 +120,7 @@ Deno.serve(async (req: Request) => {
 
   const { project: _p, ...pageOut } = page as any;
   return json({
-    site: { id: site.id, name: site.name, slug: site.slug, purchase_event: site.purchase_event, settings: site.settings, thanks_slug: thanks ? thanks.slug : null },
+    site: { id: site.id, name: site.name, slug: site.slug, purchase_event: site.purchase_event, settings: { ...(site.settings as any), preview_token: undefined }, thanks_slug: thanks ? thanks.slug : null },
     page: pageOut,
     product,
     pixel_id: pixelId,

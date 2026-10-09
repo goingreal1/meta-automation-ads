@@ -105,7 +105,7 @@ html,body{margin:0;padding:0;background:#fff;}
   var headers = { apikey: RV.ANON, Authorization: "Bearer " + RV.ANON };
   if (preview) { try { var t = localStorage.getItem("rv_preview_token"); if (t) headers.Authorization = "Bearer " + t; } catch (e) {} }
 
-  fetch(RV.SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(pageSlug) + (preview ? "&preview=1" : ""), { headers: headers })
+  fetch(RV.SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(pageSlug) + (preview ? "&preview=1" + (RV.params.get("pt") ? "&pt=" + encodeURIComponent(RV.params.get("pt")) : "") : ""), { headers: headers })
     .then(function (r) { return r.json(); })
     .then(function (d) { if (d.error) throw new Error(d.error); render(d); })
     .catch(function () { fail("This page isn't available."); });

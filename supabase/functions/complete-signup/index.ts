@@ -63,6 +63,18 @@ async function ensureMediaBuyer(companyId: string, email: string, displayName: s
 }
 
 
+// Dedicated bank accounts are set up automatically: the company wallet when a company signs up, and a customer-payment
+// account for every media buyer (named "<company> <buyer>"). Failure here must never block sign-up; both are retried lazily.
+async function provisionAccounts(opts: { companyId?: string; mediaBuyerId?: string | null; email?: string | null }) {
+  const post = (fnName: string, body: unknown) => fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify(body),
+  }).then(async (r) => { if (!r.ok) console.error(`${fnName} failed:`, r.status, (await r.text()).slice(0, 200)); }).catch((e) => console.error(`${fnName} error:`, e));
+  const jobs: Promise<unknown>[] = [];
+  if (opts.companyId) jobs.push(post("paystack-create-company-account", { company_id: opts.companyId, email: opts.email ?? undefined }));
+  if (opts.mediaBuyerId) jobs.push(post("paystack-create-account", { media_buyer_id: opts.mediaBuyerId, email: opts.email ?? undefined }));
+  await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, 12000))]);
+}
+
 // ── business profile (whitelisted, never trust the browser) ─────────────────
 const PICK = {
   account_type: ["company", "personal"],
@@ -147,6 +159,8 @@ Deno.serve(async (req: Request) => {
       });
       if (profileErr) throw new Error(`Could not create owner profile: ${profileErr.message}`);
 
+      await provisionAccounts({ companyId: company.id, mediaBuyerId, email: user.email });
+
       return json({ company_id: company.id, role: "owner", account_type: personal ? "personal" : "company" });
     }
 
@@ -176,6 +190,8 @@ Deno.serve(async (req: Request) => {
         media_buyer_id: mediaBuyerId, display_name: body?.display_name ?? null,
       });
       if (profileErr) throw new Error(`Could not create profile: ${profileErr.message}`);
+
+      if (mediaBuyerId) await provisionAccounts({ mediaBuyerId, email: user.email });
 
       return json({ company_id: invite.company_id, role: invite.role });
     }

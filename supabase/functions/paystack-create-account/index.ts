@@ -21,7 +21,10 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 // Paystack's test mode only provisions DVAs against specific sandbox banks;
 // override via secret once you know which one your account supports.
-const PAYSTACK_PREFERRED_BANK = Deno.env.get("PAYSTACK_PREFERRED_BANK") ?? "test-bank";
+// Live keys need a real bank (wema-bank or titan-paystack); "test-bank" only exists in test mode.
+const IS_LIVE = PAYSTACK_SECRET_KEY.startsWith("sk_live");
+const _pref = Deno.env.get("PAYSTACK_PREFERRED_BANK") ?? "";
+const PAYSTACK_PREFERRED_BANK = IS_LIVE ? (_pref && _pref !== "test-bank" ? _pref : "wema-bank") : (_pref || "test-bank");
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const PAYSTACK_BASE = "https://api.paystack.co";
@@ -43,6 +46,15 @@ async function paystackFetch(path: string, init: RequestInit) {
     throw new Error(body?.message || `Paystack ${path} failed (${res.status})`);
   }
   return body;
+}
+
+// Live Paystack requires a phone number on every customer. Normalise Nigerian formats to +234XXXXXXXXXX.
+function normPhone(raw: unknown): string | null {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 13 && d.startsWith("234")) return "+" + d;
+  if (d.length === 11 && d.startsWith("0")) return "+234" + d.slice(1);
+  if (d.length === 10) return "+234" + d;
+  return null;
 }
 
 const SVC_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -69,7 +81,7 @@ Deno.serve(async (req: Request) => {
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { media_buyer_id } = await req.json();
+    const { media_buyer_id, email: givenEmail, phone: givenPhone } = await req.json();
     if (!media_buyer_id) return json({ error: "media_buyer_id is required" }, 400);
 
     const { data: buyer } = await supabase
@@ -79,26 +91,37 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!buyer) return json({ error: "Media buyer not found" }, 404);
 
+    const { data: co } = await supabase.from("companies").select("name").eq("id", buyer.company_id).maybeSingle();
+    // What a paying customer sees as the account name: the company first, then the buyer, e.g. "OUTREACH HQ AMAKA".
+    const displayName = `${co?.name ?? ""} ${buyer.name || buyer.code || ""}`.trim().slice(0, 60);
     if (buyer.dedicated_account_number) {
-      return json({ account_number: buyer.dedicated_account_number, bank_name: buyer.dedicated_account_bank, account_name: buyer.name });
+      return json({ account_number: buyer.dedicated_account_number, bank_name: buyer.dedicated_account_bank, account_name: displayName });
     }
 
     // Paystack requires a valid-looking email on every customer -- buyers
     // don't necessarily have one on file, so a deterministic placeholder
     // stands in. ".internal" was rejected by Paystack's validator as not a
     // real TLD; ".com" passes.
-    const email = `buyer-${buyer.id}@noemail.example.com`;
+    const email = typeof givenEmail === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(givenEmail) ? givenEmail : `buyer-${buyer.id}@noemail.example.com`;
 
-    const customer = await paystackFetch("/customer", {
-      method: "POST",
-      body: JSON.stringify({ email, first_name: buyer.name || buyer.code, last_name: "Media Buyer" }),
-    });
+    const { data: prof } = await supabase.from("profiles").select("whatsapp_number").eq("media_buyer_id", buyer.id).maybeSingle();
+    const phone = normPhone(givenPhone) ?? normPhone(prof?.whatsapp_number);
+    if (!phone) return json({ error: "A phone number is needed to open this account (Paystack requires one). Add the buyer's WhatsApp number in their profile, then try again." }, 400);
+
+    // first_name / last_name become the account name customers see when they pay.
+    const names = { first_name: (co?.name || "Revora").slice(0, 30), last_name: (buyer.name || buyer.code || "Buyer").slice(0, 30), phone };
+    const customer = await paystackFetch("/customer", { method: "POST", body: JSON.stringify({ email, ...names }) });
     const customerCode = customer.data.customer_code;
+    // The customer may already exist from an earlier attempt without a phone: make sure it carries one.
+    await paystackFetch(`/customer/${customerCode}`, { method: "PUT", body: JSON.stringify(names) }).catch(() => {});
 
-    const dva = await paystackFetch("/dedicated_account", {
-      method: "POST",
-      body: JSON.stringify({ customer: customerCode, preferred_bank: PAYSTACK_PREFERRED_BANK }),
-    });
+    let dva;
+    try {
+      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: PAYSTACK_PREFERRED_BANK, ...names }) });
+    } catch (e) {
+      if (!IS_LIVE || PAYSTACK_PREFERRED_BANK === "titan-paystack") throw e;
+      dva = await paystackFetch("/dedicated_account", { method: "POST", body: JSON.stringify({ customer: customerCode, preferred_bank: "titan-paystack", ...names }) });
+    }
     const accountNumber = dva.data.account_number;
     const bankName = dva.data.bank?.name ?? PAYSTACK_PREFERRED_BANK;
 
@@ -109,7 +132,7 @@ Deno.serve(async (req: Request) => {
     }).eq("id", buyer.id);
     if (updErr) throw updErr;
 
-    return json({ account_number: accountNumber, bank_name: bankName, account_name: buyer.name });
+    return json({ account_number: accountNumber, bank_name: bankName, account_name: dva.data.account_name || displayName });
   } catch (err: any) {
     console.error("paystack-create-account error:", err);
     return json({ error: err.message }, 500);
