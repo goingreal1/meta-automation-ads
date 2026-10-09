@@ -10880,6 +10880,55 @@ async function bvShowTransferModal() {
   }));
 }
 
+// Matching an unmatched (held) deposit to an order. An admin matches directly; a buyer can only ask, for their own orders.
+async function bvShowMatchModal(paymentId, amount) {
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading orders…</div></div>`;
+  document.body.appendChild(overlay);
+  const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+  const orders = await sbQuery("orders", "select=id,customer_name,customer_phone,product_name,order_value_naira,order_status,ordered_at,media_buyers(name),payments(status)&order_status=in.(pending,valid,delivered)&order=ordered_at.desc&limit=300").catch(() => []);
+  const cands = (orders || []).filter(o => Math.abs(Number(o.order_value_naira || 0) - Number(amount)) <= 1 && !(o.payments || []).some(x => x.status === "confirmed"));
+  const modal = overlay.querySelector(".bv-modal");
+  modal.innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:6px;">${isAdmin ? "Match deposit to an order" : "Match deposit to my order"}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Deposit of ${fN(amount)}. Only orders worth exactly this amount with no confirmed payment are shown.${isAdmin ? "" : " Your admin must approve the match before it counts."}</div>
+    ${!cands.length ? `<div class="empty"><div class="empty-ico">🔎</div>No ${isAdmin ? "" : "of your "}orders of exactly ${fN(amount)} are waiting for payment.</div>` : `
+    <div class="field"><label>Order</label><select id="bvMatchOrder">${cands.map(o => `<option value="${o.id}">${escH(o.customer_name || "Customer")} · ${escH(o.product_name || "")} · ${fN(o.order_value_naira)} · ${new Date(o.ordered_at).toLocaleDateString()}${isAdmin && o.media_buyers?.name ? " · " + escH(o.media_buyers.name) : ""}</option>`).join("")}</select></div>
+    <div id="bvMatchMsg" style="font-size:11.5px;margin:8px 0;"></div>
+    <button type="button" class="btn btn-a" id="bvMatchGo">${isAdmin ? "Match now" : "Request approval"}</button>`}`;
+  document.getElementById("bvMatchGo")?.addEventListener("click", async (e) => {
+    const btn = e.target, msg = document.getElementById("bvMatchMsg"), orderId = document.getElementById("bvMatchOrder").value;
+    btn.disabled = true; msg.textContent = "Working…";
+    let err = null;
+    if (isAdmin) {
+      const { error } = await supabaseClient.rpc("match_held_payment", { p_payment_id: paymentId, p_order_id: orderId });
+      err = error;
+    } else {
+      const { error } = await supabaseClient.from("payment_match_requests").insert({ company_id: window.myProfile.company_id, payment_id: paymentId, order_id: orderId, media_buyer_id: window.myProfile.media_buyer_id });
+      err = error;
+    }
+    if (err) { msg.style.color = "var(--danger)"; msg.textContent = (err.message || "Could not do that.").replace(/^.*?:\s*/, ""); btn.disabled = false; return; }
+    bvCloseModal();
+    renderWallet(document.getElementById("mainContent"));
+  });
+}
+async function bvDecideMatch(requestId, decision, paymentId, orderId) {
+  if (decision === "approve") {
+    if (!confirm("Count this deposit as the payment for that order? It leaves the company wallet.")) return;
+    const { error } = await supabaseClient.rpc("match_held_payment", { p_payment_id: paymentId, p_order_id: orderId, p_request_id: requestId });
+    if (error) { alert((error.message || "Could not match.").replace(/^.*?:\s*/, "")); return; }
+  } else {
+    const { error } = await supabaseClient.from("payment_match_requests").update({ status: "declined", decided_at: new Date().toISOString(), decided_by: (await supabaseClient.auth.getUser()).data.user.id }).eq("id", requestId);
+    if (error) { alert("Could not decline: " + error.message); return; }
+  }
+  renderWallet(document.getElementById("mainContent"));
+}
+
 async function renderWallet(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myId = window.myProfile?.media_buyer_id || null;
@@ -10898,6 +10947,9 @@ async function renderWallet(el) {
   const heldDeposits = (confirmedPayments || []).filter(p => p.held_for_buyer_id && (isAdmin || p.held_for_buyer_id === myId));
   const heldTotal = heldDeposits.reduce((s, p) => s + Number(p.amount_naira || 0), 0);
   const heldFrom = p => [p.sender_name, p.sender_bank, p.sender_account].filter(Boolean).join(" · ") || "sender not shown";
+  // Requests from buyers asking the admin to match a held deposit to one of their orders.
+  const matchReqs = await sbQuery("payment_match_requests", "select=id,payment_id,order_id,media_buyer_id,status,requested_at,orders(customer_name,product_name,order_value_naira)&order=requested_at.desc&limit=100").catch(() => []);
+  const pendingByPayment = new Map((matchReqs || []).filter(r => r.status === "pending").map(r => [r.payment_id, r]));
 
   const myRevenue = myId ? (walletBalances[myId] || walletBlank()) : walletBlank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
@@ -10976,7 +11028,7 @@ async function renderWallet(el) {
         ? "Money that arrived in a buyer's account but couldn't be matched to an order (often a POS or a different sender name). It is held in the company funding wallet. Trace it by sender, then match it to the right order."
         : "Money paid into your account that couldn't be matched to an order yet (for example a POS payment or a different sender name). The company holds it for now. Tell your admin which customer it was so it can be matched to the order."}</div>
       <div class="tbl-wrap"><table>
-        <tr><th>When</th>${isAdmin ? "<th>Buyer account</th>" : ""}<th>Sender</th><th>Bank</th><th>Account</th><th>Amount</th></tr>
+        <tr><th>When</th>${isAdmin ? "<th>Buyer account</th>" : ""}<th>Sender</th><th>Bank</th><th>Account</th><th>Amount</th><th></th></tr>
         ${heldDeposits.map(p => `<tr>
           <td class="s">${p.paid_at ? new Date(p.paid_at).toLocaleString() : "—"}</td>
           ${isAdmin ? `<td class="s">${escH((buyers || []).find(b => b.id === p.held_for_buyer_id)?.name || "—")}</td>` : ""}
@@ -10984,8 +11036,27 @@ async function renderWallet(el) {
           <td class="s">${escH(p.sender_bank || "—")}</td>
           <td class="n">${escH(p.sender_account || "—")}</td>
           <td class="n">${fN(p.amount_naira)}</td>
+          <td>${pendingByPayment.has(p.id)
+            ? `<span class="pill watch">Match requested${isAdmin ? "" : " · waiting for admin"}</span>`
+            : (isAdmin || myId) ? `<button type="button" class="btn btn-a" style="padding:3px 10px;font-size:10px;" onclick="bvShowMatchModal('${p.id}', ${Number(p.amount_naira)})">${isAdmin ? "Match to order" : "Match to my order"}</button>` : ""}</td>
         </tr>`).join("")}
       </table></div>
+    </div>` : ""}
+
+    ${isAdmin && pendingByPayment.size ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Deposit match requests (${pendingByPayment.size} pending)</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A buyer says one of these deposits is the payment for their order. Check the sender, then approve to count it for that order (it leaves the company wallet and counts as the buyer's confirmed revenue).</div>
+      ${[...pendingByPayment.values()].map(r => {
+        const dep = heldDeposits.find(p => p.id === r.payment_id);
+        const bn = (buyers || []).find(b => b.id === r.media_buyer_id)?.name || "—";
+        return `<div style="border-bottom:1px solid var(--border);padding:8px 0;">
+          <div style="font-size:12.5px;"><b>${escH(bn)}</b> says ${dep ? fN(dep.amount_naira) : ""} is for <b>${escH(r.orders?.customer_name || "an order")}</b>${r.orders?.product_name ? ` (${escH(r.orders.product_name)}, ${fN(r.orders.order_value_naira)})` : ""}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">${dep ? "Sent by " + escH(heldFrom(dep)) : ""} -- ${ago(r.requested_at)}</div>
+          <button type="button" class="btn btn-a" style="padding:3px 10px;font-size:10px;" onclick="bvDecideMatch('${r.id}','approve','${r.payment_id}','${r.order_id}')">Approve</button>
+          <button type="button" class="btn" style="padding:3px 10px;font-size:10px;" onclick="bvDecideMatch('${r.id}','decline')">Decline</button>
+        </div>`;
+      }).join("")}
     </div>` : ""}
     <div style="margin-bottom:18px;"><button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button></div>
 
