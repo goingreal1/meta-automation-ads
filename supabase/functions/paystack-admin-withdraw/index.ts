@@ -43,7 +43,9 @@ Deno.serve(async (req: Request) => {
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { access_token, amount_naira, account_number, bank_code } = await req.json();
+    const { access_token, amount_naira, account_number, bank_code, reference } = await req.json();
+    // Optional caller-chosen reference: Paystack refuses a second transfer with the same one, so a retry can never pay twice.
+    const ref = typeof reference === "string" && /^[a-z0-9_-]{16,50}$/.test(reference) ? reference : undefined;
     if (!amount_naira || !account_number || !bank_code) {
       return json({ error: "amount_naira, account_number and bank_code are required" }, 400);
     }
@@ -73,6 +75,7 @@ Deno.serve(async (req: Request) => {
           source: "balance",
           amount: Math.round(Number(amount_naira) * 100),
           recipient: recipient?.data?.recipient_code,
+          ...(ref ? { reference: ref } : {}),
           reason: `Admin withdrawal for ${profile.company_id}`,
         }),
       });
