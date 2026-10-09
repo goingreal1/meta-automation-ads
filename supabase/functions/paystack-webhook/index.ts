@@ -97,6 +97,13 @@ Deno.serve(async (req: Request) => {
       const reference = data.reference;
       const narration = String(data.authorization?.narration ?? "");
       const senderName = normalizeName(data.authorization?.sender_name);
+      // Who sent it and from which bank, so an admin can trace a payment that could not be matched to an order.
+      const sender = {
+        sender_name: data.authorization?.sender_name ?? null,
+        sender_bank: data.authorization?.sender_bank ?? null,
+        sender_account: data.authorization?.sender_bank_account_number ?? null,
+        narration: narration || null,
+      };
 
       // Paystack retries webhooks: a reference we already confirmed must never confirm (or deliver) anything twice.
       if (reference) {
@@ -117,7 +124,7 @@ Deno.serve(async (req: Request) => {
           company_id: company.id, order_id: null, media_buyer_id: null,
           amount_naira: amountNaira, status: "confirmed", source: "admin_topup",
           channel: data.channel, paid_at: new Date().toISOString(),
-          paystack_reference: reference, raw_event: event,
+          paystack_reference: reference, raw_event: event, ...sender,
         });
         if (error) console.error("paystack-webhook admin_topup insert error:", error.message);
         return new Response("ok", { status: 200 });
@@ -133,7 +140,7 @@ Deno.serve(async (req: Request) => {
         await supabase.from("payments").insert({
           company_id: null, order_id: null, media_buyer_id: null,
           amount_naira: amountNaira, status: "unmatched", channel: data.channel,
-          paystack_reference: reference, raw_event: event,
+          paystack_reference: reference, raw_event: event, ...sender,
         });
         return new Response("ok", { status: 200 });
       }
@@ -176,7 +183,7 @@ Deno.serve(async (req: Request) => {
       if (matchedOrderId) {
         const { error } = await supabase.from("payments").update({
           status: "confirmed", paid_at: new Date().toISOString(),
-          paystack_reference: reference, channel: data.channel, raw_event: event,
+          paystack_reference: reference, channel: data.channel, raw_event: event, ...sender,
         }).eq("order_id", matchedOrderId);
         if (error) console.error("paystack-webhook update error:", error.message);
         else {
@@ -186,7 +193,7 @@ Deno.serve(async (req: Request) => {
             await supabase.from("payments").insert({
               company_id: buyer.company_id, order_id: matchedOrderId, media_buyer_id: buyer.id,
               amount_naira: amountNaira, status: "confirmed", paid_at: new Date().toISOString(),
-              channel: data.channel, paystack_reference: reference, raw_event: event,
+              channel: data.channel, paystack_reference: reference, raw_event: event, ...sender,
             });
           }
           // A matched payment is the proof of delivery: mark the order delivered (never reopen a cancelled/returned one).
@@ -202,7 +209,7 @@ Deno.serve(async (req: Request) => {
           company_id: buyer.company_id, order_id: null, media_buyer_id: null,
           amount_naira: amountNaira, status: "confirmed", source: "admin_topup", channel: data.channel,
           paid_at: new Date().toISOString(), paystack_reference: reference, raw_event: event,
-          held_for_buyer_id: buyer.id, held_reason: "No order matched this deposit",
+          held_for_buyer_id: buyer.id, held_reason: "No order matched this deposit", ...sender,
         });
       }
     }
