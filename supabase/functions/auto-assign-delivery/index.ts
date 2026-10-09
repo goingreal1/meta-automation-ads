@@ -113,10 +113,12 @@ Deno.serve(async (req: Request) => {
         pool.sort((a, b) => (loadByAgent.get(a.id) ?? 0) - (loadByAgent.get(b.id) ?? 0));
         const chosen = pool[0];
 
-        const { error: updErr } = await supabase.from("orders").update({
+        // .is(..., null) is the SQL "IS NULL" test; .eq(..., null) matches nothing, which silently left every order unassigned.
+        const { data: claimed, error: updErr } = await supabase.from("orders").update({
           delivery_agent_id: chosen.id, assignment_status: "offered", assignment_offered_at: now.toISOString(),
-        }).eq("id", order.id).eq("assignment_status", null); // guard against a concurrent run double-offering
+        }).eq("id", order.id).is("assignment_status", null).select("id"); // guard against a concurrent run double-offering
         if (updErr) throw updErr;
+        if (!claimed || !claimed.length) continue;
 
         await supabase.from("assignment_offers").insert({
           company_id: order.company_id, order_id: order.id, delivery_agent_id: chosen.id, outcome: "offered",
