@@ -205,6 +205,16 @@ Deno.serve(async (req: Request) => {
 
       if (mediaBuyerId) await provisionAccounts({ mediaBuyerId, email: user.email, phone });
 
+      // A delivery agent needs a rider record (that is what orders are offered to) linked to their login, or their
+      // "My deliveries" stays empty and no order is ever offered to them.
+      if (invite.role === "delivery_agent") {
+        const { data: rider, error: riderErr } = await supabase.from("delivery_agents")
+          .insert({ company_id: invite.company_id, name: body?.display_name || user.email || "Rider", phone: phone ? "+" + phone : null, active: true })
+          .select("id").single();
+        if (riderErr) console.error("delivery agent record failed:", riderErr.message);
+        else await supabase.from("profiles").update({ delivery_agent_id: rider.id }).eq("id", user.id);
+      }
+
       return json({ company_id: invite.company_id, role: invite.role });
     }
 
