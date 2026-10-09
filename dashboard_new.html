@@ -1507,7 +1507,8 @@ textarea.cat-in{min-height:78px;resize:vertical;}
 .cat-check{display:grid;gap:6px;font-size:13px;margin-top:8px;}.cat-check .y{color:#1a9a4a;}.cat-check .n{color:#b7791f;}
 .cat-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;}
 .cat-th{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--panel2);}
-.cat-th .i{aspect-ratio:1;display:block;}.cat-th img,.cat-th video{width:100%;height:100%;object-fit:cover;display:block;}.cat-th small{display:block;padding:5px 8px;font-size:11px;color:var(--text2);}
+.cat-th .i{aspect-ratio:4/5;display:block;position:relative;cursor:zoom-in;background:#101214;}.cat-th img,.cat-th video{width:100%;height:100%;object-fit:contain;display:block;}.bv-play{position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+#bvMediaView{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;}#bvMediaView img,#bvMediaView video{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;}#bvMediaView .x{position:absolute;top:14px;right:16px;color:#fff;font-size:26px;background:rgba(255,255,255,.14);border:0;width:42px;height:42px;border-radius:50%;cursor:pointer;}.cat-th small{display:block;padding:5px 8px;font-size:11px;color:var(--text2);}
 .cat-copy{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--panel);}.cat-copy b{font-size:13px;}.cat-copy p{margin:4px 0 0;color:var(--text2);font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .cat-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}.cat-tile{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;}.cat-tile span{display:block;color:var(--muted);font-size:12px;}.cat-tile b{font-size:22px;}
 </style>
@@ -6975,7 +6976,7 @@ async function bvCatProduct(el) {
     const lib = await sbQuery("ad_library", `select=id,headline,primary_text,cost_per_result,source&product_id=eq.${p.id}&order=imported_at.desc&limit=8`, { allAccounts: true }).catch(() => []);
     body.innerHTML = `<div class="cat-two"><div class="cat-panel"><div class="ph" style="margin-bottom:6px"><div class="ph-title">Images and videos</div><button type="button" class="btn btn-g" id="cc_up">Upload</button><input type="file" id="cc_file" accept="image/*,video/*" multiple hidden></div>
         <div class="sub" style="color:var(--text2);font-size:12.5px;margin-bottom:10px">Used by your campaigns and by the assistant when it plans ads.</div><div id="cc_msg"></div>
-        ${mine.length ? `<div class="cat-thumbs">${mine.slice(0, 40).map(a => `<div class="cat-th"><div class="i">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}" muted preload="metadata"></video>` : `<img src="${escH(a.public_url)}" loading="lazy" alt="">`}</div><small>${escH(({ untested: "Not used yet", testing: "Testing", winner: "Winner", winning: "Winner" })[a.test_status] || a.test_status || "")}</small></div>`).join("")}</div>` : `<div style="color:var(--muted);padding:14px 0">No creatives yet. Upload a few and the assistant can launch them for you.</div>`}</div>
+        ${mine.length ? `<div class="cat-thumbs">${mine.slice(0, 40).map(a => `<div class="cat-th"><div class="i" data-view="${escH(a.public_url)}" data-type="${a.asset_type === "video" ? "video" : "image"}">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}#t=0.1" muted playsinline preload="metadata"></video><span class="bv-play">▶</span>` : `<img src="${escH(a.public_url)}" loading="lazy" alt="">`}</div><small>${escH(({ untested: "Not used yet", testing: "Testing", winner: "Winner", winning: "Winner" })[a.test_status] || a.test_status || "")}</small></div>`).join("")}</div>` : `<div style="color:var(--muted);padding:14px 0">No creatives yet. Upload a few and the assistant can launch them for you.</div>`}</div>
       <div><div class="cat-panel"><h4>Saved ad copy</h4><div class="sub">Copy you saved, and your past ads that worked</div>
         ${(lib || []).length ? lib.map(c => `<div class="cat-copy"><b>${escH(c.headline || "Ad copy")}</b>${c.cost_per_result ? ` <span style="color:var(--green,#1a9a4a);font-size:12px">${fN(c.cost_per_result)} per result</span>` : ""}<p>${escH(c.primary_text)}</p></div>`).join("") : `<div style="color:var(--muted);font-size:13px">Nothing saved yet. Ask the assistant to write copy and tap “Save to my library”.</div>`}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn btn-a" onclick="bvCatAskAI('${escH(p.product_name).replace(/'/g, "\\'")}')">✨ Launch ads with AI</button><button type="button" class="btn btn-g" onclick="bvOpenObjectiveGateModal()">New campaign (manual)</button></div></div></div>`;
@@ -7463,7 +7464,7 @@ async function bvRenderProductVault(productId) {
       ${assets.map(a => `
         <div class="vaultCard" data-aid="${a.id}" style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--panel2);display:grid;grid-template-columns:96px 1fr;gap:10px;">
           <div>
-            <div style="width:96px;height:96px;border-radius:8px;overflow:hidden;background:var(--panel);border:1px solid var(--border);">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}" muted style="width:100%;height:100%;object-fit:cover;"></video>` : `<img src="${escH(a.public_url)}" style="width:100%;height:100%;object-fit:cover;">`}</div>
+            <div data-view="${escH(a.public_url)}" data-type="${a.asset_type === "video" ? "video" : "image"}" style="position:relative;cursor:zoom-in;width:96px;height:96px;border-radius:8px;overflow:hidden;background:#101214;border:1px solid var(--border);">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:contain;"></video><span class="bv-play">▶</span>` : `<img src="${escH(a.public_url)}" style="width:100%;height:100%;object-fit:contain;">`}</div>
             <div style="font-size:10px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escH(a.file_name || "")}</div>
             <span class="pill ${(a.test_status || "untested").replace(/ /g, "_")}" style="margin-top:3px;">${(a.test_status || "untested").replace(/_/g, " ")}</span>
           </div>
@@ -10343,6 +10344,22 @@ const escH = v => String(v ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&
 // Short-lived confirmation popup (bottom of screen) -- for actions like
 // "Save" that otherwise re-render a whole panel with no obvious signal
 // that anything actually happened.
+// Full-screen viewer for any image or video marked with data-view="<url>" data-type="image|video". Tap outside, press Esc or tap the X to close.
+function bvViewMedia(url, type) {
+  document.getElementById("bvMediaView")?.remove();
+  const o = document.createElement("div"); o.id = "bvMediaView";
+  o.innerHTML = `<button type="button" class="x" aria-label="Close">✕</button>${type === "video" ? `<video src="${escH(url)}" controls autoplay playsinline></video>` : `<img src="${escH(url)}" alt="">`}`;
+  const close = () => { o.querySelector("video")?.pause(); o.remove(); document.removeEventListener("keydown", esc); };
+  const esc = (e) => { if (e.key === "Escape") close(); };
+  o.addEventListener("click", (e) => { if (e.target === o || e.target.classList.contains("x")) close(); });
+  document.addEventListener("keydown", esc);
+  document.body.appendChild(o);
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest?.("[data-view]");
+  if (t && t.dataset.view) { e.preventDefault(); bvViewMedia(t.dataset.view, t.dataset.type); }
+});
+
 function bvToast(message, type = "ok") {
   const wrap = document.getElementById("bvToastWrap");
   if (!wrap) return;
