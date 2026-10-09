@@ -51,6 +51,17 @@ function zoneMatches(zone: string | null, city: string | null, state: string | n
   return false;
 }
 
+const norm = (v: string | null | undefined) => (v ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const sameArea = (a: string, b: string) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+// How well a rider covers an order: 3 = same state and city, 2 = same state, 1 = old free-text zone matches, 0 = no match.
+function areaScore(a: { zone: string | null; state: string | null; city: string | null }, city: string | null, state: string | null): number {
+  if (norm(a.state)) {
+    if (!sameArea(norm(a.state), norm(state))) return 0;
+    return sameArea(norm(a.city), norm(city)) ? 3 : 2;
+  }
+  return zoneMatches(a.zone, city, state) ? 1 : 0;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   // Internal-only: callers send the service-role key.
@@ -91,7 +102,7 @@ Deno.serve(async (req: Request) => {
     for (const order of candidates ?? []) {
       try {
         const [{ data: agents }, { data: declined }, { data: activeLoad }] = await Promise.all([
-          supabase.from("delivery_agents").select("id, zone").eq("company_id", order.company_id).eq("active", true),
+          supabase.from("delivery_agents").select("id, zone, state, city").eq("company_id", order.company_id).eq("active", true),
           supabase.from("assignment_offers").select("delivery_agent_id").eq("order_id", order.id).in("outcome", ["declined", "expired"]),
           supabase.from("orders").select("delivery_agent_id").eq("company_id", order.company_id).in("assignment_status", ["offered", "accepted"]),
         ]);
@@ -108,15 +119,18 @@ Deno.serve(async (req: Request) => {
         // Prefer a zone match; fall back to least-loaded of everyone eligible
         // when there's no zone match at all (most demo orders have no city
         // set, and a real one shouldn't get stuck forever over missing data).
-        const zoneMatched = eligible.filter((a) => zoneMatches(a.zone, order.customer_city, order.customer_state));
-        const pool = zoneMatched.length ? zoneMatched : eligible;
+        const scored = eligible.map((a) => ({ a, score: areaScore(a, order.customer_city, order.customer_state) }));
+        const best = Math.max(...scored.map((x) => x.score));
+        const pool = best > 0 ? scored.filter((x) => x.score === best).map((x) => x.a) : eligible;
         pool.sort((a, b) => (loadByAgent.get(a.id) ?? 0) - (loadByAgent.get(b.id) ?? 0));
         const chosen = pool[0];
 
-        const { error: updErr } = await supabase.from("orders").update({
+        // .is(..., null) is the SQL "IS NULL" test; .eq(..., null) matches nothing, which silently left every order unassigned.
+        const { data: claimed, error: updErr } = await supabase.from("orders").update({
           delivery_agent_id: chosen.id, assignment_status: "offered", assignment_offered_at: now.toISOString(),
-        }).eq("id", order.id).eq("assignment_status", null); // guard against a concurrent run double-offering
+        }).eq("id", order.id).is("assignment_status", null).select("id"); // guard against a concurrent run double-offering
         if (updErr) throw updErr;
+        if (!claimed || !claimed.length) continue;
 
         await supabase.from("assignment_offers").insert({
           company_id: order.company_id, order_id: order.id, delivery_agent_id: chosen.id, outcome: "offered",
