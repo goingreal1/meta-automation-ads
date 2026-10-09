@@ -123,7 +123,13 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
 
   const sid = String(b.site_id ?? "");
   const loadSite = async () => { const { data } = await admin.from("sites").select("id, name, slug, status, product_id, settings").eq("id", sid).eq("company_id", companyId).maybeSingle(); return data; };
-  const links = (s: any) => ({ site_id: s.id, builder_link: `${SITE}/builder.html?site=${s.id}`, test_link: `${SITE}/s/${s.slug}?preview=1&pt=${s.settings?.preview_token ?? ""}`, live_link: s.status === "published" ? `${SITE}/s/${s.slug}` : null, status: s.status });
+  // Links use the company's own connected domain when it has one (the domain's main site opens at its root, other sites at /s/<slug>), else the platform address.
+  const links = async (s: any) => {
+    const { data: doms } = await admin.from("site_domains").select("hostname, site_id").eq("company_id", companyId).eq("status", "active").order("created_at");
+    const d = (doms ?? []).find((x: any) => x.site_id === s.id) ?? (doms ?? [])[0];
+    const base = d ? `https://${d.hostname}${d.site_id === s.id ? "" : `/s/${s.slug}`}` : `${SITE}/s/${s.slug}`;
+    return { site_id: s.id, builder_link: `${SITE}/builder.html?site=${s.id}`, test_link: `${base}${d && d.site_id === s.id ? "/" : ""}?preview=1&pt=${s.settings?.preview_token ?? ""}`, live_link: s.status === "published" ? (base + (d && d.site_id === s.id ? "/" : "")) : null, address: d ? d.hostname : "platform address", status: s.status };
+  };
 
   if (mode === "page_build") {
     const spec = b.spec ?? {};
@@ -148,7 +154,7 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
     else await admin.from("site_pages").insert({ site_id: s.id, company_id: companyId, slug: "", kind: "page", ...page });
     const { data: th2 } = await admin.from("site_pages").select("id").eq("site_id", s.id).eq("kind", "thanks").maybeSingle();
     if (!th2) await admin.from("site_pages").insert({ site_id: s.id, company_id: companyId, slug: "thank-you", kind: "thanks", title: "Thank you", html: THANKS(plain(b.business_name, 80) || prod.product_name), css: th.css, seo: { noindex: true } });
-    return ok({ saved: true, ...links(s), ...summary, next: "Draft saved and linked to the product (order form, packages, pixel and a thank-you page are included). Send the test_link to people to review, then change anything with edit_sales_page. Nothing is live until publish_sales_page." });
+    return ok({ saved: true, ...(await links(s)), ...summary, next: "Draft saved and linked to the product (order form, packages, pixel and a thank-you page are included). Send the test_link to people to review, then change anything with edit_sales_page. Nothing is live until publish_sales_page." });
   }
 
   if (mode === "page_import_html") {
@@ -164,15 +170,15 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
     if (error || !s) return bad("Could not create the site.", 500);
     await admin.from("site_pages").insert({ site_id: s.id, company_id: companyId, slug: "", kind: "page", title: plain(b.title, 80) || prod.product_name, html: im.html, css: im.css, seo: { custom_html: true, noindex: true, head_html: im.head_html, body_class: im.body_class, body_style: im.body_style } });
     await admin.from("site_pages").insert({ site_id: s.id, company_id: companyId, slug: "thank-you", kind: "thanks", title: "Thank you", html: THANKS(prod.product_name), css: "", seo: { noindex: true } });
-    return ok({ saved: true, ...links(s), ...summary, next: "Imported with its styles kept. Check it with the test_link. Opening it in the visual builder may rearrange custom styling, so edit this one by sending changed HTML again." });
+    return ok({ saved: true, ...(await links(s)), ...summary, next: "Imported with its styles kept. Check it with the test_link. Opening it in the visual builder may rearrange custom styling, so edit this one by sending changed HTML again." });
   }
 
   if (mode === "page_get") {
-    if (!sid) { const { data } = await admin.from("sites").select("id, name, slug, status, settings, product_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(20); return ok({ sites: (data ?? []).map((s: any) => ({ name: s.name, ...links(s) })) }); }
+    if (!sid) { const { data } = await admin.from("sites").select("id, name, slug, status, settings, product_id").eq("company_id", companyId).order("created_at", { ascending: false }).limit(20); return ok({ sites: await Promise.all((data ?? []).map(async (s: any) => ({ name: s.name, ...(await links(s)) }))) }); }
     const s = await loadSite(); if (!s) return bad("Page not found.", 404);
     const { data: pages } = await admin.from("site_pages").select("slug, kind, title, project, seo, published_at").eq("site_id", s.id);
     const home = (pages ?? []).find((p: any) => p.slug === "");
-    return ok({ name: s.name, ...links(s), pages: (pages ?? []).map((p: any) => ({ slug: p.slug, kind: p.kind, title: p.title, published: !!p.published_at })), sections: list(home?.seo?.spec?.sections, 30).map((x: any, i: number) => ({ index: i, type: x?.type, preview: plain(x?.headline ?? x?.title ?? x?.text ?? (x?.paragraphs ?? [])[0] ?? "", 90) })), edited_in_builder: !!home?.project, custom_html: !!home?.seo?.custom_html });
+    return ok({ name: s.name, ...(await links(s)), pages: (pages ?? []).map((p: any) => ({ slug: p.slug, kind: p.kind, title: p.title, published: !!p.published_at })), sections: list(home?.seo?.spec?.sections, 30).map((x: any, i: number) => ({ index: i, type: x?.type, preview: plain(x?.headline ?? x?.title ?? x?.text ?? (x?.paragraphs ?? [])[0] ?? "", 90) })), edited_in_builder: !!home?.project, custom_html: !!home?.seo?.custom_html });
   }
 
   if (mode === "page_edit") {
@@ -197,11 +203,11 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
     const s = await loadSite(); if (!s) return bad("Page not found.", 404);
     const { data: pages } = await admin.from("site_pages").select("html").eq("site_id", s.id);
     if (!(pages ?? []).some((p: any) => String(p.html).includes("data-rv-form"))) return bad("This page has no order form, so it can't take orders yet.");
-    if (b.dry) return ok({ dry_run: true, not_saved_yet: true, will_go_live_at: `${SITE}/s/${s.slug}` });
+    if (b.dry) return ok({ dry_run: true, not_saved_yet: true, will_go_live_at: (await links({ ...s, status: "published" })).live_link });
     const now = new Date().toISOString();
     await admin.from("sites").update({ status: b.unpublish ? "draft" : "published", updated_at: now }).eq("id", s.id);
     await admin.from("site_pages").update({ published_at: b.unpublish ? null : now }).eq("site_id", s.id);
-    return ok({ ...links({ ...s, status: b.unpublish ? "draft" : "published" }), note: b.unpublish ? "Page taken offline." : "Page is live. noindex stays on until you turn search indexing on in the builder." });
+    return ok({ ...(await links({ ...s, status: b.unpublish ? "draft" : "published" })), note: b.unpublish ? "Page taken offline." : "Page is live. noindex stays on until you turn search indexing on in the builder." });
   }
   return bad("Unknown mode");
 }

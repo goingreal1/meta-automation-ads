@@ -32,13 +32,13 @@ const jsonForScript = (o) => JSON.stringify(o).replace(/</g, "\\u003c").replace(
 // Small per-instance cache so repeat visits (and every ad click, whose fbclid makes the CDN key unique) skip the upstream call.
 const CACHE = new Map();
 const TTL = 30 * 1000;
-async function loadSite(slug, page, host) {
-  const key = (host || "") + "|" + slug + "/" + page, hit = CACHE.get(key);
+async function loadSite(slug, page, host, pt) {
+  const key = (host || "") + "|" + slug + "/" + page, hit = pt ? null : CACHE.get(key);
   if (hit && Date.now() - hit.t < TTL) return hit.v;
-  const url = SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(page) + (host ? "&host=" + encodeURIComponent(host) : "");
+  const url = SUPABASE_URL + "/functions/v1/get-site-public?slug=" + encodeURIComponent(slug) + "&page=" + encodeURIComponent(page) + (host ? "&host=" + encodeURIComponent(host) : "") + (pt ? "&preview=1&pt=" + encodeURIComponent(pt) : "");
   const r = await fetch(url, { headers: { apikey: ANON, Authorization: "Bearer " + ANON } });
   const v = { status: r.status, data: await r.json().catch(() => ({})) };
-  if (v.status === 200 || v.status === 404) CACHE.set(key, { t: Date.now(), v });
+  if (!pt && (v.status === 200 || v.status === 404)) CACHE.set(key, { t: Date.now(), v });
   if (CACHE.size > 200) CACHE.delete(CACHE.keys().next().value);
   return v;
 }
@@ -50,7 +50,7 @@ function notFound(res, msg, status) {
   res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Page not found</title><body style="font:16px/1.5 system-ui,sans-serif;color:#555;text-align:center;padding:18vh 24px">' + esc(msg || "This page isn't available.") + "</body>");
 }
 
-function render(d, query) {
+function render(d, query, preview) {
   const { baseCss, formCss } = assets();
   const site = d.site, page = d.page, seo = page.seo || {};
   const snippets = d.snippets || [];
@@ -67,14 +67,14 @@ function render(d, query) {
     "<title>" + esc(title) + "</title>" +
     (seo.description ? '<meta name="description" content="' + esc(seo.description) + '"><meta property="og:description" content="' + esc(seo.description) + '">' : "") +
     '<meta property="og:title" content="' + esc(title) + '">' + (seo.image ? '<meta property="og:image" content="' + esc(seo.image) + '">' : "") +
-    (seo.noindex ? '<meta name="robots" content="noindex">' : "") + (seo.favicon ? '<link rel="icon" href="' + esc(seo.favicon) + '">' : "") +
+    (seo.noindex || preview ? '<meta name="robots" content="noindex">' : "") + (seo.favicon ? '<link rel="icon" href="' + esc(seo.favicon) + '">' : "") +
     (fonts ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="' + esc(fonts) + '">' : "") +
     "<style>" + baseCss + "</style><style>" + formCss + "</style><style>[data-rv-form]:empty{min-height:420px}</style><style>" + (page.css || "").replace(/<\/style/gi, "<\\/style") + "</style>" +
     (seo.head_html || "") + "\n" + at("head") + pixel + "</head><body" + bodyAttrs + ">" + at("body_start") +
     '<div id="rv-root">' + (page.html || "") + "</div>" + at("footer") +
     "<script>window.__RV=" + jsonForScript(data) + ";</script>" +
     '<script src="/rv/form.js" defer></script>' +
-    "<script>window.addEventListener('DOMContentLoaded',function(){var d=window.__RV,root=document.getElementById('rv-root');if(window.RV)window.RV.mountAll(root,d,{preview:false});" +
+    "<script>window.addEventListener('DOMContentLoaded',function(){var d=window.__RV,root=document.getElementById('rv-root');if(window.RV)window.RV.mountAll(root,d,{preview:"+(preview?"true":"false")+"});" +
     "root.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href^=\"#\"]');if(!a||a.getAttribute('href')==='#')return;var t=document.getElementById(a.getAttribute('href').slice(1));if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth',block:'start'});}});});</script>" +
     "</body></html>";
 }
@@ -110,12 +110,13 @@ module.exports = async function handler(req, res) {
     }
     if (IS_SITES_PROJECT && !isPlatformHost) customHost = host;
     if (!slug && !customHost) return notFound(res, "This page doesn't exist.");
-    const r = await loadSite(slug, pg, customHost);
+    const pt = u.searchParams.get("preview") === "1" ? u.searchParams.get("pt") || "" : ""; // private draft preview link
+    const r = await loadSite(slug, pg, customHost, pt);
     if (r.status === 404 || !r.data || r.data.error) return notFound(res, "This page isn't available.", r.status === 404 ? 404 : 502);
-    const html = render(r.data, u.searchParams);
+    const html = render(r.data, u.searchParams, !!pt);
     res.statusCode = 200;
     res.setHeader("content-type", "text/html; charset=utf-8");
-    res.setHeader("cache-control", "public, max-age=0, s-maxage=30, stale-while-revalidate=300");
+    res.setHeader("cache-control", pt ? "private, no-store" : "public, max-age=0, s-maxage=30, stale-while-revalidate=300");
     res.end(html);
   } catch (e) {
     console.error("site render failed", e);
