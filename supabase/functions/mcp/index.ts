@@ -247,7 +247,15 @@ Deno.serve(async (req: Request) => {
   if (path === "/.well-known/oauth-protected-resource" || path.startsWith("/.well-known/oauth-protected-resource/")) {
     return jres({ resource: RESOURCE, authorization_servers: [`${SUPABASE_URL}/auth/v1`], bearer_methods_supported: ["header"], resource_name: "Revora", scopes_supported: ["openid", "email", "profile"] });
   }
-  if (path === "/health" || (req.method === "GET" && path === "/")) return jres({ ok: true, service: "revora-mcp", version: VERSION, tools: TOOLS.length, resource: RESOURCE });
+  if (path === "/health" || (req.method === "GET" && path === "/")) {
+    if (url.searchParams.get("probe") === "image") { // free check: does the image model key work? (asks OpenAI for the model, makes no image)
+      const k = Deno.env.get("OPENAI_API_KEY") ?? "", m = Deno.env.get("IMAGE_MODEL") ?? "gpt-image-1";
+      const r = k ? await fetch(`https://api.openai.com/v1/models/${m}`, { headers: { Authorization: `Bearer ${k}` } }) : null;
+      const j: any = r ? await r.json().catch(() => null) : null;
+      return jres({ model: m, key_set: !!k, accessible: !!r?.ok, status: r?.status ?? null, error: r && !r.ok ? String(j?.error?.message ?? "").slice(0, 200) : null });
+    }
+    return jres({ ok: true, service: "revora-mcp", version: VERSION, tools: TOOLS.length, resource: RESOURCE });
+  }
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return unauthorized(RESOURCE);
