@@ -128,6 +128,16 @@ export function importHtml(raw: string) {
   return { html: h.trim(), css, head_html: fonts, body_class: cls.slice(0, 120), body_style: sty.replace(/url\(|expression/gi, "").slice(0, 300) };
 }
 
+// Every page must belong to a media buyer, or the orders it takes belong to nobody and the buyer never sees them.
+// Their own buyer record first (a buyer, or a personal workspace owner); otherwise the company's only active buyer.
+async function pickBuyer(admin: SupabaseClient, companyId: string, userId: string): Promise<{ id: string | null; warning?: string }> {
+  const { data: me } = await admin.from("profiles").select("media_buyer_id").eq("id", userId).maybeSingle();
+  if (me?.media_buyer_id) return { id: me.media_buyer_id };
+  const { data: bs } = await admin.from("media_buyers").select("id").eq("company_id", companyId).eq("active", true).limit(2);
+  if ((bs ?? []).length === 1) return { id: bs![0].id };
+  return { id: null, warning: "No media buyer is attached to this page, so its orders will not show under any buyer. Ask the person which media buyer owns the page and set it in Revora (Websites) before publishing." };
+}
+
 // ---- modes ------------------------------------------------------------------------------------------------------------
 export async function handlePage(admin: SupabaseClient, mode: string, b: any, companyId: string, userId: string): Promise<{ status: number; body: any }> {
   const ok = (body: any) => ({ status: 200, body: { ok: true, ...body } }), bad = (error: string, status = 400) => ({ status, body: { error } });
@@ -147,7 +157,7 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
   }
 
   const sid = String(b.site_id ?? "");
-  const loadSite = async () => { const { data } = await admin.from("sites").select("id, name, slug, status, product_id, settings").eq("id", sid).eq("company_id", companyId).maybeSingle(); return data; };
+  const loadSite = async () => { const { data } = await admin.from("sites").select("id, name, slug, status, product_id, settings, media_buyer_id").eq("id", sid).eq("company_id", companyId).maybeSingle(); return data; };
   // Links use the company's own connected domain when it has one (the domain's main site opens at its root, other sites at /s/<slug>), else the platform address.
   const links = async (s: any) => {
     const { data: doms } = await admin.from("site_domains").select("hostname, site_id").eq("company_id", companyId).eq("status", "active").order("created_at");
@@ -160,17 +170,18 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
     const spec = b.spec ?? {};
     const { data: prod } = await admin.from("products").select("id, product_name, company_id").eq("id", String(b.product_id ?? "")).eq("company_id", companyId).maybeSingle();
     if (!prod) return bad("Product not found.");
+    const buyer = await pickBuyer(admin, companyId, userId);
     const { data: tiers } = await admin.from("product_tiers").select("label, price_naira, features, badge, image_url").eq("product_id", prod.id).eq("is_active", true).order("sort_order", { ascending: true });
     const bold = spec.style === "bold";
     const th = themeOf(niche, spec.theme, bold);
     const r = renderPage(spec, { cta: plain(spec.cta, 60) || "Order now", tiers: tiers ?? [], siteName: plain(b.business_name, 80) || prod.product_name, disclaimer: NICHES[niche].disclaimer, bold });
     if (!r.html) return bad("No sections to build.");
-    const summary = { sections: list(spec.sections, 30).map((s: any) => s?.type), warnings: r.warnings, still_needs_images: r.needs_images, packages_found: (tiers ?? []).length };
+    const summary = { sections: list(spec.sections, 30).map((s: any) => s?.type), warnings: [...r.warnings, ...(buyer.warning ? [buyer.warning] : [])], still_needs_images: r.needs_images, packages_found: (tiers ?? []).length };
     if (b.dry) return ok({ dry_run: true, not_saved_yet: true, ...summary });
     let s: any;
-    if (sid) { s = await loadSite(); if (!s) return bad("Page not found.", 404); await admin.from("sites").update({ settings: { ...(s.settings ?? {}), theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body } }, updated_at: new Date().toISOString() }).eq("id", s.id); } else {
+    if (sid) { s = await loadSite(); if (!s) return bad("Page not found.", 404); await admin.from("sites").update({ settings: { ...(s.settings ?? {}), theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body } }, ...(!s.media_buyer_id && buyer.id ? { media_buyer_id: buyer.id } : {}), updated_at: new Date().toISOString() }).eq("id", s.id); } else {
       const base = prod.product_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "page";
-      for (let i = 0; i < 4 && !s; i++) { const slug = `${base}-${crypto.randomUUID().slice(0, 4)}`; const { data, error } = await admin.from("sites").insert({ company_id: companyId, name: plain(b.title, 80) || `${prod.product_name} page`, slug, status: "draft", product_id: prod.id, settings: { theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body }, niche, preview_token: crypto.randomUUID().replace(/-/g, "") } }).select("id, name, slug, status, product_id, settings").single(); if (!error) s = data; }
+      for (let i = 0; i < 4 && !s; i++) { const slug = `${base}-${crypto.randomUUID().slice(0, 4)}`; const { data, error } = await admin.from("sites").insert({ company_id: companyId, name: plain(b.title, 80) || `${prod.product_name} page`, slug, status: "draft", product_id: prod.id, media_buyer_id: buyer.id, settings: { theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body }, niche, preview_token: crypto.randomUUID().replace(/-/g, "") } }).select("id, name, slug, status, product_id, settings").single(); if (!error) s = data; }
       if (!s) return bad("Could not create the site. Try again.", 500);
     }
     const page = { title: plain(b.title, 80) || prod.product_name, html: r.html, css: th.css, project: null, seo: { title: plain(spec.seo_title, 70) || plain(b.title, 70) || prod.product_name, description: plain(spec.seo_description, 160), noindex: true, spec } };
@@ -186,13 +197,14 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
   if (mode === "page_import_html") {
     const { data: prod } = await admin.from("products").select("id, product_name").eq("id", String(b.product_id ?? "")).eq("company_id", companyId).maybeSingle();
     if (!prod) return bad("Product not found.");
+    const buyer = await pickBuyer(admin, companyId, userId);
     const im = importHtml(b.html);
     if (!im.html) return bad("That HTML had no page content.");
     const hasForm = im.html.includes("data-rv-form");
-    const summary = { characters_of_html: im.html.length, characters_of_css: im.css.length, fonts_kept: !!im.head_html, order_form_present: hasForm, note: hasForm ? "" : "No order form found: add a <div data-rv-form></div> where the form should go, or the page cannot take orders." };
+    const summary = { characters_of_html: im.html.length, characters_of_css: im.css.length, fonts_kept: !!im.head_html, order_form_present: hasForm, buyer_attached: !!buyer.id, ...(buyer.warning ? { buyer_warning: buyer.warning } : {}), note: hasForm ? "" : "No order form found: add a <div data-rv-form></div> where the form should go, or the page cannot take orders." };
     if (b.dry) return ok({ dry_run: true, not_saved_yet: true, ...summary });
     const base = prod.product_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "page";
-    const { data: s, error } = await admin.from("sites").insert({ company_id: companyId, name: plain(b.title, 80) || `${prod.product_name} page`, slug: `${base}-${crypto.randomUUID().slice(0, 4)}`, status: "draft", product_id: prod.id, settings: { preview_token: crypto.randomUUID().replace(/-/g, "") } }).select("id, name, slug, status, product_id, settings").single();
+    const { data: s, error } = await admin.from("sites").insert({ company_id: companyId, name: plain(b.title, 80) || `${prod.product_name} page`, slug: `${base}-${crypto.randomUUID().slice(0, 4)}`, status: "draft", product_id: prod.id, media_buyer_id: buyer.id, settings: { preview_token: crypto.randomUUID().replace(/-/g, "") } }).select("id, name, slug, status, product_id, settings").single();
     if (error || !s) return bad("Could not create the site.", 500);
     await admin.from("site_pages").insert({ site_id: s.id, company_id: companyId, slug: "", kind: "page", title: plain(b.title, 80) || prod.product_name, html: im.html, css: im.css, seo: { custom_html: true, noindex: true, head_html: im.head_html, body_class: im.body_class, body_style: im.body_style } });
     await admin.from("site_pages").insert({ site_id: s.id, company_id: companyId, slug: "thank-you", kind: "thanks", title: "Thank you", html: THANKS(prod.product_name), css: "", seo: { noindex: true } });

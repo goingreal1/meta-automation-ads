@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f766e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Revora Care">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<title>Orders to call · Revora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f2;--panel:#fff;--text:#14130f;--text2:#55524a;--muted:#8c887c;--line:#e7e3da;--accent:#0f766e;--accentBg:#e3f4f1;--warn:#b45309;--warnBg:#fef3c7;--danger:#b91c1c;--dangerBg:#fee2e2;--ok:#15803d;--okBg:#dcfce7}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1210;--panel:#181c1a;--text:#f2f1ec;--text2:#c2bfb4;--muted:#8d8a80;--line:#2a2f2c;--accent:#2dd4bf;--accentBg:#12302c;--warn:#fbbf24;--warnBg:#33270c;--danger:#f87171;--dangerBg:#3b1515;--ok:#4ade80;--okBg:#12301c}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.45;padding-bottom:84px}
+header{position:sticky;top:0;z-index:5;background:var(--accent);color:#fff;padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+header b{font-size:16px;font-weight:700}header small{display:block;font-size:12px;opacity:.85}
+.badge{background:#fff;color:var(--accent);border-radius:999px;font-weight:800;font-size:12px;padding:3px 10px}
+main{padding:14px 16px;max-width:560px;margin:0 auto}
+h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 2px 8px;font-weight:700}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.card.new{border:2px solid var(--accent)}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.name{font-weight:700;font-size:16px}.sub{color:var(--text2);font-size:13px}.amt{font-weight:800;font-size:17px;white-space:nowrap}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:3px 10px;margin:6px 6px 0 0}
+.p-ok{background:var(--okBg);color:var(--ok)}.p-warn{background:var(--warnBg);color:var(--warn)}.p-info{background:var(--accentBg);color:var(--accent)}.p-bad{background:var(--dangerBg);color:var(--danger)}
+.steps{display:flex;gap:6px;margin:12px 0 4px}.steps i{flex:1;height:5px;border-radius:3px;background:var(--line)}.steps i.on{background:var(--accent)}
+.stepl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:10px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button,.btn{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px 14px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px}
+.b1{background:var(--accent);color:#fff;flex:1 1 140px}.b2{background:var(--accentBg);color:var(--accent);flex:1 1 110px}.b3{background:transparent;color:var(--danger);border:1.5px solid var(--danger);flex:0 0 auto}
+button:disabled{opacity:.55}
+.addr{margin-top:8px;font-size:14px}.timer{font-weight:800;color:var(--warn)}
+.empty{text-align:center;color:var(--muted);padding:34px 10px}.empty b{display:block;font-size:34px;margin-bottom:6px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--panel);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;background:none;color:var(--muted);border-radius:0;flex-direction:column;gap:2px;font-size:11.5px;min-height:58px;font-weight:600}
+nav button.on{color:var(--accent)}nav .ic{font-size:21px;line-height:1}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}.kpi b{display:block;font-size:20px}.kpi span{font-size:12px;color:var(--muted)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{background:var(--panel);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);max-height:88vh;overflow:auto}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:24px;font-weight:800;letter-spacing:.02em}
+label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}select,input{font:inherit;width:100%;padding:12px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--text)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;background:#111;color:#fff;border-radius:12px;padding:11px 16px;font-weight:600;z-index:30;max-width:90%;text-align:center}
+.link{color:var(--accent);font-weight:700;text-decoration:none}
+</style>
+</head>
+<body>
+<header><div><b id="hName">Orders to call</b><small id="hSub"></small></div><span class="badge" id="hBadge" style="display:none"></span></header>
+<main id="main"><div class="empty">Loading…</div></main>
+<nav>
+  <button data-tab="call" class="on"><span class="ic">📞</span>To call</button>
+  <button data-tab="valid"><span class="ic">✅</span>Confirmed</button>
+  <button data-tab="done"><span class="ic">📁</span>Done</button>
+  <button data-tab="me"><span class="ic">👤</span>Me</button>
+</nav>
+<div id="modalHost"></div>
+<div id="toastHost"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPA_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+const ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+const sb = window.supabase.createClient(SUPA_URL, ANON);
+const STATES = ["Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno","Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","Federal Capital Territory","Gombe","Imo","Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa","Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba","Yobe","Zamfara"];
+const REASONS = ["Customer changed their mind", "Wrong or unreachable number", "Duplicate order", "Cannot deliver to that area", "Not a real order", "Other"];
+let me = null, company = "", orders = [], tab = "call", loadedOnce = false;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const naira = (n) => "₦" + Math.round(Number(n) || 0).toLocaleString("en-NG");
+const telOf = (p) => { const d = String(p || "").replace(/\D/g, ""); return d.startsWith("234") ? "+" + d : d.startsWith("0") ? "+234" + d.slice(1) : d.length === 10 ? "+234" + d : "+" + d; };
+const ago = (iso) => { if (!iso) return ""; const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.floor(m / 60) + " h ago" : Math.floor(m / 1440) + " d ago"; };
+function toast(t, ms = 2600) { const d = document.createElement("div"); d.className = "toast"; d.textContent = t; $("toastHost").appendChild(d); setTimeout(() => d.remove(), ms); }
+
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { location.replace("login.html"); return; }
+  const { data: p } = await sb.from("profiles").select("company_id, role, display_name, whatsapp_number").eq("id", session.user.id).maybeSingle();
+  if (!p?.company_id) { location.replace("setup-company.html"); return; }
+  if (p.role !== "customer_care") { location.replace("dashboard_new.html"); return; }
+  me = { ...p, id: session.user.id };
+  const { data: co } = await sb.from("companies").select("name").eq("id", p.company_id).maybeSingle();
+  company = co?.name || "";
+  $("hName").textContent = p.display_name || "Orders to call";
+  document.querySelectorAll("nav button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b)); draw(); });
+  await load();
+  setInterval(load, 20000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  pushSync();
+}
+
+async function load() {
+  const { data } = await sb.from("orders")
+    .select("id, customer_name, customer_phone, customer_address, customer_city, customer_state, product_name, quantity, order_value_naira, order_status, delivery_stage, assignment_status, delivery_agent_id, ordered_at, delivered_at, care_note, care_attempts, last_care_attempt_at, care_assigned_at, payments(status), voice_calls(status, summary, needs_human, human_resolved_at, created_at), delivery_agents(name, phone)")
+    .order("ordered_at", { ascending: false }).limit(200);
+  const prev = new Set(orders.filter((o) => o.order_status === "pending").map((o) => o.id));
+  orders = data || [];
+  if (loadedOnce && orders.some((o) => o.order_status === "pending" && !prev.has(o.id))) { toast("📞 New order to call"); try { navigator.vibrate?.(200); } catch {} }
+  loadedOnce = true;
+  draw();
+}
+
+const lastCall = (o) => (o.voice_calls || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+const isPaid = (o) => (o.payments || []).some((p) => p.status === "confirmed");
+
+function draw() {
+  const todo = orders.filter((o) => o.order_status === "pending");
+  const valid = orders.filter((o) => o.order_status === "valid");
+  const done = orders.filter((o) => !["pending", "valid"].includes(o.order_status));
+  $("hSub").textContent = company ? company + " · customer care" : "customer care";
+  const b = $("hBadge"); b.style.display = todo.length ? "inline-block" : "none"; b.textContent = todo.length + " to call";
+  document.title = (todo.length ? `(${todo.length}) ` : "") + "Orders to call · Revora";
+  const main = $("main");
+  if (tab === "call") {
+    main.innerHTML = todo.length ? todo.map(callCard).join("") : `<div class="empty"><b>🎉</b>All caught up.<br>New orders assigned to you will appear here and buzz your phone.</div>`;
+  } else if (tab === "valid") {
+    main.innerHTML = valid.length ? valid.map(validCard).join("") : `<div class="empty"><b>✅</b>Orders you confirm will show here with their delivery progress.</div>`;
+  } else if (tab === "done") {
+    const m = new Date(); const day = done.filter((o) => new Date(o.ordered_at) > new Date(m.getTime() - 30 * 864e5));
+    main.innerHTML = `<div class="kpis"><div class="kpi"><b>${orders.filter((o) => o.order_status === "delivered").length}</b><span>delivered</span></div><div class="kpi"><b>${orders.filter((o) => o.order_status === "cancelled").length}</b><span>cancelled</span></div></div>` + (day.length ? day.map(doneCard).join("") : `<div class="empty"><b>📁</b>Nothing here yet.</div>`);
+  } else {
+    main.innerHTML = `<div class="card"><div class="name">${esc(me.display_name || "")}</div><div class="sub">${esc(me.whatsapp_number || "")}</div></div>
+      <div class="card"><div class="name">Notifications</div><div class="sub" id="pushState" style="margin:4px 0 8px"></div><div class="btns"><button class="b1" id="pushBtn" onclick="pushOn()">Turn on notifications</button></div></div>
+      <div class="card"><div class="name">How it works</div><div class="sub" style="margin-top:6px">1. New orders are given to you automatically. They appear under <b>To call</b>.<br>2. Call the customer and check the name, phone, address and what they ordered.<br>3. Happy? Tap <b>Confirm order</b>. The customer gets a message and a rider is offered the order within minutes.<br>4. No answer? Tap <b>No answer</b> to log the try, and call again later.<br>5. Not going ahead? Tap <b>Cancel</b> and pick the reason.</div></div>
+      <div class="btns"><button class="b2" onclick="signOut()">Sign out</button></div>`;
+    pushState();
+  }
+}
+
+function aiBlock(o) {
+  const c = lastCall(o); if (!c) return "";
+  const flag = c.needs_human && !c.human_resolved_at;
+  return `<div class="card" style="margin:10px 0 0;background:${flag ? "var(--dangerBg)" : "var(--accentBg)"};border:0"><div class="sub"><b>${flag ? "⚠️ The AI call needs a person" : "AI call: " + esc(c.status)}</b> · ${ago(c.created_at)}</div>${c.summary ? `<div class="sub" style="margin-top:4px">${esc(c.summary)}</div>` : ""}${flag ? `<div class="btns"><button class="b2" onclick="resolveCall('${o.id}')">Mark handled</button></div>` : ""}</div>`;
+}
+function callCard(o) {
+  const tel = telOf(o.customer_phone), addr = [o.customer_address, o.customer_city, o.customer_state].filter(Boolean).join(", ");
+  return `<div class="card new"><div class="row"><div><div class="name">${esc(o.customer_name || "Customer")}</div><div class="sub">${esc(o.product_name || "Order")}${o.quantity > 1 ? " × " + o.quantity : ""} · ordered ${ago(o.ordered_at)}</div></div><div class="amt">${naira(o.order_value_naira)}</div></div>
+    <div class="addr">📍 ${esc(addr || "No address given")}</div><div class="addr">📱 ${esc(o.customer_phone || "")}</div>
+    ${o.care_attempts ? `<span class="pill p-warn">Tried ${o.care_attempts}× · last ${ago(o.last_care_attempt_at)}</span>` : ""}${isPaid(o) ? `<span class="pill p-ok">Paid ✓</span>` : ""}
+    ${o.care_note ? `<div class="sub" style="margin-top:6px">📝 ${esc(o.care_note)}</div>` : ""}
+    ${aiBlock(o)}
+    <div class="btns"><a class="btn b2" href="tel:${esc(tel)}" onclick="noteAttempt('${o.id}', true)">📞 Call</a><a class="btn b2" target="_blank" rel="noopener" href="https://wa.me/${esc(tel.replace("+", ""))}">💬 WhatsApp</a><button class="b2" onclick="editSheet('${o.id}')">✏️ Fix details</button></div>
+    <div class="btns"><button class="b1" onclick="confirmSheet('${o.id}')">✓ Confirm order</button><button class="b2" onclick="noAnswer('${o.id}', this)">No answer</button><button class="b3" onclick="cancelSheet('${o.id}')">Cancel</button></div></div>`;
+}
+function validCard(o) {
+  const ag = o.delivery_agents?.name;
+  const st = o.delivery_stage === "on_the_way" ? ["p-info", "🛵 On the way" + (ag ? " · " + ag : "")] : o.assignment_status === "accepted" ? ["p-info", "Accepted by " + (ag || "a rider")] : o.assignment_status === "offered" ? ["p-warn", "Offered to " + (ag || "a rider") + ", waiting"] : ["p-warn", "Waiting for a rider"];
+  return `<div class="card"><div class="row"><div><div class="name">${esc(o.customer_name || "Customer")}</div><div class="sub">${esc(o.product_name || "Order")} · ${esc(o.customer_city || "")}${o.customer_state ? ", " + esc(o.customer_state) : ""}</div></div><div class="amt">${naira(o.order_value_naira)}</div></div>
+    <span class="pill ${st[0]}">${esc(st[1])}</span><span class="pill ${isPaid(o) ? "p-ok" : "p-warn"}">${isPaid(o) ? "Paid ✓" : "Awaiting payment"}</span>
+    <div class="btns"><a class="btn b2" href="tel:${esc(telOf(o.customer_phone))}">📞 Call customer</a>${ag && o.delivery_agents?.phone ? `<a class="btn b2" href="tel:${esc(telOf(o.delivery_agents.phone))}">🛵 Call rider</a>` : ""}</div></div>`;
+}
+function doneCard(o) {
+  const cls = o.order_status === "delivered" ? "p-ok" : "p-bad";
+  return `<div class="card"><div class="row"><div><div class="name">${esc(o.customer_name || "Customer")}</div><div class="sub">${esc(o.product_name || "")}</div>${o.care_note ? `<div class="sub">📝 ${esc(o.care_note)}</div>` : ""}</div><div class="amt">${naira(o.order_value_naira)}</div></div><span class="pill ${cls}">${esc(o.order_status)}</span></div>`;
+}
+
+function sheet(html) { $("modalHost").innerHTML = `<div class="modal" onclick="if(event.target===this)closeSheet()"><div class="sheet">${html}</div></div>`; }
+function closeSheet() { $("modalHost").innerHTML = ""; }
+const byId = (id) => orders.find((o) => o.id === id);
+
+async function patch(id, fields, okMsg) {
+  const { error } = await sb.from("orders").update(fields).eq("id", id);
+  if (error) { toast((error.message || "Could not save").replace(/^.*?:\s*/, ""), 4000); return false; }
+  if (okMsg) toast(okMsg); await load(); return true;
+}
+function noteAttempt(id, silent) { const o = byId(id); if (!o) return; sb.from("orders").update({ care_attempts: (o.care_attempts || 0) + 1, last_care_attempt_at: new Date().toISOString() }).eq("id", id).then(() => {}); }
+async function noAnswer(id, btn) { const o = byId(id); btn.disabled = true; await patch(id, { care_attempts: (o.care_attempts || 0) + 1, last_care_attempt_at: new Date().toISOString() }, "Logged. Try again later."); }
+function confirmSheet(id) {
+  const o = byId(id);
+  sheet(`<div class="name">Confirm this order?</div><div class="sub" style="margin:4px 0 10px">${esc(o.customer_name)} · ${esc(o.product_name || "")} · ${naira(o.order_value_naira)}<br>${esc([o.customer_address, o.customer_city, o.customer_state].filter(Boolean).join(", "))}</div>
+    <label>Note for the team (optional)</label><input id="cNote" value="${esc(o.care_note || "")}" placeholder="e.g. call before arriving, gate is blue">
+    <div class="sub" style="margin-top:10px">The customer gets a message and a rider is offered this order within about 5 minutes.</div>
+    <div class="btns"><button class="b1" id="cGo">Yes, confirm</button><button class="b2" onclick="closeSheet()">Back</button></div>`);
+  $("cGo").onclick = async () => { $("cGo").disabled = true; if (await patch(id, { order_status: "valid", care_note: $("cNote").value.trim() || null, last_care_attempt_at: new Date().toISOString() }, "Confirmed. A rider will be offered it.")) closeSheet(); else $("cGo").disabled = false; };
+}
+function cancelSheet(id) {
+  const o = byId(id);
+  sheet(`<div class="name">Cancel this order</div><div class="sub" style="margin:4px 0 6px">${esc(o.customer_name)} · ${naira(o.order_value_naira)}</div>
+    <label>Why?</label><select id="xWhy">${REASONS.map((r) => `<option>${r}</option>`).join("")}</select>
+    <label>Extra note (optional)</label><input id="xNote" placeholder="Anything the admin should know">
+    <div class="btns"><button class="b3" id="xGo">Cancel the order</button><button class="b2" onclick="closeSheet()">Back</button></div>`);
+  $("xGo").onclick = async () => { $("xGo").disabled = true; const note = "Cancelled: " + $("xWhy").value + ($("xNote").value.trim() ? " - " + $("xNote").value.trim() : ""); if (await patch(id, { order_status: "cancelled", care_note: note }, "Order cancelled")) closeSheet(); else $("xGo").disabled = false; };
+}
+function editSheet(id) {
+  const o = byId(id);
+  sheet(`<div class="name">Fix customer details</div>
+    <label>Name</label><input id="eName" value="${esc(o.customer_name || "")}">
+    <label>Phone</label><input id="ePhone" value="${esc(o.customer_phone || "")}" inputmode="tel">
+    <label>Address</label><input id="eAddr" value="${esc(o.customer_address || "")}">
+    <label>City / area</label><input id="eCity" value="${esc(o.customer_city || "")}">
+    <label>State</label><select id="eState"><option value="">Choose…</option>${STATES.map((s) => `<option ${o.customer_state === s || (s === "Federal Capital Territory" && /fct|abuja/i.test(o.customer_state || "")) ? "selected" : ""}>${s}</option>`).join("")}</select>
+    <div class="btns"><button class="b1" id="eGo">Save</button><button class="b2" onclick="closeSheet()">Cancel</button></div>`);
+  $("eGo").onclick = async () => { if (await patch(id, { customer_name: $("eName").value.trim(), customer_phone: $("ePhone").value.trim(), customer_address: $("eAddr").value.trim(), customer_city: $("eCity").value.trim(), customer_state: $("eState").value || null }, "Saved")) closeSheet(); };
+}
+async function resolveCall(orderId) {
+  const o = byId(orderId); const c = (o?.voice_calls || []).filter((x) => x.needs_human && !x.human_resolved_at);
+  if (!c.length) return;
+  const { error } = await sb.from("voice_calls").update({ human_resolved_at: new Date().toISOString() }).eq("order_id", orderId).is("human_resolved_at", null);
+  if (error) toast("Could not update"); else { toast("Marked handled"); load(); }
+}
+async function signOut() { await sb.auth.signOut(); location.replace("login.html"); }
+
+// ---- notifications (web push) ----------------------------------------------------------------
+const u8 = (s) => { const pad = "=".repeat((4 - (s.length % 4)) % 4); return Uint8Array.from(atob((s + pad).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)); };
+const PUSH_OK = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+async function saveSub(sub) { const j = sub.toJSON(); const { error } = await sb.rpc("register_push_subscription", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_user_agent: navigator.userAgent.slice(0, 200) }); if (error) throw new Error(error.message); }
+async function pushOn() {
+  try {
+    if (!PUSH_OK) throw new Error("This phone's browser can't do notifications. On iPhone, add this page to your Home Screen first.");
+    const perm = await Notification.requestPermission(); if (perm !== "granted") throw new Error("Notifications are blocked. Allow them in your phone settings for this site.");
+    const reg = await navigator.serviceWorker.ready;
+    const r = await fetch(`${SUPA_URL}/functions/v1/handle-whatsapp-reply?action=public_key`, { headers: { apikey: ANON, Authorization: `Bearer ${ANON}` } }); const j = await r.json(); if (!j.publicKey) throw new Error("Could not get the notification key.");
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: u8(j.publicKey) });
+    await saveSub(sub); toast("Notifications are on"); pushState();
+  } catch (e) { toast(e.message, 4200); }
+}
+async function pushSync() { try { if (PUSH_OK && Notification.permission === "granted") { const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); if (sub) await saveSub(sub); } } catch {} }
+async function pushState() { const el = $("pushState"), b = $("pushBtn"); if (!el) return; if (!PUSH_OK) { el.textContent = "Not available in this browser. On iPhone, use Share → Add to Home Screen, then open from there."; return; } const on = Notification.permission === "granted"; el.textContent = on ? "Notifications are on for this phone. You'll be buzzed when an order is given to you." : "Get a buzz the moment an order is given to you."; if (b) b.textContent = on ? "Notifications on ✓" : "Turn on notifications"; }
+
+boot();
+</script>
+</body>
+</html>
