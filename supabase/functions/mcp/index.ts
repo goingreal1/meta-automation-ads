@@ -48,7 +48,7 @@ RUNNING ADS: judge an ad only after it has spent about 2 to 3 times the target c
 
 META RULES FOR COPY: no guaranteed results, no before-and-after claims, no implying you know a person's health, body, finances or identity, no medical cures, no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures. Use only facts from the product record or what the person told you. Never invent testimonials, numbers, discounts or registration numbers.
 
-SAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
+ADDING THINGS: create_product and set_kill_rules never save on the first call. They return a summary; explain it in plain words and only call again with confirmed true after the person clearly says yes. get_order_form_link gives the product's order page; get_daily_brief and get_alerts answer 'how are we doing' and 'what needs me'.\n\nSAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
 
 // ── tool catalogue ──────────────────────────────────────────────────────────
 type Tool = {
@@ -147,6 +147,84 @@ const TOOLS: Tool[] = [
       // The same image can be saved several times; link every copy so the library stays consistent.
       const { error, count } = await admin.from("creative_assets").update({ product_id: hits[0].id }, { count: "exact" }).eq("company_id", c.companyId).eq("public_url", src.public_url);
       return error ? { error: error.message } : { ok: true, product: hits[0].product_name, copies_linked: count };
+    } },
+  { name: "create_product", title: "Add a product (asks for confirmation)", description: "Add a new product to the person's catalog. ALWAYS call it first WITHOUT confirmed: it returns a summary. Show that summary in plain words and ask. Only after the person clearly says yes, call again with the same details and confirmed true. Use only facts the person gave you; never invent claims, prices or registration numbers.", inputSchema: OBJ({ product_name: str("Product name"), price_naira: { type: "number", description: "Selling price in naira" }, destination: { type: "string", enum: ["website", "whatsapp"], description: "Where buyers order: on a website/order form, or by messaging on WhatsApp" }, description: str("What it is and what it is for"), benefits: str("Main benefits"), safety_notes: str("How to use it, safety, sizes"), nafdac_reg_no: str("NAFDAC number, only if the person gave one"), landing_page_url: str("Website link, for website orders"), whatsapp_number: str("WhatsApp number, for WhatsApp orders"), stock: { type: "number", description: "Units in stock, if known" }, confirmed: { type: "boolean", description: "True ONLY after the person clearly said yes to the summary." } }, ["product_name", "price_naira", "destination"]), annotations: { readOnlyHint: false, destructiveHint: false }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can add products." };
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const name = String(a?.product_name ?? "").trim(), price = Number(a?.price_naira);
+      if (name.length < 2 || name.length > 120) return { error: "Give the product a name (2 to 120 characters)." };
+      if (!Number.isFinite(price) || price <= 0 || price > 100_000_000) return { error: "Give a selling price in naira." };
+      const dest = a?.destination === "whatsapp" ? "whatsapp" : a?.destination === "website" ? "website" : null;
+      if (!dest) return { error: "Ask whether people order on a WEBSITE/order form or by WHATSAPP." };
+      const { data: existing } = await admin.from("products").select("id, product_name").eq("company_id", c.companyId);
+      const dup = (existing ?? []).find((p: any) => norm(p.product_name) === norm(name));
+      if (dup) return { error: `A product called "${dup.product_name}" already exists. Use save_product_facts to update it, or pick a different name.` };
+      const row: any = { company_id: c.companyId, product_name: name, default_order_value_naira: Math.round(price), destination_type: dest, is_active: true, created_by: c.userId, media_buyer_id: c.role === "buyer" ? c.mediaBuyerId : null };
+      for (const k of ["description", "benefits", "safety_notes", "nafdac_reg_no", "landing_page_url", "whatsapp_number"]) if (String(a?.[k] ?? "").trim()) row[k] = String(a[k]).trim().slice(0, 2000);
+      if (row.landing_page_url && !/^https:\/\//.test(row.landing_page_url)) return { error: "The website link must start with https://" };
+      if (Number.isFinite(Number(a?.stock)) && a?.stock !== undefined && a?.stock !== null) row.stock_on_hand = Math.max(0, Math.round(Number(a.stock)));
+      const missing = [!row.description && "description", !row.benefits && "benefits", dest === "website" && !row.landing_page_url && "website link (needed before ads can send people there)", dest === "whatsapp" && !row.whatsapp_number && "WhatsApp number"].filter(Boolean);
+      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, summary: { name, price_naira: row.default_order_value_naira, orders_via: dest, description: row.description ?? null, benefits: row.benefits ?? null, stock: row.stock_on_hand ?? null, website: row.landing_page_url ?? null, whatsapp: row.whatsapp_number ?? null }, still_missing: missing, next: "NOT saved yet. Show this summary in plain words, mention anything still missing, and ask if you should save it. Call again with confirmed true only after a clear yes." };
+      const { data, error } = await admin.from("products").insert(row).select("id, product_name").single();
+      return error ? { error: error.message } : { ok: true, saved: true, product_id: data.id, product: data.product_name, still_missing: missing, next: "Saved. To use it in ads the person still needs creatives for it: upload them in Revora under Products, then call list_creatives." };
+    } },
+  { name: "get_order_form_link", title: "Order form link for a product", description: "The product's order page link to put on a website, WhatsApp status or an ad. Every product already has one. If the person is a media buyer the link carries their buyer code so orders are credited to them.", inputSchema: OBJ({ product_name: str("Product name") }, ["product_name"]), annotations: { readOnlyHint: true },
+    run: async (a, c) => {
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const { data: prods } = await admin.from("products").select("id, product_name, is_active, order_form_url").eq("company_id", c.companyId);
+      const hit = (prods ?? []).filter((p: any) => norm(p.product_name) === norm(a?.product_name))[0] ?? (prods ?? []).filter((p: any) => norm(p.product_name).includes(norm(a?.product_name)))[0];
+      if (!hit) return { error: `No product called "${a?.product_name}". Their products: ${[...new Set((prods ?? []).map((p: any) => p.product_name))].join(", ") || "none yet"}.` };
+      let code = ""; if (c.role === "buyer" && c.mediaBuyerId) { const { data: b } = await admin.from("media_buyers").select("code").eq("id", c.mediaBuyerId).maybeSingle(); code = b?.code ? `&buyer=${encodeURIComponent(b.code)}` : ""; }
+      return { product: hit.product_name, active: hit.is_active !== false, order_form_link: `${SITE}/order.html?product=${hit.id}${code}`, saved_custom_form_link: hit.order_form_url || null, note: hit.is_active === false ? "This product is switched off, so customers may not be able to order it." : "Share this link. Orders arrive in Revora and the AI confirmation call follows." };
+    } },
+  { name: "get_kill_rules", title: "My kill rules", description: "The person's own rules for when an ad should be flagged or paused, shown separately for WhatsApp message ads and website purchase ads.", inputSchema: OBJ({}), annotations: { readOnlyHint: true },
+    run: async (_a, c) => {
+      const { data } = await admin.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", c.userId);
+      const label = (k: string) => k === "purchase" ? "Website purchase ads (cost per purchase)" : "WhatsApp message ads (cost per message)";
+      const rules = (data ?? []).map((r: any) => ({ kind: r.kind, applies_to: label(r.kind), on: r.enabled, pauses_automatically: r.auto_kill, kill_if_cost_per_result_above_naira: Number(r.max_cost_per_result), only_judge_after_spend_naira: Number(r.min_spend), only_judge_after_hours: Number(r.min_hours) }));
+      return { rules, missing: ["messaging", "purchase"].filter((k) => !rules.some((r: any) => r.kind === k)).map(label), note: "Website ads must use the purchase rule and WhatsApp ads the message rule. Winners are never paused." };
+    } },
+  { name: "set_kill_rules", title: "Change a kill rule (asks for confirmation)", description: "Create or change one of the person's kill rules. ALWAYS call first WITHOUT confirmed to get a before/after summary, show it in plain words, and call again with confirmed true only after a clear yes. Turning on pauses_automatically means ads are paused without asking, so say that plainly.", inputSchema: OBJ({ kind: { type: "string", enum: ["messaging", "purchase"], description: "messaging = WhatsApp message ads, purchase = website ads" }, max_cost_per_result: { type: "number", description: "Kill if cost per result is above this (naira)" }, min_spend: { type: "number", description: "Only judge after this much spend (naira)" }, min_hours: { type: "number", description: "Only judge after this many hours live" }, enabled: { type: "boolean" }, pauses_automatically: { type: "boolean", description: "True = ads that break the rule are paused automatically. False = the AI only flags them." }, confirmed: { type: "boolean", description: "True ONLY after the person clearly said yes to the summary." } }, ["kind", "max_cost_per_result"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers have kill rules." };
+      const kind = a?.kind === "purchase" ? "purchase" : a?.kind === "messaging" ? "messaging" : null;
+      const maxCost = Number(a?.max_cost_per_result), minSpend = a?.min_spend == null ? null : Number(a.min_spend), minHours = a?.min_hours == null ? null : Number(a.min_hours);
+      if (!kind) return { error: "kind must be messaging (WhatsApp) or purchase (website)." };
+      if (!Number.isFinite(maxCost) || maxCost < 50 || maxCost > 10_000_000) return { error: "max_cost_per_result must be between 50 and 10,000,000 naira." };
+      if ((minSpend != null && (!Number.isFinite(minSpend) || minSpend < 0)) || (minHours != null && (!Number.isFinite(minHours) || minHours < 0))) return { error: "min_spend and min_hours cannot be negative." };
+      const { data: cur } = await admin.from("kill_rules").select("id, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", c.userId).eq("kind", kind).maybeSingle();
+      const next = { enabled: a?.enabled ?? cur?.enabled ?? true, auto_kill: a?.pauses_automatically ?? cur?.auto_kill ?? false, max_cost_per_result: maxCost, min_spend: minSpend ?? Number(cur?.min_spend ?? 0), min_hours: minHours ?? Number(cur?.min_hours ?? 0) };
+      const show = { applies_to: kind === "purchase" ? "website purchase ads" : "WhatsApp message ads", before: cur ? { on: cur.enabled, pauses_automatically: cur.auto_kill, kill_above_naira: Number(cur.max_cost_per_result), judge_after_spend: Number(cur.min_spend), judge_after_hours: Number(cur.min_hours) } : "no rule yet", after: { on: next.enabled, pauses_automatically: next.auto_kill, kill_above_naira: next.max_cost_per_result, judge_after_spend: next.min_spend, judge_after_hours: next.min_hours } };
+      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, change: show, next: "NOT saved yet. Explain this change in plain words" + (next.auto_kill ? ", and say clearly that ads breaking this rule will be paused automatically" : "") + ", then ask. Call again with confirmed true only after a clear yes." };
+      const { error } = cur ? await admin.from("kill_rules").update({ ...next, updated_at: new Date().toISOString() }).eq("id", cur.id) : await admin.from("kill_rules").insert({ profile_id: c.userId, company_id: c.companyId, kind, ...next });
+      return error ? { error: error.message } : { ok: true, saved: true, change: show };
+    } },
+  { name: "get_alerts", title: "My Revora alerts", description: "The latest alerts Revora raised for the person: low balance, a purchase or messages, money spent with no result, a winner, ads paused or suggested to pause. Newest first.", inputSchema: OBJ({ limit: { type: "number", description: "How many, default 15, max 40" } }), annotations: { readOnlyHint: true },
+    run: async (a, c) => {
+      const n = Math.min(Math.max(Number(a?.limit) || 15, 1), 40);
+      const { data } = await admin.from("ai_inbox").select("kind, title, body, status, created_at, read_at").eq("profile_id", c.userId).order("created_at", { ascending: false }).limit(n);
+      return { unread: (data ?? []).filter((r: any) => !r.read_at).length, alerts: (data ?? []).map((r: any) => ({ when: r.created_at, type: r.kind, title: r.title, detail: r.body, status: r.status })) };
+    } },
+  { name: "get_daily_brief", title: "Today at a glance", description: "One snapshot for today: spend and results per ad account, balances that are low, orders today and pending, and unread alerts. Use for 'how are we doing today?'. Explain it in plain words, then say what needs attention first.", inputSchema: OBJ({}), annotations: { readOnlyHint: true },
+    run: async (_a, c) => {
+      const today = new Date(Date.now() + 3600_000).toISOString().slice(0, 10); // Lagos is UTC+1
+      let aq = admin.from("ad_accounts").select("id, name, nickname, balance_naira, low_balance_threshold_naira, status, media_buyer_id").eq("company_id", c.companyId).eq("status", "active");
+      if (c.role === "buyer") aq = aq.eq("media_buyer_id", c.mediaBuyerId);
+      const { data: accts } = await aq;
+      const ids = (accts ?? []).map((x: any) => x.id);
+      const { data: m } = ids.length ? await admin.from("daily_metrics").select("ad_account_id, spend_naira, purchases, conversations").in("ad_account_id", ids).eq("metric_date", today).is("ad_set_ad_id", null) : { data: [] as any[] };
+      let oq = admin.from("orders").select("order_status", { count: "exact" }).eq("company_id", c.companyId).gte("ordered_at", `${today}T00:00:00+01:00`);
+      if (c.role === "buyer") oq = oq.eq("media_buyer_id", c.mediaBuyerId);
+      const { data: orders } = await oq;
+      const { count: unread } = await admin.from("ai_inbox").select("id", { count: "exact", head: true }).eq("profile_id", c.userId).is("read_at", null);
+      const per = (accts ?? []).map((x: any) => {
+        const rows = (m ?? []).filter((r: any) => r.ad_account_id === x.id);
+        const spend = rows.reduce((t: number, r: any) => t + Number(r.spend_naira || 0), 0), buys = rows.reduce((t: number, r: any) => t + Number(r.purchases || 0), 0), msgs = rows.reduce((t: number, r: any) => t + Number(r.conversations || 0), 0);
+        return { account: x.nickname || x.name, spent_today_naira: Math.round(spend), purchases: buys, messages: msgs, balance_naira: x.balance_naira == null ? null : Math.round(Number(x.balance_naira)), low_balance: x.balance_naira != null && Number(x.balance_naira) <= Number(x.low_balance_threshold_naira ?? 0) };
+      });
+      const by: Record<string, number> = {}; for (const o of orders ?? []) by[o.order_status] = (by[o.order_status] || 0) + 1;
+      return { date: today, accounts: per, total_spent_today_naira: per.reduce((t, x) => t + x.spent_today_naira, 0), orders_today: (orders ?? []).length, orders_today_by_status: by, unread_alerts: unread ?? 0, note: "Spend and results come from Revora's synced numbers, which can be up to about 30 minutes behind Meta. Say that if it matters. For exact live numbers use get_live_ads." };
     } },
   { name: "get_copy_context", title: "Context for writing ad copy", description: "Everything needed to write strong ads for ONE product: its facts, the person's own winning and losing ads, their language preference and the craft rules. Call this before writing any copy, then write it yourself. If it says facts are missing, ask the person instead of writing.", inputSchema: OBJ({ ...accountProp, product_name: str("Product name") }, ["product_name"]), annotations: { readOnlyHint: true }, run: (a, c) => chatTool("get_copy_context", a, c, true).then((r) => r) },
   { name: "write_ad_copy", title: "Write ad copy (Revora engine)", description: "Revora's own two-pass writer: long-form hooky copy in the person's language, learned from their past ads, locked to one product. Slower and uses Revora's AI quota; use get_copy_context and write it yourself if you prefer.", inputSchema: OBJ({ ...accountProp, product_name: str("Product name"), goal: { type: "string", enum: ["whatsapp", "website"] }, count: { type: "number" }, angle: str("A specific angle"), language_note: str("e.g. full Pidgin, or Yoruba and English"), notes: str("Anything else") }, ["product_name"]), annotations: { readOnlyHint: true, openWorldHint: true }, run: (a, c) => chatTool("write_ad_copy", a, c, true) },

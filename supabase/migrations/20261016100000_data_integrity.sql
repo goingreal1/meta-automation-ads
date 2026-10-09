@@ -23,3 +23,7 @@ select cron.schedule('pull-meta-metrics-every-30min', '*/30 * * * *', $$select n
 -- The alerts sweep authenticates with the shared cron secret in a header (the old job sent it somewhere the function never read, so it always returned 401).
 select cron.alter_job((select jobid from cron.job where jobname = 'check-low-ad-balances-every-30min'),
   command := $$select net.http_post(url:='https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/check-low-ad-balances', headers:=jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')), body:='{}'::jsonb, timeout_milliseconds:=120000)$$);
+
+-- The alerts sweep raises four new kinds of alert; the inbox only accepted four kinds, so those inserts were rejected.
+alter table public.ai_inbox drop constraint if exists ai_inbox_kind_check;
+alter table public.ai_inbox add constraint ai_inbox_kind_check check (kind = any (array['kill_suggestion','auto_killed','campaign_live','info','launch_suggestion','low_balance','result','spend_no_result','winner']));
