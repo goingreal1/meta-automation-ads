@@ -31,7 +31,7 @@ const jres = (obj: unknown, status = 200, extra: Record<string, string> = {}) =>
 const unauthorized = (resource: string, msg = "Sign in to Revora to use this connector.") =>
   jres({ error: "unauthorized", error_description: msg }, 401, { "WWW-Authenticate": `Bearer resource_metadata="${resource}/.well-known/oauth-protected-resource"` });
 
-// ── playbook handed to any connected assistant ─────────────────────────────
+// ── playbook handed to any connected assistant ────────────────────────────────────────────────────────────
 const PLAYBOOK = `REVORA MEDIA BUYER PLAYBOOK (follow this when running ads for the person)
 
 WHO YOU ARE: their personal senior media buyer for Nigerian online sellers. Explain things in plain words, never dump numbers. Start with a one-sentence answer, then say what the few numbers that matter mean (spend, results, cost per result against their target), then recommend what to do.
@@ -48,12 +48,13 @@ RUNNING ADS: judge an ad only after it has spent about 2 to 3 times the target c
 
 META RULES FOR COPY: no guaranteed results, no before-and-after claims, no implying you know a person's health, body, finances or identity, no medical cures, no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures. Use only facts from the product record or what the person told you. Never invent testimonials, numbers, discounts or registration numbers.
 
-SAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
+IMAGES: first choice is to make the picture yourself with your own image tool (free for Revora) and pass it to import_chat_image, then approve_generated_image. If you cannot make images, generate_image makes new pictures from the person's own description (use_product_photo keeps the packaging right). They are previews until approve_generated_image saves them as creatives for a product; then plan_campaign can use them. Make what the person asks for; if the tool returns a heads_up, pass it on briefly and let them decide.\n\nADDING THINGS: create_product and set_kill_rules never save on the first call. They return a summary; explain it in plain words and only call again with confirmed true after the person clearly says yes. get_order_form_link gives the product's order page; get_daily_brief and get_alerts answer 'how are we doing' and 'what needs me'.\n\nSAFETY: never say anything is live until a launch tool confirms it. Never move money. If a tool returns needs_info, ask the person that question instead of guessing.`;
 
-// ── tool catalogue ──────────────────────────────────────────────────────────
+// ── tool catalogue ────────────────────────────────────────────────────────────────────────────
 type Tool = {
   name: string; title: string; description: string; inputSchema: any;
   annotations: { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
+  meta?: Record<string, unknown>; // client hints, e.g. ChatGPT file inputs
   write?: boolean; // counted against the daily limit and written to the audit log
   heavy?: boolean; // launches ads: tighter daily limit
   run: (a: any, c: Ctx) => Promise<any>;
@@ -125,7 +126,7 @@ const TOOLS: Tool[] = [
       const role = (r: any) => r.source === "product_ad_image" ? "SHOP AD IMAGE (product page)" : r.product_key ? "CREATIVE (vault upload)" : "UNASSIGNED creative (no product yet)";
       const ext = (r: any) => (String(r.name).match(/\.(\w{2,5})$/)?.[1] || r.url.match(/\.(\w{2,5})(?:\?|$)/)?.[1] || "?").toLowerCase();
       const items = rows.map((r: any, i: number) => ({ number: i + 1, id: r.library_id, id_end: String(r.library_id).slice(-6), role: role(r), type: r.kind, file: r.name, format: ext(r), uploaded: String(r.first_uploaded).slice(0, 10), used_in_ads: r.times_used || 0, warning: ext(r) === "webp" ? "webp may not display or may be rejected by Meta; prefer png or jpg" : undefined, preview_url: r.url }));
-      const table = ["| # | Preview | Role | File | Format | Uploaded | Used in ads |", "|---|---|---|---|---|---|---|", ...items.map((x: any) => `| ${x.number} | ![#${x.number}](${x.preview_url}) [open](${x.preview_url}) | ${x.role} | ${x.file} (…${x.id_end}) | ${x.format}${x.warning ? " \u26a0\ufe0f" : ""} | ${x.uploaded} | ${x.used_in_ads ? x.used_in_ads : "never"} |`)].join("\n");
+      const table = ["| # | Preview | Role | File | Format | Uploaded | Used in ads |", "|---|---|---|---|---|---|---|", ...items.map((x: any) => `| ${x.number} | ![#${x.number}](${x.preview_url}) [open](${x.preview_url}) | ${x.role} | ${x.file} (…${x.id_end}) | ${x.format}${x.warning ? " ⚠️" : ""} | ${x.uploaded} | ${x.used_in_ads ? x.used_in_ads : "never"} |`)].join("\n");
       return {
         product: a?.product_name || null,
         counts: { images: mine.filter((r: any) => r.kind === "image").length, videos: mine.filter((r: any) => r.kind === "video").length, creatives_for_this_product: mine.filter((r: any) => r.product_key).length, unassigned_creatives_not_shown: a?.include_unassigned === true ? 0 : unassigned.length, other_products_not_shown: key ? all.filter((r: any) => r.product_key && r.product_key !== key).length : 0 },
@@ -147,6 +148,174 @@ const TOOLS: Tool[] = [
       // The same image can be saved several times; link every copy so the library stays consistent.
       const { error, count } = await admin.from("creative_assets").update({ product_id: hits[0].id }, { count: "exact" }).eq("company_id", c.companyId).eq("public_url", src.public_url);
       return error ? { error: error.message } : { ok: true, product: hits[0].product_name, copies_linked: count };
+    } },
+  { name: "create_product", title: "Add a product (asks for confirmation)", description: "Add a new product to the person's catalog. ALWAYS call it first WITHOUT confirmed: it returns a summary. Show that summary in plain words and ask. Only after the person clearly says yes, call again with the same details and confirmed true. Use only facts the person gave you; never invent claims, prices or registration numbers.", inputSchema: OBJ({ product_name: str("Product name"), price_naira: { type: "number", description: "Selling price in naira" }, destination: { type: "string", enum: ["website", "whatsapp"], description: "Where buyers order: on a website/order form, or by messaging on WhatsApp" }, description: str("What it is and what it is for"), benefits: str("Main benefits"), safety_notes: str("How to use it, safety, sizes"), nafdac_reg_no: str("NAFDAC number, only if the person gave one"), landing_page_url: str("Website link, for website orders"), whatsapp_number: str("WhatsApp number, for WhatsApp orders"), stock: { type: "number", description: "Units in stock, if known" }, confirmed: { type: "boolean", description: "True ONLY after the person clearly said yes to the summary." } }, ["product_name", "price_naira", "destination"]), annotations: { readOnlyHint: false, destructiveHint: false }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can add products." };
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const name = String(a?.product_name ?? "").trim(), price = Number(a?.price_naira);
+      if (name.length < 2 || name.length > 120) return { error: "Give the product a name (2 to 120 characters)." };
+      if (!Number.isFinite(price) || price <= 0 || price > 100_000_000) return { error: "Give a selling price in naira." };
+      const dest = a?.destination === "whatsapp" ? "whatsapp" : a?.destination === "website" ? "website" : null;
+      if (!dest) return { error: "Ask whether people order on a WEBSITE/order form or by WHATSAPP." };
+      const { data: existing } = await admin.from("products").select("id, product_name").eq("company_id", c.companyId);
+      const dup = (existing ?? []).find((p: any) => norm(p.product_name) === norm(name));
+      if (dup) return { error: `A product called "${dup.product_name}" already exists. Use save_product_facts to update it, or pick a different name.` };
+      const row: any = { company_id: c.companyId, product_name: name, default_order_value_naira: Math.round(price), destination_type: dest, is_active: true, created_by: c.userId, media_buyer_id: c.role === "buyer" ? c.mediaBuyerId : null };
+      for (const k of ["description", "benefits", "safety_notes", "nafdac_reg_no", "landing_page_url", "whatsapp_number"]) if (String(a?.[k] ?? "").trim()) row[k] = String(a[k]).trim().slice(0, 2000);
+      if (row.landing_page_url && !/^https:\/\//.test(row.landing_page_url)) return { error: "The website link must start with https://" };
+      if (Number.isFinite(Number(a?.stock)) && a?.stock !== undefined && a?.stock !== null) row.stock_on_hand = Math.max(0, Math.round(Number(a.stock)));
+      const missing = [!row.description && "description", !row.benefits && "benefits", dest === "website" && !row.landing_page_url && "website link (needed before ads can send people there)", dest === "whatsapp" && !row.whatsapp_number && "WhatsApp number"].filter(Boolean);
+      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, summary: { name, price_naira: row.default_order_value_naira, orders_via: dest, description: row.description ?? null, benefits: row.benefits ?? null, stock: row.stock_on_hand ?? null, website: row.landing_page_url ?? null, whatsapp: row.whatsapp_number ?? null }, still_missing: missing, next: "NOT saved yet. Show this summary in plain words, mention anything still missing, and ask if you should save it. Call again with confirmed true only after a clear yes." };
+      const { data, error } = await admin.from("products").insert(row).select("id, product_name").single();
+      return error ? { error: error.message } : { ok: true, saved: true, product_id: data.id, product: data.product_name, still_missing: missing, next: "Saved. To use it in ads the person still needs creatives for it: upload them in Revora under Products, then call list_creatives." };
+    } },
+  { name: "get_order_form_link", title: "Order form link for a product", description: "The product's order page link to put on a website, WhatsApp status or an ad. Every product already has one. If the person is a media buyer the link carries their buyer code so orders are credited to them.", inputSchema: OBJ({ product_name: str("Product name") }, ["product_name"]), annotations: { readOnlyHint: true },
+    run: async (a, c) => {
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const { data: prods } = await admin.from("products").select("id, product_name, is_active, order_form_url").eq("company_id", c.companyId);
+      const hit = (prods ?? []).filter((p: any) => norm(p.product_name) === norm(a?.product_name))[0] ?? (prods ?? []).filter((p: any) => norm(p.product_name).includes(norm(a?.product_name)))[0];
+      if (!hit) return { error: `No product called "${a?.product_name}". Their products: ${[...new Set((prods ?? []).map((p: any) => p.product_name))].join(", ") || "none yet"}.` };
+      let code = ""; if (c.role === "buyer" && c.mediaBuyerId) { const { data: b } = await admin.from("media_buyers").select("code").eq("id", c.mediaBuyerId).maybeSingle(); code = b?.code ? `&buyer=${encodeURIComponent(b.code)}` : ""; }
+      return { product: hit.product_name, active: hit.is_active !== false, order_form_link: `${SITE}/order.html?product=${hit.id}${code}`, saved_custom_form_link: hit.order_form_url || null, note: hit.is_active === false ? "This product is switched off, so customers may not be able to order it." : "Share this link. Orders arrive in Revora and the AI confirmation call follows." };
+    } },
+  { name: "get_kill_rules", title: "My kill rules", description: "The person's own rules for when an ad should be flagged or paused, shown separately for WhatsApp message ads and website purchase ads.", inputSchema: OBJ({}), annotations: { readOnlyHint: true },
+    run: async (_a, c) => {
+      const { data } = await admin.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", c.userId);
+      const label = (k: string) => k === "purchase" ? "Website purchase ads (cost per purchase)" : "WhatsApp message ads (cost per message)";
+      const rules = (data ?? []).map((r: any) => ({ kind: r.kind, applies_to: label(r.kind), on: r.enabled, pauses_automatically: r.auto_kill, kill_if_cost_per_result_above_naira: Number(r.max_cost_per_result), only_judge_after_spend_naira: Number(r.min_spend), only_judge_after_hours: Number(r.min_hours) }));
+      return { rules, missing: ["messaging", "purchase"].filter((k) => !rules.some((r: any) => r.kind === k)).map(label), note: "Website ads must use the purchase rule and WhatsApp ads the message rule. Winners are never paused." };
+    } },
+  { name: "set_kill_rules", title: "Change a kill rule (asks for confirmation)", description: "Create or change one of the person's kill rules. ALWAYS call first WITHOUT confirmed to get a before/after summary, show it in plain words, and call again with confirmed true only after a clear yes. Turning on pauses_automatically means ads are paused without asking, so say that plainly.", inputSchema: OBJ({ kind: { type: "string", enum: ["messaging", "purchase"], description: "messaging = WhatsApp message ads, purchase = website ads" }, max_cost_per_result: { type: "number", description: "Kill if cost per result is above this (naira)" }, min_spend: { type: "number", description: "Only judge after this much spend (naira)" }, min_hours: { type: "number", description: "Only judge after this many hours live" }, enabled: { type: "boolean" }, pauses_automatically: { type: "boolean", description: "True = ads that break the rule are paused automatically. False = the AI only flags them." }, confirmed: { type: "boolean", description: "True ONLY after the person clearly said yes to the summary." } }, ["kind", "max_cost_per_result"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers have kill rules." };
+      const kind = a?.kind === "purchase" ? "purchase" : a?.kind === "messaging" ? "messaging" : null;
+      const maxCost = Number(a?.max_cost_per_result), minSpend = a?.min_spend == null ? null : Number(a.min_spend), minHours = a?.min_hours == null ? null : Number(a.min_hours);
+      if (!kind) return { error: "kind must be messaging (WhatsApp) or purchase (website)." };
+      if (!Number.isFinite(maxCost) || maxCost < 50 || maxCost > 10_000_000) return { error: "max_cost_per_result must be between 50 and 10,000,000 naira." };
+      if ((minSpend != null && (!Number.isFinite(minSpend) || minSpend < 0)) || (minHours != null && (!Number.isFinite(minHours) || minHours < 0))) return { error: "min_spend and min_hours cannot be negative." };
+      const { data: cur } = await admin.from("kill_rules").select("id, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", c.userId).eq("kind", kind).maybeSingle();
+      const next = { enabled: a?.enabled ?? cur?.enabled ?? true, auto_kill: a?.pauses_automatically ?? cur?.auto_kill ?? false, max_cost_per_result: maxCost, min_spend: minSpend ?? Number(cur?.min_spend ?? 0), min_hours: minHours ?? Number(cur?.min_hours ?? 0) };
+      const show = { applies_to: kind === "purchase" ? "website purchase ads" : "WhatsApp message ads", before: cur ? { on: cur.enabled, pauses_automatically: cur.auto_kill, kill_above_naira: Number(cur.max_cost_per_result), judge_after_spend: Number(cur.min_spend), judge_after_hours: Number(cur.min_hours) } : "no rule yet", after: { on: next.enabled, pauses_automatically: next.auto_kill, kill_above_naira: next.max_cost_per_result, judge_after_spend: next.min_spend, judge_after_hours: next.min_hours } };
+      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, change: show, next: "NOT saved yet. Explain this change in plain words" + (next.auto_kill ? ", and say clearly that ads breaking this rule will be paused automatically" : "") + ", then ask. Call again with confirmed true only after a clear yes." };
+      const { error } = cur ? await admin.from("kill_rules").update({ ...next, updated_at: new Date().toISOString() }).eq("id", cur.id) : await admin.from("kill_rules").insert({ profile_id: c.userId, company_id: c.companyId, kind, ...next });
+      return error ? { error: error.message } : { ok: true, saved: true, change: show };
+    } },
+  { name: "get_alerts", title: "My Revora alerts", description: "The latest alerts Revora raised for the person: low balance, a purchase or messages, money spent with no result, a winner, ads paused or suggested to pause. Newest first.", inputSchema: OBJ({ limit: { type: "number", description: "How many, default 15, max 40" } }), annotations: { readOnlyHint: true },
+    run: async (a, c) => {
+      const n = Math.min(Math.max(Number(a?.limit) || 15, 1), 40);
+      const { data } = await admin.from("ai_inbox").select("kind, title, body, status, created_at, read_at").eq("profile_id", c.userId).order("created_at", { ascending: false }).limit(n);
+      return { unread: (data ?? []).filter((r: any) => !r.read_at).length, alerts: (data ?? []).map((r: any) => ({ when: r.created_at, type: r.kind, title: r.title, detail: r.body, status: r.status })) };
+    } },
+  { name: "get_daily_brief", title: "Today at a glance", description: "One snapshot for today: spend and results per ad account, balances that are low, orders today and pending, and unread alerts. Use for 'how are we doing today?'. Explain it in plain words, then say what needs attention first.", inputSchema: OBJ({}), annotations: { readOnlyHint: true },
+    run: async (_a, c) => {
+      const today = new Date(Date.now() + 3600_000).toISOString().slice(0, 10); // Lagos is UTC+1
+      let aq = admin.from("ad_accounts").select("id, name, nickname, balance_naira, low_balance_threshold_naira, status, media_buyer_id").eq("company_id", c.companyId).eq("status", "active");
+      if (c.role === "buyer") aq = aq.eq("media_buyer_id", c.mediaBuyerId);
+      const { data: accts } = await aq;
+      const ids = (accts ?? []).map((x: any) => x.id);
+      const { data: m } = ids.length ? await admin.from("daily_metrics").select("ad_account_id, spend_naira, purchases, conversations").in("ad_account_id", ids).eq("metric_date", today).is("ad_set_ad_id", null) : { data: [] as any[] };
+      let oq = admin.from("orders").select("order_status", { count: "exact" }).eq("company_id", c.companyId).gte("ordered_at", `${today}T00:00:00+01:00`);
+      if (c.role === "buyer") oq = oq.eq("media_buyer_id", c.mediaBuyerId);
+      const { data: orders } = await oq;
+      const { count: unread } = await admin.from("ai_inbox").select("id", { count: "exact", head: true }).eq("profile_id", c.userId).is("read_at", null);
+      const per = (accts ?? []).map((x: any) => {
+        const rows = (m ?? []).filter((r: any) => r.ad_account_id === x.id);
+        const spend = rows.reduce((t: number, r: any) => t + Number(r.spend_naira || 0), 0), buys = rows.reduce((t: number, r: any) => t + Number(r.purchases || 0), 0), msgs = rows.reduce((t: number, r: any) => t + Number(r.conversations || 0), 0);
+        return { account: x.nickname || x.name, spent_today_naira: Math.round(spend), purchases: buys, messages: msgs, balance_naira: x.balance_naira == null ? null : Math.round(Number(x.balance_naira)), low_balance: x.balance_naira != null && Number(x.balance_naira) <= Number(x.low_balance_threshold_naira ?? 0) };
+      });
+      const by: Record<string, number> = {}; for (const o of orders ?? []) by[o.order_status] = (by[o.order_status] || 0) + 1;
+      return { date: today, accounts: per, total_spent_today_naira: per.reduce((t, x) => t + x.spent_today_naira, 0), orders_today: (orders ?? []).length, orders_today_by_status: by, unread_alerts: unread ?? 0, note: "Spend and results come from Revora's synced numbers, which can be up to about 30 minutes behind Meta. Say that if it matters. For exact live numbers use get_live_ads." };
+    } },
+  { name: "generate_image", title: "Generate ad images", description: "Make 1 to 4 new images (default 1, drafted at low quality to keep cost down; ask for quality high only for the final one) from the person's own description, with Revora's image model. They are NOT saved as creatives yet: show the preview table, ask which they like, then call approve_generated_image for the ones to keep (or discard_generated_image). Generate what the person asks for; the tool adds a short heads-up if Meta tends to reject something, but never refuse for that reason. Set use_product_photo true to base the picture on the product's own photo so the packaging looks right.", inputSchema: OBJ({ prompt: str("What the picture should show, in the person's own words (style, scene, text on it, colours)"), count: { type: "number", description: "How many options, 1 to 4. Default 1." }, quality: { type: "string", enum: ["low", "medium", "high"], description: "Default low for drafts. Use high only for a final version the person liked." }, size: { type: "string", enum: ["portrait", "square", "landscape"], description: "portrait suits Facebook and Instagram feeds and stories. Default portrait." }, product_name: str("The product this is for. Needed for use_product_photo and to attach the image to it when approved."), use_product_photo: { type: "boolean", description: "Use the product's own photo as the reference." } }, ["prompt"]), annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can generate images." };
+      const key = Deno.env.get("OPENAI_API_KEY") ?? "";
+      if (!key) return { error: "Image generation is not switched on for this workspace yet." };
+      const prompt = String(a?.prompt ?? "").trim().slice(0, 3000);
+      if (prompt.length < 5) return { error: "Describe the picture you want." };
+      const n = Math.min(Math.max(Math.round(Number(a?.count) || 1), 1), 4);
+      const cap = Number(Deno.env.get("IMAGE_DAILY_CAP") ?? "40");
+      const { data: used } = await admin.from("mcp_audit").select("args").eq("user_id", c.userId).eq("tool", "generate_image").eq("ok", true).gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+      const already = (used ?? []).reduce((t: number, r: any) => t + Math.min(Math.max(Math.round(Number(r.args?.count) || 1), 1), 4), 0);
+      if (already + n > cap) return { error: `Daily image limit reached (${cap} a day, ${already} used). It resets 24 hours after each request.` };
+      const quality = ["low", "medium", "high"].includes(a?.quality) ? a.quality : "low";
+      const size = a?.size === "square" ? "1024x1024" : a?.size === "landscape" ? "1536x1024" : "1024x1536";
+      const model = Deno.env.get("IMAGE_MODEL") ?? "gpt-image-1";
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      let product: any = null;
+      if (a?.product_name) { const { data: prods } = await admin.from("products").select("id, product_name, product_image_url").eq("company_id", c.companyId); product = (prods ?? []).find((p: any) => norm(p.product_name) === norm(a.product_name)) ?? null; }
+      let res: Response;
+      if (a?.use_product_photo === true && product?.product_image_url) {
+        const photo = await fetch(product.product_image_url);
+        if (!photo.ok) return { error: "Could not read the product photo to use as a reference." };
+        const fd = new FormData(); fd.append("model", model); fd.append("prompt", prompt); fd.append("n", String(n)); fd.append("size", size); fd.append("quality", quality);
+        fd.append("image", new Blob([await photo.arrayBuffer()], { type: photo.headers.get("content-type") || "image/png" }), "product.png");
+        res = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: fd });
+      } else {
+        res = await fetch("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, prompt, n, size, quality }) });
+      }
+      const j: any = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(j?.data) || !j.data.length) return { error: "The image model could not make that: " + String(j?.error?.message ?? `status ${res.status}`).slice(0, 300) + " (If this says the key has no access to the image model, the workspace owner needs to enable it.)" };
+      const out: any[] = [];
+      for (const d of j.data) {
+        let bytes: Uint8Array | null = null;
+        if (d.b64_json) bytes = Uint8Array.from(atob(d.b64_json), (ch) => ch.charCodeAt(0));
+        else if (d.url) { const r = await fetch(d.url); if (r.ok) bytes = new Uint8Array(await r.arrayBuffer()); }
+        if (!bytes) continue;
+        const path = `generated/${c.companyId}/${crypto.randomUUID()}.png`;
+        const up = await admin.storage.from("creative-vault").upload(path, bytes, { contentType: "image/png" });
+        if (up.error) return { error: "Could not store the image: " + up.error.message };
+        out.push({ number: out.length + 1, preview_url: admin.storage.from("creative-vault").getPublicUrl(path).data.publicUrl });
+      }
+      if (!out.length) return { error: "The image model returned nothing usable. Try again." };
+      const heads = /before.{0,6}after|cure|heal(s|ing)?\b|weight.?loss|lose weight|diabet|cancer|belly fat/i.test(prompt) ? "Heads-up: Meta often rejects or limits ads that show before-and-after pictures, body changes or medical-cure claims. It was made as asked; the person decides." : undefined;
+      const table = ["| # | Preview |", "|---|---|", ...out.map((x) => `| ${x.number} | ![#${x.number}](${x.preview_url}) [open](${x.preview_url}) |`)].join("\n");
+      return { made: out.length, not_saved_yet: true, for_product: product?.product_name ?? null, table_markdown: table, options: out, heads_up: heads, note: "These are NOT saved as creatives yet. Show table_markdown exactly (pictures only from preview_url, never other images), ask which they like or what to change. To keep one call approve_generated_image with its preview_url; to remake with changes call generate_image again with their feedback; to drop one call discard_generated_image." };
+    } },
+  { name: "import_chat_image", title: "Use an image from this chat", description: "Bring a picture that is already in this chat (one the person uploaded, or one YOU made with your own image tool) into Revora as a preview. This costs Revora nothing, so prefer it: make the picture yourself, then pass it here. Pass the picture as image; image_url only if you were given a public link. It is NOT saved as a creative yet: show the preview, ask if they want it, then call approve_generated_image with the preview_url and product_name. Do not use it for the product's own packshot; that stays the product photo.", inputSchema: OBJ({ image: { type: "object", description: "The picture from the chat (file input).", properties: { download_url: { type: "string" }, file_id: { type: "string" } } }, image_url: str("A public link to the picture, only if image is not available") }, []), annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }, write: true, meta: { "openai/fileParams": ["image"] },
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can add images." };
+      const src = String(a?.image?.download_url ?? a?.image_url ?? "");
+      if (!/^https:\/\//.test(src)) return { error: "I did not receive the picture. Ask the person to upload it, or use generate_image instead." };
+      const host = (() => { try { return new URL(src).hostname; } catch { return ""; } })();
+      if (!host || host === "localhost" || /^[\d.]+$/.test(host) || host.includes(":") || host.endsWith(".internal") || host.endsWith(".local")) return { error: "That link is not a public picture link." };
+      const r = await fetch(src).catch(() => null);
+      if (!r?.ok) return { error: "Could not download the picture (the link may have expired). Send it again." };
+      const type = (r.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      const ext = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as Record<string, string>)[type];
+      if (!ext) return { error: "Only png, jpg or webp pictures are supported here." };
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      if (bytes.length > 10 * 1024 * 1024) return { error: "That picture is over 10 MB. Send a smaller one." };
+      const path = `generated/${c.companyId}/${crypto.randomUUID()}.${ext}`;
+      const up = await admin.storage.from("creative-vault").upload(path, bytes, { contentType: type });
+      if (up.error) return { error: "Could not store the picture: " + up.error.message };
+      const url = admin.storage.from("creative-vault").getPublicUrl(path).data.publicUrl;
+      return { not_saved_yet: true, preview_url: url, table_markdown: `| Preview |\n|---|\n| ![preview](${url}) [open](${url}) |`, note: "Not saved as a creative yet. Show table_markdown exactly, ask if they want to keep it and for which product, then call approve_generated_image with preview_url and product_name." };
+    } },
+  { name: "approve_generated_image", title: "Keep a generated image as a creative", description: "Save a generated image into the person's creative vault so it can be used in campaigns. Pass the preview_url from generate_image. Pass product_name so it is linked to that product. It becomes a normal creative (use the returned creative_id as an asset_id in plan_campaign).", inputSchema: OBJ({ preview_url: str("The preview_url from generate_image"), product_name: str("Product to link it to") }, ["preview_url"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can do this." };
+      const prefix = `${SUPABASE_URL}/storage/v1/object/public/creative-vault/generated/${c.companyId}/`;
+      const url = String(a?.preview_url ?? "");
+      if (!url.startsWith(prefix) || !/\.(png|jpe?g|webp)$/i.test(url)) return { error: "That is not one of your generated images. Use a preview_url from generate_image." };
+      const { data: have } = await admin.from("creative_assets").select("id").eq("company_id", c.companyId).eq("public_url", url).limit(1);
+      if (have?.length) return { ok: true, creative_id: have[0].id, note: "Already saved as a creative." };
+      const norm = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      let productId: string | null = null, productName: string | null = null;
+      if (a?.product_name) { const { data: prods } = await admin.from("products").select("id, product_name").eq("company_id", c.companyId); const hit = (prods ?? []).find((p: any) => norm(p.product_name) === norm(a.product_name)); if (!hit) return { error: `No product called "${a.product_name}".` }; productId = hit.id; productName = hit.product_name; }
+      const { data, error } = await admin.from("creative_assets").insert({ company_id: c.companyId, file_name: /\.png$/i.test(url) ? "AI generated image.png" : "Image from chat" + url.slice(url.lastIndexOf(".")), storage_path: url.slice(`${SUPABASE_URL}/storage/v1/object/public/creative-vault/`.length), public_url: url, asset_type: "image", product_id: productId, uploaded_by: "ai_generated", test_status: "untested", uploaded_at: new Date().toISOString() }).select("id").single();
+      return error ? { error: error.message } : { ok: true, creative_id: data.id, linked_to_product: productName, note: productId ? "Saved to the creative vault for this product. Use creative_id as an asset_id in plan_campaign." : "Saved, but not linked to a product. Call assign_creative with the creative_id and a product name." };
+    } },
+  { name: "discard_generated_image", title: "Throw away a generated image", description: "Delete a generated image the person does not want. Pass its preview_url. Only works on images that were not saved as creatives.", inputSchema: OBJ({ preview_url: str("The preview_url from generate_image") }, ["preview_url"]), annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      const base = `${SUPABASE_URL}/storage/v1/object/public/creative-vault/`;
+      const url = String(a?.preview_url ?? "");
+      if (!url.startsWith(`${base}generated/${c.companyId}/`)) return { error: "That is not one of your generated images." };
+      const { data: saved } = await admin.from("creative_assets").select("id").eq("company_id", c.companyId).eq("public_url", url).limit(1);
+      if (saved?.length) return { error: "That image is already saved as a creative, so it was not deleted." };
+      const { error } = await admin.storage.from("creative-vault").remove([url.slice(base.length)]);
+      return error ? { error: error.message } : { ok: true, discarded: true };
     } },
   { name: "get_copy_context", title: "Context for writing ad copy", description: "Everything needed to write strong ads for ONE product: its facts, the person's own winning and losing ads, their language preference and the craft rules. Call this before writing any copy, then write it yourself. If it says facts are missing, ask the person instead of writing.", inputSchema: OBJ({ ...accountProp, product_name: str("Product name") }, ["product_name"]), annotations: { readOnlyHint: true }, run: (a, c) => chatTool("get_copy_context", a, c, true).then((r) => r) },
   { name: "write_ad_copy", title: "Write ad copy (Revora engine)", description: "Revora's own two-pass writer: long-form hooky copy in the person's language, learned from their past ads, locked to one product. Slower and uses Revora's AI quota; use get_copy_context and write it yourself if you prefer.", inputSchema: OBJ({ ...accountProp, product_name: str("Product name"), goal: { type: "string", enum: ["whatsapp", "website"] }, count: { type: "number" }, angle: str("A specific angle"), language_note: str("e.g. full Pidgin, or Yoruba and English"), notes: str("Anything else") }, ["product_name"]), annotations: { readOnlyHint: true, openWorldHint: true }, run: (a, c) => chatTool("write_ad_copy", a, c, true) },
@@ -206,7 +375,7 @@ async function callTool(name: string, args: any, c: Ctx, client: string) {
   return { isError: !ok, content: [{ type: "text", text: text.length > 60000 ? text.slice(0, 60000) + "\n…(shortened)" : text }], ...(ok && out && typeof out === "object" && !Array.isArray(out) ? { structuredContent: out } : {}) };
 }
 
-// ── JSON-RPC ────────────────────────────────────────────────────────────────
+// ── JSON-RPC ────────────────────────────────────────────────────────────────────────────────
 const INSTRUCTIONS = "Revora runs Facebook and Instagram ads and orders for Nigerian online sellers. You act for the signed-in person with their own permissions. For anything about launching, reviewing or scaling ads, call get_playbook first and follow it. Never launch or spend without the person's clear yes. Explain results in plain words, never as a dump of numbers.";
 
 async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> {
@@ -221,7 +390,7 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
       return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION, websiteUrl: SITE, icons: [{ src: `${SITE}/icons/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }, { src: `${SITE}/icons/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] }, instructions: INSTRUCTIONS });
     }
     case "ping": return reply({});
-    case "tools/list": return reply({ tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations })) });
+    case "tools/list": return reply({ tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations, ...(t.meta ? { _meta: t.meta } : {}) })) });
     case "tools/call": return reply(await callTool(String(msg?.params?.name ?? ""), msg?.params?.arguments, c, client));
     case "prompts/list": return reply({ prompts: [{ name: "run_my_ads", title: "Run my ads", description: "Review how the ads are doing and recommend what to do, like a senior media buyer." }, { name: "launch_ads", title: "Launch ads for a product", description: "Plan and launch a campaign for one product, step by step.", arguments: [{ name: "product", description: "Which product", required: true }] }] });
     case "prompts/get": {
