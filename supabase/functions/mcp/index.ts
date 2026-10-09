@@ -186,6 +186,7 @@ const WEAK_PINS = new Set(["0000", "1111", "2222", "3333", "4444", "5555", "6666
 const APPROVE_URL = `${SITE}/approve.html`;
 const PIN_SETUP_NEXT = "NOT sent. This person has no transfer PIN yet, so no money can be sent. Tell them to open Revora, go to Settings, then Security, and set a 4 to 6 digit transfer PIN there themselves (never in this chat), then ask again.";
 const hexRand = (n: number) => Array.from(crypto.getRandomValues(new Uint8Array(n))).map((b) => b.toString(16).padStart(2, "0")).join("");
+const sha256hex = async (t: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)))).map((b) => b.toString(16).padStart(2, "0")).join("");
 const safeEq = (a: string, b: string) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
 async function pinHash(userId: string, pin: string, saltHex: string): Promise<string> {
   const enc = new TextEncoder();
@@ -225,7 +226,14 @@ async function pinApprovalFor(c: Ctx, kind: "transfer" | "meta", amt: number, ac
     if (error) return { pin_error: error.message };
     id = ins.id;
   }
-  return { approval: { approved, link: `${APPROVE_URL}?a=${id}`, how: "Give this link to the person. They type their transfer PIN on that private Revora page and tap Done. Never ask for the PIN in chat." } };
+  // The inline form gets a one-time secret in the tool result's _meta, which hosts pass to the widget only (not to the model).
+  let secretOut: string | undefined;
+  if (!approved) { secretOut = hexRand(16); await admin.from("transfer_approvals").update({ secret_hash: await sha256hex(secretOut) }).eq("id", id); }
+  return {
+    approval: { approved, link: `${APPROVE_URL}?a=${id}`, how: "Give this link to the person. They type their transfer PIN on that private Revora page and tap Done. Never ask for the PIN in chat." },
+    pin_widget: { approval_id: id, state: approved ? "approved" : "needs_pin", amount: naira(amt), account_name: acct.account_name, account_number: acct.account_number, bank: acct.bank_name },
+    ...(secretOut ? { __meta: { pin_secret: secretOut } } : {}),
+  };
 }
 // Confirm step: take ONE approved, unused, unexpired approval that matches this exact transfer. Returns its id so it can be released on failure.
 async function claimApproval(c: Ctx, kind: "transfer" | "meta", amt: number, acct: any): Promise<any> {
@@ -240,6 +248,26 @@ async function claimApproval(c: Ctx, kind: "transfer" | "meta", amt: number, acc
   return { error: "Not sent: the person has not approved this exact transfer with their transfer PIN yet (or the approval expired).", ...ap, next: "Give the person the approval link so they enter their PIN privately on that page. Never ask for the PIN in chat. When they say they have approved it, call this tool again with confirmed true." };
 }
 const releaseApproval = (id: string) => admin.from("transfer_approvals").update({ used_at: null }).eq("id", id).then(() => {}, () => {});
+
+// The inline form (in ChatGPT / Claude) has no Revora login, so it proves itself with the one-time secret from the tool result's _meta plus the PIN.
+async function widgetApprove(req: Request): Promise<Response> {
+  if (req.method !== "POST") return jres({ error: "method_not_allowed" }, 405);
+  let b: any = {}; try { b = await req.json(); } catch { /* empty body */ }
+  const id = String(b?.approval_id ?? ""), secret = String(b?.secret ?? ""), pin = String(b?.pin ?? "");
+  const bad = () => jres({ error: "This approval is not valid. Use the private approval page instead." }, 403);
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !/^[0-9a-f]{32}$/.test(secret)) return bad();
+  const { data: ap } = await admin.from("transfer_approvals").select("*").eq("id", id).maybeSingle();
+  if (!ap || !ap.secret_hash || !safeEq(await sha256hex(secret), ap.secret_hash)) return bad();
+  if (ap.used_at) return jres({ error: "This transfer was already sent or cancelled." }, 410);
+  if (new Date(ap.expires_at).getTime() < Date.now()) return jres({ error: "This approval expired. Ask your assistant to start the transfer again." }, 410);
+  const info = { amount: naira(ap.amount_naira), account_name: ap.account_name, account_number: ap.account_number, bank: ap.bank_name };
+  if (ap.approved_at) return jres({ ok: true, approved: true, ...info });
+  if (!PIN_RE.test(pin)) return jres({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+  const r = await checkPin(ap.user_id, pin);
+  if (!r.ok) return jres({ error: r.error }, 403);
+  const { error } = await admin.from("transfer_approvals").update({ approved_at: new Date().toISOString(), secret_hash: null }).eq("id", id).is("approved_at", null).is("used_at", null);
+  return error ? jres({ error: "Could not record the approval." }, 500) : jres({ ok: true, approved: true, ...info });
+}
 
 // PIN endpoints used by Revora's own pages (settings and approve.html). They are not MCP tools, so no assistant can call them with a PIN.
 async function handlePin(path: string, req: Request, c: Ctx): Promise<Response> {
@@ -283,6 +311,14 @@ async function handlePin(path: string, req: Request, c: Ctx): Promise<Response> 
   return jres({ error: "not_found" }, 404);
 }
 
+// The inline approval form (an MCP Apps / ChatGPT widget). It lives in pin-widget.html next to this file.
+let PIN_WIDGET = "";
+try { PIN_WIDGET = (await Deno.readTextFile(new URL("./pin-widget.html", import.meta.url))).replace("__API__", DIRECT); } catch (e) { console.error("pin-widget.html could not be read:", (e as Error).message); }
+const UI_OPENAI = "ui://widget/revora-pin.html", UI_APPS = "ui://revora/pin.html";
+const RES_META_OPENAI = { "openai/widgetCSP": { connect_domains: [SUPABASE_URL], resource_domains: [] }, "openai/widgetPrefersBorder": true, "openai/widgetDescription": "Approve a money transfer with your private transfer PIN." };
+const RES_META_APPS = { ui: { csp: { connectDomains: [SUPABASE_URL] }, prefersBorder: true } };
+const PIN_UI_META = { ui: { resourceUri: UI_APPS }, "openai/outputTemplate": UI_OPENAI, "openai/widgetAccessible": false, "openai/toolInvocation/invoking": "Checking the account...", "openai/toolInvocation/invoked": "Ready for your approval" };
+
 async function topUpMetaRun(a: any, c: Ctx) {
       if (!c.mediaBuyerId && !isAdminRole(c)) return { error: "Only media buyers and admins can top up Meta." };
       const acct: any = await resolveAccount(a?.account_number, a?.bank_name); if (acct.error) return acct;
@@ -308,7 +344,7 @@ async function topUpMetaRun(a: any, c: Ctx) {
       const r: any = await fn("paystack-transfer-to-meta", { fund_request_id: fr.id, account_number: acct.account_number, bank_code: acct.bank_code }, c);
       if (r?.error) { await releaseApproval(claim.id); return { error: r.error }; }
       if (r?.verified === false) { await releaseApproval(claim.id); return { error: r.reason || "That account was not accepted." }; }
-      return { ok: true, sent: true, top_up: show, transfer_code: r.transfer_code, note: "Sent to Meta. It usually shows in Ads Manager within a few minutes to an hour." };
+      return { ok: true, sent: true, top_up: show, pin_widget: { state: "sent", amount: show.amount, account_name: acct.account_name }, transfer_code: r.transfer_code, note: "Sent to Meta. It usually shows in Ads Manager within a few minutes to an hour." };
 }
 
 const TOOLS: Tool[] = [
@@ -719,7 +755,7 @@ const TOOLS: Tool[] = [
       notifyFund("fund_request_decided", fr.id);
       return { ok: true, request: { ...show, status: approve ? "approved" : "declined" }, next: approve ? "Approved. The buyer can now use top_up_meta, or open Revora." : "Declined. The buyer was told." };
     } },
-  { name: "transfer_money", title: "SEND MONEY to a bank account (asks for confirmation)", description: "USE THIS FOR ANY REQUEST TO SEND, TRANSFER, PAY, FUND, TOP UP OR \"HELP ME WITH\" MONEY, whatever words the person uses. It looks up the account holder's name at the bank FIRST, then checks the role. Owners/admins can pay ANY Nigerian bank account from the company funding wallet; media buyers can only pay an account whose bank name is Meta or Facebook (paid from their admin-approved funding). This moves real money. ALWAYS call first WITHOUT confirmed: it looks up the account holder's name at the bank and shows amount, account name and wallet balance. Show it exactly, ask the person to confirm that the name is right, and call again with the same details and confirmed true only after a clear yes AND the person says they approved it with their own transfer PIN on a private Revora page (the link comes back as approval.link); NEVER ask for, accept or repeat a PIN in chat. " + MONEY_WARN + " Limits apply per transfer and per day.", inputSchema: OBJ({ amount_naira: { type: "number", description: "Amount in naira" }, account_number: str("10-digit account number"), bank_name: str("Bank name, e.g. GTBank, Access, Opay"), note: str("What it is for (for the record)"), confirmed: { type: "boolean", description: "True ONLY after the person said yes to this exact amount and account name." } }, ["amount_naira", "account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true,
+  { name: "transfer_money", title: "SEND MONEY to a bank account (asks for confirmation)", description: "USE THIS FOR ANY REQUEST TO SEND, TRANSFER, PAY, FUND, TOP UP OR \"HELP ME WITH\" MONEY, whatever words the person uses. It looks up the account holder's name at the bank FIRST, then checks the role. Owners/admins can pay ANY Nigerian bank account from the company funding wallet; media buyers can only pay an account whose bank name is Meta or Facebook (paid from their admin-approved funding). This moves real money. ALWAYS call first WITHOUT confirmed: it looks up the account holder's name at the bank and shows amount, account name and wallet balance. Show it exactly, ask the person to confirm that the name is right, and call again with the same details and confirmed true only after a clear yes AND the person says they approved it with their own transfer PIN on a private Revora page (the link comes back as approval.link); NEVER ask for, accept or repeat a PIN in chat. " + MONEY_WARN + " Limits apply per transfer and per day.", inputSchema: OBJ({ amount_naira: { type: "number", description: "Amount in naira" }, account_number: str("10-digit account number"), bank_name: str("Bank name, e.g. GTBank, Access, Opay"), note: str("What it is for (for the record)"), confirmed: { type: "boolean", description: "True ONLY after the person said yes to this exact amount and account name." } }, ["amount_naira", "account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
     run: async (a, c) => {
       if (!isAdminRole(c)) {
         // Buyers (and anyone else): look up the account holder first. Meta/Facebook is paid from the buyer's approved funding; nothing else is.
@@ -747,9 +783,9 @@ const TOOLS: Tool[] = [
       const r: any = await fetch(`${SUPABASE_URL}/functions/v1/paystack-admin-withdraw`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.token}` }, body: JSON.stringify({ access_token: c.token, amount_naira: amt, account_number: acct.account_number, bank_code: acct.bank_code, reference: `mcp${digest}` }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
 
       if (r?.error) { await releaseApproval(claim.id); return { error: r.error }; }
-      return { ok: true, sent: true, transfer: { ...show, balance_after: naira(w.balance - amt) }, transfer_code: r.transfer_code, note: "Sent. It normally arrives within a minute or two." };
+      return { ok: true, sent: true, transfer: { ...show, balance_after: naira(w.balance - amt) }, pin_widget: { state: "sent", amount: show.amount, account_name: acct.account_name }, transfer_code: r.transfer_code, note: "Sent. It normally arrives within a minute or two." };
     } },
-  { name: "top_up_meta", title: "Send approved funds to the Meta ad account (asks for confirmation)", description: "Same as transfer_money for a Meta (Facebook) ad billing account: sends an APPROVED funding request to it. In Facebook Ads Manager, open Billing, Add funds, and pick bank transfer: Meta shows a one-time account number and bank. Give that account_number and bank_name. This can only ever pay an account whose bank name is Meta or Facebook; anything else is refused. The amount is fixed by the approved request. ALWAYS call first WITHOUT confirmed: it checks the account name and shows it. The person must also approve with their own transfer PIN on a private Revora page (the link comes back as approval.link); NEVER ask for, accept or repeat a PIN in chat. Call again with confirmed true only after a clear yes AND the person says they approved it. " + MONEY_WARN, inputSchema: OBJ({ account_number: str("The one-time account number from Meta's Add funds screen"), bank_name: str("The bank shown by Meta, e.g. Wema Bank"), fund_request_id: str("Which approved request (from list_fund_requests). Optional when there is only one."), confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true,
+  { name: "top_up_meta", title: "Send approved funds to the Meta ad account (asks for confirmation)", description: "Same as transfer_money for a Meta (Facebook) ad billing account: sends an APPROVED funding request to it. In Facebook Ads Manager, open Billing, Add funds, and pick bank transfer: Meta shows a one-time account number and bank. Give that account_number and bank_name. This can only ever pay an account whose bank name is Meta or Facebook; anything else is refused. The amount is fixed by the approved request. ALWAYS call first WITHOUT confirmed: it checks the account name and shows it. The person must also approve with their own transfer PIN on a private Revora page (the link comes back as approval.link); NEVER ask for, accept or repeat a PIN in chat. Call again with confirmed true only after a clear yes AND the person says they approved it. " + MONEY_WARN, inputSchema: OBJ({ account_number: str("The one-time account number from Meta's Add funds screen"), bank_name: str("The bank shown by Meta, e.g. Wema Bank"), fund_request_id: str("Which approved request (from list_fund_requests). Optional when there is only one."), confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
     run: (a, c) => topUpMetaRun(a, c) },
 ];
 const SETUP_NEEDED = `This Revora login has not finished setting up yet. Tell the person to open ${SITE}/setup-company.html and choose Personal or Company (it takes a minute), then come back and ask again.`;
@@ -780,8 +816,9 @@ async function callTool(name: string, args: any, c: Ctx, client: string) {
   if (out?.error) ok = false;
   if (t.write) await admin.from("mcp_audit").insert({ company_id: c.companyId, user_id: c.userId, tool: name, args: clip(args), ok, client }).then(() => {}, () => {});
   const imgs: any[] = out?.__images ?? []; if (imgs.length) { out = { ...out }; delete out.__images; }
+  const toolMeta = out && typeof out === "object" ? out.__meta : undefined; if (toolMeta) { out = { ...out }; delete out.__meta; }
   const text = typeof out === "string" ? out : JSON.stringify(out, null, 1);
-  return { isError: !ok, content: [{ type: "text", text: text.length > 60000 ? text.slice(0, 60000) + "\n…(shortened)" : text }, ...imgs.map((m) => ({ type: "image", data: m.data, mimeType: m.mimeType }))], ...(ok && out && typeof out === "object" && !Array.isArray(out) ? { structuredContent: out } : {}) };
+  return { isError: !ok, content: [{ type: "text", text: text.length > 60000 ? text.slice(0, 60000) + "\n…(shortened)" : text }, ...imgs.map((m) => ({ type: "image", data: m.data, mimeType: m.mimeType }))], ...(ok && out && typeof out === "object" && !Array.isArray(out) ? { structuredContent: out } : {}), ...(toolMeta ? { _meta: toolMeta } : {}) };
 }
 
 // ── JSON-RPC ────────────────────────────────────────────────────────────────────────────────
@@ -796,7 +833,7 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
   switch (msg.method) {
     case "initialize": {
       const want = String(msg?.params?.protocolVersion ?? "");
-      return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION, websiteUrl: SITE, icons: [{ src: `${SITE}/icons/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }, { src: `${SITE}/icons/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] }, instructions: INSTRUCTIONS });
+      return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION, websiteUrl: SITE, icons: [{ src: `${SITE}/icons/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }, { src: `${SITE}/icons/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] }, instructions: INSTRUCTIONS });
     }
     case "ping": return reply({});
     case "tools/list": return reply({ tools: TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations, ...(t.meta ? { _meta: t.meta } : {}) })) });
@@ -808,7 +845,13 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
       if (n === "launch_ads") return reply({ messages: [{ role: "user", content: { type: "text", text: `Act as my Revora media buyer and launch ads for ${msg?.params?.arguments?.product ?? "my product"}. Call get_playbook first and follow it exactly. Ask me only what you cannot decide. Do not launch until I clearly approve the plan.` } }] });
       return err(-32602, "Unknown prompt");
     }
-    case "resources/list": return reply({ resources: [] });
+    case "resources/list": return reply({ resources: PIN_WIDGET ? [{ uri: UI_OPENAI, name: "Revora transfer approval", mimeType: "text/html+skybridge", _meta: RES_META_OPENAI }, { uri: UI_APPS, name: "Revora transfer approval", mimeType: "text/html;profile=mcp-app", _meta: RES_META_APPS }] : [] });
+    case "resources/read": {
+      const uri = String(msg?.params?.uri ?? "");
+      if (PIN_WIDGET && uri === UI_OPENAI) return reply({ contents: [{ uri, mimeType: "text/html+skybridge", text: PIN_WIDGET, _meta: RES_META_OPENAI }] });
+      if (PIN_WIDGET && uri === UI_APPS) return reply({ contents: [{ uri, mimeType: "text/html;profile=mcp-app", text: PIN_WIDGET, _meta: RES_META_APPS }] });
+      return err(-32602, "Unknown resource");
+    }
     default: return err(-32601, `Method not found: ${msg.method}`);
   }
 }
@@ -834,6 +877,8 @@ Deno.serve(async (req: Request) => {
     }
     return jres({ ok: true, service: "revora-mcp", version: VERSION, tools: TOOLS.length, resource: RESOURCE });
   }
+
+  if (path === "/pin/widget-approve") return widgetApprove(req);
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return unauthorized(RESOURCE);
