@@ -78,6 +78,38 @@ async function resolveAccountToken(supabase: any, account: any): Promise<string>
   }
 }
 
+const MSG_ACTION = "onsite_conversion.messaging_conversation_started_7d";
+const PURCHASE_ACTIONS = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
+
+/** Every page of an insights call (Meta returns ~25 rows a page; a few days of daily rows easily spills over). */
+async function fetchAllInsights(firstUrl: string): Promise<{ data: any[]; error: any }> {
+  const out: any[] = [];
+  let url: string | null = firstUrl;
+  for (let page = 0; url && page < 40; page++) {
+    const r: any = await fetch(url).then((x) => x.json()).catch((e) => ({ error: { message: String(e) } }));
+    if (r?.error) return { data: out, error: r.error };
+    out.push(...(r?.data ?? []));
+    url = r?.paging?.next ?? null;
+  }
+  return { data: out, error: null };
+}
+
+/** The numbers we keep for one insights row. Messages and purchases are separate columns so WhatsApp ads are not shown as "0 orders". */
+function metricsFromRow(row: any) {
+  const acts: { action_type: string; value: string }[] = row.actions ?? [];
+  const val = (types: string[]) => { for (const t of types) { const a = acts.find((x) => x.action_type === t); if (a) return parseInt(a.value) || 0; } return 0; };
+  const spend = parseFloat(row.spend ?? "0");
+  const purchases = val(PURCHASE_ACTIONS);
+  const conversations = val([MSG_ACTION]);
+  return {
+    spend, purchases, conversations,
+    impressions: parseInt(row.impressions ?? "0"), reach: parseInt(row.reach ?? "0"),
+    clicks: parseInt(row.clicks ?? "0"), link_clicks: parseInt(row.inline_link_clicks ?? "0"),
+    ctr: parseFloat(row.ctr ?? "0"), cpc: parseFloat(row.cpc ?? "0"), cpm: parseFloat(row.cpm ?? "0"), frequency: parseFloat(row.frequency ?? "0"),
+    costPerOrder: purchases > 0 ? spend / purchases : null,
+  };
+}
+
 /** Send a WhatsApp text message via Cloud API */
 async function sendWhatsApp(message: string): Promise<void> {
   if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID || !ALERT_TO_NUMBER) return;
@@ -161,6 +193,12 @@ const SVC_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // valid) copy of the key than this function's env.
 type Caller = { service: boolean; company_id: string | null; role: string | null };
 async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+  // The scheduled sync (pg_cron) proves itself with the shared cron secret, like ads-manager's auto_kill.
+  const given = req.headers.get("x-cron-secret") ?? "";
+  if (given) {
+    const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+    if (secret?.value && given === secret.value) return { service: true, company_id: null, role: null };
+  }
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
   if (SVC_KEY && token === SVC_KEY) return { service: true, company_id: null, role: null };
@@ -183,7 +221,7 @@ Deno.serve(async (req: Request) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-cron-secret'
       }
     });
   }
@@ -196,16 +234,22 @@ Deno.serve(async (req: Request) => {
     }
     
     // Parse manual ad_account_id or historical sync if triggered from dashboard
+    // Default = SYNC ONLY: copy the last 3 days of real Meta numbers into daily_metrics, one row per day. Nothing is paused,
+    // scaled or messaged. The old built-in kill/scale rules ran with fixed thresholds that ignored each person's own kill
+    // rules (and treated WhatsApp ads as "0 orders"), so they are now opt-in (run_decisions: true) and the scheduled
+    // sync never turns them on. Pausing is done by ads-manager's auto_kill, which follows the person's own rules.
     let targetAccountId = null;
-    let datePreset = "today";
+    let datePreset = "last_3d";
     let isBackfill = false;
+    let runDecisions = false;
 
     if (req.method === 'POST') {
       try {
         const body = await req.json();
         targetAccountId = body.ad_account_id;
         if (body.date_preset) datePreset = body.date_preset;
-        if (body.backfill) isBackfill = body.backfill;
+        if (body.backfill) { isBackfill = true; if (!body.date_preset) datePreset = "last_90d"; }
+        if (body.run_decisions === true) runDecisions = true;
       } catch(e) {}
     }
 
@@ -314,14 +358,14 @@ Deno.serve(async (req: Request) => {
       try {
         const adInsightFields = [
           "ad_id", "adset_id", "spend", "impressions", "reach",
-          "clicks", "ctr", "cpc", "cpm", "frequency", "actions",
+          "clicks", "inline_link_clicks", "ctr", "cpc", "cpm", "frequency", "actions",
         ].join(",");
-        const adIncrementStr = isBackfill ? "&time_increment=1" : "";
+        const adIncrementStr = "&time_increment=1";
         const adInsightsUrl =
           `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/insights` +
           `?level=ad&fields=${adInsightFields}&date_preset=${datePreset}${adIncrementStr}&access_token=${token}`;
-        const adInsRes = await fetch(adInsightsUrl);
-        const adInsData = await adInsRes.json();
+        const adInsData = await fetchAllInsights(adInsightsUrl);
+        if (adInsData.error) console.error(`Ad-level insights error for ${account.name}:`, adInsData.error?.message);
 
         if (adInsData.data) {
           for (const row of adInsData.data) {
@@ -332,20 +376,7 @@ Deno.serve(async (req: Request) => {
               .maybeSingle();
             if (!adSetAdRow) continue;
 
-            const spend = parseFloat(row.spend ?? "0");
-            const impressions = parseInt(row.impressions ?? "0");
-            const reach = parseInt(row.reach ?? "0");
-            const clicks = parseInt(row.clicks ?? "0");
-            const ctr = parseFloat(row.ctr ?? "0");
-            const cpc = parseFloat(row.cpc ?? "0");
-            const cpm = parseFloat(row.cpm ?? "0");
-            const frequency = parseFloat(row.frequency ?? "0");
-            const purchaseAction = (row.actions ?? []).find(
-              (a: { action_type: string }) =>
-                a.action_type === "purchase" || a.action_type === "offsite_conversion.fb_pixel_purchase",
-            );
-            const orders = purchaseAction ? parseInt(purchaseAction.value) : 0;
-            const costPerOrder = orders > 0 ? spend / orders : null;
+            const m = metricsFromRow(row);
 
             const { error: adMetricErr } = await supabase.from("daily_metrics").upsert({
               ad_set_ad_id: adSetAdRow.id,
@@ -358,16 +389,19 @@ Deno.serve(async (req: Request) => {
               ad_account_id: account.id,
               company_id: account.company_id,
               metric_date: row.date_start || today,
-              spend_naira: spend,
-              impressions,
-              reach,
-              clicks,
-              ctr,
-              cpc_naira: cpc,
-              cpm_naira: cpm,
-              frequency,
-              orders,
-              cost_per_order_naira: costPerOrder,
+              spend_naira: m.spend,
+              impressions: m.impressions,
+              reach: m.reach,
+              clicks: m.clicks,
+              link_clicks: m.link_clicks,
+              ctr: m.ctr,
+              cpc_naira: m.cpc,
+              cpm_naira: m.cpm,
+              frequency: m.frequency,
+              orders: m.purchases,
+              purchases: m.purchases,
+              conversations: m.conversations,
+              cost_per_order_naira: m.costPerOrder,
             }, { onConflict: "ad_set_ad_id,metric_date" });
             if (adMetricErr) console.error(`Ad-level metrics upsert error (${row.ad_id}):`, adMetricErr.message);
           }
@@ -376,16 +410,15 @@ Deno.serve(async (req: Request) => {
 
       const fields = [
         "adset_id", "adset_name", "spend", "impressions", "reach",
-        "clicks", "ctr", "cpc", "cpm", "frequency", "actions",
+        "clicks", "inline_link_clicks", "ctr", "cpc", "cpm", "frequency", "actions",
       ].join(",");
 
-      const incrementStr = isBackfill ? "&time_increment=1" : "";
+      const incrementStr = "&time_increment=1";
       const insightsUrl =
         `${META_GRAPH_BASE}/act_${META_AD_ACCOUNT_ID}/insights` +
         `?level=adset&fields=${fields}&date_preset=${datePreset}${incrementStr}&access_token=${token}`;
 
-      const res = await fetch(insightsUrl);
-      const data = await res.json();
+      const data = await fetchAllInsights(insightsUrl);
 
       if (data.error) {
         console.error(`Meta API error for account ${account.name}:`, data.error);
@@ -400,22 +433,9 @@ Deno.serve(async (req: Request) => {
       for (const row of rows) {
         totalAdsetsProcessed++;
         const metaAdsetId  = row.adset_id;
-        const spend        = parseFloat(row.spend ?? "0");
-        const impressions  = parseInt(row.impressions ?? "0");
-        const reach        = parseInt(row.reach ?? "0");
-        const clicks       = parseInt(row.clicks ?? "0");
-        const ctr          = parseFloat(row.ctr ?? "0");
-        const cpc          = parseFloat(row.cpc ?? "0");
-        const cpm          = parseFloat(row.cpm ?? "0");
-        const frequency    = parseFloat(row.frequency ?? "0");
-
-        const purchaseAction = (row.actions ?? []).find(
-          (a: { action_type: string }) =>
-            a.action_type === "purchase" ||
-            a.action_type === "offsite_conversion.fb_pixel_purchase",
-        );
-        const orders       = purchaseAction ? parseInt(purchaseAction.value) : 0;
-        const costPerOrder = orders > 0 ? spend / orders : null;
+        const m = metricsFromRow(row);
+        const { spend, impressions, reach, clicks, ctr, cpc, cpm, frequency, costPerOrder } = m;
+        const orders = m.purchases;
 
         // Look up local ad set record (filter by ad_account_id)
         let { data: adSetRow } = await supabase
@@ -466,6 +486,7 @@ Deno.serve(async (req: Request) => {
         const { error: upsertErr } = await supabase.from("daily_metrics").upsert(
           {
             ad_set_id:            adSetRow.id,
+            ad_set_ad_id:         null,
             ad_account_id:        account.id,
             company_id:           account.company_id,
             metric_date:          metricDate,
@@ -473,14 +494,17 @@ Deno.serve(async (req: Request) => {
             impressions,
             reach,
             clicks,
+            link_clicks:          m.link_clicks,
             ctr,
             cpc_naira:            cpc,
             cpm_naira:            cpm,
             frequency,
             orders,
+            purchases:            m.purchases,
+            conversations:        m.conversations,
             cost_per_order_naira: costPerOrder,
           },
-          { onConflict: "ad_set_id,metric_date" },
+          { onConflict: "ad_set_id,ad_set_ad_id,metric_date" },
         );
         if (upsertErr) console.error(`Metrics upsert error for ${adSetRow.adset_name}:`, upsertErr.message);
 
@@ -489,9 +513,9 @@ Deno.serve(async (req: Request) => {
         const hoursSinceLaunch = launchTimestamp
           ? (Date.now() - new Date(launchTimestamp).getTime()) / (1000 * 60 * 60)
           : 0;
-        // Skip alert/decision logic if this is a historical backfill
-        if (isBackfill) {
-          accountResults.push({ adset: adSetRow.adset_name, metricDate, spend, orders, decision: "backfilled" });
+        // Sync only (the default): numbers are saved, no alerts, pausing or scaling.
+        if (!runDecisions) {
+          accountResults.push({ adset: adSetRow.adset_name, metricDate, spend, orders, conversations: m.conversations, decision: "synced" });
           continue;
         }
 
@@ -601,7 +625,7 @@ Deno.serve(async (req: Request) => {
       const totalSpendToday = accountResults.reduce((acc: number, curr: any) => acc + (curr.spend || 0), 0);
       const hourOfDay = new Date().getUTCHours() + 1; // Lagos time
       
-      if (hourOfDay < 18 && totalSpendToday >= (DAILY_BUDGET_LIMIT * 0.9)) {
+      if (runDecisions && hourOfDay < 18 && totalSpendToday >= (DAILY_BUDGET_LIMIT * 0.9)) {
         await sendWhatsApp(
           `🚨 BUDGET PACING ALERT [${account.name}] 🚨\n` +
           `Total spend today is ₦${totalSpendToday.toFixed(0)}, which is ≥90% of daily limit (₦${DAILY_BUDGET_LIMIT}).\n` +

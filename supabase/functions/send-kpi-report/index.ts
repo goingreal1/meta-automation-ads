@@ -69,10 +69,10 @@ async function persistLiveMetrics(supabase: any, adSetDbId: string, accountDbId:
   const ctr = m.impressions > 0 ? (m.clicks / m.impressions) * 100 : 0;
   const cpc = m.clicks > 0 ? m.spend / m.clicks : 0;
   await supabase.from("daily_metrics").upsert({
-    ad_set_id: adSetDbId, ad_account_id: accountDbId, metric_date: new Date().toISOString().slice(0, 10),
+    ad_set_id: adSetDbId, ad_set_ad_id: null, ad_account_id: accountDbId, metric_date: new Date().toISOString().slice(0, 10),
     spend_naira: m.spend, impressions: m.impressions, reach: m.reach, clicks: m.clicks, ctr, cpc_naira: cpc,
     orders: m.orders, cost_per_order_naira: costPerOrder, landing_page_views: m.landingPageViews,
-  }, { onConflict: "ad_set_id,metric_date" });
+  }, { onConflict: "ad_set_id,ad_set_ad_id,metric_date" });
 }
 
 function emptyTotals() { return { spend: 0, impressions: 0, reach: 0, clicks: 0, orders: 0, landingPageViews: 0 }; }
