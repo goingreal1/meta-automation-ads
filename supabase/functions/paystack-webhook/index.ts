@@ -195,10 +195,14 @@ Deno.serve(async (req: Request) => {
           await notifyPaymentConfirmed(matchedOrderId);
         }
       } else {
+        // No order could be matched (a POS or bank app often changes the sender name). The money is real, so it is held in
+        // the COMPANY funding wallet right away: stored as a company-level confirmed deposit that remembers which buyer's
+        // account it arrived in. The buyer cannot spend it. An admin can later match it to an order, which moves it out.
         await supabase.from("payments").insert({
-          company_id: buyer.company_id, order_id: null, media_buyer_id: buyer.id,
-          amount_naira: amountNaira, status: "unmatched", channel: data.channel,
-          paystack_reference: reference, raw_event: event,
+          company_id: buyer.company_id, order_id: null, media_buyer_id: null,
+          amount_naira: amountNaira, status: "confirmed", source: "admin_topup", channel: data.channel,
+          paid_at: new Date().toISOString(), paystack_reference: reference, raw_event: event,
+          held_for_buyer_id: buyer.id, held_reason: "No order matched this deposit",
         });
       }
     }
