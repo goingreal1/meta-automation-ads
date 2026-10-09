@@ -182,7 +182,7 @@ async function topUpMetaRun(a: any, c: Ctx) {
       const acct: any = await resolveAccount(a?.account_number, a?.bank_name); if (acct.error) return acct;
       const { data: allowed } = await admin.from("transfer_allowed_names").select("name_key").eq("company_id", c.companyId);
       const key = acct.account_name.trim().toLowerCase().replace(/\s+/g, " ");
-      const okName = (allowed ?? []).length ? (allowed ?? []).some((x: any) => x.name_key === key) : /\b(facebook|meta)\b/i.test(acct.account_name);
+      const okName = (allowed ?? []).length ? (allowed ?? []).some((x: any) => x.name_key === key) : /(facebook|meta)/i.test(acct.account_name);
       if (!okName) return { error: `The bank says that account belongs to "${acct.account_name}", which is not Meta or Facebook, so nothing was sent. Copy today's account number from Ads Manager (Billing, Add funds) again.` };
       let q = admin.from("fund_requests").select("id, media_buyer_id, amount_naira, requested_at, note").eq("company_id", c.companyId).eq("status", "approved").is("paystack_transfer_code", null).order("requested_at");
       if (!isAdminRole(c)) q = q.eq("media_buyer_id", c.mediaBuyerId);
@@ -614,7 +614,7 @@ const TOOLS: Tool[] = [
         // Buyers (and anyone else): look up the account holder first. Meta/Facebook is paid from the buyer's approved funding; nothing else is.
         const look: any = await resolveAccount(a?.account_number, a?.bank_name);
         if (look.error) return look;
-        if (/\b(facebook|meta)\b/i.test(look.account_name) && c.mediaBuyerId) return topUpMetaRun(a, c);
+        if (/(facebook|meta)/i.test(look.account_name) && c.mediaBuyerId) return topUpMetaRun(a, c);
         return { error: `The bank says ${look.account_number} (${look.bank_name}) belongs to "${look.account_name}". Only an owner or admin can send money to accounts that are not Meta or Facebook, so nothing was sent.`, next: "Tell the person who the account belongs to. They can ask the admin to send it, or ask for funding with request_funds." };
       }
       const amt = Math.round(Number(a?.amount_naira));
