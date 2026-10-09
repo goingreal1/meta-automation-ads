@@ -157,7 +157,7 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
   }
 
   const sid = String(b.site_id ?? "");
-  const loadSite = async () => { const { data } = await admin.from("sites").select("id, name, slug, status, product_id, settings").eq("id", sid).eq("company_id", companyId).maybeSingle(); return data; };
+  const loadSite = async () => { const { data } = await admin.from("sites").select("id, name, slug, status, product_id, settings, media_buyer_id").eq("id", sid).eq("company_id", companyId).maybeSingle(); return data; };
   // Links use the company's own connected domain when it has one (the domain's main site opens at its root, other sites at /s/<slug>), else the platform address.
   const links = async (s: any) => {
     const { data: doms } = await admin.from("site_domains").select("hostname, site_id").eq("company_id", companyId).eq("status", "active").order("created_at");
@@ -179,7 +179,7 @@ export async function handlePage(admin: SupabaseClient, mode: string, b: any, co
     const summary = { sections: list(spec.sections, 30).map((s: any) => s?.type), warnings: [...r.warnings, ...(buyer.warning ? [buyer.warning] : [])], still_needs_images: r.needs_images, packages_found: (tiers ?? []).length };
     if (b.dry) return ok({ dry_run: true, not_saved_yet: true, ...summary });
     let s: any;
-    if (sid) { s = await loadSite(); if (!s) return bad("Page not found.", 404); await admin.from("sites").update({ settings: { ...(s.settings ?? {}), theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body } }, updated_at: new Date().toISOString() }).eq("id", s.id); } else {
+    if (sid) { s = await loadSite(); if (!s) return bad("Page not found.", 404); await admin.from("sites").update({ settings: { ...(s.settings ?? {}), theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body } }, ...(!s.media_buyer_id && buyer.id ? { media_buyer_id: buyer.id } : {}), updated_at: new Date().toISOString() }).eq("id", s.id); } else {
       const base = prod.product_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "page";
       for (let i = 0; i < 4 && !s; i++) { const slug = `${base}-${crypto.randomUUID().slice(0, 4)}`; const { data, error } = await admin.from("sites").insert({ company_id: companyId, name: plain(b.title, 80) || `${prod.product_name} page`, slug, status: "draft", product_id: prod.id, media_buyer_id: buyer.id, settings: { theme: { fonts_url: th.fonts_url, primary: th.primary, heading: th.heading, body: th.body }, niche, preview_token: crypto.randomUUID().replace(/-/g, "") } }).select("id, name, slug, status, product_id, settings").single(); if (!error) s = data; }
       if (!s) return bad("Could not create the site. Try again.", 500);
