@@ -180,6 +180,25 @@ Deno.serve(async (req: Request) => {
         if (nameMatches.length === 1) matchedOrderId = (nameMatches[0] as any).order_id;
       }
 
+      // 3. Orders still waiting for this money: this buyer's unpaid orders worth exactly this amount (pay-on-delivery orders
+      //    have no waiting payment row). The sender's name picks the order; if the name does not match (a POS, someone paying
+      //    for a friend), a single order at this price that customer care has already confirmed (valid) is taken as the one.
+      if (!matchedOrderId) {
+        const { data: open } = await supabase
+          .from("orders")
+          .select("id, customer_name, order_status, payments(status)")
+          .eq("media_buyer_id", buyer.id)
+          .in("order_status", ["pending", "valid"])
+          .eq("order_value_naira", amountNaira);
+        const unpaid = (open ?? []).filter((o: any) => !(o.payments ?? []).some((p: any) => p.status === "confirmed"));
+        const byName = unpaid.filter((o: any) => {
+          const custName = normalizeName(o.customer_name);
+          return senderName && custName && (senderName.includes(custName) || custName.includes(senderName));
+        });
+        if (byName.length === 1) matchedOrderId = (byName[0] as any).id;
+        else if (unpaid.length === 1 && (unpaid[0] as any).order_status === "valid") matchedOrderId = (unpaid[0] as any).id;
+      }
+
       if (matchedOrderId) {
         const { error } = await supabase.from("payments").update({
           status: "confirmed", paid_at: new Date().toISOString(),

@@ -8445,6 +8445,35 @@ function bvEditRiderArea(agentId, state, city) {
   });
 }
 
+// The buyer's payment account for one order, so a rider can read it out or send it to the customer on WhatsApp.
+async function bvShowPayInfo(orderId) {
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay";
+  overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  document.body.appendChild(overlay);
+  const { data, error } = await supabaseClient.rpc("order_payment_details", { p_order_id: orderId });
+  const modal = overlay.querySelector(".bv-modal");
+  if (error || !data) { modal.innerHTML = `<button class="bv-modal-close" onclick="bvCloseModal()">✕</button><div class="empty">${escH((error?.message || "Could not load.").replace(/^.*?:\s*/, ""))}</div>`; return; }
+  if (!data.account_number) { modal.innerHTML = `<button class="bv-modal-close" onclick="bvCloseModal()">✕</button><div class="empty"><div class="empty-ico">💳</div>This order's buyer has no payment account yet. Ask your admin.</div>`; return; }
+  const msg = `Hi ${data.customer_name || ""}, to pay ${fN(data.amount)} for your order, please transfer to:\n${data.bank}\n${data.account_number}\n${data.account_name}${data.code ? "\nPut this code in the narration: " + data.code : ""}`;
+  const ph = String(data.customer_phone || "").replace(/\D/g, "").replace(/^0/, "234");
+  modal.innerHTML = `
+    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:6px;">Payment account</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">For ${escH(data.customer_name || "the customer")} · ${fN(data.amount)}. Once the transfer lands, Revora marks the order delivered by itself.</div>
+    <div style="font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace;">${escH(data.account_number)}</div>
+    <div style="font-size:12.5px;">${escH(data.bank || "")} · ${escH(data.account_name || "")}</div>
+    ${data.code ? `<div style="font-size:12px;margin-top:6px;">Narration code: <b>${escH(data.code)}</b></div>` : ""}
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+      <a class="btn btn-a" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(msg)}">Send on WhatsApp</a>
+      <button type="button" class="btn btn-g" id="payInfoCopy">Copy</button>
+    </div>`;
+  document.getElementById("payInfoCopy").onclick = (e) => { navigator.clipboard?.writeText(msg); e.target.textContent = "Copied"; };
+}
+
 function renderMyDeliveries(el, orders, agents) {
   const myAgent = agents.find(a => a.id === window.myProfile?.delivery_agent_id);
   const offered = orders.filter(o => o.assignment_status === "offered");
@@ -8512,12 +8541,14 @@ function renderMyDeliveries(el, orders, agents) {
           <td>${ago(o.ordered_at)}</td>
           <td style="white-space:nowrap;">${o.order_status === "delivered" || o.order_status === "cancelled" || o.order_status === "returned" ? "—" : `
             ${o.delivery_stage !== "on_the_way" ? `<button class="btn btn-g agentStep" data-step="on_the_way" data-oid="${o.id}" style="padding:3px 9px;font-size:10px;">🚚 On the way</button>` : ""}
-            <button class="btn btn-a agentStep" data-step="delivered" data-oid="${o.id}" style="padding:3px 9px;font-size:10px;">✓ Delivered</button>`}</td>
+            <button class="btn btn-a agentStep" data-step="delivered" data-oid="${o.id}" style="padding:3px 9px;font-size:10px;">✓ Delivered</button>
+            <button class="btn btn-g payInfoBtn" data-oid="${o.id}" style="padding:3px 9px;font-size:10px;">💳 Payment account</button>`}</td>
         </tr>`).join("")}
       </table></div>`}
     </div>`;
 
   el.querySelectorAll(".agentStep").forEach(btn => btn.addEventListener("click", () => bvAgentStep(btn.dataset.oid, btn.dataset.step, btn)));
+  el.querySelectorAll(".payInfoBtn").forEach(btn => btn.addEventListener("click", () => bvShowPayInfo(btn.dataset.oid)));
   el.querySelectorAll(".assignAccept").forEach(btn => btn.addEventListener("click", () => bvRespondAssignment(btn.dataset.oid, "accepted")));
   el.querySelectorAll(".assignDecline").forEach(btn => btn.addEventListener("click", () => bvRespondAssignment(btn.dataset.oid, "declined")));
 }

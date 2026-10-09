@@ -75,7 +75,7 @@ Deno.serve(async (req: Request) => {
   if (!orderId || !(event in TPL || event === "paid_claimed")) return json({ error: "order_id and a valid event are required" }, 400);
 
   const { data: o } = await admin.from("orders")
-    .select("id, company_id, customer_name, customer_phone, product_name, order_value_naira, order_status, delivery_agent_id, companies(name)")
+    .select("id, company_id, customer_name, customer_phone, product_name, order_value_naira, order_status, delivery_agent_id, media_buyer_id, payment_narration_code, companies(name)")
     .eq("id", orderId).maybeSingle();
   if (!o) return json({ error: "Order not found" }, 404);
   const to = phoneOf(o.customer_phone);
@@ -100,13 +100,38 @@ Deno.serve(async (req: Request) => {
       if (a) agent = { name: a.name || "your delivery agent", phone: a.phone || "" };
     }
 
+    // The buyer's own payment account: shown to the customer when the order is placed and again when the rider is on the way.
+    let acct: { bank: string; number: string; holder: string } | null = null;
+    if (o.media_buyer_id && (event === "order_received" || event === "out_for_delivery")) {
+      let { data: b } = await admin.from("media_buyers").select("name, dedicated_account_number, dedicated_account_bank").eq("id", o.media_buyer_id).maybeSingle();
+      if (b && !b.dedicated_account_number) {
+        await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-account`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ media_buyer_id: o.media_buyer_id }) }).catch(() => {});
+        ({ data: b } = await admin.from("media_buyers").select("name, dedicated_account_number, dedicated_account_bank").eq("id", o.media_buyer_id).maybeSingle());
+      }
+      if (b?.dedicated_account_number) acct = { bank: b.dedicated_account_bank || "", number: b.dedicated_account_number, holder: `${brand} ${b.name || ""}`.trim() };
+    }
+    const amount = "₦" + Number(o.order_value_naira ?? 0).toLocaleString("en-NG");
+    const payBlock = acct ? `\n\nTo pay by transfer:\n${acct.bank}\n${acct.number}\n${acct.holder}\nAmount: ${amount}${o.payment_narration_code ? `\nPut this code in the narration: ${o.payment_narration_code}` : ""}` : "";
+    // A plain message (carrying the account) goes first: it works while the customer's WhatsApp conversation is open.
+    // If WhatsApp refuses it (outside the 24-hour window), the approved template below is sent instead.
+    const tryText = async (text: string): Promise<string | null> => { try { return await sendText(to, text); } catch (e) { console.error("text send failed, using template:", (e as Error).message); return null; } };
+
+    // Approved template first (works any time); if it is missing or refused, a plain message (works while the chat is open).
+    const tplOrText = async (tpl: string, params: string[], text: string): Promise<string> => {
+      try { return await sendTemplate(to, tpl, params); } catch (e) { console.error("template failed, sending text:", tpl, (e as Error).message); return await sendText(to, text); }
+    };
+
     let wa = "";
-    if (event === "order_received") wa = await sendTemplate(to, TPL.order_received, [name, product, brand]);
-    else if (event === "order_confirmed") wa = await sendTemplate(to, TPL.order_confirmed, [name, product]);
-    else if (event === "agent_accepted") wa = await sendTemplate(to, TPL.agent_accepted, [name, agent?.name ?? "your delivery agent", agent?.phone ?? ""]);
-    else if (event === "out_for_delivery") wa = await sendTemplate(to, TPL.out_for_delivery, [name, agent?.name ?? "your delivery agent", agent?.phone ?? ""]);
+    if (event === "order_received") {
+      wa = (await tryText(`Hi ${name}, thank you for your order of ${product} from ${brand}! 🙏 Our team will call you shortly to confirm the details.${payBlock}`)) ?? await sendTemplate(to, TPL.order_received, [name, product, brand]);
+    }
+    else if (event === "order_confirmed") wa = await tplOrText(TPL.order_confirmed, [name, product], `Hi ${name}, your order for ${product} is confirmed and being prepared. We'll message you when a rider is assigned.`);
+    else if (event === "agent_accepted") wa = await tplOrText(TPL.agent_accepted, [name, agent?.name ?? "your delivery agent", agent?.phone ?? ""], `Hi ${name}, ${agent?.name ?? "your delivery agent"}${agent?.phone ? ` (${agent.phone})` : ""} will deliver your ${product}.`);
+    else if (event === "out_for_delivery") {
+      wa = (await tryText(`Hi ${name}, ${agent?.name ?? "your delivery agent"}${agent?.phone ? ` (${agent.phone})` : ""} is on the way with your ${product}. 🛵${payBlock ? `\n\nYou can pay now by transfer and your rider will confirm it.${payBlock}` : ""}`)) ?? await sendTemplate(to, TPL.out_for_delivery, [name, agent?.name ?? "your delivery agent", agent?.phone ?? ""]);
+    }
     else if (event === "order_delivered") {
-      wa = await sendTemplate(to, TPL.order_delivered, [name, product]);
+      wa = await tplOrText(TPL.order_delivered, [name, product], `Hi ${name}, your ${product} has been delivered. Thank you for shopping with ${brand}! 🎉`);
       // Payment comes after delivery: send the account + code (+ "I've paid" button) unless it is already paid.
       const { data: paid } = await admin.from("payments").select("id").eq("order_id", o.id).eq("status", "confirmed").limit(1);
       if (!paid?.length) {
