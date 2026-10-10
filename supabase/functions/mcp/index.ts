@@ -294,7 +294,7 @@ a{color:var(--accent)}
 </body>
 </html>
 `.replace("__API__", DIRECT).replace("__STATUS__", `${SUPABASE_URL}/functions/v1/receipt-status`);
-const UI_OPENAI = "ui://widget/revora-pin.html", UI_APPS = "ui://revora/pin.html";
+const UI_OPENAI = "ui://widget/revora-pin-v2.html", UI_APPS = "ui://revora/pin.html";
 const RES_META_OPENAI = { "openai/widgetCSP": { connect_domains: [SUPABASE_URL], resource_domains: [] }, "openai/widgetPrefersBorder": true, "openai/widgetDescription": "Approve a money transfer with your private transfer PIN." };
 const RES_META_APPS = { ui: { csp: { connectDomains: [SUPABASE_URL] }, prefersBorder: true } };
 
@@ -367,7 +367,7 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
       return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION, websiteUrl: SITE, icons: [{ src: `${SITE}/icons/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }, { src: `${SITE}/icons/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] }, instructions: INSTRUCTIONS });
     }
     case "ping": return reply({});
-    case "tools/list": return reply({ tools: (await manifest()).map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations, ...(t.meta ? { _meta: t.meta } : {}) })) });
+    case "tools/list": return reply({ tools: (await manifest()).map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations, ...(t.meta ? { _meta: t.meta["openai/outputTemplate"] ? { ...t.meta, "openai/outputTemplate": UI_OPENAI } : t.meta } : {}) })) });
     case "tools/call": return reply(await callTool(String(msg?.params?.name ?? ""), msg?.params?.arguments, c, client));
     case "prompts/list": return reply({ prompts: [{ name: "run_my_ads", title: "Run my ads", description: "Review how the ads are doing and recommend what to do, like a senior media buyer." }, { name: "launch_ads", title: "Launch ads for a product", description: "Plan and launch a campaign for one product, step by step.", arguments: [{ name: "product", description: "Which product", required: true }] }] });
     case "prompts/get": {
