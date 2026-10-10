@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revora connector for Claude and ChatGPT · Documentation</title><meta name="description" content="What the Revora connector does, what it can access, how money transfers are protected, and how to connect or disconnect it.">
+<style>
+:root{--bg:#f5f5f7;--panel:#fff;--text:#1d1d1f;--text2:#6e6e73;--border:rgba(0,0,0,.1);--accent:#1877F2}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--panel:#232326;--text:#f5f5f7;--text2:#a1a1a6;--border:rgba(255,255,255,.12)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 Inter,system-ui,-apple-system,sans-serif}
+header{border-bottom:1px solid var(--border);background:var(--panel)}
+.bar{max-width:820px;margin:0 auto;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
+.bar a{color:var(--text);text-decoration:none;font-weight:700;font-size:18px}.bar nav a{font-weight:500;font-size:14px;color:var(--text2);margin-left:18px}
+main{max-width:820px;margin:0 auto;padding:36px 20px 80px}
+h1{font-size:34px;letter-spacing:-.02em;margin:0 0 6px}h2{font-size:21px;margin:34px 0 8px;letter-spacing:-.01em}
+.upd{color:var(--text2);font-size:14px;margin-bottom:26px}p,li{color:var(--text)}li{margin:5px 0}
+a{color:var(--accent)}table{width:100%;border-collapse:collapse;font-size:14.5px;margin:10px 0}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--text2);font-weight:600}
+.box{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:16px 0}
+footer{border-top:1px solid var(--border);color:var(--text2);font-size:13.5px;text-align:center;padding:24px 20px}
+</style></head><body>
+<header><div class="bar"><a href="/">Revora</a><nav><a href="/privacy.html">Privacy</a><a href="/refund.html">Refunds</a><a href="/terms.html">Terms</a><a href="/data-deletion.html">Delete your data</a><a href="/login.html">Log in</a></nav></div></header>
+<main>
+<h1>Revora connector for Claude and ChatGPT</h1>
+<div class="upd">Documentation · Last updated: 10 October 2026</div>
+<p>The Revora connector lets you use Revora from Claude or ChatGPT: review how your Facebook and Instagram ads are doing, plan and launch campaigns, manage products and orders, build sales pages, and, for owners and admins, approve funding and send money. It runs as <b>you</b>, with the same role and limits you have in the Revora dashboard. Revora is operated by Pip install -AI Technologies (RC 8553896), Ibadan, Nigeria.</p>
+
+<h2>Connect</h2>
+<div class="box"><b>Server address:</b> <code>https://metaautomationads.vercel.app/mcp</code></div>
+<ol>
+<li><b>Claude:</b> Settings, Connectors, add a custom connector, name it Revora, paste the address, click Connect and sign in with your Revora login.</li>
+<li><b>ChatGPT:</b> Settings, Connectors (turn on Developer mode if asked), create a connector, name it Revora, paste the address, choose OAuth and sign in with your Revora login.</li>
+<li>You need a Revora account first. Sign up at <a href="/login.html">metaautomationads.vercel.app</a>.</li>
+</ol>
+
+<h2>Disconnect</h2>
+<p>Open Revora, then Settings, then <b>AI apps</b>. Each connected app is listed with a Disconnect button. Disconnecting ends that app's access immediately; it cannot read or change anything until you connect it again. You only see and control your own connections.</p>
+
+<h2>What the connector can do</h2>
+<table>
+<tr><th>Area</th><th>Tools</th></tr>
+<tr><td>Ads (read)</td><td>List ad accounts with live balances from Meta, live ads and results, account performance, pixel check, audience search and reach estimates, daily brief, alerts</td></tr>
+<tr><td>Ads (change, with your yes)</td><td>Plan, edit, launch and cancel campaigns; pause, resume, change budgets, duplicate ads; kill rules</td></tr>
+<tr><td>Products and orders</td><td>List and create products, order links, orders, creatives, ad copy writing and saving</td></tr>
+<tr><td>Sales pages and pictures</td><td>Build, edit and publish sales pages; generate and approve images</td></tr>
+<tr><td>Funding and money</td><td>Deposit account, funding requests and approvals, transfers to bank accounts, sending approved funding to the Meta ad account</td></tr>
+</table>
+
+<h2>Safety</h2>
+<ul>
+<li><b>Nothing is launched, spent or sent without your clear yes</b> to the exact plan, amount and account name.</li>
+<li><b>Money needs your transfer PIN.</b> After the assistant prepares a transfer, a form appears in the chat showing the amount, the account holder's name at the bank, and the bank. You type your own PIN into that form. The PIN goes straight to Revora and is never visible to the AI, never part of any message to it, and never stored in clear text. Each approval works once, for that exact transfer, and expires after 10 minutes. Five wrong PINs lock the PIN for 15 minutes. You set your own PIN in Revora under Settings, then Security.</li>
+<li><b>Limits:</b> transfers through the connector are limited per transfer and per day, cannot exceed your funding wallet, and media buyers can only pay accounts named Meta or Facebook, from funding an owner or admin approved. Ad launches and other changes are capped per day.</li>
+<li><b>Receipts:</b> every transfer gets a receipt number and is confirmed with the payment provider; failed transfers are returned to the wallet.</li>
+<li><b>Audit log:</b> every change made through the connector is recorded with the tool, the person and the result.</li>
+</ul>
+
+<h2>Data and privacy</h2>
+<p>The connector reads and changes only what your own Revora login is allowed to see: your company's ad accounts, products, orders and funding. It does not give the AI app your password or your Meta login. Details of what we collect and how we handle it are in the <a href="/privacy.html">Privacy Policy</a>, section 3b. To delete your data, see <a href="/data-deletion.html">data deletion</a>.</p>
+
+<h2>Support</h2>
+<p>Email <a href="mailto:hello@pipinstallsofi.com">hello@pipinstallsofi.com</a> or call +234 810 461 1794. Please include the email you use on Revora and what you asked the assistant to do.</p>
+</main>
+<footer>© 2026 Revora, a product of Pip install -AI Technologies (RC 8553896) · Questions? Email <a href="mailto:hello@pipinstallsofi.com">hello@pipinstallsofi.com</a></footer>
+</body></html>
