@@ -39,6 +39,7 @@ header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.95);backdro
 .eyebrow{font-size:14px;font-weight:600;color:var(--blue);letter-spacing:.02em;margin-bottom:10px}
 .lesson h2{font-size:clamp(30px,5.4vw,44px);line-height:1.1;letter-spacing:-.025em;font-weight:600}
 .lesson p{color:var(--ink2);margin-top:16px;max-width:40em}
+.pic.lp{margin:26px 0 4px;aspect-ratio:16/10;max-width:40em;background:var(--soft)}
 .lesson ul,.lesson ol{margin:16px 0 0 22px;color:var(--ink2);max-width:40em}.lesson li{margin:7px 0}
 .lesson li b{color:var(--ink)}
 .say{margin-top:22px;background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:16px 18px;max-width:40em}
@@ -92,6 +93,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 1 of 7</div>
   <h2>Track performance against your goal.</h2>
   <p>Clicks and likes do not pay your bills. Revora puts the numbers that matter next to each other: what you spent, what each result cost, how many orders came in, and how many of them were actually <b>delivered and paid for</b>.</p>
+  <div class="pic lp"><img src="/images/landing/imp-l1.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
   <ul>
     <li><b>Spend</b> and <b>cost per result</b> for each ad account, ad set and ad.</li>
     <li><b>Orders</b> and their status, from pending to delivered.</li>
@@ -104,6 +106,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 2 of 7</div>
   <h2>Pick the metric that fits your goal.</h2>
   <p>An ad should be judged by the result it was made for. Judging a website ad by message cost, or the other way round, leads to wrong decisions, so Revora keeps them apart.</p>
+  <div class="pic lp"><img src="/images/landing/imp-l2.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
   <div class="cards two">
     <div class="card"><span class="ico">💬</span><h3>WhatsApp ads</h3><p>Goal: get messages from buyers.<br><b>Judged on:</b> cost per message.</p></div>
     <div class="card"><span class="ico">🛒</span><h3>Website ads</h3><p>Goal: get orders on your sales page.<br><b>Judged on:</b> cost per purchase.</p></div>
@@ -114,6 +117,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 3 of 7</div>
   <h2>Let auto-kill protect your budget.</h2>
   <p>You set your own limit once. Revora then checks your live ads every few minutes, all day, even while you sleep.</p>
+  <div class="pic lp"><img src="/images/landing/imp-l3.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
   <ol>
     <li><b>You set a rule</b> for each kind of ad: the most you will pay for one result, and how much it must spend, and for how many hours, before it is judged. This stops good ads being killed too early.</li>
     <li><b>Revora checks every ad.</b> An ad is flagged if it spent that much with <b>no results at all</b>, or if each result costs <b>more than your limit</b>.</li>
@@ -128,6 +132,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 4 of 7</div>
   <h2>Get advice on what to kill, keep or scale.</h2>
   <p>Ask the AI to review your ads like a senior media buyer. It explains the answer in plain words, not a wall of numbers, and says what to do next. It does not change anything until you say yes.</p>
+  <div class="pic lp"><img src="/images/landing/imp-l4.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
   <div class="cards three">
     <div class="card"><span class="ico">🛑</span><h3>Kill</h3><p>Ads that spent and brought nothing, or cost far more than your limit. Relaunch a bad ad as a fresh copy to give the idea one more chance.</p></div>
     <div class="card"><span class="ico">👀</span><h3>Keep</h3><p>Ads that are still learning, or not spent enough to judge. Give them time.</p></div>
@@ -152,6 +157,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 6 of 7</div>
   <h2>Follow every order to delivery.</h2>
   <p>An ad only pays when the goods are delivered and paid for. Revora handles the steps in between.</p>
+  <div class="pic lp"><img src="/images/landing/imp-l5.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
   <div class="cards two">
     <div class="card"><span class="ico">🏍️</span><h3>Your rider is alerted</h3><p>When an order is confirmed, Revora offers it to a delivery agent in the right area. The rider gets a notification on their phone and accepts or declines in their "My deliveries" screen. If no one answers in a few minutes, it is offered to the next rider.</p></div>
     <div class="card"><span class="ico">💳</span><h3>Payment marks it delivered</h3><p>The customer pays into your account number. Revora matches the transfer to the order, using the order's code in the transfer or the sender's name and exact amount, and marks the order delivered.</p></div>
@@ -163,6 +169,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 7 of 7</div>
   <h2>Make better decisions with every order.</h2>
   <p>Every order you deliver teaches you something. Revora keeps the results, so your next ad starts smarter than the last one.</p>
+  <div class="pic lp"><img src="/images/landing/imp-l6.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
   <ul>
     <li>Compare ad sets to see which audience gives the cheapest purchases.</li>
     <li>Re-use your best copy and pictures on new products.</li>
@@ -194,7 +201,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   var prev = document.getElementById("prev"), next = document.getElementById("next"), name = document.getElementById("name"), cnt = document.getElementById("cnt"), prog = document.getElementById("prog");
   function show(i) {
     cur = i;
-    if (i < 0) { name.textContent = "Introduction"; cnt.textContent = "Create your first ad"; prog.style.width = "0"; }
+    if (i < 0) { name.textContent = "Introduction"; cnt.textContent = "Improve an existing ad"; prog.style.width = "0"; }
     else { name.textContent = secs[i].getAttribute("data-title"); cnt.textContent = "Lesson " + (i + 1) + " of " + secs.length; prog.style.width = ((i + 1) / secs.length * 100) + "%"; }
     prev.disabled = i < 0; next.disabled = i >= secs.length - 1 && false;
   }
