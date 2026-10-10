@@ -11171,7 +11171,7 @@ async function renderWallet(el) {
 
   // Receipts for money Revora sent out (dashboard or assistant). Admins see the company's; a buyer sees their own.
   const receipts = await sbQuery("transfer_receipts", "select=id,receipt_no,kind,source,amount_naira,account_name,bank_name,status,created_at&order=created_at.desc&limit=30" + (isAdmin ? "" : "&user_id=eq." + (window.myProfile?.id || ""))).catch(() => []);
-  const rcPill = st => st === "delivered" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Delivered</span>` : st === "failed" ? `<span class="pill" style="background:rgba(220,38,38,.15);color:#dc2626;">Failed</span>` : `<span class="pill watch">Processing</span>`;
+  const rcPill = st => st === "delivered" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Sent</span>` : st === "failed" ? `<span class="pill" style="background:rgba(220,38,38,.15);color:#dc2626;">Failed</span>` : `<span class="pill watch">Processing</span>`;
   const receiptsPanel = (receipts || []).length ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Transfer receipts</div></div>

@@ -217,7 +217,7 @@ a{color:var(--accent)}
   var pollN = 0, pollT = null;
   function receiptCard(w) {
     var st = w.status === "delivered" ? "ok" : w.status === "failed" ? "bad" : "";
-    var label = w.status === "delivered" ? "Delivered \u2713" : w.status === "failed" ? "Failed. The money goes back to your wallet" : "Processing\u2026";
+    var label = w.status === "delivered" ? "Transfer sent successfully \u2713" : w.status === "failed" ? "Failed. The money goes back to your wallet" : "Processing\u2026";
     var when = w.created_at ? new Date(w.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
     return '<div class="rc ' + st + '"><div class="hd"><div class="lg">R</div>Revora Transfer</div>' +
       '<div class="am">' + esc(w.amount) + '</div><div class="st">' + label + '</div>' +
