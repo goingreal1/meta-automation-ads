@@ -34,7 +34,7 @@ button.alt{background:rgba(120,120,120,.2);color:inherit}
 <main id="m"><div class="msg">Loading receipt…</div></main>
 <script>
 (function () {
-  var API = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/receipt/get";
+  var API = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/receipt-status";
   var id = new URLSearchParams(location.search).get("r") || "";
   var m = document.getElementById("m"), cur = "", polls = 0;
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
