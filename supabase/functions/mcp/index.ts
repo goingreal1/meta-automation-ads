@@ -325,7 +325,8 @@ async function overLimit(t: Def, defs: Def[], c: Ctx): Promise<string | null> {
   const { data } = await admin.from("mcp_audit").select("tool, ok").eq("user_id", c.userId).gte("created_at", since).limit(500);
   const rows = (data ?? []).filter((r: any) => r.ok);
   const names = new Set(defs.filter((x) => x.write).map((x) => x.name));
-  if (t.heavy && rows.filter((r: any) => r.tool === t.name).length >= LIMITS.launch_per_day) return `Daily limit reached: at most ${LIMITS.launch_per_day} launches a day through connected assistants. The dashboard has no such limit.`;
+  // The launches-per-day cap is for ad launches. Money tools have their own limits (per transfer, per day, wallet balance), and previews that send nothing must not use it up.
+  if (t.heavy && t.group !== "mcp-money" && rows.filter((r: any) => r.tool === t.name).length >= LIMITS.launch_per_day) return `Daily limit reached: at most ${LIMITS.launch_per_day} launches a day through connected assistants. The dashboard has no such limit.`;
   if (rows.filter((r: any) => names.has(r.tool)).length >= LIMITS.write_per_day) return `Daily limit reached: at most ${LIMITS.write_per_day} changes a day through connected assistants.`;
   return null;
 }
