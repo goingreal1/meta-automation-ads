@@ -36,23 +36,28 @@ async function paystackFetch(path: string, init: RequestInit = {}) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
-      headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey" },
+      headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-internal-key" },
     });
   }
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { access_token, amount_naira, account_number, bank_code, reference, source, approved_with } = await req.json();
+    const { access_token, amount_naira, account_number, bank_code, reference, source, approved_with, on_behalf_of } = await req.json();
     // Optional caller-chosen reference: Paystack refuses a second transfer with the same one, so a retry can never pay twice.
     const ref = typeof reference === "string" && /^[a-z0-9_-]{16,50}$/.test(reference) ? reference : undefined;
     if (!amount_naira || !account_number || !bank_code) {
       return json({ error: "amount_naira, account_number and bank_code are required" }, 400);
     }
 
-    const { data: userData } = await supabase.auth.getUser(access_token);
-    if (!userData?.user) return json({ error: "Unauthorized" }, 401);
-    const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", userData.user.id).maybeSingle();
+    // Normal calls prove who they are with the person's own token. The mcp-money function (holding the service key) may instead
+    // send an already PIN-approved transfer on that person's behalf; it checks the approval first, and this still demands owner/admin.
+    const internal = SUPABASE_SERVICE_ROLE_KEY.length > 20 && req.headers.get("x-internal-key") === SUPABASE_SERVICE_ROLE_KEY;
+    let uid: string | null = null;
+    if (internal && typeof on_behalf_of === "string" && /^[0-9a-f-]{36}$/i.test(on_behalf_of)) uid = on_behalf_of;
+    else { const { data: userData } = await supabase.auth.getUser(access_token); uid = userData?.user?.id ?? null; }
+    if (!uid) return json({ error: "Unauthorized" }, 401);
+    const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", uid).maybeSingle();
     if (!profile || !["owner", "admin"].includes(profile.role)) return json({ error: "Unauthorized" }, 401);
 
     const resolved = await paystackFetch(`/bank/resolve?account_number=${encodeURIComponent(account_number)}&bank_code=${encodeURIComponent(bank_code)}`);
@@ -91,13 +96,13 @@ Deno.serve(async (req: Request) => {
         status: "sent",
         paystack_transfer_code: transfer?.data?.transfer_code ?? null,
         paystack_transfer_reference: transfer?.data?.reference ?? null,
-        created_by: userData.user.id,
+        created_by: uid,
         sent_at: new Date().toISOString(),
       }).select().single();
       withdrawalRow = data;
       // One receipt per transfer. The webhook moves it to delivered or failed when the bank confirms.
       await supabase.from("transfer_receipts").insert({
-        company_id: profile.company_id, user_id: userData.user.id, kind: "transfer", source: source === "assistant" ? "assistant" : "dashboard",
+        company_id: profile.company_id, user_id: uid, kind: "transfer", source: source === "assistant" ? "assistant" : "dashboard",
         amount_naira, account_name: accountName, account_number, bank_name: bankName, status: "processing",
         paystack_transfer_code: transfer?.data?.transfer_code ?? null, paystack_reference: transfer?.data?.reference ?? null,
         approved_with: approved_with === "pin" ? "Transfer PIN" : "Revora login",
@@ -114,7 +119,7 @@ Deno.serve(async (req: Request) => {
         destination_account_name: accountName,
         status: "failed",
         transfer_error: transferErr.message,
-        created_by: userData.user.id,
+        created_by: uid,
       });
       return json({ error: `Transfer failed: ${transferErr.message}` }, 502);
     }

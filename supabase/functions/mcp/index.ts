@@ -88,12 +88,18 @@ async function widgetApprove(req: Request): Promise<Response> {
   if (ap.used_at) return jres({ error: "This transfer was already sent or cancelled." }, 410);
   if (new Date(ap.expires_at).getTime() < Date.now()) return jres({ error: "This approval expired. Ask your assistant to start the transfer again." }, 410);
   const info = { amount: naira(ap.amount_naira), account_name: ap.account_name, account_number: ap.account_number, bank: ap.bank_name };
-  if (ap.approved_at) return jres({ ok: true, approved: true, ...info });
-  if (!PIN_RE.test(pin)) return jres({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
-  const r = await checkPin(ap.user_id, pin);
-  if (!r.ok) return jres({ error: r.error }, 403);
-  const { error } = await admin.from("transfer_approvals").update({ approved_at: new Date().toISOString(), secret_hash: null }).eq("id", id).is("approved_at", null).is("used_at", null);
-  return error ? jres({ error: "Could not record the approval." }, 500) : jres({ ok: true, approved: true, ...info });
+  if (!ap.approved_at) {
+    if (!PIN_RE.test(pin)) return jres({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+    const r = await checkPin(ap.user_id, pin);
+    if (!r.ok) return jres({ error: r.error }, 403);
+    const { error } = await admin.from("transfer_approvals").update({ approved_at: new Date().toISOString() }).eq("id", id).is("approved_at", null).is("used_at", null);
+    if (error) return jres({ error: "Could not record the approval." }, 500);
+  }
+  // The PIN is right: the form now sends this exact transfer itself (mcp-money takes the approval once). A failure leaves the approval open for a retry.
+  const ex = await groupCall("mcp-money", { action: "execute", approval_id: id }).catch((e: Error) => ({ result: { error: e.message } }));
+  if (!ex?.result?.widget) return jres({ approved: true, retry: true, error: ex?.result?.error ?? "Could not send the transfer. Try again in a moment." }, 502);
+  await admin.from("transfer_approvals").update({ secret_hash: null }).eq("id", id);
+  return jres({ ok: true, approved: true, sent: true, widget: ex.result.widget, ...info });
 }
 async function handlePin(path: string, req: Request, c: Ctx): Promise<Response> {
   if (req.method !== "POST") return jres({ error: "method_not_allowed" }, 405);
@@ -176,7 +182,7 @@ a{color:var(--accent)}
 <div id="root"></div>
 <script>
 (function () {
-  var API = "__API__";
+  var API = "__API__", STATUS = "__STATUS__", RETRY = false;
   var root = document.getElementById("root");
   var W = null, SECRET = "", LINK = "", busy = false;
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
@@ -228,7 +234,7 @@ a{color:var(--accent)}
     if (pollT || !W || !W.receipt_id || W.status === "delivered" || W.status === "failed") return;
     pollT = setInterval(function () {
       if (++pollN > 40 || !W || W.status === "delivered" || W.status === "failed") { clearInterval(pollT); pollT = null; return; }
-      fetch(API + "/receipt/get?id=" + encodeURIComponent(W.receipt_id)).then(function (r) { return r.json(); }).then(function (j) {
+      fetch(STATUS + "?id=" + encodeURIComponent(W.receipt_id)).then(function (r) { return r.json(); }).then(function (j) {
         if (j && j.status && j.status !== W.status) { W.status = j.status; draw(); }
       }).catch(function () { /* try again next tick */ });
     }, 6000);
@@ -264,15 +270,16 @@ a{color:var(--accent)}
   function submit(e) {
     e.preventDefault(); if (busy) return;
     var pin = document.getElementById("pin"), go = document.getElementById("go"), m = document.getElementById("m");
-    if (pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; resize(); return; }
+    if (!RETRY && pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; resize(); return; }
     busy = true; go.disabled = true; go.textContent = "Checking…"; m.innerHTML = "";
     fetch(API + "/pin/widget-approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval_id: W.approval_id, secret: SECRET, pin: pin.value }) })
       .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
       .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your connection." } }; })
       .then(function (r) {
         busy = false; pin.value = "";
-        if (r.ok && r.j.approved) { W.state = "approved"; SECRET = ""; draw(); tellChat("I approved the transfer with my PIN. Please send it now."); return; }
-        go.disabled = false; go.textContent = "Approve with PIN";
+        if (r.ok && r.j.sent && r.j.widget) { W = r.j.widget; SECRET = ""; draw(); tellChat("I approved it with my PIN and it was sent (receipt " + (W.receipt_no || "") + "). No need to send it again: just tell me in one short line."); return; }
+        if (r.j.approved) RETRY = true;
+        go.disabled = false; go.textContent = RETRY ? "Try sending again" : "Approve with PIN";
         m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + '</div>' + (LINK ? '<div class="note"><a href="#" id="lk2">Use the private page instead</a></div>' : "");
         var l2 = document.getElementById("lk2"); if (l2) l2.onclick = function (ev) { ev.preventDefault(); openLink(LINK); };
         resize();
@@ -283,7 +290,7 @@ a{color:var(--accent)}
 </script>
 </body>
 </html>
-`.replace("__API__", DIRECT);
+`.replace("__API__", DIRECT).replace("__STATUS__", `${SUPABASE_URL}/functions/v1/receipt-status`);
 const UI_OPENAI = "ui://widget/revora-pin.html", UI_APPS = "ui://revora/pin.html";
 const RES_META_OPENAI = { "openai/widgetCSP": { connect_domains: [SUPABASE_URL], resource_domains: [] }, "openai/widgetPrefersBorder": true, "openai/widgetDescription": "Approve a money transfer with your private transfer PIN." };
 const RES_META_APPS = { ui: { csp: { connectDomains: [SUPABASE_URL] }, prefersBorder: true } };

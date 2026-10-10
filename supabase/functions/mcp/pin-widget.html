@@ -38,7 +38,7 @@ a{color:var(--accent)}
 <div id="root"></div>
 <script>
 (function () {
-  var API = "__API__";
+  var API = "__API__", STATUS = "__STATUS__", RETRY = false;
   var root = document.getElementById("root");
   var W = null, SECRET = "", LINK = "", busy = false;
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
@@ -90,7 +90,7 @@ a{color:var(--accent)}
     if (pollT || !W || !W.receipt_id || W.status === "delivered" || W.status === "failed") return;
     pollT = setInterval(function () {
       if (++pollN > 40 || !W || W.status === "delivered" || W.status === "failed") { clearInterval(pollT); pollT = null; return; }
-      fetch(API + "/receipt/get?id=" + encodeURIComponent(W.receipt_id)).then(function (r) { return r.json(); }).then(function (j) {
+      fetch(STATUS + "?id=" + encodeURIComponent(W.receipt_id)).then(function (r) { return r.json(); }).then(function (j) {
         if (j && j.status && j.status !== W.status) { W.status = j.status; draw(); }
       }).catch(function () { /* try again next tick */ });
     }, 6000);
@@ -126,15 +126,16 @@ a{color:var(--accent)}
   function submit(e) {
     e.preventDefault(); if (busy) return;
     var pin = document.getElementById("pin"), go = document.getElementById("go"), m = document.getElementById("m");
-    if (pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; resize(); return; }
+    if (!RETRY && pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; resize(); return; }
     busy = true; go.disabled = true; go.textContent = "Checking…"; m.innerHTML = "";
     fetch(API + "/pin/widget-approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval_id: W.approval_id, secret: SECRET, pin: pin.value }) })
       .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
       .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your connection." } }; })
       .then(function (r) {
         busy = false; pin.value = "";
-        if (r.ok && r.j.approved) { W.state = "approved"; SECRET = ""; draw(); tellChat("I approved the transfer with my PIN. Please send it now."); return; }
-        go.disabled = false; go.textContent = "Approve with PIN";
+        if (r.ok && r.j.sent && r.j.widget) { W = r.j.widget; SECRET = ""; draw(); tellChat("I approved it with my PIN and it was sent (receipt " + (W.receipt_no || "") + "). No need to send it again: just tell me in one short line."); return; }
+        if (r.j.approved) RETRY = true;
+        go.disabled = false; go.textContent = RETRY ? "Try sending again" : "Approve with PIN";
         m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + '</div>' + (LINK ? '<div class="note"><a href="#" id="lk2">Use the private page instead</a></div>' : "");
         var l2 = document.getElementById("lk2"); if (l2) l2.onclick = function (ev) { ev.preventDefault(); openLink(LINK); };
         resize();

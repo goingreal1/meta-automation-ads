@@ -59,7 +59,12 @@ function notifyTransferResult(fundRequestId: string) {
   }).catch((err) => console.error("send-internal-whatsapp (transfer_result) failed:", err));
 }
 
-async function authedProfile(req: Request): Promise<{ id: string; role: string; media_buyer_id: string | null } | null> {
+async function authedProfile(req: Request, onBehalfOf?: string): Promise<{ id: string; role: string; media_buyer_id: string | null } | null> {
+  // The mcp-money function (holding the service key) may send an already PIN-approved top-up on the person's behalf.
+  if (onBehalfOf && /^[0-9a-f-]{36}$/i.test(onBehalfOf) && SUPABASE_SERVICE_ROLE_KEY.length > 20 && req.headers.get("x-internal-key") === SUPABASE_SERVICE_ROLE_KEY) {
+    const { data: p } = await supabase.from("profiles").select("id, role, media_buyer_id").eq("id", onBehalfOf).maybeSingle();
+    return p ?? null;
+  }
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "");
   if (!token) return null;
@@ -72,19 +77,19 @@ async function authedProfile(req: Request): Promise<{ id: string; role: string; 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", {
-      headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey" },
+      headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-internal-key" },
     });
   }
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { fund_request_id, account_number, bank_code, source: reqSource, approved_with: reqApprovedWith } = await req.json();
+    const { fund_request_id, account_number, bank_code, source: reqSource, approved_with: reqApprovedWith, on_behalf_of: onBehalfOf } = await req.json();
     if (!fund_request_id || !account_number || !bank_code) {
       return json({ error: "fund_request_id, account_number and bank_code are required" }, 400);
     }
 
-    const profile = await authedProfile(req);
+    const profile = await authedProfile(req, onBehalfOf);
     if (!profile) return json({ error: "Unauthorized" }, 401);
 
     const { data: fr } = await supabase.from("fund_requests").select("*").eq("id", fund_request_id).maybeSingle();
