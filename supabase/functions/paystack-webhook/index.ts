@@ -101,6 +101,27 @@ Deno.serve(async (req: Request) => {
       return new Response("ok", { status: 200 });
     }
 
+    // Outgoing transfers: the bank has confirmed (or refused) a transfer we sent. Update its receipt.
+    if (event?.event === "transfer.success" || event?.event === "transfer.failed" || event?.event === "transfer.reversed") {
+      const t = event.data ?? {};
+      const code = String(t.transfer_code ?? ""), ref = String(t.reference ?? "");
+      const ok = event.event === "transfer.success";
+      const why = ok ? null : String(t.reason ?? t.failures ?? event.event.replace("transfer.", "")).slice(0, 200);
+      const { data: rcs } = await supabase.from("transfer_receipts").select("id, status, kind").or(`paystack_transfer_code.eq.${code},paystack_reference.eq.${ref}`).limit(5);
+      for (const r of rcs ?? []) {
+        if (r.status === "delivered" && !ok) continue; // a later reversal is handled below only if it follows a failure
+        await supabase.from("transfer_receipts").update({ status: ok ? "delivered" : "failed", failure_reason: why, updated_at: new Date().toISOString() }).eq("id", r.id);
+      }
+      if (!ok) {
+        // Money did not arrive: give it back to the wallet / let the funding request be sent again.
+        if (code) {
+          await supabase.from("admin_withdrawals").update({ status: "failed", transfer_error: why }).eq("paystack_transfer_code", code).eq("status", "sent");
+          await supabase.from("fund_requests").update({ status: "approved", paystack_transfer_code: null, paystack_transfer_reference: null, transferred_at: null, transfer_error: why }).eq("paystack_transfer_code", code).eq("status", "transferred");
+        }
+      }
+      return new Response("ok", { status: 200 });
+    }
+
     if (event?.event === "charge.success" && event?.data?.channel === "dedicated_nuban") {
       const data = event.data;
       const customerCode = data.customer?.customer_code;

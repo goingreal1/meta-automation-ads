@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{color-scheme:light dark;--text:#14130f;--text2:#55524a;--muted:#8c887c;--border:#d9d5ca;--accent:#1877F2;--ok:#16a34a;--err:#dc2626}
+@media (prefers-color-scheme:dark){:root{--text:#f2f0ea;--text2:#b9b5a8;--muted:#8c887c;--border:#3a3935}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);background:transparent;padding:12px}
+.brand{font-weight:700;font-size:11px;letter-spacing:.05em;color:var(--accent);margin-bottom:8px}
+.amt{font-size:28px;font-weight:700;letter-spacing:-.02em}
+.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border)}
+.row span:first-child{color:var(--muted)}.row b{text-align:right;word-break:break-word}
+.pin{width:100%;margin-top:12px;font-size:22px;letter-spacing:.45em;text-align:center;padding:10px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--text);font-family:inherit}
+.pin:focus{outline:none;border-color:var(--accent)}
+button{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+.msg{margin-top:10px;font-size:13px;border-radius:8px;padding:8px 10px}
+.err{background:rgba(220,38,38,.12);color:var(--err)}
+.ok{background:rgba(22,163,74,.12);color:var(--ok)}
+.note{margin-top:10px;font-size:11.5px;color:var(--muted)}
+a{color:var(--accent)}
+.rc{border-radius:22px;padding:18px 18px 14px;color:#fff;background:linear-gradient(135deg,#1c1c1e 0%,#2b2b2e 55%,#1a1a1c 100%)}
+.rc.ok{background:linear-gradient(135deg,#1f9d4a 0%,#34c759 100%)}
+.rc.bad{background:linear-gradient(135deg,#7f1d1d 0%,#dc2626 100%)}
+.rc .hd{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.rc .lg{width:28px;height:28px;border-radius:8px;background:#1877F2;display:grid;place-items:center;font-weight:800;font-size:15px}
+.rc .am{font-size:38px;font-weight:700;letter-spacing:-.02em;margin:16px 0 4px}
+.rc .st{font-size:13px;color:rgba(255,255,255,.82)}
+.rc .rw{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.14);font-size:12.5px}
+.rc .rw span{color:rgba(255,255,255,.62)}.rc .rw b{font-weight:600;text-align:right;word-break:break-word}
+.rc .ft{margin-top:10px;font-size:11px;color:rgba(255,255,255,.55);display:flex;justify-content:space-between;gap:8px}
+.rc a{color:#fff}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  var API = "__API__";
+  var root = document.getElementById("root");
+  var W = null, SECRET = "", LINK = "", busy = false;
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+
+  // ---- host plumbing: ChatGPT (window.openai) and MCP Apps hosts (postMessage JSON-RPC, e.g. Claude) ----
+  var nextId = 1, waiting = {};
+  function rpc(method, params) { return new Promise(function (res) { var id = nextId++; waiting[id] = res; try { window.parent.postMessage({ jsonrpc: "2.0", id: id, method: method, params: params }, "*"); } catch (e) { res(null); } }); }
+  function note(method, params) { try { window.parent.postMessage({ jsonrpc: "2.0", method: method, params: params }, "*"); } catch (e) { /* no host */ } }
+  function resize() { try { var h = Math.ceil(document.documentElement.getBoundingClientRect().height); note("ui/notifications/size-changed", { height: h }); if (window.openai && window.openai.notifyIntrinsicHeight) window.openai.notifyIntrinsicHeight(h); } catch (e) { /* ignore */ } }
+  function take(structured, meta) {
+    var w = structured && structured.pin_widget;
+    W = w || null;
+    SECRET = (meta && meta.pin_secret) || "";
+    LINK = (structured && structured.approval && structured.approval.link) || "";
+    draw();
+  }
+  function fromChatGPT() { var o = window.openai; if (!o) return; take(o.toolOutput || null, o.toolResponseMetadata || null); }
+  if (window.openai) { fromChatGPT(); window.addEventListener("openai:set_globals", fromChatGPT); }
+  window.addEventListener("message", function (e) {
+    var m = e.data; if (!m || m.jsonrpc !== "2.0") return;
+    if (m.id != null && waiting[m.id] && !m.method) { waiting[m.id](m.result || null); delete waiting[m.id]; return; }
+    if (m.method === "ui/notifications/tool-result") { var p = m.params || {}; take(p.structuredContent || null, p._meta || null); }
+  });
+  if (!window.openai) { rpc("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "revora-transfer-approval", version: "1.0.0" }, appCapabilities: {} }).then(function () { note("ui/notifications/initialized", {}); }); }
+  function tellChat(text) {
+    try { if (window.openai && window.openai.sendFollowUpMessage) { window.openai.sendFollowUpMessage({ prompt: text }); return; } } catch (e) { /* ignore */ }
+    rpc("ui/message", { role: "user", content: { type: "text", text: text } });
+  }
+  function openLink(url) { try { if (window.openai && window.openai.openExternal) { window.openai.openExternal({ href: url }); return; } } catch (e) { /* ignore */ } rpc("ui/open-link", { url: url }); }
+
+  // ---- receipt card (after the money is sent) ----
+  var pollN = 0, pollT = null;
+  function receiptCard(w) {
+    var st = w.status === "delivered" ? "ok" : w.status === "failed" ? "bad" : "";
+    var label = w.status === "delivered" ? "Delivered \u2713" : w.status === "failed" ? "Failed. The money goes back to your wallet" : "Processing\u2026";
+    var when = w.created_at ? new Date(w.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+    return '<div class="rc ' + st + '"><div class="hd"><div class="lg">R</div>Revora Transfer</div>' +
+      '<div class="am">' + esc(w.amount) + '</div><div class="st">' + label + '</div>' +
+      '<div style="margin-top:12px">' +
+      '<div class="rw"><span>To</span><b>' + esc(w.account_name || "") + '</b></div>' +
+      (w.bank ? '<div class="rw"><span>Bank</span><b>' + esc(w.bank) + '</b></div>' : "") +
+      (w.account_number ? '<div class="rw"><span>Account</span><b>' + esc(w.account_number) + '</b></div>' : "") +
+      '<div class="rw"><span>Approved with</span><b>Transfer PIN</b></div>' +
+      (when ? '<div class="rw"><span>Date</span><b>' + esc(when) + '</b></div>' : "") + '</div>' +
+      '<div class="ft"><span>' + esc(w.receipt_no || "") + '</span>' + (w.receipt_link ? '<a href="#" id="rl">View receipt</a>' : "") + '</div></div>';
+  }
+  function startPoll() {
+    var rl = document.getElementById("rl"); if (rl) rl.onclick = function (e) { e.preventDefault(); openLink(W.receipt_link); };
+    if (pollT || !W || !W.receipt_id || W.status === "delivered" || W.status === "failed") return;
+    pollT = setInterval(function () {
+      if (++pollN > 40 || !W || W.status === "delivered" || W.status === "failed") { clearInterval(pollT); pollT = null; return; }
+      fetch(API + "/receipt/get?id=" + encodeURIComponent(W.receipt_id)).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.status && j.status !== W.status) { W.status = j.status; draw(); }
+      }).catch(function () { /* try again next tick */ });
+    }, 6000);
+  }
+
+  // ---- view ----
+  function details(w) {
+    return '<div class="brand">REVORA</div><div class="amt">' + esc(w.amount) + '</div>' +
+      '<div class="row"><span>To</span><b>' + esc(w.account_name || "") + '</b></div>' +
+      (w.account_number ? '<div class="row"><span>Account</span><b>' + esc(w.account_number) + '</b></div>' : "") +
+      (w.bank ? '<div class="row"><span>Bank</span><b>' + esc(w.bank) + '</b></div>' : "");
+  }
+  function draw() {
+    if (!W) { root.innerHTML = ""; document.body.style.padding = "0"; resize(); return; }
+    document.body.style.padding = "12px";
+    if (W.state === "sent") { root.innerHTML = receiptCard(W); resize(); startPoll(); return; }
+    if (W.state === "approved") { root.innerHTML = details(W) + '<div class="msg ok">✅ Approved with your PIN. Tell your assistant “done”.</div>'; resize(); return; }
+    var canInline = !!SECRET;
+    root.innerHTML = details(W) +
+      (canInline
+        ? '<form id="f" autocomplete="off"><input class="pin" id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Transfer PIN" aria-label="Transfer PIN"><button type="submit" id="go">Approve with PIN</button><div id="m"></div></form><div class="note">Your PIN goes straight to Revora. It is never shown to the AI.</div>'
+        : '<div class="note">Open the private page to enter your PIN.</div>') +
+      (LINK ? '<div class="note"><a href="#" id="lk">Open the private approval page</a></div>' : "");
+    var lk = document.getElementById("lk"); if (lk) lk.onclick = function (e) { e.preventDefault(); openLink(LINK); };
+    var f = document.getElementById("f");
+    if (f) {
+      var pin = document.getElementById("pin");
+      pin.addEventListener("input", function () { pin.value = pin.value.replace(/\D/g, "").slice(0, 6); });
+      f.addEventListener("submit", submit);
+    }
+    resize();
+  }
+  function submit(e) {
+    e.preventDefault(); if (busy) return;
+    var pin = document.getElementById("pin"), go = document.getElementById("go"), m = document.getElementById("m");
+    if (pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; resize(); return; }
+    busy = true; go.disabled = true; go.textContent = "Checking…"; m.innerHTML = "";
+    fetch(API + "/pin/widget-approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval_id: W.approval_id, secret: SECRET, pin: pin.value }) })
+      .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your connection." } }; })
+      .then(function (r) {
+        busy = false; pin.value = "";
+        if (r.ok && r.j.approved) { W.state = "approved"; SECRET = ""; draw(); tellChat("I approved the transfer with my PIN. Please send it now."); return; }
+        go.disabled = false; go.textContent = "Approve with PIN";
+        m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + '</div>' + (LINK ? '<div class="note"><a href="#" id="lk2">Use the private page instead</a></div>' : "");
+        var l2 = document.getElementById("lk2"); if (l2) l2.onclick = function (ev) { ev.preventDefault(); openLink(LINK); };
+        resize();
+      });
+  }
+  draw();
+})();
+</script>
+</body>
+</html>

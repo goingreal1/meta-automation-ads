@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Transfer receipt</title>
+<style>
+:root{color-scheme:light dark;--bg:#ece5dd}
+@media (prefers-color-scheme:dark){:root{--bg:#121110}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);min-height:100vh;display:flex;justify-content:center;padding:20px 16px}
+main{width:100%;max-width:420px}
+.rc{border-radius:28px;padding:24px 22px 18px;color:#fff;background:linear-gradient(135deg,#1c1c1e 0%,#2b2b2e 55%,#1a1a1c 100%);box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.rc.ok{background:linear-gradient(135deg,#1f9d4a 0%,#34c759 100%)}
+.rc.bad{background:linear-gradient(135deg,#7f1d1d 0%,#dc2626 100%)}
+.hd{display:flex;align-items:center;gap:10px;font-weight:600}
+.lg{width:34px;height:34px;border-radius:10px;background:#1877F2;display:grid;place-items:center;font-weight:800;font-size:18px}
+.am{font-size:46px;font-weight:700;letter-spacing:-.02em;margin:22px 0 6px}
+.st{font-size:14px;color:rgba(255,255,255,.85)}
+.rows{margin-top:16px}
+.rw{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid rgba(255,255,255,.14);font-size:13.5px}
+.rw span{color:rgba(255,255,255,.62)}.rw b{font-weight:600;text-align:right;word-break:break-word}
+.ft{margin-top:12px;font-size:11.5px;color:rgba(255,255,255,.55);display:flex;justify-content:space-between;gap:8px}
+.why{margin-top:10px;font-size:12.5px;color:#fff;opacity:.9}
+.btns{display:flex;gap:10px;margin-top:14px}
+button{flex:1;padding:12px;border:0;border-radius:12px;font:600 14px system-ui;background:#1877F2;color:#fff;cursor:pointer}
+button.alt{background:rgba(120,120,120,.2);color:inherit}
+.msg{text-align:center;color:#777;padding:60px 0}
+@media print{body{background:#fff}.btns{display:none}.rc{box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<main id="m"><div class="msg">Loading receipt…</div></main>
+<script>
+(function () {
+  var API = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/receipt/get";
+  var id = new URLSearchParams(location.search).get("r") || "";
+  var m = document.getElementById("m"), cur = "", polls = 0;
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+  function draw(r) {
+    var cls = r.status === "delivered" ? "ok" : r.status === "failed" ? "bad" : "";
+    var label = r.status === "delivered" ? "Delivered ✓" : r.status === "failed" ? "Failed. The money goes back to the wallet" : "Processing…";
+    var when = new Date(r.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+    m.innerHTML = '<div class="rc ' + cls + '"><div class="hd"><div class="lg">R</div>Revora Transfer</div>' +
+      '<div class="am">' + esc(r.amount) + '</div><div class="st">' + label + '</div>' +
+      '<div class="rows">' +
+      '<div class="rw"><span>To</span><b>' + esc(r.account_name) + '</b></div>' +
+      '<div class="rw"><span>Bank</span><b>' + esc(r.bank) + '</b></div>' +
+      '<div class="rw"><span>Account</span><b>' + esc(r.account_number) + '</b></div>' +
+      '<div class="rw"><span>Approved with</span><b>' + esc(r.approved_with || "") + '</b></div>' +
+      '<div class="rw"><span>Date</span><b>' + esc(when) + '</b></div></div>' +
+      (r.status === "failed" && r.failure_reason ? '<div class="why">' + esc(r.failure_reason) + '</div>' : "") +
+      '<div class="ft"><span>' + esc(r.receipt_no) + '</span><span>' + esc(r.reference || "") + '</span></div></div>' +
+      '<div class="btns"><button id="pr">Print / save PDF</button><button class="alt" id="cp">Copy link</button></div>';
+    document.getElementById("pr").onclick = function () { window.print(); };
+    document.getElementById("cp").onclick = function () { try { navigator.clipboard.writeText(location.href); this.textContent = "Copied"; } catch (e) { /* ignore */ } };
+  }
+  function load() {
+    fetch(API + "?id=" + encodeURIComponent(id)).then(function (x) { return x.ok ? x.json() : null; }).then(function (r) {
+      if (!r || !r.id) { m.innerHTML = '<div class="msg">This receipt link is not valid.</div>'; return; }
+      if (r.status !== cur) { cur = r.status; draw(r); }
+      if (r.status === "processing" && ++polls < 60) setTimeout(load, 8000);
+    }).catch(function () { if (!cur) m.innerHTML = '<div class="msg">Could not load the receipt. Check your connection.</div>'; });
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(id)) m.innerHTML = '<div class="msg">This receipt link is not valid.</div>'; else load();
+})();
+</script>
+</body>
+</html>
