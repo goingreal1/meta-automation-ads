@@ -81,7 +81,7 @@ async function widgetApprove(req: Request): Promise<Response> {
   if (req.method !== "POST") return jres({ error: "method_not_allowed" }, 405);
   let b: any = {}; try { b = await req.json(); } catch { /* empty body */ }
   const id = String(b?.approval_id ?? ""), secret = String(b?.secret ?? ""), pin = String(b?.pin ?? "");
-  const bad = () => jres({ error: "This approval is not valid. Use the private approval page instead." }, 403);
+  const bad = () => jres({ error: "This approval is not valid. Ask your assistant to start the transfer again." }, 403);
   if (!/^[0-9a-f-]{36}$/i.test(id) || !/^[0-9a-f]{32}$/.test(secret)) return bad();
   const { data: ap } = await admin.from("transfer_approvals").select("*").eq("id", id).maybeSingle();
   if (!ap || !ap.secret_hash || !safeEq(await sha256hex(secret), ap.secret_hash)) return bad();
@@ -184,7 +184,7 @@ a{color:var(--accent)}
 (function () {
   var API = "__API__", STATUS = "__STATUS__", RETRY = false;
   var root = document.getElementById("root");
-  var W = null, SECRET = "", LINK = "", busy = false;
+  var W = null, SECRET = "", LINK = "", busy = false, SENT = false;
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
 
   // ---- host plumbing: ChatGPT (window.openai) and MCP Apps hosts (postMessage JSON-RPC, e.g. Claude) ----
@@ -193,13 +193,19 @@ a{color:var(--accent)}
   function note(method, params) { try { window.parent.postMessage({ jsonrpc: "2.0", method: method, params: params }, "*"); } catch (e) { /* no host */ } }
   function resize() { try { var h = Math.ceil(document.documentElement.getBoundingClientRect().height); note("ui/notifications/size-changed", { height: h }); if (window.openai && window.openai.notifyIntrinsicHeight) window.openai.notifyIntrinsicHeight(h); } catch (e) { /* ignore */ } }
   function take(structured, meta) {
+    if (SENT) return; // once the transfer is sent, host re-renders must not bring the PIN form back
     var w = structured && structured.pin_widget;
     W = w || null;
     SECRET = (meta && meta.pin_secret) || "";
-    LINK = (structured && structured.approval && structured.approval.link) || "";
     draw();
   }
-  function fromChatGPT() { var o = window.openai; if (!o) return; take(o.toolOutput || null, o.toolResponseMetadata || null); }
+  function fromChatGPT() {
+    var o = window.openai; if (!o) return;
+    var out = o.toolOutput || null, id = out && out.pin_widget && out.pin_widget.approval_id, ws = o.widgetState;
+    if (SENT) return;
+    if (ws && ws.sent && (!id || ws.sent.approval_id === id)) { W = ws.sent; SENT = true; SECRET = ""; draw(); return; }
+    take(out, o.toolResponseMetadata || null);
+  }
   if (window.openai) { fromChatGPT(); window.addEventListener("openai:set_globals", fromChatGPT); }
   window.addEventListener("message", function (e) {
     var m = e.data; if (!m || m.jsonrpc !== "2.0") return;
@@ -227,10 +233,9 @@ a{color:var(--accent)}
       (w.account_number ? '<div class="rw"><span>Account</span><b>' + esc(w.account_number) + '</b></div>' : "") +
       '<div class="rw"><span>Approved with</span><b>Transfer PIN</b></div>' +
       (when ? '<div class="rw"><span>Date</span><b>' + esc(when) + '</b></div>' : "") + '</div>' +
-      '<div class="ft"><span>' + esc(w.receipt_no || "") + '</span>' + (w.receipt_link ? '<a href="#" id="rl">View receipt</a>' : "") + '</div></div>';
+      '<div class="ft"><span>' + esc(w.receipt_no || "") + '</span>' + "" + '</div></div>';
   }
   function startPoll() {
-    var rl = document.getElementById("rl"); if (rl) rl.onclick = function (e) { e.preventDefault(); openLink(W.receipt_link); };
     if (pollT || !W || !W.receipt_id || W.status === "delivered" || W.status === "failed") return;
     pollT = setInterval(function () {
       if (++pollN > 40 || !W || W.status === "delivered" || W.status === "failed") { clearInterval(pollT); pollT = null; return; }
@@ -256,9 +261,8 @@ a{color:var(--accent)}
     root.innerHTML = details(W) +
       (canInline
         ? '<form id="f" autocomplete="off"><input class="pin" id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Transfer PIN" aria-label="Transfer PIN"><button type="submit" id="go">Approve with PIN</button><div id="m"></div></form><div class="note">Your PIN goes straight to Revora. It is never shown to the AI.</div>'
-        : '<div class="note">Open the private page to enter your PIN.</div>') +
-      (LINK ? '<div class="note"><a href="#" id="lk">Open the private approval page</a></div>' : "");
-    var lk = document.getElementById("lk"); if (lk) lk.onclick = function (e) { e.preventDefault(); openLink(LINK); };
+        : '<div class="note">This form cannot take your PIN here. Ask your assistant to start the transfer again.</div>') +
+      "";
     var f = document.getElementById("f");
     if (f) {
       var pin = document.getElementById("pin");
@@ -277,11 +281,10 @@ a{color:var(--accent)}
       .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your connection." } }; })
       .then(function (r) {
         busy = false; pin.value = "";
-        if (r.ok && r.j.sent && r.j.widget) { W = r.j.widget; SECRET = ""; draw(); tellChat("I approved it with my PIN and it was sent (receipt " + (W.receipt_no || "") + "). No need to send it again: just tell me in one short line."); return; }
+        if (r.ok && r.j.sent && r.j.widget) { W = r.j.widget; SECRET = ""; SENT = true; try { if (window.openai && window.openai.setWidgetState) window.openai.setWidgetState({ sent: W }); } catch (e) { /* ignore */ } draw(); tellChat("I approved it with my PIN and it was sent (receipt " + (W.receipt_no || "") + "). No need to send it again: just tell me in one short line."); return; }
         if (r.j.approved) RETRY = true;
         go.disabled = false; go.textContent = RETRY ? "Try sending again" : "Approve with PIN";
-        m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + '</div>' + (LINK ? '<div class="note"><a href="#" id="lk2">Use the private page instead</a></div>' : "");
-        var l2 = document.getElementById("lk2"); if (l2) l2.onclick = function (ev) { ev.preventDefault(); openLink(LINK); };
+        m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + '</div>' ;
         resize();
       });
   }
