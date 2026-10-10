@@ -11171,7 +11171,7 @@ async function renderWallet(el) {
 
   // Receipts for money Revora sent out (dashboard or assistant). Admins see the company's; a buyer sees their own.
   const receipts = await sbQuery("transfer_receipts", "select=id,receipt_no,kind,source,amount_naira,account_name,bank_name,status,created_at&order=created_at.desc&limit=30" + (isAdmin ? "" : "&user_id=eq." + (window.myProfile?.id || ""))).catch(() => []);
-  const rcPill = st => st === "delivered" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Delivered</span>` : st === "failed" ? `<span class="pill" style="background:rgba(220,38,38,.15);color:#dc2626;">Failed</span>` : `<span class="pill watch">Processing</span>`;
+  const rcPill = st => st === "delivered" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Sent</span>` : st === "failed" ? `<span class="pill" style="background:rgba(220,38,38,.15);color:#dc2626;">Failed</span>` : `<span class="pill watch">Processing</span>`;
   const receiptsPanel = (receipts || []).length ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Transfer receipts</div></div>
@@ -11601,6 +11601,9 @@ async function renderSettings(el) {
       </table></div>` : ""}`}
     </div>
 
+    <!-- Transfer PIN: every owner, admin and buyer sets their own, so it sits outside the admin-only block -->
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
+
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
       // Self-service for a buyer who isn't an admin -- they share their own
       // ad account with the platform's Business Manager directly from their
@@ -11631,7 +11634,6 @@ async function renderSettings(el) {
 
     ${!isAdmin ? "" : `
     <div class="panel" data-sec="business" id="transferNamesPanel"></div>
-    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
     <div class="panel" data-sec="business">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>

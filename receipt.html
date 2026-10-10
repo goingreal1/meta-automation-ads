@@ -40,7 +40,7 @@ button.alt{background:rgba(120,120,120,.2);color:inherit}
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
   function draw(r) {
     var cls = r.status === "delivered" ? "ok" : r.status === "failed" ? "bad" : "";
-    var label = r.status === "delivered" ? "Delivered ✓" : r.status === "failed" ? "Failed. The money goes back to the wallet" : "Processing…";
+    var label = r.status === "delivered" ? "Transfer sent successfully ✓" : r.status === "failed" ? "Failed. The money goes back to the wallet" : "Processing…";
     var when = new Date(r.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
     m.innerHTML = '<div class="rc ' + cls + '"><div class="hd"><div class="lg">R</div>Revora Transfer</div>' +
       '<div class="am">' + esc(r.amount) + '</div><div class="st">' + label + '</div>' +
