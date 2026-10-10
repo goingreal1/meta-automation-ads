@@ -34,19 +34,19 @@
       return '<div style="display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">' +
         '<div style="width:34px;height:34px;border-radius:9px;background:var(--accentBg);color:var(--accent);display:grid;place-items:center;font-weight:700;">' + escH(String(a.name || "?").slice(0, 1).toUpperCase()) + '</div>' +
         '<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">' + escH(a.name) + '</div><div style="font-size:11px;color:var(--muted);">Connected ' + escH(when(a.connected_at)) + ' · last active ' + escH(ago(a.last_active)) + '</div></div>' +
-        '<button type="button" class="btn btn-g aiDisc" data-id="' + escH(a.client_id) + '" data-name="' + escH(a.name) + '" style="padding:5px 12px;font-size:11px;">Disconnect</button></div>';
+        '<button type="button" class="btn btn-g aiDisc" data-name="' + escH(a.name) + '" style="padding:5px 12px;font-size:11px;">Disconnect</button></div>';
     }).join("") : '<div class="empty"><div class="empty-ico">🔌</div>No AI app is connected to your Revora login yet.</div>';
     el.innerHTML = '<div class="ph"><div class="ph-title">AI apps</div><div class="ph-count">' + apps.length + ' connected</div></div>' +
       '<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">AI apps you have allowed to use Revora as you. Disconnecting removes the app’s access straight away: it cannot see or change anything until you connect it again. Only you can see and remove your own connections.</div>' +
       list + (apps.length > 1 ? '<div style="margin-top:4px;"><button type="button" class="btn btn-g" id="aiDiscAll" style="padding:5px 12px;font-size:11px;">Disconnect all</button></div>' : "") +
       installBlock(url);
-    async function run(clientId, label) {
+    async function run(appName, label) {
       if (!confirm("Disconnect " + label + "? It will stop working until you connect it again.")) return;
-      var d = await api({ action: "disconnect", client_id: clientId || undefined });
+      var d = await api({ action: "disconnect", name: appName || undefined });
       if (!d.ok) { bvToast(d.j.error || "Could not disconnect.", "err"); return; }
       bvToast("Disconnected"); window.bvRenderAiApps();
     }
-    el.querySelectorAll(".aiDisc").forEach(function (b) { b.onclick = function () { run(b.dataset.id, b.dataset.name); }; });
+    el.querySelectorAll(".aiDisc").forEach(function (b) { b.onclick = function () { run(b.dataset.name, b.dataset.name); }; });
     var all = document.getElementById("aiDiscAll"); if (all) all.onclick = function () { run(null, "all AI apps"); };
     var cp = document.getElementById("aiCopyUrl"); if (cp) cp.onclick = function () { try { navigator.clipboard.writeText(url); bvToast("Address copied"); } catch (e) { bvToast("Select the address and copy it", "err"); } };
   };
