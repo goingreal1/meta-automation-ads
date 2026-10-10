@@ -311,9 +311,117 @@ async function handlePin(path: string, req: Request, c: Ctx): Promise<Response> 
   return jres({ error: "not_found" }, 404);
 }
 
-// The inline approval form (an MCP Apps / ChatGPT widget). It lives in pin-widget.html next to this file.
-let PIN_WIDGET = "";
-try { PIN_WIDGET = (await Deno.readTextFile(new URL("./pin-widget.html", import.meta.url))).replace("__API__", DIRECT); } catch (e) { console.error("pin-widget.html could not be read:", (e as Error).message); }
+// The inline approval form (an MCP Apps / ChatGPT widget), embedded here so it is always served. pin-widget.html is the readable copy.
+const PIN_WIDGET = String.raw`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{color-scheme:light dark;--text:#14130f;--text2:#55524a;--muted:#8c887c;--border:#d9d5ca;--accent:#1877F2;--ok:#16a34a;--err:#dc2626}
+@media (prefers-color-scheme:dark){:root{--text:#f2f0ea;--text2:#b9b5a8;--muted:#8c887c;--border:#3a3935}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);background:transparent;padding:12px}
+.brand{font-weight:700;font-size:11px;letter-spacing:.05em;color:var(--accent);margin-bottom:8px}
+.amt{font-size:28px;font-weight:700;letter-spacing:-.02em}
+.row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid var(--border)}
+.row span:first-child{color:var(--muted)}.row b{text-align:right;word-break:break-word}
+.pin{width:100%;margin-top:12px;font-size:22px;letter-spacing:.45em;text-align:center;padding:10px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--text);font-family:inherit}
+.pin:focus{outline:none;border-color:var(--accent)}
+button{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+.msg{margin-top:10px;font-size:13px;border-radius:8px;padding:8px 10px}
+.err{background:rgba(220,38,38,.12);color:var(--err)}
+.ok{background:rgba(22,163,74,.12);color:var(--ok)}
+.note{margin-top:10px;font-size:11.5px;color:var(--muted)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  var API = "__API__";
+  var root = document.getElementById("root");
+  var W = null, SECRET = "", LINK = "", busy = false;
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+
+  // ---- host plumbing: ChatGPT (window.openai) and MCP Apps hosts (postMessage JSON-RPC, e.g. Claude) ----
+  var nextId = 1, waiting = {};
+  function rpc(method, params) { return new Promise(function (res) { var id = nextId++; waiting[id] = res; try { window.parent.postMessage({ jsonrpc: "2.0", id: id, method: method, params: params }, "*"); } catch (e) { res(null); } }); }
+  function note(method, params) { try { window.parent.postMessage({ jsonrpc: "2.0", method: method, params: params }, "*"); } catch (e) { /* no host */ } }
+  function resize() { try { var h = Math.ceil(document.documentElement.getBoundingClientRect().height); note("ui/notifications/size-changed", { height: h }); if (window.openai && window.openai.notifyIntrinsicHeight) window.openai.notifyIntrinsicHeight(h); } catch (e) { /* ignore */ } }
+  function take(structured, meta) {
+    var w = structured && structured.pin_widget;
+    W = w || null;
+    SECRET = (meta && meta.pin_secret) || "";
+    LINK = (structured && structured.approval && structured.approval.link) || "";
+    draw();
+  }
+  function fromChatGPT() { var o = window.openai; if (!o) return; take(o.toolOutput || null, o.toolResponseMetadata || null); }
+  if (window.openai) { fromChatGPT(); window.addEventListener("openai:set_globals", fromChatGPT); }
+  window.addEventListener("message", function (e) {
+    var m = e.data; if (!m || m.jsonrpc !== "2.0") return;
+    if (m.id != null && waiting[m.id] && !m.method) { waiting[m.id](m.result || null); delete waiting[m.id]; return; }
+    if (m.method === "ui/notifications/tool-result") { var p = m.params || {}; take(p.structuredContent || null, p._meta || null); }
+  });
+  if (!window.openai) { rpc("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "revora-transfer-approval", version: "1.0.0" }, appCapabilities: {} }).then(function () { note("ui/notifications/initialized", {}); }); }
+  function tellChat(text) {
+    try { if (window.openai && window.openai.sendFollowUpMessage) { window.openai.sendFollowUpMessage({ prompt: text }); return; } } catch (e) { /* ignore */ }
+    rpc("ui/message", { role: "user", content: { type: "text", text: text } });
+  }
+  function openLink(url) { try { if (window.openai && window.openai.openExternal) { window.openai.openExternal({ href: url }); return; } } catch (e) { /* ignore */ } rpc("ui/open-link", { url: url }); }
+
+  // ---- view ----
+  function details(w) {
+    return '<div class="brand">REVORA</div><div class="amt">' + esc(w.amount) + '</div>' +
+      '<div class="row"><span>To</span><b>' + esc(w.account_name || "") + '</b></div>' +
+      (w.account_number ? '<div class="row"><span>Account</span><b>' + esc(w.account_number) + '</b></div>' : "") +
+      (w.bank ? '<div class="row"><span>Bank</span><b>' + esc(w.bank) + '</b></div>' : "");
+  }
+  function draw() {
+    if (!W) { root.innerHTML = ""; document.body.style.padding = "0"; resize(); return; }
+    document.body.style.padding = "12px";
+    if (W.state === "sent") { root.innerHTML = '<div class="brand">REVORA</div><div class="msg ok">✅ Sent ' + esc(W.amount) + ' to ' + esc(W.account_name || "") + '.</div>'; resize(); return; }
+    if (W.state === "approved") { root.innerHTML = details(W) + '<div class="msg ok">✅ Approved with your PIN. Tell your assistant “done”.</div>'; resize(); return; }
+    var canInline = !!SECRET;
+    root.innerHTML = details(W) +
+      (canInline
+        ? '<form id="f" autocomplete="off"><input class="pin" id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Transfer PIN" aria-label="Transfer PIN"><button type="submit" id="go">Approve with PIN</button><div id="m"></div></form><div class="note">Your PIN goes straight to Revora. It is never shown to the AI.</div>'
+        : '<div class="note">Open the private page to enter your PIN.</div>') +
+      (LINK ? '<div class="note"><a href="#" id="lk">Open the private approval page</a></div>' : "");
+    var lk = document.getElementById("lk"); if (lk) lk.onclick = function (e) { e.preventDefault(); openLink(LINK); };
+    var f = document.getElementById("f");
+    if (f) {
+      var pin = document.getElementById("pin");
+      pin.addEventListener("input", function () { pin.value = pin.value.replace(/\D/g, "").slice(0, 6); });
+      f.addEventListener("submit", submit);
+    }
+    resize();
+  }
+  function submit(e) {
+    e.preventDefault(); if (busy) return;
+    var pin = document.getElementById("pin"), go = document.getElementById("go"), m = document.getElementById("m");
+    if (pin.value.length < 4) { m.innerHTML = '<div class="msg err">Enter your 4 to 6 digit PIN.</div>'; resize(); return; }
+    busy = true; go.disabled = true; go.textContent = "Checking…"; m.innerHTML = "";
+    fetch(API + "/pin/widget-approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval_id: W.approval_id, secret: SECRET, pin: pin.value }) })
+      .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your connection." } }; })
+      .then(function (r) {
+        busy = false; pin.value = "";
+        if (r.ok && r.j.approved) { W.state = "approved"; SECRET = ""; draw(); tellChat("I approved the transfer with my PIN. Please send it now."); return; }
+        go.disabled = false; go.textContent = "Approve with PIN";
+        m.innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not approve.") + '</div>' + (LINK ? '<div class="note"><a href="#" id="lk2">Use the private page instead</a></div>' : "");
+        var l2 = document.getElementById("lk2"); if (l2) l2.onclick = function (ev) { ev.preventDefault(); openLink(LINK); };
+        resize();
+      });
+  }
+  draw();
+})();
+</script>
+</body>
+</html>
+`.replace("__API__", DIRECT);
 const UI_OPENAI = "ui://widget/revora-pin.html", UI_APPS = "ui://revora/pin.html";
 const RES_META_OPENAI = { "openai/widgetCSP": { connect_domains: [SUPABASE_URL], resource_domains: [] }, "openai/widgetPrefersBorder": true, "openai/widgetDescription": "Approve a money transfer with your private transfer PIN." };
 const RES_META_APPS = { ui: { csp: { connectDomains: [SUPABASE_URL] }, prefersBorder: true } };
