@@ -79,6 +79,8 @@ Deno.serve(async (req: Request) => {
           reason: `Admin withdrawal for ${profile.company_id}`,
         }),
       });
+      // Paystack answers status "otp" when the account still asks for a one-time code on every transfer: the money does NOT move.
+      if (transfer?.data?.status === "otp") throw new Error("Paystack is waiting for an OTP, so the money was not sent. Turn off OTP for transfers in Paystack (Settings, Preferences, Transfers), then try again.");
       const { data } = await supabase.from("admin_withdrawals").insert({
         company_id: profile.company_id,
         amount_naira,
