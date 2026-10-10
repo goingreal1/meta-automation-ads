@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revora · Run your ads, orders and money in one place</title>
+<meta name="description" content="Revora helps online sellers in Nigeria run Meta ads, take orders, get paid and send money, all from one screen or from a chat with ChatGPT or Claude.">
+<meta property="og:title" content="Revora · Run your ads, orders and money in one place">
+<meta property="og:description" content="Run Meta ads, take orders, get paid and send money from one screen. Built for online sellers in Nigeria.">
+<meta property="og:image" content="https://metaautomationads.vercel.app/images/landing/lp-hero-1.jpg">
+<meta name="theme-color" content="#1877F2">
+<link rel="icon" href="/icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1c2b33;--ink2:#465a69;--line:#dee3e9;--bg:#fff;--soft:#f1f4f7;--blue:#1877F2;--blue2:#0b5fd1;--dark:#1c2b33;--r:28px}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font:17px/1.6 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:22px;height:64px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:19px;text-decoration:none;letter-spacing:-.01em}
+.logo i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#3b8ef5,#0b3a8f);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:16px}
+nav{display:none;gap:22px;margin-left:12px;font-size:15px;color:var(--ink2)}
+nav a{text-decoration:none}nav a:hover{color:var(--ink)}
+.sp{flex:1}
+.btn{display:inline-block;text-decoration:none;font-weight:600;font-size:16px;border-radius:999px;padding:14px 28px;border:0;cursor:pointer;font-family:inherit;transition:.15s}
+.btn.p{background:var(--blue);color:#fff}.btn.p:hover{background:var(--blue2)}
+.btn.g{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}.btn.g:hover{background:var(--soft)}
+.bar .btn{padding:10px 20px;font-size:15px}
+.login{font-size:15px;text-decoration:none;color:var(--ink2);font-weight:500}
+/* hero */
+.hero{padding:40px 0 20px}
+.hero h1{font-size:clamp(36px,7.4vw,64px);line-height:1.06;letter-spacing:-.03em;font-weight:600;max-width:12.5em}
+.hero p.lead{font-size:clamp(18px,2.5vw,21px);color:var(--ink2);margin:20px 0 28px;max-width:34em}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.cta .btn{flex:0 1 auto}
+.note{font-size:14px;color:var(--ink2);margin-top:14px}
+.collage{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:38px}
+.ph{position:relative;border-radius:22px;overflow:hidden;aspect-ratio:4/5;background:linear-gradient(145deg,#cfe3fd,#8fb9f7 55%,#4f8fe8)}
+.ph:nth-child(2){background:linear-gradient(145deg,#e6edf3,#bccad6)}.ph:nth-child(3){background:linear-gradient(145deg,#dbeafe,#a7c8f7)}.ph:nth-child(4){background:linear-gradient(145deg,#d9e3ec,#9db3c6)}
+.ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ph span{position:absolute;left:12px;bottom:12px;background:#fff;color:var(--ink);font-size:12.5px;font-weight:600;border-radius:999px;padding:5px 11px;box-shadow:0 2px 10px rgba(0,0,0,.12)}
+/* sections */
+section{padding:64px 0}
+.soft{background:var(--soft)}
+h2{font-size:clamp(30px,5vw,46px);line-height:1.1;letter-spacing:-.025em;font-weight:600;max-width:15em}
+.sub{color:var(--ink2);font-size:18px;margin-top:14px;max-width:36em}
+.cards{display:grid;gap:16px;margin-top:34px}
+.card{background:#fff;border:1.5px solid var(--line);border-radius:var(--r);padding:28px 26px;display:flex;flex-direction:column}
+.card h3{font-size:24px;line-height:1.2;letter-spacing:-.015em;font-weight:600;margin-bottom:10px}
+.card p{color:var(--ink2);font-size:16.5px;flex:1}
+.card a.more{margin-top:20px;color:var(--blue);font-weight:600;text-decoration:none;font-size:15.5px}
+.card a.more:before{content:"→";display:inline-grid;place-items:center;width:26px;height:26px;border:1.5px solid var(--blue);border-radius:50%;margin-right:9px;font-size:13px}
+.dark{background:var(--dark);color:#fff;border:0}
+.dark h3{font-size:34px;letter-spacing:-.025em}.dark p{color:#c8d3dc}
+.dark .big{font-size:42px;font-weight:600;letter-spacing:-.03em;line-height:1.05;margin-bottom:14px}
+.photo{border-radius:22px;overflow:hidden;aspect-ratio:16/10;margin-bottom:22px;background:linear-gradient(145deg,#cfe3fd,#4f8fe8);position:relative}
+.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* steps */
+.steps{margin-top:34px;display:grid;gap:14px}
+.step{display:flex;gap:18px;align-items:flex-start;background:#fff;border:1.5px solid var(--line);border-radius:24px;padding:22px 22px}
+.step b.n{flex:none;width:40px;height:40px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:17px}
+.step h3{font-size:20px;line-height:1.25;font-weight:600;margin-bottom:4px}
+.step p{color:var(--ink2);font-size:16px}
+/* faq */
+details{border-bottom:1px solid var(--line);padding:20px 0}
+summary{cursor:pointer;font-weight:600;font-size:19px;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}summary:after{content:"+";font-size:26px;line-height:1;color:var(--blue)}
+details[open] summary:after{content:"–"}
+details p{color:var(--ink2);margin-top:12px;max-width:40em}
+/* final cta */
+.final{text-align:center;padding:80px 0}
+.final h2{margin:0 auto}.final .cta{justify-content:center;margin-top:30px}
+footer{border-top:1px solid var(--line);padding:30px 0 44px;color:var(--ink2);font-size:14.5px}
+footer .links{display:flex;flex-wrap:wrap;gap:8px 20px;margin-bottom:12px}
+footer a{text-decoration:none}footer a:hover{text-decoration:underline}
+@media(min-width:760px){
+  nav{display:flex}
+  .hero{padding:72px 0 30px}
+  .collage{grid-template-columns:repeat(4,1fr)}
+  .cards.three{grid-template-columns:repeat(3,1fr)}
+  .cards.two{grid-template-columns:repeat(2,1fr)}
+  .steps{grid-template-columns:repeat(2,1fr)}
+  section{padding:96px 0}
+}
+</style>
+<script>
+// Fill in the Meta Pixel ID to track visits and sign-up clicks from your ads. Left empty, nothing is tracked.
+window.REVORA_PIXEL_ID = "";
+</script>
+</head>
+<body>
+<header><div class="wrap bar">
+  <a class="logo" href="/start.html"><i>R</i>Revora</a>
+  <nav><a href="#journey">What you can do</a><a href="#how">How it works</a><a href="#faq">Questions</a></nav>
+  <span class="sp"></span>
+  <a class="login" href="/login.html">Log in</a>
+  <a class="btn p" href="/login.html?mode=signup" data-cta="header">Get started</a>
+</div></header>
+
+<main>
+<section class="hero" style="padding-bottom:0"><div class="wrap">
+  <h1>Run your ads, orders and money in one place.</h1>
+  <p class="lead">Revora is the all-in-one tool for online sellers in Nigeria. See which Meta ads really make you money, take orders, get paid and send money, from one screen or by chatting with ChatGPT or Claude.</p>
+  <div class="cta">
+    <a class="btn p" href="/login.html?mode=signup" data-cta="hero">Get started</a>
+    <a class="btn g" href="#how">See how it works</a>
+  </div>
+  <div class="note">Made for sellers who sell on WhatsApp, Instagram and Facebook.</div>
+  <div class="collage">
+    <div class="ph"><img src="/images/landing/lp-hero-1.jpg" alt="" loading="eager" onerror="this.remove()"><span>Your ads</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-2.jpg" alt="" loading="eager" onerror="this.remove()"><span>Your orders</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-3.jpg" alt="" loading="lazy" onerror="this.remove()"><span>Your money</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-4.jpg" alt="" loading="lazy" onerror="this.remove()"><span>Your team</span></div>
+  </div>
+</div></section>
+
+<section id="journey"><div class="wrap">
+  <h2>Choose where you want to start.</h2>
+  <p class="sub">Whether you are running your first ad or managing a team of media buyers, Revora puts the numbers that matter in front of you.</p>
+  <div class="cards three">
+    <div class="card"><h3>Know which ads make money</h3><p>Connect your Meta ad account and see real spend, orders and delivered sales side by side. Revora flags ads that waste money and shows the ones worth scaling.</p><a class="more" href="/login.html?mode=signup" data-cta="card-ads">Start with ads</a></div>
+    <div class="card"><h3>Take orders and get paid</h3><p>Send customers a clean order page, follow each order to delivery, and receive payments into your own account number. Riders and customer care get their own simple view.</p><a class="more" href="/login.html?mode=signup" data-cta="card-orders">Start with orders</a></div>
+    <div class="card"><h3>Run it from a chat</h3><p>Connect Revora to ChatGPT or Claude and ask, "How are my ads doing today?" Launch, pause and scale ads by chat. Nothing moves without your yes.</p><a class="more" href="/connector.html" data-cta="card-chat">See how the chat connector works</a></div>
+  </div>
+</div></section>
+
+<section class="soft"><div class="wrap">
+  <h2>Built for how Nigerian sellers really work.</h2>
+  <div class="cards three">
+    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-1.jpg" alt="" loading="lazy" onerror="this.remove()"></div><div class="big">Real ROAS</div><p>Not just clicks and messages. See what you earned from delivered orders against what you spent.</p></div>
+    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-2.jpg" alt="" loading="lazy" onerror="this.remove()"></div><div class="big">Paid in naira</div><p>Customers pay into a dedicated account number. Deposits are matched to orders for you.</p></div>
+    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-3.jpg" alt="" loading="lazy" onerror="this.remove()"></div><div class="big">PIN-protected money</div><p>Every transfer needs your own PIN, typed in a private form, with a receipt every time.</p></div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>From your first ad to your first delivered sale.</h2>
+  <p class="sub">Most sellers are set up in one sitting.</p>
+  <div class="steps">
+    <div class="step"><b class="n">1</b><div><h3>Create your account</h3><p>Choose Personal or Company and add your products.</p></div></div>
+    <div class="step"><b class="n">2</b><div><h3>Connect your Meta ad account</h3><p>Revora reads your results and balance so you see everything in one place.</p></div></div>
+    <div class="step"><b class="n">3</b><div><h3>Share your order page</h3><p>Customers order in a few taps. You follow each order to delivery.</p></div></div>
+    <div class="step"><b class="n">4</b><div><h3>Grow what works</h3><p>Scale the winners, pause the losers, and see your real return.</p></div></div>
+  </div>
+  <div class="cta" style="margin-top:34px"><a class="btn p" href="/login.html?mode=signup" data-cta="steps">Get started</a></div>
+</div></section>
+
+<section class="soft" id="faq"><div class="wrap">
+  <h2>Questions we hear most.</h2>
+  <div style="margin-top:26px">
+    <details><summary>Who is Revora for?</summary><p>Online sellers, media buyers and their teams in Nigeria who sell through WhatsApp, Instagram, Facebook or a website.</p></details>
+    <details><summary>Does Revora run my Facebook and Instagram ads?</summary><p>Revora connects to your own Meta ad account. You see your results, and you can plan, launch, pause and scale ads from the dashboard or by chat. You always approve before money is spent.</p></details>
+    <details><summary>Is my money safe?</summary><p>Sending money needs your own transfer PIN, typed in a private form that is never shown to the AI. Each transfer gets a receipt, and limits apply per transfer and per day.</p></details>
+    <details><summary>Can my team use it too?</summary><p>Yes. Owners, admins, media buyers, customer care and delivery riders each see only what they need, and one business never sees another's data.</p></details>
+    <details><summary>Can I use it from ChatGPT or Claude?</summary><p>Yes. Connect Revora once and ask for what you need in plain words. You can disconnect it any time in Revora under Settings, then AI apps.</p></details>
+  </div>
+</div></section>
+
+<section class="final"><div class="wrap">
+  <h2>Ready to get started?</h2>
+  <p class="sub" style="margin:14px auto 0">Create your account and see where your ad money really goes.</p>
+  <div class="cta"><a class="btn p" href="/login.html?mode=signup" data-cta="final">Get started</a></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <div class="links"><a href="/login.html">Log in</a><a href="/connector.html">Chat connector</a><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/refund.html">Refunds</a><a href="/data-deletion.html">Delete your data</a><a href="mailto:hello@pipinstallsofi.com">hello@pipinstallsofi.com</a></div>
+  <div>© 2026 Revora, a product of Pip install -AI Technologies (RC 8553896), Ibadan, Nigeria. Revora is not affiliated with or endorsed by Meta.</div>
+</div></footer>
+
+<script>
+(function () {
+  var id = window.REVORA_PIXEL_ID;
+  if (id) {
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', id); fbq('track', 'PageView');
+  }
+  // Remember which ad brought the visitor, then pass it on to sign-up.
+  var q = new URLSearchParams(location.search), keep = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid"], carry = new URLSearchParams();
+  keep.forEach(function (k) { if (q.get(k)) carry.set(k, q.get(k)); });
+  document.querySelectorAll("a[data-cta]").forEach(function (a) {
+    var href = a.getAttribute("href");
+    if (carry.toString() && href.indexOf("/login.html") === 0) a.setAttribute("href", href + (href.indexOf("?") > -1 ? "&" : "?") + carry.toString());
+    a.addEventListener("click", function () { if (window.fbq) fbq("track", "Lead", { content_name: a.getAttribute("data-cta") }); });
+  });
+})();
+</script>
+</body>
+</html>
