@@ -247,6 +247,17 @@ async function claimApproval(c: Ctx, kind: "transfer" | "meta", amt: number, acc
   if (ap.pin_setup_required) return { error: "No transfer PIN is set, so nothing was sent.", next: PIN_SETUP_NEXT };
   return { error: "Not sent: the person has not approved this exact transfer with their transfer PIN yet (or the approval expired).", ...ap, next: "Give the person the approval link so they enter their PIN privately on that page. Never ask for the PIN in chat. When they say they have approved it, call this tool again with confirmed true." };
 }
+const receiptNo = (n: unknown, at: unknown) => `RV-${new Date(String(at ?? Date.now())).getUTCFullYear()}-${String(n ?? 0).padStart(6, "0")}`;
+// What the chat card shows once money has been sent. receipt comes back from the transfer functions ({ id, receipt_no, created_at }).
+const sentWidget = (amount: string, acct: any, r: any) => ({ state: "sent", amount, account_name: acct.account_name, account_number: acct.account_number, bank: acct.bank_name, status: "processing", receipt_id: r?.receipt?.id ?? null, receipt_no: r?.receipt ? receiptNo(r.receipt.receipt_no, r.receipt.created_at) : null, created_at: r?.receipt?.created_at ?? new Date().toISOString(), receipt_link: r?.receipt?.id ? `${SITE}/receipt.html?r=${r.receipt.id}` : null });
+// A receipt link is the key: the id is a random UUID, so only someone given the link can open it (like a bank receipt link).
+async function receiptGet(req: Request, url: URL): Promise<Response> {
+  const id = String(url.searchParams.get("id") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return jres({ error: "not_found" }, 404);
+  const { data: r } = await admin.from("transfer_receipts").select("id, receipt_no, kind, amount_naira, account_name, account_number, bank_name, status, failure_reason, approved_with, paystack_reference, created_at, updated_at").eq("id", id).maybeSingle();
+  if (!r) return jres({ error: "not_found" }, 404);
+  return jres({ id: r.id, receipt_no: receiptNo(r.receipt_no, r.created_at), kind: r.kind, amount: naira(r.amount_naira), amount_naira: Number(r.amount_naira), account_name: r.account_name, account_number: r.account_number, bank: r.bank_name, status: r.status, failure_reason: r.failure_reason, approved_with: r.approved_with, reference: r.paystack_reference, created_at: r.created_at, updated_at: r.updated_at });
+}
 const releaseApproval = (id: string) => admin.from("transfer_approvals").update({ used_at: null }).eq("id", id).then(() => {}, () => {});
 
 // The inline form (in ChatGPT / Claude) has no Revora login, so it proves itself with the one-time secret from the tool result's _meta plus the PIN.
@@ -335,6 +346,17 @@ button:disabled{opacity:.55;cursor:default}
 .ok{background:rgba(22,163,74,.12);color:var(--ok)}
 .note{margin-top:10px;font-size:11.5px;color:var(--muted)}
 a{color:var(--accent)}
+.rc{border-radius:22px;padding:18px 18px 14px;color:#fff;background:linear-gradient(135deg,#1c1c1e 0%,#2b2b2e 55%,#1a1a1c 100%)}
+.rc.ok{background:linear-gradient(135deg,#1f9d4a 0%,#34c759 100%)}
+.rc.bad{background:linear-gradient(135deg,#7f1d1d 0%,#dc2626 100%)}
+.rc .hd{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.rc .lg{width:28px;height:28px;border-radius:8px;background:#1877F2;display:grid;place-items:center;font-weight:800;font-size:15px}
+.rc .am{font-size:38px;font-weight:700;letter-spacing:-.02em;margin:16px 0 4px}
+.rc .st{font-size:13px;color:rgba(255,255,255,.82)}
+.rc .rw{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-top:1px solid rgba(255,255,255,.14);font-size:12.5px}
+.rc .rw span{color:rgba(255,255,255,.62)}.rc .rw b{font-weight:600;text-align:right;word-break:break-word}
+.rc .ft{margin-top:10px;font-size:11px;color:rgba(255,255,255,.55);display:flex;justify-content:space-between;gap:8px}
+.rc a{color:#fff}
 </style>
 </head>
 <body>
@@ -372,6 +394,33 @@ a{color:var(--accent)}
   }
   function openLink(url) { try { if (window.openai && window.openai.openExternal) { window.openai.openExternal({ href: url }); return; } } catch (e) { /* ignore */ } rpc("ui/open-link", { url: url }); }
 
+  // ---- receipt card (after the money is sent) ----
+  var pollN = 0, pollT = null;
+  function receiptCard(w) {
+    var st = w.status === "delivered" ? "ok" : w.status === "failed" ? "bad" : "";
+    var label = w.status === "delivered" ? "Delivered \u2713" : w.status === "failed" ? "Failed. The money goes back to your wallet" : "Processing\u2026";
+    var when = w.created_at ? new Date(w.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+    return '<div class="rc ' + st + '"><div class="hd"><div class="lg">R</div>Revora Transfer</div>' +
+      '<div class="am">' + esc(w.amount) + '</div><div class="st">' + label + '</div>' +
+      '<div style="margin-top:12px">' +
+      '<div class="rw"><span>To</span><b>' + esc(w.account_name || "") + '</b></div>' +
+      (w.bank ? '<div class="rw"><span>Bank</span><b>' + esc(w.bank) + '</b></div>' : "") +
+      (w.account_number ? '<div class="rw"><span>Account</span><b>' + esc(w.account_number) + '</b></div>' : "") +
+      '<div class="rw"><span>Approved with</span><b>Transfer PIN</b></div>' +
+      (when ? '<div class="rw"><span>Date</span><b>' + esc(when) + '</b></div>' : "") + '</div>' +
+      '<div class="ft"><span>' + esc(w.receipt_no || "") + '</span>' + (w.receipt_link ? '<a href="#" id="rl">View receipt</a>' : "") + '</div></div>';
+  }
+  function startPoll() {
+    var rl = document.getElementById("rl"); if (rl) rl.onclick = function (e) { e.preventDefault(); openLink(W.receipt_link); };
+    if (pollT || !W || !W.receipt_id || W.status === "delivered" || W.status === "failed") return;
+    pollT = setInterval(function () {
+      if (++pollN > 40 || !W || W.status === "delivered" || W.status === "failed") { clearInterval(pollT); pollT = null; return; }
+      fetch(API + "/receipt/get?id=" + encodeURIComponent(W.receipt_id)).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.status && j.status !== W.status) { W.status = j.status; draw(); }
+      }).catch(function () { /* try again next tick */ });
+    }, 6000);
+  }
+
   // ---- view ----
   function details(w) {
     return '<div class="brand">REVORA</div><div class="amt">' + esc(w.amount) + '</div>' +
@@ -382,7 +431,7 @@ a{color:var(--accent)}
   function draw() {
     if (!W) { root.innerHTML = ""; document.body.style.padding = "0"; resize(); return; }
     document.body.style.padding = "12px";
-    if (W.state === "sent") { root.innerHTML = '<div class="brand">REVORA</div><div class="msg ok">✅ Sent ' + esc(W.amount) + ' to ' + esc(W.account_name || "") + '.</div>'; resize(); return; }
+    if (W.state === "sent") { root.innerHTML = receiptCard(W); resize(); startPoll(); return; }
     if (W.state === "approved") { root.innerHTML = details(W) + '<div class="msg ok">✅ Approved with your PIN. Tell your assistant “done”.</div>'; resize(); return; }
     var canInline = !!SECRET;
     root.innerHTML = details(W) +
@@ -449,10 +498,11 @@ async function topUpMetaRun(a: any, c: Ctx) {
         return { needs_confirmation: true, not_sent_yet: true, top_up: show, fund_request_id: fr.id, ...ap, next: ap.pin_setup_required ? PIN_SETUP_NEXT : "NOT sent. A PIN form is already shown to the person under this reply and it lists the amount, name and bank, so DO NOT draw your own confirmation card, table or buttons and DO NOT ask them to confirm separately: entering their PIN in that form IS their confirmation. Reply with ONE short line only, e.g. \"Enter your transfer PIN in the form above to approve.\" (Meta's one-time account number expires in about 30 minutes.) If the form cannot show, give them approval.link instead. NEVER ask for or accept the PIN in chat. When they say it is approved or done, call again with confirmed true." };
       }
       const claim: any = await claimApproval(c, "meta", Number(fr.amount_naira), acct); if (claim.error) return claim;
-      const r: any = await fn("paystack-transfer-to-meta", { fund_request_id: fr.id, account_number: acct.account_number, bank_code: acct.bank_code }, c);
+      const r: any = await fn("paystack-transfer-to-meta", { fund_request_id: fr.id, account_number: acct.account_number, bank_code: acct.bank_code, source: "assistant", approved_with: "pin" }, c);
       if (r?.error) { await releaseApproval(claim.id); return { error: r.error }; }
       if (r?.verified === false) { await releaseApproval(claim.id); return { error: r.reason || "That account was not accepted." }; }
-      return { ok: true, sent: true, top_up: show, pin_widget: { state: "sent", amount: show.amount, account_name: acct.account_name }, transfer_code: r.transfer_code, note: "Sent to Meta. It usually shows in Ads Manager within a few minutes to an hour." };
+      const sw = sentWidget(show.amount, acct, r);
+      return { ok: true, sent: true, top_up: show, pin_widget: sw, receipt_no: sw.receipt_no, receipt_link: sw.receipt_link, transfer_code: r.transfer_code, note: "Sent to Meta. A receipt card is already shown under this reply with the receipt number: do NOT draw your own receipt or table. Reply in one or two short lines, mention the receipt number, and give receipt_link if there is one. It usually shows in Ads Manager within a few minutes to an hour." };
 }
 
 const TOOLS: Tool[] = [
@@ -888,10 +938,11 @@ const TOOLS: Tool[] = [
       const claim: any = await claimApproval(c, "transfer", amt, acct); if (claim.error) return claim;
       const { count } = await admin.from("admin_withdrawals").select("id", { count: "exact", head: true }).eq("company_id", c.companyId);
       const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${c.companyId}|${acct.account_number}|${acct.bank_code}|${amt}|${count ?? 0}`)))).map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 32);
-      const r: any = await fetch(`${SUPABASE_URL}/functions/v1/paystack-admin-withdraw`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.token}` }, body: JSON.stringify({ access_token: c.token, amount_naira: amt, account_number: acct.account_number, bank_code: acct.bank_code, reference: `mcp${digest}` }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
+      const r: any = await fetch(`${SUPABASE_URL}/functions/v1/paystack-admin-withdraw`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${c.token}` }, body: JSON.stringify({ access_token: c.token, amount_naira: amt, account_number: acct.account_number, bank_code: acct.bank_code, reference: `mcp${digest}`, source: "assistant", approved_with: "pin" }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
 
       if (r?.error) { await releaseApproval(claim.id); return { error: r.error }; }
-      return { ok: true, sent: true, transfer: { ...show, balance_after: naira(w.balance - amt) }, pin_widget: { state: "sent", amount: show.amount, account_name: acct.account_name }, transfer_code: r.transfer_code, note: "Sent. It normally arrives within a minute or two." };
+      const sw = sentWidget(show.amount, acct, r);
+      return { ok: true, sent: true, transfer: { ...show, balance_after: naira(w.balance - amt) }, pin_widget: sw, receipt_no: sw.receipt_no, receipt_link: sw.receipt_link, transfer_code: r.transfer_code, note: "Sent. A receipt card is already shown under this reply with the receipt number: do NOT draw your own receipt or table. Reply in one or two short lines, mention the receipt number, and give receipt_link if there is one. It normally arrives within a minute or two." };
     } },
   { name: "top_up_meta", title: "Send approved funds to the Meta ad account (asks for confirmation)", description: "Same as transfer_money for a Meta (Facebook) ad billing account: sends an APPROVED funding request to it. In Facebook Ads Manager, open Billing, Add funds, and pick bank transfer: Meta shows a one-time account number and bank. Give that account_number and bank_name. This can only ever pay an account whose bank name is Meta or Facebook; anything else is refused. The amount is fixed by the approved request. ALWAYS call first WITHOUT confirmed: it checks the account name and shows it. The person must also approve with their own transfer PIN on a private Revora page (the link comes back as approval.link); NEVER ask for, accept or repeat a PIN in chat. Call again with confirmed true only after a clear yes AND the person says they approved it. " + MONEY_WARN, inputSchema: OBJ({ account_number: str("The one-time account number from Meta's Add funds screen"), bank_name: str("The bank shown by Meta, e.g. Wema Bank"), fund_request_id: str("Which approved request (from list_fund_requests). Optional when there is only one."), confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
     run: (a, c) => topUpMetaRun(a, c) },
@@ -987,6 +1038,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (path === "/pin/widget-approve") return widgetApprove(req);
+  if (path === "/receipt/get" && req.method === "GET") return receiptGet(req, url);
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return unauthorized(RESOURCE);

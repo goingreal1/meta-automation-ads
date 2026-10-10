@@ -10935,6 +10935,7 @@ async function bvShowAdminWithdrawModal() {
       if (r.error) throw new Error(r.error);
       bvToast(`Sent to ${r.account_name}`);
       bvCloseModal();
+      if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
       renderWallet(document.getElementById("mainContent"));
     } catch (err) {
       result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
@@ -11168,6 +11169,27 @@ async function renderWallet(el) {
   }
   ledger.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  // Receipts for money Revora sent out (dashboard or assistant). Admins see the company's; a buyer sees their own.
+  const receipts = await sbQuery("transfer_receipts", "select=id,receipt_no,kind,source,amount_naira,account_name,bank_name,status,created_at&order=created_at.desc&limit=30" + (isAdmin ? "" : "&user_id=eq." + (window.myProfile?.id || ""))).catch(() => []);
+  const rcPill = st => st === "delivered" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Delivered</span>` : st === "failed" ? `<span class="pill" style="background:rgba(220,38,38,.15);color:#dc2626;">Failed</span>` : `<span class="pill watch">Processing</span>`;
+  const receiptsPanel = (receipts || []).length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Transfer receipts</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Every transfer Revora sent, from this dashboard or from ChatGPT / Claude. Open one to print it, save it as PDF or share the link.</div>
+      <div class="tbl-wrap"><table>
+        <tr><th>Receipt</th><th>When</th><th>To</th><th>Via</th><th>Amount</th><th>Status</th><th></th></tr>
+        ${receipts.map(r => `<tr>
+          <td class="n">RV-${new Date(r.created_at).getUTCFullYear()}-${String(r.receipt_no).padStart(6, "0")}</td>
+          <td class="s">${new Date(r.created_at).toLocaleString()}</td>
+          <td class="s n">${escH(r.account_name || "—")}<div style="color:var(--muted);font-size:10px;">${escH(r.bank_name || "")}</div></td>
+          <td class="s">${r.source === "assistant" ? "AI assistant" : "Dashboard"}</td>
+          <td class="n">${fN(r.amount_naira)}</td>
+          <td>${rcPill(r.status)}</td>
+          <td><button type="button" class="btn btn-a" style="padding:3px 10px;font-size:10px;" onclick="window.open('receipt.html?r=${r.id}','_blank')">Receipt</button></td>
+        </tr>`).join("")}
+      </table></div>
+    </div>` : "";
+
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Wallet</div></div>
 
@@ -11236,6 +11258,7 @@ async function renderWallet(el) {
         </div>`;
       }).join("")}
     </div>` : ""}
+    ${receiptsPanel}
     <div style="margin-bottom:18px;"><button type="button" class="btn btn-g" style="padding:4px 10px;font-size:10px;" onclick="document.getElementById('adBalanceCheckPanel')?.scrollIntoView({behavior:'smooth'})">Check ad account balance</button></div>
 
     ${isAdmin ? `

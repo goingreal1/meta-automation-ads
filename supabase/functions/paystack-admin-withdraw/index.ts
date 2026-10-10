@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { access_token, amount_naira, account_number, bank_code, reference } = await req.json();
+    const { access_token, amount_naira, account_number, bank_code, reference, source, approved_with } = await req.json();
     // Optional caller-chosen reference: Paystack refuses a second transfer with the same one, so a retry can never pay twice.
     const ref = typeof reference === "string" && /^[a-z0-9_-]{16,50}$/.test(reference) ? reference : undefined;
     if (!amount_naira || !account_number || !bank_code) {
@@ -93,7 +93,15 @@ Deno.serve(async (req: Request) => {
         sent_at: new Date().toISOString(),
       }).select().single();
       withdrawalRow = data;
-      return json({ ok: true, transfer_code: transfer?.data?.transfer_code, account_name: accountName, withdrawal_id: withdrawalRow?.id });
+      // One receipt per transfer. The webhook moves it to delivered or failed when the bank confirms.
+      await supabase.from("transfer_receipts").insert({
+        company_id: profile.company_id, user_id: userData.user.id, kind: "transfer", source: source === "assistant" ? "assistant" : "dashboard",
+        amount_naira, account_name: accountName, account_number, bank_name: bankName, status: "processing",
+        paystack_transfer_code: transfer?.data?.transfer_code ?? null, paystack_reference: transfer?.data?.reference ?? null,
+        approved_with: approved_with === "pin" ? "Transfer PIN" : "Revora login",
+      }).then(() => {}, () => {});
+      const { data: rc } = await supabase.from("transfer_receipts").select("id, receipt_no, created_at").eq("paystack_transfer_code", transfer?.data?.transfer_code ?? "").maybeSingle();
+      return json({ ok: true, transfer_code: transfer?.data?.transfer_code, reference: transfer?.data?.reference, account_name: accountName, bank_name: bankName, withdrawal_id: withdrawalRow?.id, receipt: rc ?? null });
     } catch (transferErr: any) {
       await supabase.from("admin_withdrawals").insert({
         company_id: profile.company_id,

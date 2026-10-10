@@ -79,7 +79,7 @@ Deno.serve(async (req: Request) => {
   if (!PAYSTACK_SECRET_KEY) return json({ error: "PAYSTACK_SECRET_KEY isn't configured yet." }, 500);
 
   try {
-    const { fund_request_id, account_number, bank_code } = await req.json();
+    const { fund_request_id, account_number, bank_code, source: reqSource, approved_with: reqApprovedWith } = await req.json();
     if (!fund_request_id || !account_number || !bank_code) {
       return json({ error: "fund_request_id, account_number and bank_code are required" }, 400);
     }
@@ -170,8 +170,16 @@ Deno.serve(async (req: Request) => {
     }).eq("id", fr.id);
     if (updErr) throw updErr;
     notifyTransferResult(fr.id);
+    // One receipt per transfer. The webhook moves it to delivered or failed when the bank confirms.
+    await supabase.from("transfer_receipts").insert({
+      company_id: fr.company_id, user_id: profile.id, kind: "meta", source: reqSource === "assistant" ? "assistant" : "dashboard",
+      amount_naira: fr.amount_naira, account_name: accountName, account_number, bank_name: bankName, status: "processing",
+      paystack_transfer_code: transfer?.data?.transfer_code ?? null, paystack_reference: transfer?.data?.reference ?? null,
+      approved_with: reqApprovedWith === "pin" ? "Transfer PIN" : "Revora login",
+    }).then(() => {}, () => {});
+    const { data: rc } = await supabase.from("transfer_receipts").select("id, receipt_no, created_at").eq("paystack_transfer_code", transfer?.data?.transfer_code ?? "").maybeSingle();
 
-    return json({ ok: true, transfer_code: transfer?.data?.transfer_code, account_name: accountName });
+    return json({ ok: true, transfer_code: transfer?.data?.transfer_code, reference: transfer?.data?.reference, account_name: accountName, bank_name: bankName, receipt: rc ?? null });
   } catch (err: any) {
     console.error("paystack-transfer-to-meta error:", err);
     return json({ error: err.message }, 500);
