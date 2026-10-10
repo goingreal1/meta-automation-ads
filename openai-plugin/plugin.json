@@ -1,0 +1,36 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "revora",
+  "version": "1.0.0",
+  "description": "Run Meta ads, orders and PIN-approved money transfers for your online store, by chat.",
+  "author": {
+    "name": "Pip install -AI Technologies",
+    "email": "hello@pipinstallsofi.com",
+    "url": "https://metaautomationads.vercel.app"
+  },
+  "homepage": "https://metaautomationads.vercel.app/connector.html",
+  "keywords": ["ads", "meta ads", "ecommerce", "orders", "payments", "nigeria"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Revora",
+        "shortDescription": "Run your Meta ads, orders and PIN-approved transfers by chat.",
+        "longDescription": "Revora connects your Revora account to ChatGPT. Review how your Facebook and Instagram ads are doing, plan and launch campaigns, pause or scale ads, check live ad-account balances, manage products and orders, build sales pages, and, for owners and admins, approve funding and send money. Every launch, spend and transfer needs your clear yes, and money transfers need your own transfer PIN, typed into a private form that the AI never sees. You only see and change what your own Revora login allows, and you can disconnect the app any time in Revora under Settings, AI apps.",
+        "developerName": "Pip install -AI Technologies",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://metaautomationads.vercel.app",
+        "privacyPolicyURL": "https://metaautomationads.vercel.app/privacy.html",
+        "termsOfServiceURL": "https://metaautomationads.vercel.app/terms.html",
+        "defaultPrompt": [
+          "How are my Facebook ads doing today, and what should I keep, pause or scale?",
+          "Plan a WhatsApp campaign for one of my products at ₦5,000 a day and show me the plan before launching.",
+          "Show my orders from the last 7 days and which ones are still pending."
+        ],
+        "brandColor": "#1877F2",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}
