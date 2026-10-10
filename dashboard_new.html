@@ -18,6 +18,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/rv/config.js"></script>
+<script src="/rv/ai-apps.js" defer></script>
 <style>
 /* ── THEME TOKENS ── same system as index.html/order.html: white, enterprise,
    Fraunces for headlines/numbers, Inter for everything else. Dark stays as an
@@ -1102,7 +1103,7 @@ html{-webkit-text-size-adjust:100%;}
   .set-nav-btn.active{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
   .set-body{flex:1;min-width:0;}
   .set-body [data-sec]{display:none;}
-  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"],.set-body[data-active="security"] [data-sec="security"]{display:block;}
+  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"],.set-body[data-active="security"] [data-sec="security"],.set-body[data-active="aiapps"] [data-sec="aiapps"]{display:block;}
   @media (max-width:760px){.set-wrap{flex-direction:column;}.set-nav{flex-direction:row;overflow-x:auto;min-width:0;width:100%;position:static;}.set-nav-btn{white-space:nowrap;}}
   .setup-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:2px 0 12px;}
   .setup-bar>div{height:100%;background:var(--accent);border-radius:99px;}
@@ -11453,6 +11454,7 @@ function bvSettingsSections(isAdmin) {
     { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
     ...(isAdmin ? [{ id: "billing", icon: "💳", label: "Billing" }] : []),
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "security", icon: "🔐", label: "Security" }] : []),
+    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "aiapps", icon: "🤖", label: "AI apps" }] : []),
   ];
   return list;
 }
@@ -11603,6 +11605,7 @@ async function renderSettings(el) {
 
     <!-- Transfer PIN: every owner, admin and buyer sets their own, so it sits outside the admin-only block -->
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="aiapps" id="aiAppsPanel"></div>' : ""}
 
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
       // Self-service for a buyer who isn't an admin -- they share their own
@@ -11708,6 +11711,7 @@ async function renderSettings(el) {
   bvRenderSetupSlot();
   bvRenderTransferNames();
   bvRenderPinPanel();
+  if (window.bvRenderAiApps) bvRenderAiApps();
 document.querySelectorAll(".connVerifyBtn").forEach(btn => {
     btn.addEventListener("click", () => bvVerifyAdAccountConnection(btn.dataset.aid));
   });
