@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create your first ad with ChatGPT or Claude · Revora</title>
+<meta name="description" content="A simple step-by-step guide: plan your ad, make the pictures and the words, build a sales page or use WhatsApp, and launch, all by chatting with ChatGPT or Claude through Revora.">
+<meta property="og:title" content="Create your first ad with ChatGPT or Claude · Revora">
+<meta property="og:description" content="Nine easy lessons from connecting your AI app to launching and funding your first Meta ad.">
+<meta name="theme-color" content="#1877F2">
+<link rel="icon" href="/icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1c2b33;--ink2:#465a69;--line:#dee3e9;--bg:#fff;--soft:#f1f4f7;--blue:#1877F2;--blue2:#0b5fd1;--dark:#1c2b33;--r:28px}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:120px}
+body{font:17px/1.65 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;padding-bottom:76px}
+a{color:inherit}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;height:56px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:19px;text-decoration:none;letter-spacing:-.01em}
+.logo i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#3b8ef5,#0b3a8f);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:16px}
+.tabsrow{overflow-x:auto;scrollbar-width:none}.tabsrow::-webkit-scrollbar{display:none}
+.tabs{display:flex;gap:26px;white-space:nowrap;font-size:15px;font-weight:500;color:var(--ink2)}
+.tabs a{text-decoration:none;padding:10px 0 12px;border-bottom:3px solid transparent}
+.tabs a:hover{color:var(--ink)}.tabs a.on{color:var(--ink);font-weight:600;border-color:var(--blue)}
+.tabs a.soon{opacity:.55}
+.btn{display:inline-block;text-decoration:none;font-weight:600;font-size:16px;border-radius:999px;padding:14px 28px;border:0;cursor:pointer;font-family:inherit;transition:.15s}
+.btn.p{background:var(--blue);color:#fff}.btn.p:hover{background:var(--blue2)}
+.btn.g{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}.btn.g:hover{background:var(--soft)}
+.intro{background:var(--soft);padding:48px 0 54px}
+.intro h1{font-size:clamp(38px,8vw,64px);line-height:1.05;letter-spacing:-.03em;font-weight:600}
+.intro p{color:var(--ink2);font-size:clamp(18px,2.4vw,20px);margin:22px 0 28px;max-width:34em}
+.pic{border-radius:24px;overflow:hidden;aspect-ratio:16/10;background:linear-gradient(145deg,#cfe3fd,#8fb9f7 55%,#4f8fe8);position:relative;margin-top:30px}
+.pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.lesson{padding:58px 0;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:14px;font-weight:600;color:var(--blue);letter-spacing:.02em;margin-bottom:10px}
+.lesson h2{font-size:clamp(30px,5.4vw,44px);line-height:1.1;letter-spacing:-.025em;font-weight:600}
+.lesson p{color:var(--ink2);margin-top:16px;max-width:40em}
+.lesson ul,.lesson ol{margin:16px 0 0 22px;color:var(--ink2);max-width:40em}.lesson li{margin:7px 0}
+.lesson li b{color:var(--ink)}
+.say{margin-top:22px;background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:16px 18px;max-width:40em}
+.say small{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.say q{display:block;font-size:17px;color:var(--ink);quotes:none;font-weight:500}
+.say button{margin-top:10px;background:none;border:0;color:var(--blue);font-weight:600;font-size:14.5px;cursor:pointer;padding:0;font-family:inherit}
+.cards{display:grid;gap:14px;margin-top:26px}
+.card{background:#fff;border:1.5px solid var(--line);border-radius:var(--r);padding:24px}
+.card h3{font-size:21px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px}
+.card p{margin-top:0;font-size:16px}
+.card .ico{font-size:28px;margin-bottom:10px;display:block}
+.tip{margin-top:22px;background:var(--dark);color:#fff;border-radius:22px;padding:20px 22px;max-width:40em}
+.tip b{display:block;font-size:15px;margin-bottom:4px}.tip span{color:#c8d3dc;font-size:16px}
+.final{text-align:center;padding:80px 0;background:var(--soft)}
+.final h2{font-size:clamp(32px,6vw,48px);letter-spacing:-.025em;font-weight:600}
+.final .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+footer{padding:28px 0 44px;color:var(--ink2);font-size:14.5px}
+footer .links{display:flex;flex-wrap:wrap;gap:8px 20px;margin-bottom:12px}
+footer a{text-decoration:none}footer a:hover{text-decoration:underline}
+/* lesson bar */
+.bar2{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;border-top:1px solid var(--line)}
+.bar2 .in{max-width:1000px;margin:0 auto;padding:0 20px;height:64px;display:flex;align-items:center;gap:14px}
+.bar2 .t{flex:1;min-width:0;font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar2 .t small{display:block;font-weight:500;font-size:12px;color:var(--ink2)}
+.bar2 button{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--line);background:#fff;font-size:18px;cursor:pointer;color:var(--ink)}
+.bar2 button:disabled{opacity:.35;cursor:default}
+.prog{position:absolute;left:0;top:-1px;height:3px;background:var(--blue);width:0;transition:width .25s}
+@media(min-width:760px){.cards.three{grid-template-columns:repeat(3,1fr)}.cards.two{grid-template-columns:repeat(2,1fr)}.lesson{padding:80px 0}}
+</style>
+<script>window.REVORA_PIXEL_ID = ""; // paste your Meta Pixel ID to track visits and sign-up clicks</script>
+</head>
+<body>
+<header>
+  <div class="wrap top"><a class="logo" href="/start.html"><i>R</i>Revora</a></div>
+  <div class="wrap tabsrow"><nav class="tabs" aria-label="Success Center">
+    <a href="/start.html">Revora Success Center</a>
+    <a class="on" href="/ad-creation.html">Ad creation</a>
+    <a href="/ad-improvement.html" class="soon" title="Coming soon">Ad improvement</a>
+  </nav></div>
+</header>
+
+<main>
+<section class="intro"><div class="wrap">
+  <h1>Create your first ad.</h1>
+  <p>Good ads start with a clear plan. In nine short lessons you will see how to plan your ad, make the pictures and the words, send people to WhatsApp or to a sales page, and launch it, all by chatting with ChatGPT or Claude through Revora. You approve every step, and nothing goes live or costs money until you say yes.</p>
+  <a class="btn p" href="/login.html?mode=signup" data-cta="intro">Get started with Revora</a>
+  <div class="pic"><img src="/images/landing/ad-intro.jpg" alt="" onerror="this.remove()"></div>
+</div></section>
+
+<section class="lesson" id="l1" data-title="Connect ChatGPT or Claude"><div class="wrap">
+  <div class="eyebrow">Lesson 1 of 9</div>
+  <h2>Connect ChatGPT or Claude.</h2>
+  <p>Revora works inside the chat app you already use. You connect it once, sign in with your Revora login, and from then on you can ask for what you need in plain words. It acts only as you, with your own permissions.</p>
+  <ol>
+    <li>Create your Revora account and connect your Meta ad account.</li>
+    <li>In ChatGPT or Claude, open Settings, then Connectors, and add Revora with the address shown on the <a href="/connector.html" style="color:var(--blue)">connector page</a>.</li>
+    <li>Sign in with your Revora login and tap Allow.</li>
+  </ol>
+  <div class="say"><small>Try saying</small><q>Who am I connected as, and what can you help me with?</q><button type="button" data-copy>Copy</button></div>
+  <div class="tip"><b>You stay in control</b><span>You can disconnect the app any time in Revora under Settings, then AI apps.</span></div>
+</div></section>
+
+<section class="lesson" id="l2" data-title="Add your product"><div class="wrap">
+  <div class="eyebrow">Lesson 2 of 9</div>
+  <h2>Tell it what you sell.</h2>
+  <p>An ad about the wrong product wastes money, so Revora makes sure the AI is sure which product the ad is for. Tell it the name, price, what it does and the top three benefits. It saves them on your product, and only uses facts you gave it.</p>
+  <ul>
+    <li><b>Product name and price</b> in naira</li>
+    <li><b>Where people order:</b> on a website or by WhatsApp</li>
+    <li><b>A real photo</b> of the product. This is what customers see.</li>
+  </ul>
+  <div class="say"><small>Try saying</small><q>Add a new product called "Herbal Tea", ₦8,500, customers order on WhatsApp.</q><button type="button" data-copy>Copy</button></div>
+</div></section>
+
+<section class="lesson" id="l3" data-title="Choose where people go"><div class="wrap">
+  <div class="eyebrow">Lesson 3 of 9</div>
+  <h2>Choose where people go.</h2>
+  <p>Every ad needs a destination. The choice decides how your ad is judged, so decide it before anything else.</p>
+  <div class="cards two">
+    <div class="card"><span class="ico">💬</span><h3>WhatsApp</h3><p>People tap the ad and start a chat with you. Best when you like to talk to buyers first. The ad is judged on the cost of each message.</p></div>
+    <div class="card"><span class="ico">🛒</span><h3>Sales page</h3><p>People land on a page and order there. Best when the page can do the selling. The ad is judged on the cost of each purchase.</p></div>
+  </div>
+  <div class="say"><small>Try saying</small><q>I want people to order on a sales page, not WhatsApp.</q><button type="button" data-copy>Copy</button></div>
+</div></section>
+
+<section class="lesson" id="l4" data-title="Build a sales page"><div class="wrap">
+  <div class="eyebrow">Lesson 4 of 9</div>
+  <h2>Build your sales page in the chat.</h2>
+  <p>If people will order on a page, the AI interviews you first, like a good copywriter would. It tells you the page section by section, asks the few things it needs, makes the pictures, writes the story and shows it to you. Only then does it build the page.</p>
+  <ul>
+    <li>You get a <b>test link</b> to look at and share for feedback.</li>
+    <li>Ask for changes in plain words and it edits the page.</li>
+    <li>It is <b>published only after your clear yes</b>.</li>
+  </ul>
+  <div class="say"><small>Try saying</small><q>Build a sales page for my Herbal Tea. Ask me what you need first.</q><button type="button" data-copy>Copy</button></div>
+  <div class="tip"><b>Already have a page?</b><span>Give it to the AI and it can import it, keeping your styles. Choosing WhatsApp? You can skip this lesson.</span></div>
+</div></section>
+
+<section class="lesson" id="l5" data-title="Plan the campaign"><div class="wrap">
+  <div class="eyebrow">Lesson 5 of 9</div>
+  <h2>Plan the campaign.</h2>
+  <p>Now you decide who sees your ad and how much you spend. The AI turns your plain wishes into real Meta targeting, then writes the plan. Planning costs nothing and launches nothing.</p>
+  <div class="cards three">
+    <div class="card"><span class="ico">🎯</span><h3>Audience</h3><p>Ages, gender, states or cities, and interests. The AI looks up the real options on Meta for you.</p></div>
+    <div class="card"><span class="ico">💰</span><h3>Budget</h3><p>A daily amount for each ad set, in naira. You choose it, not the AI.</p></div>
+    <div class="card"><span class="ico">🧪</span><h3>Ad sets</h3><p>Try a few audiences side by side to see which one works, such as one interest and one broad.</p></div>
+  </div>
+  <div class="say"><small>Try saying</small><q>Plan a campaign for my Herbal Tea: women 25 to 45 in Lagos and Ibadan, ₦5,000 a day, 2 ad sets. Show me the plan but do not launch.</q><button type="button" data-copy>Copy</button></div>
+</div></section>
+
+<section class="lesson" id="l6" data-title="Make the pictures"><div class="wrap">
+  <div class="eyebrow">Lesson 6 of 9</div>
+  <h2>Make the ad pictures.</h2>
+  <p>A good ad picture stops the scroll: a real person in the situation, your real product large, a few short benefit points and a clear call to action. The AI can make the picture, and it checks that your product pack looks right before you use it.</p>
+  <ul>
+    <li>Pick the style, or show it two or three of your old winners to copy the look.</li>
+    <li>Keep the words on the picture <b>short</b>, so they stay spelled correctly.</li>
+    <li>Pictures stay as previews until you approve them. Then they are saved for that product.</li>
+  </ul>
+  <div class="say"><small>Try saying</small><q>Make 3 ad pictures for my Herbal Tea. Use my product photo so the pack looks real.</q><button type="button" data-copy>Copy</button></div>
+  <div class="tip"><b>Your product photo is not an ad picture</b><span>The product photo is what customers see when they order. Ads use separate pictures made for ads.</span></div>
+</div></section>
+
+<section class="lesson" id="l7" data-title="Write the ad words"><div class="wrap">
+  <div class="eyebrow">Lesson 7 of 9</div>
+  <h2>Write the ad words.</h2>
+  <p>Revora writes long, hooky copy in the way your customers talk, including Pidgin or Yoruba if you like. It learns from your own best ads and uses only the facts saved on your product.</p>
+  <ul>
+    <li>Ask for several versions and pick your favourites.</li>
+    <li>Revora keeps to Meta's rules: no guaranteed results, no before-and-after claims, no cures.</li>
+    <li>Save your best copy to your library and reuse it on any ad account.</li>
+  </ul>
+  <div class="say"><small>Try saying</small><q>Write 4 versions of ad copy for my Herbal Tea in simple English with a little Pidgin.</q><button type="button" data-copy>Copy</button></div>
+</div></section>
+
+<section class="lesson" id="l8" data-title="Approve and launch"><div class="wrap">
+  <div class="eyebrow">Lesson 8 of 9</div>
+  <h2>Review, approve and launch.</h2>
+  <p>The AI shows you the whole plan in plain words: who sees the ad, the budget, the pictures, the words and the rule that decides when a bad ad is stopped. You read it, ask for changes and only then say yes.</p>
+  <ul>
+    <li><b>Approving turns the ads on right away</b> and starts spending your money.</li>
+    <li>A <b>kill rule</b> flags ads that cost too much per result. Winners are never stopped.</li>
+    <li>You can pause or change a budget any time, by chat or in the dashboard.</li>
+  </ul>
+  <div class="say"><small>Try saying</small><q>The plan looks good. Launch it.</q><button type="button" data-copy>Copy</button></div>
+</div></section>
+
+<section class="lesson" id="l9" data-title="Fund your ads"><div class="wrap">
+  <div class="eyebrow">Lesson 9 of 9</div>
+  <h2>Fund your ad account.</h2>
+  <p>Ads run on the balance in your Meta ad account. Revora helps you top it up safely, and checks your balance live from Meta.</p>
+  <ul>
+    <li>Media buyers <b>ask for funding</b>, and the owner or an admin approves it.</li>
+    <li>The approved amount is sent to the Meta account's bank-transfer details, and nothing else is ever accepted.</li>
+    <li><b>Every transfer needs your own PIN</b>, typed into a private form that the AI never sees. You get a receipt each time.</li>
+  </ul>
+  <div class="say"><small>Try saying</small><q>What is the balance on my ad accounts?</q><button type="button" data-copy>Copy</button></div>
+</div></section>
+
+<section class="final"><div class="wrap">
+  <h2>Ready to get started?</h2>
+  <div class="cta"><a class="btn p" href="/login.html?mode=signup" data-cta="final">Get started with Revora</a><a class="btn g" href="/connector.html">Connector details</a></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <div class="links"><a href="/start.html">Revora Success Center</a><a href="/connector.html">Chat connector</a><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/refund.html">Refunds</a><a href="mailto:hello@pipinstallsofi.com">hello@pipinstallsofi.com</a></div>
+  <div>© 2026 Revora, a product of Pip install -AI Technologies (RC 8553896), Ibadan, Nigeria. Revora is not affiliated with or endorsed by Meta.</div>
+</div></footer>
+
+<div class="bar2" id="bar"><div class="prog" id="prog"></div><div class="in">
+  <button type="button" id="prev" aria-label="Previous lesson">‹</button>
+  <div class="t" id="ttl"><small id="cnt"></small><span id="name"></span></div>
+  <button type="button" id="next" aria-label="Next lesson">›</button>
+</div></div>
+
+<script>
+(function () {
+  var secs = Array.prototype.slice.call(document.querySelectorAll(".lesson")), cur = -1;
+  var prev = document.getElementById("prev"), next = document.getElementById("next"), name = document.getElementById("name"), cnt = document.getElementById("cnt"), prog = document.getElementById("prog");
+  function show(i) {
+    cur = i;
+    if (i < 0) { name.textContent = "Introduction"; cnt.textContent = "Create your first ad"; prog.style.width = "0"; }
+    else { name.textContent = secs[i].getAttribute("data-title"); cnt.textContent = "Lesson " + (i + 1) + " of " + secs.length; prog.style.width = ((i + 1) / secs.length * 100) + "%"; }
+    prev.disabled = i < 0; next.disabled = i >= secs.length - 1 && false;
+  }
+  function go(i) { if (i < 0) window.scrollTo({ top: 0, behavior: "smooth" }); else if (i >= secs.length) document.querySelector(".final").scrollIntoView({ behavior: "smooth" }); else secs[i].scrollIntoView({ behavior: "smooth" }); }
+  prev.onclick = function () { go(cur - 1); };
+  next.onclick = function () { go(cur + 1); };
+  function onScroll() {
+    var y = window.innerHeight * 0.35, idx = -1;
+    secs.forEach(function (s, i) { if (s.getBoundingClientRect().top <= y) idx = i; });
+    if (idx !== cur) show(idx);
+  }
+  window.addEventListener("scroll", onScroll, { passive: true }); onScroll(); show(cur === -1 ? -1 : cur);
+  document.querySelectorAll("[data-copy]").forEach(function (b) {
+    b.onclick = function () {
+      var t = b.parentNode.querySelector("q").textContent;
+      try { navigator.clipboard.writeText(t).then(function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500); }); } catch (e) { b.textContent = "Select and copy"; }
+    };
+  });
+  var id = window.REVORA_PIXEL_ID;
+  if (id) {
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', id); fbq('track', 'PageView');
+  }
+  var q = new URLSearchParams(location.search), carry = new URLSearchParams();
+  ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid"].forEach(function (k) { if (q.get(k)) carry.set(k, q.get(k)); });
+  document.querySelectorAll("a[data-cta]").forEach(function (a) {
+    var href = a.getAttribute("href");
+    if (carry.toString() && href.indexOf("/login.html") === 0) a.setAttribute("href", href + (href.indexOf("?") > -1 ? "&" : "?") + carry.toString());
+    a.addEventListener("click", function () { if (window.fbq) fbq("track", "Lead", { content_name: a.getAttribute("data-cta") }); });
+  });
+})();
+</script>
+</body>
+</html>
