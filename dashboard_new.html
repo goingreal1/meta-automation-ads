@@ -11601,6 +11601,9 @@ async function renderSettings(el) {
       </table></div>` : ""}`}
     </div>
 
+    <!-- Transfer PIN: every owner, admin and buyer sets their own, so it sits outside the admin-only block -->
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
+
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
       // Self-service for a buyer who isn't an admin -- they share their own
       // ad account with the platform's Business Manager directly from their
@@ -11631,7 +11634,6 @@ async function renderSettings(el) {
 
     ${!isAdmin ? "" : `
     <div class="panel" data-sec="business" id="transferNamesPanel"></div>
-    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
     <div class="panel" data-sec="business">
       <div class="ph"><div class="ph-title">Media buyers</div></div>
       <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Their ROAS (Leaderboard, Ad Spend &amp; ROAS) is attributed by putting <code>[CODE]</code> in their ad set or campaign names.</div>
