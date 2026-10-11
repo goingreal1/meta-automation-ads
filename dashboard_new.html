@@ -2526,7 +2526,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderPagesPanel(); bvRenderWaPanel(); bvRenderBillingPanel(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderPagesPanel(); bvRenderWaPanel(); bvRenderHelpPanel(); bvRenderBillingPanel(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -11829,6 +11829,7 @@ function bvSettingsSections(isAdmin) {
     { id: "automation", icon: "⚙️", label: "Automation & alerts" },
     { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
     ...(isAdmin ? [{ id: "billing", icon: "💳", label: "Billing" }] : []),
+    { id: "help", icon: "🛟", label: "Help & support" },
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "security", icon: "🔐", label: "Security" }] : []),
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "aiapps", icon: "🤖", label: "AI apps" }] : []),
   ];
@@ -11933,6 +11934,8 @@ async function renderSettings(el) {
     <div class="panel" data-sec="accounts" id="fbConnectPanel"></div>
 
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="pages" id="pagesPanel"></div><div class="panel" data-sec="whatsapp" id="waPanel"></div>' : ""}
+
+    <div class="panel" data-sec="help" id="helpPanel"></div>
 
     <div class="panel" data-sec="automation" id="notifPanel"></div>
 
@@ -12498,6 +12501,32 @@ function bvLinkPage(accountId) {
       if (r.status === "linked") { bvCloseModal(); bvToast(`Linked ${r.page_name || "Page"}`); await loadAccounts(); if (activeTab === "settings") render(); return; }
       m.textContent = r.error || "Could not link that Page."; m.style.display = "block";
     } finally { b.disabled = false; b.textContent = "Check & link"; }
+  };
+}
+
+async function bvRenderHelpPanel() {
+  const el = document.getElementById("helpPanel"); if (!el) return;
+  const [cfg, mine] = await Promise.all([
+    sbFn("support-ticket", { action: "config" }).catch(() => ({})),
+    sbQuery("support_tickets", "select=id,subject,message,status,reply,created_at&order=created_at.desc&limit=10").catch(() => []),
+  ]);
+  const wa = cfg?.whatsapp ? `https://wa.me/${cfg.whatsapp}?text=${encodeURIComponent("Hi Revora, I need help with my account.")}` : "";
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Help &amp; support</div></div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Stuck on a Page, ad account, wallet or WhatsApp number? Tell us and we'll reply.</div>
+    ${wa ? `<div class="set-card" style="margin-bottom:12px;"><div class="set-item"><span class="set-ic" style="background:#25D366">💬</span><div class="set-tx"><b>Chat with us on WhatsApp</b><span>Fastest way to reach the Revora team</span></div><a class="btn btn-a" style="width:auto;padding:7px 14px;text-decoration:none;" href="${wa}" target="_blank" rel="noopener">Open WhatsApp</a></div></div>` : ""}
+    <div class="field"><label>Topic</label><input id="hlpSub" maxlength="120" placeholder="e.g. Page won't link"></div>
+    <div class="field"><label>What's happening?</label><textarea id="hlpMsg" rows="4" maxlength="4000" style="width:100%;" placeholder="Tell us what you tried and what you saw"></textarea></div>
+    <div id="hlpErr" class="msg err" style="display:none;"></div>
+    <button type="button" class="btn btn-a" id="hlpGo" style="width:auto;padding:8px 18px;">Send message</button>
+    ${(mine || []).length ? `<div class="set-lbl" style="margin-top:16px;">Your messages</div><div class="set-card">${mine.map(t => `<div class="set-item"><div class="set-tx"><b>${escH(t.subject || "Message")}</b><span>${escH((t.reply ? "Reply: " + t.reply : t.message).slice(0, 160))}</span></div><span class="${t.reply ? "set-ok" : "set-warn"}">${t.reply ? "Answered" : "Open"}</span></div>`).join("")}</div>` : ""}`;
+  document.getElementById("hlpGo").onclick = async () => {
+    const b = document.getElementById("hlpGo"), er = document.getElementById("hlpErr");
+    b.disabled = true; er.style.display = "none";
+    const r = await sbFn("support-ticket", { action: "submit", subject: document.getElementById("hlpSub").value, message: document.getElementById("hlpMsg").value, page: bvSettingsSec });
+    b.disabled = false;
+    if (r.error) { er.textContent = r.error; er.style.display = "block"; return; }
+    bvToast("Sent — we'll get back to you"); bvRenderHelpPanel();
   };
 }
 
