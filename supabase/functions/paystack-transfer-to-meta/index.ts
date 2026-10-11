@@ -217,7 +217,7 @@ Deno.serve(async (req: Request) => {
       company_id: fr.company_id, user_id: profile.id, kind: "meta", source: reqSource === "assistant" ? "assistant" : "dashboard",
       amount_naira: fr.amount_naira, account_name: accountName, account_number, bank_name: bankName, status: "processing",
       paystack_transfer_code: transfer?.data?.transfer_code ?? null, paystack_reference: transfer?.data?.reference ?? null,
-      approved_with: reqApprovedWith === "pin" ? "Transfer PIN" : "Revora login",
+      approved_with: reqApprovedWith === "pin" ? "Transfer PIN" : reqApprovedWith === "auto" ? "Auto-approve set by the owner/admin" : "Revora login",
     }).then(() => {}, () => {});
     const { data: rc } = await supabase.from("transfer_receipts").select("id, receipt_no, created_at").eq("paystack_transfer_code", transfer?.data?.transfer_code ?? "").maybeSingle();
 

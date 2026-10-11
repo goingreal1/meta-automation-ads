@@ -46,6 +46,26 @@ Deno.serve(async (req: Request) => {
   if (!u?.user) return json({ error: "Not signed in." }, 401);
   const { data: me } = await admin.from("profiles").select("id, role, company_id").eq("id", u.user.id).maybeSingle();
   if (!me?.company_id || (me.role !== "owner" && me.role !== "admin")) return json({ error: "Only an owner or admin can do this." }, 403);
+  if (b?.action === "set_auto") {
+    // Turn auto-approve on or off for one buyer. It needs the admin's transfer PIN, and a per-request and a daily limit.
+    const bid = String(b?.media_buyer_id ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(bid)) return json({ error: "Pick a media buyer." }, 400);
+    const { data: mb } = await admin.from("media_buyers").select("id").eq("id", bid).eq("company_id", me.company_id).maybeSingle();
+    if (!mb) return json({ error: "Media buyer not found." }, 404);
+    const pin = String(b?.pin ?? "");
+    if (!PIN_RE.test(pin)) return json({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+    const p = await checkPin(me.id, pin);
+    if (!p.ok) return json({ error: p.error }, 403);
+    if (b?.enabled === false) {
+      await admin.from("media_buyers").update({ auto_send_enabled: false, auto_send_set_by: me.id, auto_send_set_at: new Date().toISOString() }).eq("id", bid);
+      return json({ ok: true, enabled: false });
+    }
+    const max = Math.round(Number(b?.max_naira)), dayMax = Math.round(Number(b?.daily_max_naira));
+    if (!Number.isFinite(max) || max < 100 || max > 5_000_000) return json({ error: "Set a per-request limit between ₦100 and ₦5,000,000." }, 400);
+    if (!Number.isFinite(dayMax) || dayMax < max || dayMax > 20_000_000) return json({ error: "Set a daily limit that is at least the per-request limit (up to ₦20,000,000)." }, 400);
+    await admin.from("media_buyers").update({ auto_send_enabled: true, auto_send_max_naira: max, auto_send_daily_max_naira: dayMax, auto_send_set_by: me.id, auto_send_set_at: new Date().toISOString() }).eq("id", bid);
+    return json({ ok: true, enabled: true, max_naira: max, daily_max_naira: dayMax });
+  }
   const id = String(b?.fund_request_id ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Bad request id." }, 400);
   const { data: fr } = await admin.from("fund_requests").select("*").eq("id", id).eq("company_id", me.company_id).maybeSingle();

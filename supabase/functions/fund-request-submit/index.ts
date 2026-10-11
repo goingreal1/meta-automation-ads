@@ -61,7 +61,9 @@ Deno.serve(async (req: Request) => {
   let b: any = {}; try { b = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
   const me = await caller(req, b?.on_behalf_of);
   if (!me?.company_id) return json({ error: "Not signed in." }, 401);
-  if (me.role !== "buyer" || !me.media_buyer_id) return json({ error: "Only a media buyer asks for ad funding." }, 403);
+  // A media buyer asks; a one-person workspace (owner who is also the media buyer) asks and approves for themselves.
+  const soloOwner = (me.role === "owner" || me.role === "admin") && !!me.media_buyer_id;
+  if ((me.role !== "buyer" && !soloOwner) || !me.media_buyer_id) return json({ error: "Only a media buyer asks for ad funding." }, 403);
   const action = String(b?.action ?? "submit");
 
   if (action === "cancel") {
@@ -92,5 +94,28 @@ Deno.serve(async (req: Request) => {
   const { data: ins, error } = await admin.from("fund_requests").insert({ company_id: me.company_id, media_buyer_id: me.media_buyer_id, amount_naira: amount, note, req_account_number: accountNumber, req_bank_code: bankCode, req_bank_name: v.bank, req_account_name: v.name, req_verified_at: new Date().toISOString() }).select("id").single();
   if (error) return json({ error: error.message }, 500);
   notify(ins.id);
-  return json({ ok: true, id: ins.id, account_name: v.name, bank_name: v.bank });
+
+  // Auto-approve: an owner/admin can allow one buyer's requests to be sent at once, up to a per-request and a daily limit.
+  // The Meta name check still runs, the wallet must cover it, and any problem leaves the request waiting for a manual approval.
+  const out: any = { ok: true, id: ins.id, account_name: v.name, bank_name: v.bank };
+  if (me.role === "buyer") {
+    const { data: mb } = await admin.from("media_buyers").select("auto_send_enabled, auto_send_max_naira, auto_send_daily_max_naira, auto_send_set_by").eq("id", me.media_buyer_id).maybeSingle();
+    if (mb?.auto_send_enabled && mb.auto_send_set_by) {
+      const max = Number(mb.auto_send_max_naira ?? 0), dayMax = Number(mb.auto_send_daily_max_naira ?? 0);
+      const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+      const { data: sent } = await admin.from("fund_requests").select("amount_naira").eq("media_buyer_id", me.media_buyer_id).eq("status", "transferred").gte("transferred_at", since);
+      const today = (sent ?? []).reduce((t: number, r: any) => t + Number(r.amount_naira || 0), 0);
+      const { data: setter } = await admin.from("profiles").select("role, company_id").eq("id", mb.auto_send_set_by).maybeSingle();
+      if (!(max > 0) || amount > max) out.auto_note = `Over the auto-approve limit of ₦${max.toLocaleString("en-NG")} per request, so it waits for your admin.`;
+      else if (today + amount > dayMax) out.auto_note = `Over the daily auto-approve limit of ₦${dayMax.toLocaleString("en-NG")}, so it waits for your admin.`;
+      else if (!setter || setter.company_id !== me.company_id || (setter.role !== "owner" && setter.role !== "admin")) out.auto_note = "Auto-approve is not active any more, so it waits for your admin.";
+      else {
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-transfer-to-meta`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, "x-internal-key": SERVICE_KEY }, body: JSON.stringify({ fund_request_id: ins.id, on_behalf_of: mb.auto_send_set_by, approved_with: "auto", source: "dashboard" }) });
+        const j: any = await r.json().catch(() => ({}));
+        if (j?.ok) { out.auto_sent = true; out.receipt = j.receipt ?? null; }
+        else out.auto_note = "Auto-approve could not send it (" + String(j?.reason || j?.error || "unknown").slice(0, 160) + "), so it waits for your admin.";
+      }
+    }
+  }
+  return json(out);
 });
