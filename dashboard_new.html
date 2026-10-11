@@ -1606,6 +1606,7 @@ textarea.cat-in{min-height:78px;resize:vertical;}
 
     <div class="sidebar-group-lbl">Account</div>
     <div class="tab-btn" data-tab="settings"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span><span class="tab-label">Settings</span></div>
+    <div class="tab-btn" data-tab="hq" style="display:none"><span class="tab-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg></span><span class="tab-label">Revora HQ</span></div>
   </div>
 
   <!-- MAIN CONTENT -->
@@ -1745,6 +1746,7 @@ async function init() {
     .select("id,name,account_type,business_types,sales_channels,fulfilment,description,team_size,buyers_count,monthly_ad_spend,copy_language,goals,team_roles,onboarding_completed_at")
     .limit(1).maybeSingle().then(r => r.data).catch(() => null)) || null;
   bvApplyCompanyProfile();
+  bvHqProbe();
   bvBuildBottomNav();
   bvLoadBilling();
   bvTopUpReturn();
@@ -2522,6 +2524,7 @@ async function render() {
   try {
     if      (activeTab === "overview")  await renderOverview(c);
     else if (activeTab === "wallet")    await renderWallet(c);
+    else if (activeTab === "hq")        await renderHq(c);
     else if (activeTab === "catalog")   await renderCatalog(c);
     else if (activeTab === "vault")     await renderVault(c);
     else if (activeTab === "campaigns") await renderCampaigns(c);
@@ -12593,6 +12596,61 @@ async function bvSupportChat(companyId, label) {
   document.getElementById("spSend").onclick = send;
   document.getElementById("spIn").onkeydown = e => { if (e.key === "Enter") send(); };
   await load(); bvSupportTimer = setInterval(load, 6000);
+}
+
+// ── REVORA HQ: platform-admin view across every company (hq-admin) ───────────
+let bvHqSec = "overview";
+async function bvHqProbe() {
+  try {
+    const r = await sbFn("hq-admin", { action: "overview" });
+    if (r && !r.error) document.querySelector('[data-tab="hq"]')?.style.removeProperty("display");
+  } catch {}
+}
+async function renderHq(el) {
+  const secs = [["overview", "Overview"], ["companies", "Companies & people"], ["accounts", "Ad accounts"], ["money", "Money"], ["support", "Support"]];
+  el.innerHTML = `<div class="sh"><div class="sh-title">Revora HQ</div></div>
+    <div class="set-wrap"><nav class="set-nav" id="hqNav">${secs.map(([id, l]) => `<button type="button" class="set-nav-btn ${id === bvHqSec ? "active" : ""}" data-s="${id}">${l}</button>`).join("")}</nav>
+    <div class="set-body" style="display:block" id="hqBody"></div></div>`;
+  el.querySelectorAll("#hqNav .set-nav-btn").forEach(b => b.onclick = () => { bvHqSec = b.dataset.s; renderHq(el); });
+  const body = document.getElementById("hqBody");
+  body.innerHTML = `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>`;
+  const kc = (l, v, sub) => `<div class="kc"><div class="kc-lbl">${l}</div><div class="kc-val">${v}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);">${sub}</div>` : ""}</div>`;
+  const tbl = (head, rows) => `<div class="tbl-wrap"><table><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>${rows.length ? rows.map(r => `<tr>${r.map(c => `<td>${c ?? ""}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${head.length}" style="color:var(--muted);">Nothing yet</td></tr>`}</table></div>`;
+  const d = t => t ? new Date(t).toLocaleDateString() : "";
+  try {
+    if (bvHqSec === "overview") {
+      const r = await sbFn("hq-admin", { action: "overview" }); if (r.error) throw new Error(r.error);
+      body.innerHTML = `<div class="g4">${kc("Companies", r.companies)}${kc("People", r.users, r.buyers + " media buyers")}${kc("Ad accounts sold", r.managed_accounts, r.own_accounts + " customer-owned")}${kc("In the pool", r.pool.free + " free", r.pool.sold + " sold · " + r.pool.retired + " retired")}</div>
+        <div class="g4" style="margin-top:12px;">${kc("Your earnings (30 days)", fN(r.earnings_30d.profit), "Billed " + fN(r.earnings_30d.billed) + " · Meta " + fN(r.earnings_30d.raw))}${kc("Ad account fees", fN(r.account_fees))}${kc("Card top-ups, all time", fN(r.card_topups))}${kc("Ad spend billed, all time", fN(r.managed_spend_billed), r.pending_wallet_requests + " wallet requests waiting")}</div>`;
+    } else if (bvHqSec === "companies") {
+      const r = await sbFn("hq-admin", { action: "companies" }); if (r.error) throw new Error(r.error);
+      body.innerHTML = tbl(["Company", "Type", "People", "Buyers", "Revora accts", "Own accts", "Joined", ""], r.companies.map(c => [`<b>${escH(c.name || "—")}</b>`, escH(c.type || ""), c.users, c.buyers, c.managed, c.own, d(c.created_at), `<button type="button" class="btn btn-g hqOpen" data-id="${c.id}" style="padding:2px 9px;font-size:10px;">Open</button>`]));
+      body.querySelectorAll(".hqOpen").forEach(b => b.onclick = async () => {
+        const c = await sbFn("hq-admin", { action: "company", company_id: b.dataset.id }); if (c.error) return bvToast(c.error, "err");
+        bvModal(c.company?.name || "Company", `<div style="max-height:68vh;overflow:auto;font-size:12.5px;">
+          <div class="set-lbl">People</div>${tbl(["Name", "Email", "Role", "Last seen"], c.people.map(p => [escH(p.display_name || ""), escH(p.email || ""), escH(p.role || ""), d(p.last_sign_in)]))}
+          <div class="set-lbl" style="margin-top:10px;">Ad accounts</div>${tbl(["Account", "Type", "Held by", "Spend billed"], c.accounts.map(a => [escH(a.nickname || a.name || a.meta_ad_account_id), a.billing_mode === "managed" ? "Revora" : "Own", escH(a.buyer || "Company"), a.billed_spend == null ? "—" : fN(a.billed_spend)]))}
+          <div class="set-lbl" style="margin-top:10px;">Wallets</div>${tbl(["Holder", "Balance"], [["Company wallet", fN(c.company_wallet)], ...c.buyer_wallets.map(w => [escH(w.name), fN(w.wallet)])])}</div>`);
+        const m = document.querySelector("#bvModalOverlay .bv-modal"); if (m) m.style.maxWidth = "640px";
+      });
+    } else if (bvHqSec === "accounts") {
+      const r = await sbFn("hq-admin", { action: "accounts" }); if (r.error) throw new Error(r.error);
+      body.innerHTML = `<div class="set-lbl">Sold Revora ad accounts</div>${tbl(["Account", "Company", "Held by", "Status", "Spend billed", "Sold"], r.sold.map(a => [escH(a.nickname || a.name || a.meta_ad_account_id), escH(a.company), escH(a.buyer || "Company"), escH(a.status || ""), fN(a.billed_spend), d(a.created_at)]))}
+        <div class="set-lbl" style="margin-top:14px;">Pool</div>${tbl(["Meta account", "Name", "Status", "Assigned to"], r.pool.map(p => [escH(p.meta_ad_account_id), escH(p.meta_name || p.label || ""), escH(p.assigned_company_id ? "sold" : p.status), escH(p.company || "")]))}`;
+    } else if (bvHqSec === "money") {
+      const r = await sbFn("hq-admin", { action: "money" }); if (r.error) throw new Error(r.error);
+      body.innerHTML = `<div class="set-lbl">Buyer wallets</div>${tbl(["Company", "Buyer", "Wallet"], r.buyer_wallets.map(w => [escH(w.company), escH(w.buyer), fN(w.wallet)]))}
+        <div class="set-lbl" style="margin-top:14px;">Wallet requests</div>${tbl(["When", "Company", "Buyer", "Amount", "Status"], r.requests.map(x => [d(x.requested_at), escH(x.company), escH(x.buyer || ""), fN(x.amount_naira), escH(x.status)]))}
+        <div class="set-lbl" style="margin-top:14px;">Card top-ups</div>${tbl(["When", "Company", "Buyer", "Amount", "Status"], r.topups.map(x => [d(x.created_at), escH(x.company), escH(x.buyer || "Company"), fN(x.amount_naira), escH(x.status)]))}
+        <div class="set-lbl" style="margin-top:14px;">Wallet movements</div>${tbl(["When", "Company", "Buyer", "Amount", "Reason"], r.adjustments.map(x => [d(x.created_at), escH(x.company), escH(x.buyer || "Company"), fN(x.amount_naira), escH(x.reason || "")]))}
+        <div class="set-lbl" style="margin-top:14px;">Withdrawals</div>${tbl(["When", "Company", "Amount", "Status"], r.withdrawals.map(x => [d(x.created_at), escH(x.company), fN(x.amount_naira), escH(x.status)]))}`;
+    } else {
+      const r = await sbFn("support-chat", { action: "threads" }); if (r.error) throw new Error(r.error);
+      const t = r.threads || [];
+      body.innerHTML = t.length ? `<div class="set-card">${t.map(x => `<div class="set-item" style="cursor:pointer;" data-c="${x.company_id}" data-n="${escH(x.company_name)}"><div class="set-tx"><b>${escH(x.company_name)}${x.unread_staff ? ` <span class="set-warn">${x.unread_staff} new</span>` : ""}</b><span>${escH(x.last_text || "")}</span></div><span style="font-size:10.5px;color:var(--muted);">${ago(x.last_message_at)}</span></div>`).join("")}</div>` : `<div class="empty">No support chats yet</div>`;
+      body.querySelectorAll(".set-item[data-c]").forEach(n => n.onclick = () => bvSupportChat(n.dataset.c, n.dataset.n));
+    }
+  } catch (e) { body.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(e.message)}</div>`; }
 }
 
 async function bvRenderWaPanel() {
