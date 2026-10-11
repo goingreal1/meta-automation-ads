@@ -112,6 +112,46 @@
       "has": [
         {
           "type": "host",
+          "value": "docs.revoracrm.app"
+        }
+      ],
+      "destination": "/help.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "support.revoracrm.app"
+        }
+      ],
+      "destination": "/contact.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "developers.revoracrm.app"
+        }
+      ],
+      "destination": "/developers.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "academy.revoracrm.app"
+        }
+      ],
+      "destination": "/academy.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "dash.revoracrm.app"
         }
       ],
@@ -158,6 +198,34 @@
     {
       "source": "/s/:slug/:page",
       "destination": "/api/site?slug=:slug&page=:page"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/pricing.html"
+    },
+    {
+      "source": "/help",
+      "destination": "/help.html"
+    },
+    {
+      "source": "/contact",
+      "destination": "/contact.html"
+    },
+    {
+      "source": "/security",
+      "destination": "/security.html"
+    },
+    {
+      "source": "/about",
+      "destination": "/about.html"
+    },
+    {
+      "source": "/developers",
+      "destination": "/developers.html"
+    },
+    {
+      "source": "/academy",
+      "destination": "/academy.html"
     }
   ],
   "functions": {
