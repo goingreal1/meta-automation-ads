@@ -9,6 +9,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "verify", reference }                          -> credits the wallet once Paystack confirms (safe to call twice)
 //   POST { action: "allocate", buyer_id, amount }                 -> admin moves money from the company wallet to a buyer's wallet
 //   POST { action: "take_back", buyer_id, amount }                -> admin moves unused money from a buyer's wallet back to the company wallet
+//   POST { action: "request", amount, note? }                     -> a buyer asks the admin to fund their Revora wallet
+//   POST { action: "decide", id, decision: "approve"|"decline" }  -> admin answers; approving moves the money from the company wallet straight into the buyer's wallet
 //   POST (x-cron-secret) { action: "sweep" }                      -> confirms top-ups whose buyer closed the page before it redirected back
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -93,6 +95,9 @@ Deno.serve(async (req: Request) => {
       let q = admin.from("wallet_topups").select("reference, amount_naira, status, media_buyer_id, created_at, confirmed_at").eq("company_id", me.company_id).order("created_at", { ascending: false }).limit(15);
       if (!isAdmin) q = q.eq("media_buyer_id", me.media_buyer_id ?? "00000000-0000-0000-0000-000000000000");
       out.topups = (await q).data ?? [];
+      let rq = admin.from("wallet_requests").select("id, media_buyer_id, amount_naira, note, status, requested_at, decided_at").eq("company_id", me.company_id).order("requested_at", { ascending: false }).limit(20);
+      if (!isAdmin) rq = rq.eq("media_buyer_id", me.media_buyer_id ?? "00000000-0000-0000-0000-000000000000");
+      out.requests = (await rq).data ?? [];
       return json({ ok: true, ...out });
     }
 
@@ -129,6 +134,45 @@ Deno.serve(async (req: Request) => {
       if (!isAdmin && row.media_buyer_id !== me.media_buyer_id) return json({ error: "That top-up is not yours." }, 403);
       const s = await settle(ref);
       return json({ ok: s.ok, status: s.status });
+    }
+
+    if (action === "request") {
+      if (me.role !== "buyer" || !me.media_buyer_id) return json({ error: "Only a media buyer asks for wallet funds." }, 403);
+      const amount = Math.round(Number(b?.amount));
+      if (!Number.isFinite(amount) || amount < 500 || amount > MAX) return json({ error: "Ask for between ₦500 and ₦2,000,000." }, 400);
+      const { count } = await admin.from("wallet_requests").select("id", { count: "exact", head: true }).eq("media_buyer_id", me.media_buyer_id).eq("status", "pending");
+      if ((count ?? 0) >= 3) return json({ error: "You already have 3 requests waiting. Wait for your admin to answer them." }, 400);
+      const { data: row, error } = await admin.from("wallet_requests").insert({ company_id: me.company_id, media_buyer_id: me.media_buyer_id, amount_naira: amount, note: String(b?.note ?? "").slice(0, 200) || null }).select("id").single();
+      if (error || !row) return json({ error: "Could not send the request." }, 500);
+      // Tell the owners and admins (best effort).
+      const { data: admins } = await admin.from("profiles").select("id").eq("company_id", me.company_id).in("role", ["owner", "admin"]);
+      for (const a of admins ?? []) await admin.from("ai_inbox").insert({ company_id: me.company_id, profile_id: a.id, kind: "fund_request", title: `Wallet request: ₦${amount.toLocaleString("en-NG")}`, body: "A media buyer asked for funds for their Revora ad accounts. Open the Wallet tab to approve or decline.", payload: {}, dedupe_key: `wallet_req:${row.id}:${a.id}` }).then(() => {}, () => {});
+      return json({ ok: true, id: row.id });
+    }
+
+    if (action === "decide") {
+      if (!isAdmin) return json({ error: "Only an owner or admin can answer wallet requests." }, 403);
+      const id = String(b?.id ?? "");
+      const { data: req0 } = await admin.from("wallet_requests").select("id, media_buyer_id, amount_naira, status").eq("id", id).eq("company_id", me.company_id).maybeSingle();
+      if (!req0) return json({ error: "Request not found." }, 404);
+      if (req0.status !== "pending") return json({ error: `That request is already ${req0.status}.` }, 400);
+      if (b?.decision === "decline") {
+        await admin.from("wallet_requests").update({ status: "declined", decided_at: new Date().toISOString(), decided_by: me.id }).eq("id", id).eq("status", "pending");
+        return json({ ok: true });
+      }
+      const amount = Number(req0.amount_naira);
+      const { data: cw } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
+      if (Number(cw ?? 0) < amount) return json({ error: `The company wallet only has ₦${Math.max(0, Math.round(Number(cw ?? 0))).toLocaleString("en-NG")}. Top it up first.` }, 400);
+      // Only the first tap wins, so a double tap can never fund twice.
+      const { data: won } = await admin.from("wallet_requests").update({ status: "approved", decided_at: new Date().toISOString(), decided_by: me.id }).eq("id", id).eq("status", "pending").select("id");
+      if (!won?.length) return json({ error: "That request was just answered." }, 409);
+      const ref = `req:${id}`;
+      const { error } = await admin.from("wallet_adjustments").insert([
+        { company_id: me.company_id, media_buyer_id: null, amount_naira: amount, reason: "given_to_buyer", ref },
+        { company_id: me.company_id, media_buyer_id: req0.media_buyer_id, amount_naira: -amount, reason: "given_by_company", ref },
+      ]);
+      if (error) { await admin.from("wallet_requests").update({ status: "pending", decided_at: null, decided_by: null }).eq("id", id); return json({ error: "Could not move the money." }, 500); }
+      return json({ ok: true });
     }
 
     if (action === "allocate" || action === "take_back") {
