@@ -2,12 +2,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Revora-provided ad accounts. The platform owner keeps a pool of ad accounts inside Revora's own Business Manager
-// (table sellable_ad_accounts). A customer taps "Get an ad account": one free account is renamed to what they chose and handed to
+// (table sellable_ad_accounts). A customer taps "Get an ad account": one ready account is renamed to what they chose and handed to
 // them as a "managed" ad account (billing_mode managed, with Revora's markup). Pixels (datasets) can be created or picked from here.
 //
 //   Platform admin:  { action: "pool_list" } | { action: "pool_add", meta_ad_account_id, label? } | { action: "pool_retire", id }
 //   Anyone signed in (owner / admin / buyer):
-//     { action: "availability" }                                   -> { available, first_is_free, owned }
+//     { action: "availability" }                                   -> { available, owned, fee, wallet }
 //     { action: "claim", name, create_pixel?, pixel_id? }          -> { ok, ad_account_id, pixel_id? }
 //     { action: "pixels", ad_account_id }                          -> { pixels: [{id,name,last_fired_time}] }
 //     { action: "create_pixel", ad_account_id, name? }             -> { ok, pixel_id }
@@ -16,6 +16,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const GRAPH = "https://graph.facebook.com/v20.0";
 const MARKUP_PCT = 5;
+const ACCOUNT_FEE = 3000; // naira, charged from the customer's wallet for every Revora ad account
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info" };
 const json = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", ...CORS } });
@@ -79,24 +80,28 @@ Deno.serve(async (req: Request) => {
       admin.from("sellable_ad_accounts").select("id", { count: "exact", head: true }).eq("status", "available"),
       admin.from("ad_accounts").select("id", { count: "exact", head: true }).eq("company_id", me.company_id).eq("billing_mode", "managed"),
     ]);
-    return json({ available: available ?? 0, owned: owned ?? 0, first_is_free: (owned ?? 0) === 0 });
+    const { data: w } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
+    return json({ available: available ?? 0, owned: owned ?? 0, fee: ACCOUNT_FEE, wallet: Number(w ?? 0) });
   }
 
   if (action === "claim") {
     const name = String(b?.name ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
     if (name.length < 2) return json({ error: "Give the ad account a name." }, 400);
-    const { count: owned } = await admin.from("ad_accounts").select("id", { count: "exact", head: true }).eq("company_id", me.company_id).eq("billing_mode", "managed");
-    if ((owned ?? 0) >= 1) return json({ error: "Your first Revora ad account is free. More accounts are paid, and billing for them is not switched on yet. Ask Revora to add one for you." }, 402);
-    // Take one free account. The update only succeeds while it is still available, so two people can never get the same one.
+    const { data: w0 } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
+    if (Number(w0 ?? 0) < ACCOUNT_FEE) return json({ error: `A Revora ad account costs ₦${ACCOUNT_FEE.toLocaleString("en-NG")}, taken from your wallet. Your wallet has ₦${Math.max(0, Math.round(Number(w0 ?? 0))).toLocaleString("en-NG")}. Add funds first.` }, 402);
+    // Take one ready account. The update only succeeds while it is still available, so two people can never get the same one.
     let picked: any = null;
     for (let i = 0; i < 4 && !picked; i++) {
       const { data: c } = await admin.from("sellable_ad_accounts").select("id, meta_ad_account_id").eq("status", "available").order("created_at").limit(1);
-      if (!c?.length) return json({ error: "No ad accounts are free right now. Revora has been notified; try again soon." }, 409);
+      if (!c?.length) return json({ error: "No ad accounts are ready right now. Try again soon." }, 409);
       const { data: got } = await admin.from("sellable_ad_accounts").update({ status: "assigned", assigned_company_id: me.company_id, assigned_at: new Date().toISOString() }).eq("id", c[0].id).eq("status", "available").select("id, meta_ad_account_id");
       if (got?.length) picked = got[0];
     }
     if (!picked) return json({ error: "Could not reserve an ad account. Try again." }, 409);
-    const release = () => admin.from("sellable_ad_accounts").update({ status: "available", assigned_company_id: null, assigned_at: null }).eq("id", picked.id);
+    // Charge the fee first (a charge row in the wallet ledger); every failure below gives it back.
+    const { data: fee, error: feeErr } = await admin.from("wallet_adjustments").insert({ company_id: me.company_id, amount_naira: ACCOUNT_FEE, reason: "ad_account_fee", ref: picked.id }).select("id").single();
+    if (feeErr || !fee) { await admin.from("sellable_ad_accounts").update({ status: "available", assigned_company_id: null, assigned_at: null }).eq("id", picked.id); return json({ error: "Could not charge your wallet. Try again." }, 500); }
+    const release = async () => { await admin.from("wallet_adjustments").delete().eq("id", fee.id); await admin.from("sellable_ad_accounts").update({ status: "available", assigned_company_id: null, assigned_at: null }).eq("id", picked.id); };
     try { await graph(`/act_${picked.meta_ad_account_id}`, "POST", { name }); }
     catch (e) { await release(); return json({ error: "Meta would not rename the account: " + (e as Error).message }, 502); }
 
@@ -120,7 +125,7 @@ Deno.serve(async (req: Request) => {
     }).select("id").single();
     if (error || !row) { await release(); return json({ error: "Could not add it to your workspace: " + (error?.message ?? "unknown") }, 500); }
     await admin.from("sellable_ad_accounts").update({ assigned_ad_account_id: row.id }).eq("id", picked.id);
-    return json({ ok: true, ad_account_id: row.id, name, pixel_id: pixelId, pixel_note: pixelNote });
+    return json({ ok: true, ad_account_id: row.id, name, fee: ACCOUNT_FEE, pixel_id: pixelId, pixel_note: pixelNote });
   }
 
   if (action === "pixels" || action === "create_pixel") {
