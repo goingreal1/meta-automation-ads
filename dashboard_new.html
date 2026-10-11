@@ -11530,6 +11530,65 @@ async function renderWallet(el) {
   }));
 }
 
+
+// "Get a Revora ad account": the customer takes a ready ad account from Revora's pool, names it, and can create a dataset (pixel) at once.
+// A platform admin also sees the pool and can add ad accounts to it.
+async function bvRevoraAcctPanel() {
+  const box = document.getElementById("revoraAcctPanel");
+  if (!box) return;
+  box.innerHTML = `<div class="ph"><div class="ph-title">Get a Revora ad account</div></div><div class="empty">Loading…</div>`;
+  const av = await sbFn("ad-account-pool", { action: "availability" }).catch(() => ({ error: "offline" }));
+  const mine = (accountsList || []).filter(a => a.billing_mode === "managed");
+  let html = `<div class="ph"><div class="ph-title">Get a Revora ad account</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">No ad account yet? Take one from Revora: your first one is free, ready to run ads, and you manage it from this dashboard. You fund it from your Revora wallet.</div>`;
+  if (mine.length) html += mine.map(a => `<div style="border-bottom:1px solid var(--border);padding:8px 0;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
+      <div><b>${escH(a.nickname || a.name)}</b><div style="font-size:10.5px;color:var(--muted);">Dataset: ${escH(a.pixel_name || a.meta_pixel_id || "none yet")}</div></div>
+      ${a.meta_pixel_id ? "" : `<button type="button" class="btn btn-a mkDatasetBtn" data-id="${a.id}" style="padding:3px 10px;font-size:10px;">Create dataset</button>`}</div>`).join("");
+  if (av.error) html += `<div class="msg err" style="margin-top:8px;">❌ ${escH(av.error)}</div>`;
+  else if (!av.first_is_free) html += `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Extra Revora ad accounts are paid. Billing for them opens soon.</div>`;
+  else if (!av.available) html += `<div style="font-size:11.5px;color:var(--warn);margin-top:8px;">All Revora ad accounts are taken right now. Check back soon.</div>`;
+  else html += `<form id="claimAcctForm" style="margin-top:10px;" novalidate>
+      <div class="fg"><div class="field"><label>Name your ad account *</label><input id="claimName" placeholder="e.g. Quality Herb Main"></div></div>
+      <label style="font-size:11.5px;display:flex;gap:6px;align-items:center;margin-top:6px;"><input type="checkbox" id="claimPixel" checked> Create a dataset (pixel) for it now</label>
+      <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;" id="claimBtn">Get my ad account</button><div id="claimMsg"></div></form>`;
+  html += `<div id="poolAdmin"></div>`;
+  box.innerHTML = html;
+  box.querySelector("#claimAcctForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = box.querySelector("#claimBtn"), msg = box.querySelector("#claimMsg");
+    const name = box.querySelector("#claimName").value.trim();
+    if (name.length < 2) { msg.innerHTML = `<div class="msg err">❌ Give the ad account a name.</div>`; return; }
+    btn.disabled = true; btn.textContent = "Setting it up…";
+    const r = await sbFn("ad-account-pool", { action: "claim", name, create_pixel: box.querySelector("#claimPixel").checked }).catch(err => ({ error: err.message }));
+    if (r.error) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Get my ad account"; return; }
+    bvToast("Your ad account is ready"); if (r.pixel_note) alert(r.pixel_note);
+    await loadAccounts(); renderSettings(document.getElementById("mainContent"));
+  });
+  box.querySelectorAll(".mkDatasetBtn").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true; b.textContent = "Creating…";
+    const r = await sbFn("ad-account-pool", { action: "create_pixel", ad_account_id: b.dataset.id }).catch(err => ({ error: err.message }));
+    if (r.error) { alert(r.error); b.disabled = false; b.textContent = "Create dataset"; return; }
+    bvToast("Dataset created"); await loadAccounts(); renderSettings(document.getElementById("mainContent"));
+  }));
+  // Platform admin only: the pool.
+  const pool = await sbFn("ad-account-pool", { action: "pool_list" }).catch(() => ({ error: "x" }));
+  if (pool.error) return;
+  const pa = box.querySelector("#poolAdmin");
+  const rows = pool.accounts || [];
+  pa.innerHTML = `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;"><div class="ph-title" style="margin-bottom:6px;">Ad account pool (platform admin)</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Ad accounts in Revora's Business Manager that customers can take. Assign each one to Revora's system user in Business Manager first, then add its number here. ${rows.filter(r => r.status === "available").length} free.</div>
+    <div class="tbl-wrap"><table><tr><th>Ad account</th><th>Name on Meta</th><th>Status</th><th></th></tr>
+    ${rows.map(r => `<tr><td class="n">${escH(r.meta_ad_account_id)}</td><td class="s">${escH(r.meta_name || r.label || "")}</td><td>${escH(r.status)}</td><td>${r.status === "available" ? `<button type="button" class="btn btn-g poolRetire" data-id="${r.id}" style="padding:2px 8px;font-size:10px;">Retire</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="4" class="s">Empty. Add your first one below.</td></tr>`}</table></div>
+    <form id="poolAddForm" style="margin-top:8px;display:flex;gap:6px;" novalidate><input id="poolAddId" placeholder="Ad account number" style="flex:1;"><button type="submit" class="btn btn-a" style="padding:4px 10px;font-size:10px;">Add to pool</button></form><div id="poolMsg"></div></div>`;
+  pa.querySelector("#poolAddForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const r = await sbFn("ad-account-pool", { action: "pool_add", meta_ad_account_id: pa.querySelector("#poolAddId").value }).catch(err => ({ error: err.message }));
+    if (r.error) { pa.querySelector("#poolMsg").innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; return; }
+    bvToast("Added to the pool"); bvRevoraAcctPanel();
+  });
+  pa.querySelectorAll(".poolRetire").forEach(b => b.addEventListener("click", async () => { await sbFn("ad-account-pool", { action: "pool_retire", id: b.dataset.id }); bvRevoraAcctPanel(); }));
+}
+
 // ── TAB: SETTINGS ─────────────────────────────────────────────────────────────
 
 // ── SETTINGS: sections + setup checklist ─────────────────────────────────────
@@ -11632,6 +11691,7 @@ async function renderSettings(el) {
       </div>
     </div>` : ""}
 
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="accounts" id="revoraAcctPanel"></div>' : ""}
     <div class="panel" data-sec="accounts" id="fbConnectPanel"></div>
 
     <div class="panel" data-sec="automation" id="notifPanel"></div>
@@ -11920,6 +11980,7 @@ async function bvSaveAdAccountConnection(accountId) {
   // "Media buyers & Meta connections" and "Link New Meta Ad Account" are both
   // admin-only panels -- these forms simply aren't in the DOM for a buyer/
   // delivery_agent, so every handler below is guarded rather than assumed present.
+  bvRevoraAcctPanel();
   document.querySelectorAll(".removeMemberBtn").forEach(btn => btn.addEventListener("click", async () => {
     const warn = btn.dataset.role === "buyer" ? "They are signed out everywhere, lose access, their AI apps are disconnected, auto-approve is switched off and any waiting funding request from them is declined. Their orders, ROAS and receipts stay with your company." : "They are signed out everywhere and lose access to your company. Their past work stays.";
     if (!confirm(`Remove ${btn.dataset.name} from your company?\n\n${warn}\n\nYou can invite them again later.`)) return;
