@@ -9237,6 +9237,7 @@ async function renderConversations(el) {
           <option value="">All numbers</option>
           ${numbers.map(n => `<option value="${n.id}" ${n.id === bvSelectedNumberId ? "selected" : ""}>${escH(numLabel(n))}${n.media_buyers ? ` — ${escH(n.media_buyers.name)}` : ""}</option>`).join("")}
         </select>` : ""}
+        <button class="btn btn-g" onclick="bvSupportChat()">🛟 Support</button>
         <button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
       ${!numbers?.length ? `<div class="panel"><div style="font-size:12px;color:var(--text2);line-height:1.6;">No WhatsApp number connected yet -- add one in Settings to start receiving leads here.</div></div>` : ""}
       <div class="g4">
@@ -12506,28 +12507,65 @@ function bvLinkPage(accountId) {
 
 async function bvRenderHelpPanel() {
   const el = document.getElementById("helpPanel"); if (!el) return;
-  const [cfg, mine] = await Promise.all([
+  const [cfg, inf] = await Promise.all([
     sbFn("support-ticket", { action: "config" }).catch(() => ({})),
-    sbQuery("support_tickets", "select=id,subject,message,status,reply,created_at&order=created_at.desc&limit=10").catch(() => []),
+    sbFn("support-chat", { action: "info" }).catch(() => ({})),
   ]);
   const wa = cfg?.whatsapp ? `https://wa.me/${cfg.whatsapp}?text=${encodeURIComponent("Hi Revora, I need help with my account.")}` : "";
   el.innerHTML = `
     <div class="ph"><div class="ph-title">Help &amp; support</div></div>
-    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Stuck on a Page, ad account, wallet or WhatsApp number? Tell us and we'll reply.</div>
-    ${wa ? `<div class="set-card" style="margin-bottom:12px;"><div class="set-item"><span class="set-ic" style="background:#25D366">💬</span><div class="set-tx"><b>Chat with us on WhatsApp</b><span>Fastest way to reach the Revora team</span></div><a class="btn btn-a" style="width:auto;padding:7px 14px;text-decoration:none;" href="${wa}" target="_blank" rel="noopener">Open WhatsApp</a></div></div>` : ""}
-    <div class="field"><label>Topic</label><input id="hlpSub" maxlength="120" placeholder="e.g. Page won't link"></div>
-    <div class="field"><label>What's happening?</label><textarea id="hlpMsg" rows="4" maxlength="4000" style="width:100%;" placeholder="Tell us what you tried and what you saw"></textarea></div>
-    <div id="hlpErr" class="msg err" style="display:none;"></div>
-    <button type="button" class="btn btn-a" id="hlpGo" style="width:auto;padding:8px 18px;">Send message</button>
-    ${(mine || []).length ? `<div class="set-lbl" style="margin-top:16px;">Your messages</div><div class="set-card">${mine.map(t => `<div class="set-item"><div class="set-tx"><b>${escH(t.subject || "Message")}</b><span>${escH((t.reply ? "Reply: " + t.reply : t.message).slice(0, 160))}</span></div><span class="${t.reply ? "set-ok" : "set-warn"}">${t.reply ? "Answered" : "Open"}</span></div>`).join("")}</div>` : ""}`;
-  document.getElementById("hlpGo").onclick = async () => {
-    const b = document.getElementById("hlpGo"), er = document.getElementById("hlpErr");
-    b.disabled = true; er.style.display = "none";
-    const r = await sbFn("support-ticket", { action: "submit", subject: document.getElementById("hlpSub").value, message: document.getElementById("hlpMsg").value, page: bvSettingsSec });
-    b.disabled = false;
-    if (r.error) { er.textContent = r.error; er.style.display = "block"; return; }
-    bvToast("Sent — we'll get back to you"); bvRenderHelpPanel();
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Stuck on a Page, ad account, wallet or WhatsApp number? Chat with the Revora team here any time. You can start a chat whenever you like and reply later.</div>
+    <div class="set-card">
+      <div class="set-item"><span class="set-ic" style="background:#007aff">🛟</span><div class="set-tx"><b>${inf?.staff ? "Customer support inbox" : "Support chat"}</b><span>${inf?.unread ? inf.unread + " new" : "Messages are saved, so you can come back to them"}</span></div><button type="button" class="btn btn-a" style="width:auto;padding:7px 14px;" onclick="bvSupportChat()">Open</button></div>
+      ${wa ? `<div class="set-item"><span class="set-ic" style="background:#25D366">💬</span><div class="set-tx"><b>Chat with us on WhatsApp</b><span>Another way to reach the team</span></div><a class="btn btn-g" style="width:auto;padding:7px 14px;text-decoration:none;" href="${wa}" target="_blank" rel="noopener">Open WhatsApp</a></div>` : ""}
+    </div>`;
+}
+
+// In-app support chat: saved threads between a customer company and the Revora team. Staff see an inbox of all customers.
+let bvSupportTimer = null;
+async function bvSupportChat(companyId, label) {
+  clearInterval(bvSupportTimer);
+  const inf = await sbFn("support-chat", { action: "info" }).catch(() => ({}));
+  const staff = !!inf.staff;
+  bvModal(staff && !companyId ? "Support inbox" : (label || "Support chat"), `<div id="spBody" style="min-height:260px;max-height:62vh;display:flex;flex-direction:column;"></div>`);
+  const ov = document.getElementById("bvModalOverlay");
+  const box = ov?.querySelector(".bv-modal"); if (box) box.style.maxWidth = "520px";
+  const body = document.getElementById("spBody");
+  const stop = () => { if (!document.getElementById("spBody")) clearInterval(bvSupportTimer); };
+  if (staff && !companyId) {
+    const load = async () => {
+      const r = await sbFn("support-chat", { action: "threads" });
+      if (!document.getElementById("spBody")) return stop();
+      const t = r.threads || [];
+      body.innerHTML = t.length ? `<div class="set-card" style="overflow:auto;">${t.map(x => `<div class="set-item" style="cursor:pointer;" onclick="bvSupportChat('${x.company_id}', '${escH(x.company_name).replace(/'/g, "")}')"><div class="set-tx"><b>${escH(x.company_name)}${x.unread_staff ? ` <span class="set-warn">${x.unread_staff} new</span>` : ""}</b><span>${escH(x.last_text || "")}</span></div><span style="font-size:10.5px;color:var(--muted);">${ago(x.last_message_at)}</span></div>`).join("")}</div>` : `<div class="empty">No support chats yet</div>`;
+    };
+    await load(); bvSupportTimer = setInterval(load, 8000); return;
+  }
+  body.innerHTML = `<div id="spMsgs" style="flex:1;overflow:auto;padding:4px 2px;min-height:200px;"></div>
+    <div style="display:flex;gap:6px;margin-top:8px;"><input id="spIn" placeholder="Type a message…" style="flex:1;" maxlength="4000"><button type="button" class="btn btn-a" id="spSend" style="width:auto;padding:7px 14px;">Send</button></div>
+    <div id="spErr" class="msg err" style="display:none;margin-top:6px;"></div>`;
+  let lastKey = "";
+  const load = async () => {
+    const r = await sbFn("support-chat", { action: "messages", company_id: companyId });
+    const box = document.getElementById("spMsgs"); if (!box) return stop();
+    const m = r.messages || [], key = m.length + ":" + (m[m.length - 1]?.id || "");
+    if (key === lastKey) return; lastKey = key;
+    const mine = x => staff ? x.sender === "staff" : x.sender === "customer";
+    box.innerHTML = m.length ? m.map(x => `<div style="display:flex;justify-content:${mine(x) ? "flex-end" : "flex-start"};margin:5px 0;"><div style="max-width:80%;padding:7px 11px;border-radius:12px;font-size:13px;line-height:1.45;white-space:pre-wrap;word-break:break-word;background:${mine(x) ? "var(--accent)" : "var(--surface2, #eee)"};color:${mine(x) ? "#fff" : "inherit"};">${escH(x.body)}<div style="font-size:10px;opacity:.7;margin-top:2px;">${escH(x.sender_name || (x.sender === "staff" ? "Revora" : ""))} · ${ago(x.created_at)}</div></div></div>`).join("") : `<div class="empty">Say hello — ${staff ? "no messages yet" : "we reply as soon as we can"}</div>`;
+    box.scrollTop = box.scrollHeight;
   };
+  const send = async () => {
+    const inp = document.getElementById("spIn"), er = document.getElementById("spErr");
+    const text = inp.value.trim(); if (!text) return;
+    er.style.display = "none"; inp.disabled = true;
+    const r = await sbFn("support-chat", { action: "send", company_id: companyId, text });
+    inp.disabled = false;
+    if (r.error) { er.textContent = r.error; er.style.display = "block"; return; }
+    inp.value = ""; inp.focus(); lastKey = ""; load();
+  };
+  document.getElementById("spSend").onclick = send;
+  document.getElementById("spIn").onkeydown = e => { if (e.key === "Enter") send(); };
+  await load(); bvSupportTimer = setInterval(load, 6000);
 }
 
 async function bvRenderWaPanel() {
