@@ -2526,7 +2526,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderBillingPanel(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderWaPanel(); bvRenderBillingPanel(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -11822,6 +11822,7 @@ function bvSettingsSections(isAdmin) {
   if (r === "delivery_agent" || r === "customer_care") return [{ id: "automation", icon: "🔔", label: "Alerts & notifications" }];
   const list = [
     { id: "accounts", icon: "🔌", label: "Ad accounts" },
+    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "whatsapp", icon: "💬", label: "WhatsApp" }] : []),
     { id: "domains", icon: "🌐", label: "Domains" },
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "events", icon: "📡", label: "Event Manager" }] : []),
     { id: "automation", icon: "⚙️", label: "Automation & alerts" },
@@ -11929,6 +11930,8 @@ async function renderSettings(el) {
 
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="accounts" id="revoraAcctPanel"></div>' : ""}
     <div class="panel" data-sec="accounts" id="fbConnectPanel"></div>
+
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="whatsapp" id="waPanel"></div>' : ""}
 
     <div class="panel" data-sec="automation" id="notifPanel"></div>
 
@@ -12455,6 +12458,81 @@ async function bvSavePartnerBizId(mediaBuyerId, value, btn) {
 // The simple way in: log in with Facebook once and we can see the ad accounts, pages and
 // WhatsApp numbers they chose to share (no Business ID to type). The Business ID share below
 // stays as the fallback for people who would rather not log in.
+
+// ── Settings → WhatsApp: numbers hosted on Revora's own WhatsApp Business account (no Facebook login needed) ──
+async function bvRenderWaPanel() {
+  const el = document.getElementById("waPanel"); if (!el) return;
+  const isAdm = bvIsAdminRole(), myBuyer = window.myProfile?.media_buyer_id;
+  if (!isAdm && !myBuyer) { el.remove(); return; }
+  const [buyers, nums] = await Promise.all([
+    sbQuery("media_buyers", "select=id,name,code&order=code.asc").catch(() => []),
+    sbQuery("buyer_whatsapp_numbers", "select=id,nickname,display_phone_number,media_buyer_id,status&status=eq.active&order=created_at.asc").catch(() => []),
+  ]);
+  const mine = isAdm ? (buyers || []) : (buyers || []).filter(b => b.id === myBuyer);
+  if (!mine.length) { el.innerHTML = `<div class="ph"><div class="ph-title">WhatsApp</div></div><div style="font-size:12.5px;color:var(--text2);">Add a media buyer first (Business &amp; team), then set up their WhatsApp here.</div>`; return; }
+  const sel = window.bvWaBuyer && mine.some(b => b.id === window.bvWaBuyer) ? window.bvWaBuyer : mine[0].id;
+  window.bvWaBuyer = sel;
+  const list = (nums || []).filter(n => n.media_buyer_id === sel);
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">WhatsApp</div><div class="ph-count">${list.length} number${list.length === 1 ? "" : "s"}</div></div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Your WhatsApp number receives customer chats in the <b>Chats</b> tab and is the number your click-to-WhatsApp ads send people to. We set it up for you — no Facebook login needed.</div>
+    ${isAdm && mine.length > 1 ? `<div class="field" style="max-width:320px;"><label>Media buyer</label><select id="waBuyerSel">${mine.map(b => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}</select></div>` : ""}
+    <div class="set-card" style="margin:10px 0 14px;">
+      ${list.length ? list.map(n => `<div class="set-item"><span class="set-ic" style="background:#25D366">💬</span><div class="set-tx"><b>${escH(n.display_phone_number || "Number")}</b><span>${escH(n.nickname || "Connected")} · messages go to Chats</span></div><button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvWaRemove('${n.id}')">Remove</button></div>`).join("") : `<div class="set-item"><span class="set-ic" style="background:#8e8e93">💬</span><div class="set-tx"><b>No WhatsApp number yet</b><span>Add the number you already use, or ask us for a new one</span></div></div>`}
+      <div class="set-item"><span class="set-ic" style="background:#25D366">＋</span><div class="set-tx"><b>Use my own number</b><span>We link it to Revora with a text-message code. It must not be active on a normal WhatsApp app.</span></div><button type="button" class="btn btn-a" style="width:auto;padding:7px 14px;" onclick="bvWaAddOwn('${sel}')">Add number</button></div>
+      <div class="set-item"><span class="set-ic" style="background:#af52de">🛒</span><div class="set-tx"><b>Get a number from Revora</b><span>We give you a ready WhatsApp number for your ads</span></div><button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvWaRequestNumber('${sel}')">Request</button></div>
+    </div>
+    <details style="font-size:11.5px;color:var(--muted);"><summary style="cursor:pointer;">Advanced: connect through my own Facebook</summary>
+      <div class="set-card" style="margin-top:8px;">
+        <div class="set-item"><span class="set-ic" style="background:#1877F2">f</span><div class="set-tx"><b>WhatsApp sign-up with Facebook</b><span>Only works for accounts Meta has approved</span></div><button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvWaSignup('${sel}')">Use Facebook</button></div>
+      </div></details>`;
+  document.getElementById("waBuyerSel")?.addEventListener("change", e => { window.bvWaBuyer = e.target.value; bvRenderWaPanel(); });
+}
+async function bvWaRemove(id) {
+  if (!confirm("Remove this WhatsApp number from Revora? Chats already received stay.")) return;
+  const r = await sbFn("whatsapp-platform", { action: "remove", media_buyer_id: window.bvWaBuyer, access_token: sessionData.access_token, id });
+  if (r.error) return bvToast(r.error, "err");
+  bvToast("Number removed"); bvRenderWaPanel();
+}
+function bvWaAddOwn(buyerId) {
+  bvModal("Add your WhatsApp number", `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;">We'll text a 6-digit code to the number. If it's currently on the WhatsApp or WhatsApp Business app, delete that account first (or use a fresh SIM).</div>
+    <div class="field"><label>Business name customers will see</label><input id="waNm" placeholder="e.g. Ade Fashion"></div>
+    <div style="display:flex;gap:8px;"><div class="field" style="width:90px;"><label>Country code</label><input id="waCc" value="234"></div><div class="field" style="flex:1;"><label>Phone number</label><input id="waPn" placeholder="8012345678" inputmode="tel"></div></div>
+    <div id="waStep2" style="display:none;"><div class="field"><label>6-digit code</label><input id="waCode" inputmode="numeric" maxlength="6"></div>
+      <div style="font-size:11.5px;margin-bottom:8px;"><a href="#" id="waResend">Resend by SMS</a> · <a href="#" id="waVoice">Call me instead</a></div></div>
+    <div id="waErr" class="msg err" style="display:none;"></div>
+    <button type="button" class="btn btn-a" id="waGo" style="margin-top:6px;">Send code</button>`);
+  let pid = null;
+  const $ = i => document.getElementById(i), err = m => { const e = $("waErr"); e.textContent = m || ""; e.style.display = m ? "block" : "none"; };
+  const call = (action, extra) => sbFn("whatsapp-platform", { action, media_buyer_id: buyerId, access_token: sessionData.access_token, ...extra });
+  const resend = async method => { err(); const r = await call("resend", { phone_number_id: pid, code_method: method }); r.error ? err(r.error) : bvToast(method === "VOICE" ? "Calling you now" : "Code sent"); };
+  $("waResend").onclick = e => { e.preventDefault(); resend("SMS"); };
+  $("waVoice").onclick = e => { e.preventDefault(); resend("VOICE"); };
+  $("waGo").onclick = async () => {
+    const b = $("waGo"); b.disabled = true; err();
+    try {
+      if (!pid) {
+        const r = await call("add", { cc: $("waCc").value, phone_number: $("waPn").value, verified_name: $("waNm").value });
+        if (r.phone_number_id) pid = r.phone_number_id;
+        if (r.error) { err(r.error); return; }
+        $("waStep2").style.display = "block"; b.textContent = "Verify & connect"; bvToast("Code sent");
+      } else {
+        const r = await call("verify", { phone_number_id: pid, code: $("waCode").value });
+        if (r.error) { err(r.error); return; }
+        bvCloseModal(); bvToast(`WhatsApp connected${r.number ? ": " + r.number : ""}`); bvRenderWaPanel();
+      }
+    } finally { b.disabled = false; }
+  };
+}
+async function bvWaRequestNumber(buyerId) {
+  const note = prompt("Anything we should know? (e.g. the city or business name for the number)", "") ;
+  if (note === null) return;
+  const r = await sbFn("whatsapp-platform", { action: "request_number", media_buyer_id: buyerId, access_token: sessionData.access_token, note });
+  if (r.error) return bvToast(r.error, "err");
+  bvToast("Request sent — we'll set up your number and message you");
+}
+
 async function bvRenderFbConnect() {
   const el = document.getElementById("fbConnectPanel"); if (!el) return;
   const isAdm = bvIsAdminRole(), myBuyer = window.myProfile?.media_buyer_id;
@@ -12481,9 +12559,6 @@ async function bvRenderFbConnect() {
     <div class="set-card" style="margin:10px 0 14px;">
       <div class="set-item"><span class="set-ic" style="background:#1877F2">f</span><div class="set-tx"><b>${conn ? `Connected as ${escH(conn.fb_user_name || "Facebook user")}` : "Not connected yet"}</b><span>${conn ? (soon ? "Login expires soon — reconnect" : expires ? "Valid until " + expires.toLocaleDateString() : "Connected") : "Ad accounts, pages and tracking"}</span></div>
         <button type="button" class="btn ${conn ? "btn-g" : "btn-a"}" style="width:auto;padding:7px 14px;" onclick="bvFbStart('${sel}')">${conn ? "Reconnect" : "Continue with Facebook"}</button></div>
-      <div class="set-item"><span class="set-ic" style="background:#25D366">💬</span><div class="set-tx"><b>${myNums.length ? myNums.map(n => escH(n.display_phone_number || n.nickname || "number")).join(", ") : "No WhatsApp number yet"}</b><span>Create or connect your WhatsApp Business number without leaving this page</span></div>
-        <button type="button" class="btn btn-a" style="width:auto;padding:7px 14px;" onclick="bvWaSignup('${sel}')">${myNums.length ? "Add another" : "Set up WhatsApp"}</button></div>
-      ${conn ? `<div class="set-item"><span class="set-ic" style="background:#8e8e93">＋</span><div class="set-tx"><b>Use a number you already have</b><span>Pick one from your WhatsApp Business account</span></div><button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvAddWhatsappModal('${sel}')">Choose number</button></div>` : ""}
     </div>
     ${avail.length ? `<div class="set-lbl">Ad accounts we found — add the ones you want</div><div class="set-card">${avail.map(a => `<div class="set-item"><span class="set-ic" style="background:#1877F2">📣</span><div class="set-tx"><b>${escH(a.name || a.account_id)}</b><span>${escH(a.business_name || "")} act_${escH(a.account_id)}</span></div><button type="button" class="btn btn-a" style="width:auto;padding:6px 14px;" onclick="bvFbAddAccount(this,'${conn.id}','${sel}','${escH(String(a.account_id))}','${escH(String(a.name || "").replace(/'/g, "’"))}')">Add</button></div>`).join("")}</div>` : (conn ? `<div style="font-size:12px;color:var(--muted);">All the ad accounts we found are already added.</div>` : "")}
     <div style="font-size:11.5px;color:var(--muted);margin-top:12px;">Prefer not to log in? Use the Business ID share further down instead — it still works.</div>`;
@@ -12536,7 +12611,7 @@ async function bvWaSignup(buyerId) {
       const r = await sbFn("manage-whatsapp-numbers", { action: "es_complete", access_token: sessionData.access_token, media_buyer_id: buyerId, code, waba_id: done.waba_id, phone_number_id: done.phone_number_id });
       if (r.error) { bvToast(r.error, "err"); return; }
       bvToast(`WhatsApp number connected${r.number ? ": " + r.number : ""}${r.webhook_subscribed ? "" : " (messages may not arrive yet — contact support)"}`);
-      bvRenderFbConnect();
+      bvRenderFbConnect(); bvRenderWaPanel();
     }, { config_id: cfg.config_id, response_type: "code", override_default_response_type: true, extras: { setup: {}, featureType: "", sessionInfoVersion: "3" } });
   } catch (e) { bvToast(e.message || "Could not start WhatsApp sign-up.", "err"); }
 }
