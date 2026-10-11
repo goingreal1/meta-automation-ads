@@ -1103,7 +1103,7 @@ html{-webkit-text-size-adjust:100%;}
   .set-nav-btn.active{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
   .set-body{flex:1;min-width:0;}
   .set-body [data-sec]{display:none;}
-  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"],.set-body[data-active="security"] [data-sec="security"],.set-body[data-active="aiapps"] [data-sec="aiapps"]{display:block;}
+  .set-body[data-active="accounts"] [data-sec="accounts"],.set-body[data-active="domains"] [data-sec="domains"],.set-body[data-active="automation"] [data-sec="automation"],.set-body[data-active="business"] [data-sec="business"],.set-body[data-active="billing"] [data-sec="billing"],.set-body[data-active="security"] [data-sec="security"],.set-body[data-active="aiapps"] [data-sec="aiapps"],.set-body[data-active="events"] [data-sec="events"],.set-body[data-active="pages"] [data-sec="pages"],.set-body[data-active="whatsapp"] [data-sec="whatsapp"],.set-body[data-active="help"] [data-sec="help"]{display:block;}
   @media (max-width:760px){.set-wrap{flex-direction:column;}.set-nav{flex-direction:row;overflow-x:auto;min-width:0;width:100%;position:static;}.set-nav-btn{white-space:nowrap;}}
   .setup-bar{height:6px;border-radius:99px;background:var(--panel2);overflow:hidden;margin:2px 0 12px;}
   .setup-bar>div{height:100%;background:var(--accent);border-radius:99px;}
@@ -1318,6 +1318,20 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
 .set-ok{font-size:12.5px;font-weight:600;color:#1f9d4c;white-space:nowrap;}
 .set-warn{font-size:12.5px;font-weight:600;color:#b86e00;white-space:nowrap;}
 @media(max-width:760px){.set-nav{min-width:0;}.set-nav-btn{background:var(--panel2);}}
+/* Settings polish */
+.set-body .panel{background:var(--panel);border:1px solid var(--border);}
+.set-body .panel .ph{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:14px;}
+.set-body .panel .ph-title{font-size:16px;}
+.set-body .set-card{margin-bottom:14px;}
+.set-item .btn{white-space:nowrap;}
+.set-tx span{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4;}
+.set-acct-head{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--panel2);border-bottom:1px solid var(--border);font-weight:700;font-size:14px;}
+.set-acct-head small{font-weight:500;color:var(--text2);font-size:12px;}
+.set-acct-head .pill{margin-left:auto;}
+.set-steps{margin:0 0 14px;padding:12px 14px 12px 32px;background:var(--panel2);border-radius:10px;font-size:12.5px;line-height:1.7;color:var(--text2);}
+.set-steps b{color:var(--text);}
+.set-nav-btn{white-space:nowrap;}
+
 .switch .sw-track{background:#c7c7cc;}
 .switch input:checked + .sw-track{background:#34c759;}
 
@@ -11750,16 +11764,29 @@ async function bvEventsExtras(body, r) {
   });
 }
 
-// "Get a Revora ad account": the customer takes a ready ad account from Revora's pool, names it, and can create a dataset (pixel) at once.
+function bvSetSec(id) { document.querySelector(`.set-nav-btn[data-sec="${id}"]`)?.click(); }
+async function bvMakeDataset(btn, accountId) {
+  btn.disabled = true; btn.textContent = "Creating…";
+  const r = await sbFn("events-manager", { action: "create_dataset", ad_account_id: accountId }).catch(err => ({ error: err.message }));
+  if (r.error) { alert(r.error); btn.disabled = false; btn.textContent = "Create dataset"; return; }
+  bvToast(r.existing ? "Dataset linked" : "Dataset created"); await loadAccounts(); if (activeTab === "settings") render();
+}
+
+// "Buy a Meta ad account from Revora": the customer takes a ready ad account from Revora's pool, names it, and can create a dataset (pixel) at once.
 // A platform admin also sees the pool and can add ad accounts to it.
 async function bvRevoraAcctPanel() {
   const box = document.getElementById("revoraAcctPanel");
   if (!box) return;
-  box.innerHTML = `<div class="ph"><div class="ph-title">Get a Revora ad account</div></div><div class="empty">Loading…</div>`;
+  box.innerHTML = `<div class="ph"><div class="ph-title">Buy a Meta ad account from Revora</div></div><div class="empty">Loading…</div>`;
   const av = await sbFn("ad-account-pool", { action: "availability" }).catch(() => ({ error: "offline" }));
   const mine = (accountsList || []).filter(a => a.billing_mode === "managed");
-  let html = `<div class="ph"><div class="ph-title">Get a Revora ad account</div></div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">No ad account yet? Take one from Revora: ready to run ads, and you manage it from this dashboard. The fee is taken from your Revora wallet, and so is your ad spend.</div>`;
+  let html = `<div class="ph"><div class="ph-title">Buy a Meta ad account from Revora</div><div class="ph-count">${Number(av.fee || 0) ? "₦" + Number(av.fee).toLocaleString() + " each" : ""}</div></div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:10px;">Need an ad account? Buy a ready Meta ad account from Revora and manage it from this dashboard. No Business Manager setup needed on your side.</div>
+    <ol class="set-steps"><li><b>Buy it</b> below. The price is taken from your Revora wallet, so top up first if your balance is low.</li>
+      <li><b>It's yours instantly</b> and appears under Your ad accounts above.</li>
+      <li><b>Create a dataset (pixel)</b> so Meta can track your orders.</li>
+      <li><b>Link your Facebook Page</b> (Pages tab) by sharing it with Revora and pasting its ID.</li>
+      <li><b>Fund your wallet</b>. Your ad spend is paid from it, and ads pause automatically when it is empty.</li></ol>`;
   if (mine.length) html += mine.map(a => `<div style="border-bottom:1px solid var(--border);padding:8px 0;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
       <div><b>${escH(a.nickname || a.name)}</b><div style="font-size:10.5px;color:var(--muted);">Dataset: ${escH(a.pixel_name || a.meta_pixel_id || "none yet")}</div></div>
       ${a.meta_pixel_id ? "" : `<button type="button" class="btn btn-a mkDatasetBtn" data-id="${a.id}" style="padding:3px 10px;font-size:10px;">Create dataset</button>`}</div>`).join("");
@@ -11768,8 +11795,8 @@ async function bvRevoraAcctPanel() {
   else html += `<form id="claimAcctForm" style="margin-top:10px;" novalidate>
       <div class="fg"><div class="field"><label>Name your ad account *</label><input id="claimName" placeholder="e.g. Quality Herb Main"></div></div>
       <label style="font-size:11.5px;display:flex;gap:6px;align-items:center;margin-top:6px;"><input type="checkbox" id="claimPixel" checked> Create a dataset (pixel) for it now</label>
-      <div style="font-size:11.5px;margin-top:8px;">Price: <b>₦${Number(av.fee || 0).toLocaleString()}</b> from your wallet (balance ₦${Math.max(0, Math.round(av.wallet || 0)).toLocaleString()}).${(av.wallet || 0) < (av.fee || 0) ? ' <span style="color:var(--warn);">Add funds to your wallet first.</span>' : ""}</div>
-      <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;" id="claimBtn">Get my ad account · ₦${Number(av.fee || 0).toLocaleString()}</button><div id="claimMsg"></div></form>`;
+      <div style="font-size:11.5px;margin-top:8px;">Price: <b>₦${Number(av.fee || 0).toLocaleString()}</b> from your wallet (balance ₦${Math.max(0, Math.round(av.wallet || 0)).toLocaleString()}).${(av.wallet || 0) < (av.fee || 0) ? ' <span style="color:var(--warn);"><a href="javascript:void(0)" onclick="bvGoToTab('wallet')" style="color:var(--accent);">Top up your wallet first</a>.</span>' : ""}</div>
+      <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;" id="claimBtn">Buy ad account · ₦${Number(av.fee || 0).toLocaleString()}</button><div id="claimMsg"></div></form>`;
   html += `<div id="poolAdmin"></div>`;
   box.innerHTML = html;
   box.querySelector("#claimAcctForm")?.addEventListener("submit", async e => {
@@ -11779,8 +11806,8 @@ async function bvRevoraAcctPanel() {
     if (name.length < 2) { msg.innerHTML = `<div class="msg err">❌ Give the ad account a name.</div>`; return; }
     btn.disabled = true; btn.textContent = "Setting it up…";
     const r = await sbFn("ad-account-pool", { action: "claim", name, create_pixel: box.querySelector("#claimPixel").checked }).catch(err => ({ error: err.message }));
-    if (r.error) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Get my ad account"; return; }
-    bvToast("Your ad account is ready"); if (r.pixel_note) alert(r.pixel_note);
+    if (r.error) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; btn.disabled = false; btn.textContent = "Buy ad account"; return; }
+    bvToast("Ad account bought and ready"); if (r.pixel_note) alert(r.pixel_note);
     await loadAccounts(); renderSettings(document.getElementById("mainContent"));
   });
   box.querySelectorAll(".mkDatasetBtn").forEach(b => b.addEventListener("click", async () => {
@@ -11923,12 +11950,12 @@ async function renderSettings(el) {
 
     ${accountsList.length ? `<div class="set-group" data-sec="accounts">
       <div class="set-lbl">Your ad accounts</div>
-      <div class="set-card">${accountsList.map(a => `
-        <div class="set-item"><span class="set-ic" style="background:#1877F2">📣</span><div class="set-tx"><b>${escH(a.nickname || a.name || "Ad account")}</b><span>${escH(a.meta_ad_account_id || "")} · Balance ${fN(a.balance_naira)}</span></div><span class="pill ${a.status === "active" ? "active" : "paused"}">${a.status === "active" ? "Active" : escH(a.status || "—")}</span></div>
+      ${accountsList.map(a => `<div class="set-card">
+        <div class="set-acct-head">📣 ${escH(a.nickname || a.name || "Ad account")} <small>${escH(a.meta_ad_account_id || "")} · Balance ${fN(a.balance_naira)}</small><span class="pill ${a.status === "active" ? "active" : "paused"}">${a.status === "active" ? "Active" : escH(a.status || "—")}</span></div>
         ${isAdmin ? `<div class="set-item"><span class="set-ic" style="background:#af52de">👥</span><div class="set-tx"><b>Shared with</b><span>${a.billing_mode === "managed" ? "A Revora account is paid from the wallet of the buyer it is shared with." : "The media buyer who runs this account."}</span></div><select class="acctShare" data-id="${a.id}" onchange="bvShareAccount(this)" style="max-width:170px;">${shareOpts(a.media_buyer_id)}</select></div>` : ""}
-        <div class="set-item"><span class="set-ic" style="background:#8e8e93">🔌</span><div class="set-tx"><b>Pixel</b><span>${escH(a.pixel_name || a.meta_pixel_id || "Not set — verify below")}</span></div>${a.meta_pixel_id ? '<span class="set-ok">✓ Connected</span>' : '<span class="set-warn">Not set</span>'}</div>
-        <div class="set-item"><span class="set-ic" style="background:#34c759">💬</span><div class="set-tx"><b>Facebook page &amp; WhatsApp</b><span>${escH(a.fb_page_name || a.fb_page_id || "Not set — verify below")}${a.whatsapp_number ? " · " + escH(a.whatsapp_number) : ""}</span></div>${a.fb_page_id ? '<span class="set-ok">✓ Connected</span>' : '<span class="set-warn">Not set</span>'}</div>`).join("")}
-      </div>
+        <div class="set-item"><span class="set-ic" style="background:#8e8e93">📡</span><div class="set-tx"><b>Pixel / dataset</b><span>${a.meta_pixel_id ? escH(a.pixel_name || a.meta_pixel_id) : "No dataset yet. Create one so Meta can track your orders."}</span></div>${a.meta_pixel_id ? '<button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvSetSec(\'events\')">View events</button>' : `<button type="button" class="btn btn-a" style="width:auto;padding:7px 14px;" onclick="bvMakeDataset(this,'${a.id}')">Create dataset</button>`}</div>
+        <div class="set-item"><span class="set-ic" style="background:#34c759">📄</span><div class="set-tx"><b>Facebook Page</b><span>${a.fb_page_id ? escH(a.fb_page_name || a.fb_page_id) + (a.whatsapp_number ? " · " + escH(a.whatsapp_number) : "") : "No Page linked yet. Ads run as a Facebook Page."}</span></div><button type="button" class="btn ${a.fb_page_id ? "btn-g" : "btn-a"}" style="width:auto;padding:7px 14px;" onclick="bvLinkPage('${a.id}')">${a.fb_page_id ? "Change" : "Link Page"}</button></div>
+      </div>`).join("")}
     </div>` : ""}
 
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="accounts" id="revoraAcctPanel"></div>' : ""}
