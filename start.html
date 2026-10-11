@@ -85,6 +85,10 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   .steps{grid-template-columns:repeat(2,1fr)}
   section{padding:96px 0}
 }
+.chip{position:absolute;z-index:2;display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--ink);font-weight:600;font-size:clamp(11px,2.1vw,15px);line-height:1;border-radius:999px;padding:9px 14px;box-shadow:0 8px 24px rgba(20,40,60,.18);white-space:nowrap;font-style:normal}
+.chip i{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
+.chip.ok i{background:#22a45d}.chip.stop i{background:#e5484d}
+.chip.blue{background:var(--blue);color:#fff}.chip.blue i{background:#fff}
 </style>
 <script>
 // Fill in the Meta Pixel ID to track visits and sign-up clicks from your ads. Left empty, nothing is tracked.
@@ -111,10 +115,10 @@ window.REVORA_PIXEL_ID = "";
   </div>
   <div class="note">For online sellers, media buyers and e-commerce companies selling on WhatsApp, Instagram, Facebook and the web.</div>
   <div class="collage">
-    <div class="ph"><img src="/images/landing/lp-hero-1.jpg" alt="" loading="eager" onerror="this.remove()"><span>Your ads</span></div>
-    <div class="ph"><img src="/images/landing/lp-hero-2.jpg" alt="" loading="eager" onerror="this.remove()"><span>Your orders</span></div>
-    <div class="ph"><img src="/images/landing/lp-hero-3.jpg" alt="" loading="lazy" onerror="this.remove()"><span>Your money</span></div>
-    <div class="ph"><img src="/images/landing/lp-hero-4.jpg" alt="" loading="lazy" onerror="this.remove()"><span>Your team</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-1.jpg" alt="" loading="eager" onerror="rmPic(this)"><div class="chip blue" style="right:7%;top:6%"><i></i>Ad running</div><span>Your ads</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-2.jpg" alt="" loading="eager" onerror="rmPic(this)"><div class="chip ok" style="right:7%;top:6%"><i></i>Order confirmed</div><span>Your orders</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-3.jpg" alt="" loading="lazy" onerror="rmPic(this)"><div class="chip ok" style="right:7%;top:6%"><i></i>Payment received</div><span>Your money</span></div>
+    <div class="ph"><img src="/images/landing/lp-hero-4.jpg" alt="" loading="lazy" onerror="rmPic(this)"><div class="chip blue" style="left:7%;top:6%"><i></i>Each role sees theirs</div><span>Your team</span></div>
   </div>
 </div></section>
 
@@ -141,9 +145,9 @@ window.REVORA_PIXEL_ID = "";
 <section><div class="wrap">
   <h2>Built for how Nigerian businesses really work.</h2>
   <div class="cards three">
-    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-1.jpg" alt="" loading="lazy" onerror="this.remove()"></div><div class="big">Real ROAS</div><p>Not just clicks and messages. See what you earned from delivered orders against what you spent.</p></div>
-    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-2.jpg" alt="" loading="lazy" onerror="this.remove()"></div><div class="big">Paid in naira</div><p>Customers pay into a dedicated account number. Deposits are matched to orders for you.</p></div>
-    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-3.jpg" alt="" loading="lazy" onerror="this.remove()"></div><div class="big">PIN-protected money</div><p>Every transfer needs your own PIN, typed in a private form, with a receipt every time.</p></div>
+    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-1.jpg" alt="" loading="lazy" onerror="rmPic(this)"><div class="chip blue" style="left:6%;bottom:8%"><i></i>Real ROAS ↑</div></div><div class="big">Real ROAS</div><p>Not just clicks and messages. See what you earned from delivered orders against what you spent.</p></div>
+    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-2.jpg" alt="" loading="lazy" onerror="rmPic(this)"><div class="chip ok" style="left:6%;bottom:8%"><i></i>Payment matched</div></div><div class="big">Paid in naira</div><p>Customers pay into a dedicated account number. Deposits are matched to orders for you.</p></div>
+    <div class="card dark"><div class="photo"><img src="/images/landing/lp-feature-3.jpg" alt="" loading="lazy" onerror="rmPic(this)"><div class="chip blue" style="left:6%;bottom:8%"><i></i>PIN approved</div></div><div class="big">PIN-protected money</div><p>Every transfer needs your own PIN, typed in a private form, with a receipt every time.</p></div>
   </div>
 </div></section>
 
