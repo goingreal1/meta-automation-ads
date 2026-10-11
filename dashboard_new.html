@@ -11534,6 +11534,74 @@ async function renderWallet(el) {
 }
 
 
+
+// Event Manager, per ad account: datasets (pixels), event counts, browser vs server, create / pick a dataset, send a test event.
+let bvEventsAcct = null, bvEventsDays = 7;
+async function bvEventsPanel() {
+  const box = document.getElementById("eventsPanel");
+  if (!box) return;
+  const accts = accountsList || [];
+  if (!accts.length) { box.innerHTML = `<div class="ph"><div class="ph-title">Event Manager</div></div><div class="empty"><div class="empty-ico">📡</div>Add or get an ad account first. Its datasets show here.</div>`; return; }
+  if (!bvEventsAcct || !accts.some(a => a.id === bvEventsAcct)) bvEventsAcct = (activeAccountId && accts.some(a => a.id === activeAccountId)) ? activeAccountId : accts[0].id;
+  box.innerHTML = `<div class="ph"><div class="ph-title">Event Manager</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Your datasets (pixels) and the events they receive, per ad account. Switch accounts to see another one.</div>
+    <div class="fg"><div class="field"><label>Ad account</label><select id="evAcct">${accts.map(a => `<option value="${a.id}" ${a.id === bvEventsAcct ? "selected" : ""}>${escH(a.nickname || a.name)}${a.billing_mode === "managed" ? " · Revora" : ""}</option>`).join("")}</select></div>
+    <div class="field"><label>Period</label><select id="evDays"><option value="1" ${bvEventsDays === 1 ? "selected" : ""}>Last 24 hours</option><option value="7" ${bvEventsDays === 7 ? "selected" : ""}>Last 7 days</option><option value="30" ${bvEventsDays === 30 ? "selected" : ""}>Last 30 days</option></select></div></div>
+    <div id="evBody" style="margin-top:10px;"><div class="empty">Loading…</div></div>`;
+  box.querySelector("#evAcct").addEventListener("change", e => { bvEventsAcct = e.target.value; bvEventsPanel(); });
+  box.querySelector("#evDays").addEventListener("change", e => { bvEventsDays = Number(e.target.value); bvEventsPanel(); });
+  const body = box.querySelector("#evBody");
+  const r = await sbFn("events-manager", { action: "overview", ad_account_id: bvEventsAcct, days: bvEventsDays }).catch(err => ({ error: err.message }));
+  if (r.error) { body.innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; return; }
+  const ago2 = t => { if (!t) return "never"; const m = Math.round((Date.now() - new Date(t).getTime()) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 2880 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " days ago"; };
+  const keyEv = ["PageView", "ViewContent", "InitiateCheckout", "Lead", "Purchase"];
+  let html = "";
+  if (r.note) html += `<div style="font-size:11px;color:var(--warn);margin-bottom:8px;">${escH(r.note)}</div>`;
+  if (!r.pixels.length) html += `<div class="empty"><div class="empty-ico">📡</div>This ad account has no dataset yet.</div>${r.can_create ? `<button type="button" class="btn btn-a" id="evCreate" style="margin-top:8px;">Create a dataset</button>` : ""}`;
+  for (const p of r.pixels) {
+    const total = Object.values(p.events).reduce((t, n) => t + n, 0);
+    const max = Math.max(1, ...p.daily.map(d => d.total));
+    const srv = p.methods.server || p.methods.SERVER || 0, brw = p.methods.browser || p.methods.BROWSER || 0;
+    const others = Object.keys(p.events).filter(k => !keyEv.includes(k));
+    html += `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
+        <div><b>${escH(p.name || "Dataset")}</b> <span style="color:var(--muted);font-size:10.5px;font-family:'JetBrains Mono',monospace;">${escH(p.id)}</span>
+          <div style="font-size:10.5px;color:var(--muted);">Last event ${ago2(p.last_fired_time)}${p.unavailable ? " · unavailable" : ""}</div></div>
+        <div>${p.active ? `<span class="pill active">Used by this ad account</span>` : `<button type="button" class="btn btn-a evUse" data-id="${p.id}" style="padding:3px 10px;font-size:10px;">Use this dataset</button>`}</div></div>
+      ${p.stats_error ? `<div style="font-size:10.5px;color:var(--danger);margin-top:6px;">${escH(p.stats_error)}</div>` : `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;">${keyEv.map(k => `<div style="flex:1;min-width:92px;background:var(--panel2);border-radius:8px;padding:6px 8px;"><div style="font-size:9.5px;color:var(--muted);">${k}</div><div style="font-size:15px;font-weight:700;">${(p.events[k] || 0).toLocaleString()}</div></div>`).join("")}</div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:46px;margin-bottom:4px;">${p.daily.map(d => `<div title="${escH(d.date)}: ${d.total}" style="flex:1;background:var(--accent);opacity:.75;border-radius:2px 2px 0 0;height:${Math.max(3, Math.round(d.total / max * 46))}px;"></div>`).join("") || `<span style="font-size:10.5px;color:var(--muted);">No events in this period.</span>`}</div>
+      <div style="font-size:10.5px;color:var(--muted);">${total.toLocaleString()} events · from browser ${brw.toLocaleString()} · from server (Conversions API) ${srv.toLocaleString()}${others.length ? " · other: " + others.slice(0, 5).map(k => escH(k) + " " + p.events[k]).join(", ") : ""}</div>`}
+      <details style="margin-top:8px;"><summary style="font-size:11px;cursor:pointer;color:var(--accent);">Send a test event</summary>
+        <div style="font-size:10.5px;color:var(--muted);margin:6px 0;">In Meta's Events Manager, open this dataset's <b>Test events</b> tab and copy the test code. Paste it here to send a server event and see it arrive there.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;"><input class="evCode" data-id="${p.id}" placeholder="TEST12345" style="flex:1;min-width:120px;"><select class="evName" data-id="${p.id}">${["PageView", "ViewContent", "InitiateCheckout", "Lead", "Purchase"].map(n => `<option>${n}</option>`).join("")}</select><button type="button" class="btn btn-a evTest" data-id="${p.id}" style="padding:3px 10px;font-size:10px;">Send test</button></div>
+        <div class="evTestMsg" data-id="${p.id}" style="margin-top:6px;"></div></details>
+    </div>`;
+  }
+  html += `<div style="font-size:10.5px;color:var(--muted);">Server events (Conversions API): Revora sends a purchase event from your orders automatically for any ad account that has a dataset, so they appear above under "from server".</div>`;
+  body.innerHTML = html;
+  body.querySelector("#evCreate")?.addEventListener("click", async e => {
+    e.target.disabled = true; e.target.textContent = "Creating…";
+    const c = await sbFn("events-manager", { action: "create_dataset", ad_account_id: bvEventsAcct }).catch(err => ({ error: err.message }));
+    if (c.error) { alert(c.error); e.target.disabled = false; e.target.textContent = "Create a dataset"; return; }
+    bvToast(c.existing ? "Dataset linked" : "Dataset created"); await loadAccounts(); bvEventsPanel();
+  });
+  body.querySelectorAll(".evUse").forEach(b2 => b2.addEventListener("click", async () => {
+    b2.disabled = true;
+    const c = await sbFn("events-manager", { action: "use_dataset", ad_account_id: bvEventsAcct, pixel_id: b2.dataset.id }).catch(err => ({ error: err.message }));
+    if (c.error) { alert(c.error); b2.disabled = false; return; }
+    bvToast("This ad account now uses that dataset"); await loadAccounts(); bvEventsPanel();
+  }));
+  body.querySelectorAll(".evTest").forEach(b2 => b2.addEventListener("click", async () => {
+    const id = b2.dataset.id, msg = body.querySelector(`.evTestMsg[data-id="${id}"]`);
+    const code = body.querySelector(`.evCode[data-id="${id}"]`).value.trim(), name = body.querySelector(`.evName[data-id="${id}"]`).value;
+    b2.disabled = true; b2.textContent = "Sending…";
+    const c = await sbFn("events-manager", { action: "test_event", ad_account_id: bvEventsAcct, pixel_id: id, test_code: code, event_name: name }).catch(err => ({ error: err.message }));
+    msg.innerHTML = c.error ? `<div class="msg err">❌ ${escH(c.error)}</div>` : `<div class="msg ok">✅ Sent ${escH(c.event_name)}. Meta received ${c.events_received}. Check the Test events tab.</div>`;
+    b2.disabled = false; b2.textContent = "Send test";
+  }));
+}
+
 // "Get a Revora ad account": the customer takes a ready ad account from Revora's pool, names it, and can create a dataset (pixel) at once.
 // A platform admin also sees the pool and can add ad accounts to it.
 async function bvRevoraAcctPanel() {
@@ -11608,6 +11676,7 @@ function bvSettingsSections(isAdmin) {
   const list = [
     { id: "accounts", icon: "🔌", label: "Ad accounts" },
     { id: "domains", icon: "🌐", label: "Domains" },
+    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "events", icon: "📡", label: "Event Manager" }] : []),
     { id: "automation", icon: "⚙️", label: "Automation & alerts" },
     { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
     ...(isAdmin ? [{ id: "billing", icon: "💳", label: "Billing" }] : []),
@@ -11706,6 +11775,7 @@ async function renderSettings(el) {
     <div class="panel" data-sec="automation" id="killRulesPanel"></div>
 
     <div class="panel" data-sec="domains" id="domainsPanel"></div>
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="events" id="eventsPanel"></div>' : ""}
 
     ${isAdmin ? '<div class="panel" data-sec="billing" id="billingPanel"></div>' : ""}
 
@@ -11988,6 +12058,7 @@ async function bvSaveAdAccountConnection(accountId) {
   // admin-only panels -- these forms simply aren't in the DOM for a buyer/
   // delivery_agent, so every handler below is guarded rather than assumed present.
   bvRevoraAcctPanel();
+  bvEventsPanel();
   document.querySelectorAll(".removeMemberBtn").forEach(btn => btn.addEventListener("click", async () => {
     const warn = btn.dataset.role === "buyer" ? "They are signed out everywhere, lose access, their AI apps are disconnected, auto-approve is switched off and any waiting funding request from them is declined. Their orders, ROAS and receipts stay with your company." : "They are signed out everywhere and lose access to your company. Their past work stays.";
     if (!confirm(`Remove ${btn.dataset.name} from your company?\n\n${warn}\n\nYou can invite them again later.`)) return;
