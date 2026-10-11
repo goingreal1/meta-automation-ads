@@ -1201,6 +1201,18 @@ Deno.serve(async (req: Request) => {
     const launchedGroups: any[][] = [];
     for (const group of groups.values()) {
       const anchor = group[0];
+      // Revora-provided ad accounts are paid for by Revora's card, so nothing goes live on one unless the
+      // customer's wallet has money in it.
+      if (anchor.ad_account_id) {
+        const { data: acct } = await supabase.from("ad_accounts").select("billing_mode, company_id").eq("id", anchor.ad_account_id).maybeSingle();
+        if (acct?.billing_mode === "managed") {
+          const { data: w } = await supabase.rpc("company_wallet_balance", { p_company: acct.company_id });
+          if (Number(w ?? 0) <= 0) {
+            launchErrors.push(`"${anchor.file_name}": your wallet is empty. Add funds to your wallet, then publish again.`);
+            continue;
+          }
+        }
+      }
       const result = await launchAdSetGroup(supabase, group);
       if ("error" in result) {
         launchErrors.push(`"${anchor.file_name}"${group.length > 1 ? ` +${group.length - 1} more copies` : ""}: ${result.error}`);
@@ -1221,7 +1233,7 @@ Deno.serve(async (req: Request) => {
 
     if (launchPlans.length === 0) {
       return new Response(
-        JSON.stringify({ error: "Failed to create any ad sets", details: launchErrors }),
+        JSON.stringify({ error: launchErrors.length === 1 ? launchErrors[0] : "Failed to create any ad sets", details: launchErrors }),
         { status: 500, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
       );
     }
