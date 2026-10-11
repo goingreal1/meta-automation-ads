@@ -12603,7 +12603,11 @@ let bvHqSec = "overview";
 async function bvHqProbe() {
   try {
     const r = await sbFn("hq-admin", { action: "overview" });
-    if (r && !r.error) document.querySelector('[data-tab="hq"]')?.style.removeProperty("display");
+    if (r && !r.error) {
+      const t = document.querySelector('[data-tab="hq"]');
+      t?.style.removeProperty("display");
+      if (t && location.hostname.startsWith("hq.") && activeTab !== "hq") t.click();
+    }
   } catch {}
 }
 async function renderHq(el) {
