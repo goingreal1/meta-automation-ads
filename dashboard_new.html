@@ -12473,10 +12473,23 @@ function bvRenderPagesPanel() {
 
 function bvLinkPage(accountId) {
   bvModal("Link your Facebook Page", `
-    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">1. Share the Page with Revora: Meta Business Settings → Pages → Add partner, then give it permission to create ads.<br>2. Paste the Page ID below (Page → About → Page transparency).</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px;">
+      <b style="color:var(--text);">Step 1 — Share the Page with Revora</b><br>
+      Meta Business Settings → Accounts → Pages → pick your Page → <b>Add partner</b>.<br>
+      Enter Revora's Business ID: <b id="lpBiz" style="color:var(--text);user-select:all;">loading…</b> <a href="#" id="lpCopy">Copy</a><br>
+      Turn on the permission to <b>create ads</b> (shown as Advertise / Create ads) and save.<br><br>
+      <b style="color:var(--text);">Step 2 — Paste the Page ID</b><br>
+      Find it on your Page → About → Page transparency.
+    </div>
     <div class="field"><label>Page ID</label><input id="lpId" inputmode="numeric" placeholder="e.g. 105123456789012"></div>
     <div id="lpMsg" class="msg err" style="display:none;"></div>
     <button type="button" class="btn btn-a" id="lpGo">Check &amp; link</button>`);
+  sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => {
+    const id = r?.business_id || "";
+    const el = document.getElementById("lpBiz"); if (el) el.textContent = id || "ask Revora support";
+    const cp = document.getElementById("lpCopy");
+    if (cp) cp.onclick = e => { e.preventDefault(); if (id) { navigator.clipboard?.writeText(id); bvToast("Business ID copied"); } };
+  }).catch(() => { const el = document.getElementById("lpBiz"); if (el) el.textContent = "ask Revora support"; });
   document.getElementById("lpGo").onclick = async () => {
     const b = document.getElementById("lpGo"), m = document.getElementById("lpMsg");
     b.disabled = true; b.textContent = "Checking…"; m.style.display = "none";
