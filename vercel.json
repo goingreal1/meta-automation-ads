@@ -226,6 +226,26 @@
     {
       "source": "/academy",
       "destination": "/academy.html"
+    },
+    {
+      "source": "/blog",
+      "destination": "/blog.html"
+    },
+    {
+      "source": "/blog/first-facebook-ad-nigeria",
+      "destination": "/blog/first-facebook-ad-nigeria.html"
+    },
+    {
+      "source": "/blog/what-is-real-roas",
+      "destination": "/blog/what-is-real-roas.html"
+    },
+    {
+      "source": "/blog/why-ad-accounts-get-restricted",
+      "destination": "/blog/why-ad-accounts-get-restricted.html"
+    },
+    {
+      "source": "/blog/whatsapp-or-website",
+      "destination": "/blog/whatsapp-or-website.html"
     }
   ],
   "functions": {
