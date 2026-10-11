@@ -179,7 +179,7 @@
       "permanent": true
     },
     {
-      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\\\.html",
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
       "has": [
         {
           "type": "host",
