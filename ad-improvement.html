@@ -73,6 +73,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
 .prog{position:absolute;left:0;top:-1px;height:3px;background:var(--blue);width:0;transition:width .25s}
 @media(min-width:760px){.cards.three{grid-template-columns:repeat(3,1fr)}.cards.two{grid-template-columns:repeat(2,1fr)}.lesson{padding:80px 0}}
 </style>
+<script>function rmPic(i){var p=i.parentNode;p.querySelectorAll('.chip').forEach(function(c){c.remove()});i.remove();}</script>
 <script>window.REVORA_PIXEL_ID = ""; // paste your Meta Pixel ID to track visits and sign-up clicks</script>
 </head>
 <body>
@@ -90,7 +91,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <h1>Improve an existing ad.</h1>
   <p>Whether you are new or experienced, there is always room to make your ads work harder. In seven short lessons you will see how Revora tracks your results, stops ads that waste money, tells you which to kill, keep or scale, and follows every paid order through to delivery, so you sell more and spend less.</p>
   <a class="btn p" href="/login.html?mode=signup" data-cta="intro">Get started with Revora</a>
-  <div class="pic"><img src="/images/landing/imp-intro.jpg" alt="" onerror="this.remove()"></div>
+  <div class="pic"><img src="/images/landing/imp-intro.jpg" alt="" onerror="rmPic(this)"><span class="chip blue" style="left:5%;bottom:9%"><i></i>More orders, less wasted spend</span></div>
 </div></section>
 
 <section class="lesson" id="l1" data-title="Track performance"><div class="wrap">
@@ -162,7 +163,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 6 of 7</div>
   <h2>Follow every order to delivery.</h2>
   <p>An ad only pays when the goods are delivered and paid for. Revora handles the steps in between: confirming the order, getting it to a rider, and matching the payment.</p>
-  <div class="pic lp"><img src="/images/landing/imp-l5.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip ok" style="right:5%;top:9%"><i></i>Order delivered</span></div>
+  <div class="pic lp"><img src="/images/landing/imp-l6.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip ok" style="left:37%;top:10%"><i></i>Rider alerted</span></div>
   <div class="cards three">
     <div class="card"><span class="ico">📞</span><h3>An AI calls to confirm</h3><p>After a customer orders on your website, an AI voice agent phones them in a friendly Nigerian voice to confirm the order and the delivery address. If they confirm, the order moves to confirmed. If they want a person, or mention something medical, it is passed to your team.</p></div>
     <div class="card"><span class="ico">🏍️</span><h3>Your rider is alerted</h3><p>Once an order is confirmed, Revora offers it to a delivery agent in the right area. The rider gets a notification on their phone and accepts or declines in their "My deliveries" screen. If no one answers in a few minutes, it goes to the next rider.</p></div>
@@ -175,7 +176,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 7 of 7</div>
   <h2>Make better decisions with every order.</h2>
   <p>Every order you deliver teaches you something. Revora keeps the results, so your next ad starts smarter than the last one.</p>
-  <div class="pic lp"><img src="/images/landing/imp-l6.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip ok" style="left:37%;top:10%"><i></i>Rider alerted</span></div>
+  <div class="pic lp"><img src="/images/landing/imp-l7.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip ok" style="left:6%;top:12%"><i></i>Better decisions</span></div>
   <ul>
     <li>Compare ad sets to see which audience gives the cheapest purchases.</li>
     <li>Re-use your best copy and pictures on new products.</li>
