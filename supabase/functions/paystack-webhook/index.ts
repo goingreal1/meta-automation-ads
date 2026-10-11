@@ -91,7 +91,7 @@ Deno.serve(async (req: Request) => {
     // Revora's own subscription payments (started from Settings -> Billing). Idempotent on the reference.
     if (event?.event === "charge.success" && event?.data?.metadata?.kind === "subscription") {
       const d = event.data, md = d.metadata;
-      const plans: Record<string, number> = { media_buyer: 10000, business: 25000 };
+      const plans: Record<string, number> = { media_buyer: 5000, business: 25000 };
       const months = Number(md.months);
       const due = plans[md.plan] * (months === 12 ? 10 : months);
       if (plans[md.plan] && md.company_id && Number(d.amount) / 100 >= due) {
