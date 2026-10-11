@@ -11,6 +11,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //     { action: "claim", name, create_pixel?, pixel_id? }          -> { ok, ad_account_id, pixel_id? }
 //     { action: "pixels", ad_account_id }                          -> { pixels: [{id,name,last_fired_time}] }
 //     { action: "create_pixel", ad_account_id, name? }             -> { ok, pixel_id }
+//   Owner / admin:
+//     { action: "share", ad_account_id, media_buyer_id|null }      -> shares an ad account with a media buyer (a shared Revora account is then paid from that buyer's wallet)
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
@@ -20,6 +22,15 @@ const ACCOUNT_FEE = 3000; // naira, charged from the customer's wallet for every
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info" };
 const json = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", ...CORS } });
+// A team buyer pays for their own Revora accounts from their own wallet; owners and admins pay from the company wallet.
+async function payerWallet(me: any): Promise<{ buyerId: string | null; balance: number }> {
+  if (me.role === "buyer" && me.media_buyer_id) {
+    const { data } = await admin.rpc("buyer_wallet_balance", { p_buyer: me.media_buyer_id });
+    return { buyerId: me.media_buyer_id, balance: Number(data ?? 0) };
+  }
+  const { data } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
+  return { buyerId: null, balance: Number(data ?? 0) };
+}
 const actId = (v: string) => String(v).replace(/^act_/, "");
 
 async function graph(path: string, method = "GET", body?: Record<string, string>) {
@@ -75,20 +86,56 @@ Deno.serve(async (req: Request) => {
   const allowed = me.role === "owner" || me.role === "admin" || me.role === "buyer";
   if (!allowed) return json({ error: "Not allowed." }, 403);
 
+  if (action === "share") {
+    if (me.role !== "owner" && me.role !== "admin") return json({ error: "Only an owner or admin can share ad accounts." }, 403);
+    const { data: acct } = await admin.from("ad_accounts").select("id, billing_mode, media_buyer_id, nickname, name").eq("id", String(b?.ad_account_id ?? "")).eq("company_id", me.company_id).maybeSingle();
+    if (!acct) return json({ error: "Ad account not found." }, 404);
+    const buyerId = b?.media_buyer_id ? String(b.media_buyer_id) : null;
+    if (buyerId) {
+      const { data: mb } = await admin.from("media_buyers").select("id").eq("id", buyerId).eq("company_id", me.company_id).maybeSingle();
+      if (!mb) return json({ error: "That media buyer is not on your team." }, 404);
+    }
+    if ((acct.media_buyer_id ?? null) === buyerId) return json({ ok: true, unchanged: true });
+    // Money already spent stays with whoever paid for it: moving a Revora account to another wallet must not charge the new holder
+    // for past spend, nor refund the old one.
+    let moved = 0;
+    if (acct.billing_mode === "managed") {
+      const { data: oldH } = await admin.rpc("account_wallet_holder", { p_account: acct.id });
+      const { data: sp } = await admin.rpc("account_billed_spend", { p_account: acct.id });
+      const spent = Math.round(Number(sp ?? 0) * 100) / 100;
+      const { error: upErr } = await admin.from("ad_accounts").update({ media_buyer_id: buyerId }).eq("id", acct.id);
+      if (upErr) return json({ error: "Could not share it: " + upErr.message }, 500);
+      const { data: newH } = await admin.rpc("account_wallet_holder", { p_account: acct.id });
+      if ((oldH ?? null) !== (newH ?? null) && spent > 0) {
+        const ref = `share:${acct.id}:${Date.now()}`;
+        const { error: adjErr } = await admin.from("wallet_adjustments").insert([
+          { company_id: me.company_id, media_buyer_id: oldH ?? null, amount_naira: spent, reason: "spend_before_share", ref },
+          { company_id: me.company_id, media_buyer_id: newH ?? null, amount_naira: -spent, reason: "spend_before_share", ref },
+        ]);
+        if (adjErr) { await admin.from("ad_accounts").update({ media_buyer_id: acct.media_buyer_id }).eq("id", acct.id); return json({ error: "Could not move the account's past spend, so nothing was changed." }, 500); }
+        moved = spent;
+      }
+    } else {
+      const { error: upErr } = await admin.from("ad_accounts").update({ media_buyer_id: buyerId }).eq("id", acct.id);
+      if (upErr) return json({ error: "Could not share it: " + upErr.message }, 500);
+    }
+    return json({ ok: true, past_spend_kept_with_previous_wallet: moved });
+  }
+
   if (action === "availability") {
     const [{ count: available }, { count: owned }] = await Promise.all([
       admin.from("sellable_ad_accounts").select("id", { count: "exact", head: true }).eq("status", "available"),
       admin.from("ad_accounts").select("id", { count: "exact", head: true }).eq("company_id", me.company_id).eq("billing_mode", "managed"),
     ]);
-    const { data: w } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
-    return json({ available: available ?? 0, owned: owned ?? 0, fee: ACCOUNT_FEE, wallet: Number(w ?? 0) });
+    const pw = await payerWallet(me);
+    return json({ available: available ?? 0, owned: owned ?? 0, fee: ACCOUNT_FEE, wallet: pw.balance });
   }
 
   if (action === "claim") {
     const name = String(b?.name ?? "").trim().replace(/\s+/g, " ").slice(0, 60);
     if (name.length < 2) return json({ error: "Give the ad account a name." }, 400);
-    const { data: w0 } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
-    if (Number(w0 ?? 0) < ACCOUNT_FEE) return json({ error: `A Revora ad account costs ₦${ACCOUNT_FEE.toLocaleString("en-NG")}, taken from your wallet. Your wallet has ₦${Math.max(0, Math.round(Number(w0 ?? 0))).toLocaleString("en-NG")}. Add funds first.` }, 402);
+    const pw0 = await payerWallet(me);
+    if (pw0.balance < ACCOUNT_FEE) return json({ error: `A Revora ad account costs ₦${ACCOUNT_FEE.toLocaleString("en-NG")}, taken from your wallet. Your wallet has ₦${Math.max(0, Math.round(pw0.balance)).toLocaleString("en-NG")}. Top up first.` }, 402);
     // Take one ready account. The update only succeeds while it is still available, so two people can never get the same one.
     let picked: any = null;
     for (let i = 0; i < 4 && !picked; i++) {
@@ -99,7 +146,7 @@ Deno.serve(async (req: Request) => {
     }
     if (!picked) return json({ error: "Could not reserve an ad account. Try again." }, 409);
     // Charge the fee first (a charge row in the wallet ledger); every failure below gives it back.
-    const { data: fee, error: feeErr } = await admin.from("wallet_adjustments").insert({ company_id: me.company_id, amount_naira: ACCOUNT_FEE, reason: "ad_account_fee", ref: picked.id }).select("id").single();
+    const { data: fee, error: feeErr } = await admin.from("wallet_adjustments").insert({ company_id: me.company_id, media_buyer_id: pw0.buyerId, amount_naira: ACCOUNT_FEE, reason: "ad_account_fee", ref: picked.id }).select("id").single();
     if (feeErr || !fee) { await admin.from("sellable_ad_accounts").update({ status: "available", assigned_company_id: null, assigned_at: null }).eq("id", picked.id); return json({ error: "Could not charge your wallet. Try again." }, 500); }
     const release = async () => { await admin.from("wallet_adjustments").delete().eq("id", fee.id); await admin.from("sellable_ad_accounts").update({ status: "available", assigned_company_id: null, assigned_at: null }).eq("id", picked.id); };
     try { await graph(`/act_${picked.meta_ad_account_id}`, "POST", { name }); }

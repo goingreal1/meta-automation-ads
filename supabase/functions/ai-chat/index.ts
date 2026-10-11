@@ -626,8 +626,8 @@ async function planAction(body: any, p: { companyId: string; role: string; media
       const { data: first } = await supabase.from("creative_assets").select("ad_account_id").eq("id", ids[0]).maybeSingle();
       const { data: acc } = first?.ad_account_id ? await supabase.from("ad_accounts").select("billing_mode").eq("id", first.ad_account_id).maybeSingle() : { data: null as any };
       if (acc?.billing_mode === "managed") {
-        const { data: w } = await supabase.rpc("company_wallet_balance", { p_company: p.companyId });
-        if (Number(w ?? 0) <= 0) throw new Error("Your wallet is empty, so this can't go live yet. Add funds to your wallet, then try again.");
+        const { data: w } = await supabase.rpc("account_wallet_balance", { p_account: first.ad_account_id });
+        if (Number(w ?? 0) <= 0) throw new Error("The wallet for this ad account is empty, so this can't go live yet. Top up your wallet, then try again.");
       }
     }
     const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-auto-launch-tests`, { method: "POST", headers: { Authorization: p.authHeader, "Content-Type": "application/json" }, body: JSON.stringify({ creative_ids: ids }) }).then((r) => r.json()).catch(() => null);
@@ -872,6 +872,7 @@ Rules:
 - Be concise and direct: short paragraphs or bullet points, not a wall of text. This person is busy.
 - For an action tool (request_funds, approve_fund_request): if the user already gave you what's needed (e.g. "request 50000 for TikTok ads"), just call it — don't ask for confirmation first, the same way clicking the button on the dashboard doesn't ask twice. Only ask a clarifying question if something required is actually missing (e.g. no amount given).
 - request_funds only works for a buyer and needs the Meta account number and bank Meta shows (ask for them if missing); list_pending_fund_requests only works for an owner/admin; approve_fund_request cannot send money (it needs the admin's transfer PIN on the Wallet tab), so tell the admin to approve there. If the signed-in person's role doesn't allow it, say so plainly instead of calling the tool.
+- Revora-provided ad accounts are paid from the wallet of the media buyer they are shared with (an owner/admin's own are paid from the company wallet). Nobody requests funds for them: the buyer tops up their wallet on the Wallet tab (Top up). request_funds is only for the person's OWN (personal) ad accounts.
 - If you call list_ad_accounts and there's more than one account, list them clearly (name + balance) in your answer so the person can see all of them at once.
 - For performance/KPI questions about a specific ad account (spend, CTR, orders, CPA, impressions, clicks) use get_ad_account_performance, not list_ad_accounts (that one only has balance). If the name is ambiguous it'll tell you the matches it found.
 - query_data is your general-purpose lookup for anything else across the site: orders (search by customer name/phone, filter by status), ad sets, daily performance metrics, creatives, products, the leaderboard (media_buyers), pending approvals, AI call logs (voice_calls), and website leads. Use it instead of saying you don't have something.
@@ -1463,9 +1464,10 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
       const fundingWalletBalance = cw != null ? Number(cw) : companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
       const spentOnRevoraAccounts = Math.max(0, (companyTopups - approvedTotal - transferredTotal - withdrawnTotal) - fundingWalletBalance);
 
+      const { data: myRevoraWallet } = ctx.role === "buyer" && ctx.mediaBuyerId ? await supabase.rpc("buyer_wallet_balance", { p_buyer: ctx.mediaBuyerId }) : { data: null as any };
       if (ctx.role === "buyer") {
         const mine = ctx.mediaBuyerId ? per[ctx.mediaBuyerId] || { confirmed: 0, approved: 0, transferred: 0 } : { confirmed: 0, approved: 0, transferred: 0 };
-        return { your_confirmed_revenue: fmtNaira(mine.confirmed), your_approved_not_yet_sent: fmtNaira(mine.approved), your_transferred_to_ad_account: fmtNaira(mine.transferred), company_wallet_for_revora_ad_accounts: fmtNaira(Math.max(0, Number(fundingWalletBalance))) };
+        return { your_confirmed_revenue: fmtNaira(mine.confirmed), your_approved_not_yet_sent: fmtNaira(mine.approved), your_transferred_to_ad_account: fmtNaira(mine.transferred), your_revora_wallet: fmtNaira(Math.max(0, Number(myRevoraWallet ?? 0))), note: "your_revora_wallet pays for Revora ad accounts shared with you; the company funding wallet pays for requests on your own ad accounts." };
       }
       return {
         company_funding_wallet_balance: fmtNaira(fundingWalletBalance),

@@ -36,15 +36,21 @@ Deno.serve(async (req: Request) => {
   const { data: accounts } = await db.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, company_id, markup_pct").eq("billing_mode", "managed").eq("status", "active");
   const out: any[] = [];
   const wallets = new Map<string, number>();
-  // One wallet pays for every managed account a company has, so each account only gets an equal share of it as room.
-  // That way all of them together can never run up more than the wallet holds.
-  const perCompany = new Map<string, number>();
-  for (const a of accounts ?? []) perCompany.set(a.company_id, (perCompany.get(a.company_id) ?? 0) + 1);
+  // A Revora account is paid from the wallet of the media buyer it is shared with (or the company wallet when an owner/admin holds it).
+  // Every account paid from the same wallet only gets an equal share of it as room, so together they can never run up more than it holds.
+  const keyOf = new Map<string, string>();
+  for (const a of accounts ?? []) {
+    const { data: holder } = await db.rpc("account_wallet_holder", { p_account: a.id });
+    keyOf.set(a.id, holder ? `buyer:${holder}` : `company:${a.company_id}`);
+  }
+  const perKey = new Map<string, number>();
+  for (const a of accounts ?? []) perKey.set(keyOf.get(a.id)!, (perKey.get(keyOf.get(a.id)!) ?? 0) + 1);
   for (const a of accounts ?? []) {
     const res: any = { account: a.nickname || a.name, actions: [] as string[] };
     try {
-      if (!wallets.has(a.company_id)) { const { data } = await db.rpc("company_wallet_balance", { p_company: a.company_id }); wallets.set(a.company_id, Number(data ?? 0)); }
-      const wallet = wallets.get(a.company_id) ?? 0;
+      const key = keyOf.get(a.id)!;
+      if (!wallets.has(key)) { const { data } = await db.rpc("account_wallet_balance", { p_account: a.id }); wallets.set(key, Number(data ?? 0)); }
+      const wallet = wallets.get(key) ?? 0;
       await db.from("ad_accounts").update({ balance_naira: Math.max(0, wallet), balance_updated_at: new Date().toISOString() }).eq("id", a.id);
       const factor = 1 + Number(a.markup_pct ?? 0) / 100;
       const act = String(a.meta_ad_account_id).replace(/^act_/, "");
@@ -52,7 +58,7 @@ Deno.serve(async (req: Request) => {
       try {
         const info = await graph(`/act_${act}?fields=amount_spent,spend_cap`);
         const spentMinor = Number(info?.amount_spent ?? 0);
-        const room = Math.max(0, wallet) / (perCompany.get(a.company_id) || 1) / factor;
+        const room = Math.max(0, wallet) / (perKey.get(key) || 1) / factor;
         const capMinor = Math.round(spentMinor + room * 100);
         if (Number(info?.spend_cap ?? 0) !== capMinor) { await graph(`/act_${act}`, "POST", { spend_cap: String(capMinor) }); res.actions.push("spend cap updated"); }
       } catch (e) { res.actions.push("spend cap not set: " + (e as Error).message.slice(0, 120)); }
@@ -64,8 +70,10 @@ Deno.serve(async (req: Request) => {
         if (paused) {
           res.actions.push(`paused ${paused} campaign(s)`);
           const day = new Date().toISOString().slice(0, 10);
-          const { data: people } = await db.from("profiles").select("id").eq("company_id", a.company_id).in("role", ["owner", "admin", "buyer"]);
-          for (const p of people ?? []) await db.from("ai_inbox").insert({ company_id: a.company_id, profile_id: p.id, ad_account_id: a.id, kind: "low_balance", title: `${a.nickname || a.name}: ads paused, wallet is empty`, body: `Your wallet is ${naira(Math.max(0, wallet))}, so your ads were paused. Add funds to your wallet, then turn them back on.`, payload: {}, dedupe_key: `managed_empty:${a.id}:${day}` }).then(() => {}, () => {});
+          const { data: everyone } = await db.from("profiles").select("id, role, media_buyer_id").eq("company_id", a.company_id).in("role", ["owner", "admin", "buyer"]);
+          // The buyer who pays for it, plus the owners and admins.
+          const people = (everyone ?? []).filter((p: any) => p.role !== "buyer" || key === `buyer:${p.media_buyer_id}`);
+          for (const p of people) await db.from("ai_inbox").insert({ company_id: a.company_id, profile_id: p.id, ad_account_id: a.id, kind: "low_balance", title: `${a.nickname || a.name}: ads paused, wallet is empty`, body: `Your wallet is ${naira(Math.max(0, wallet))}, so your ads were paused. Top up your wallet, then turn them back on.`, payload: {}, dedupe_key: `managed_empty:${a.id}:${day}` }).then(() => {}, () => {});
         }
       }
     } catch (e) { res.actions.push("error: " + (e as Error).message.slice(0, 160)); }

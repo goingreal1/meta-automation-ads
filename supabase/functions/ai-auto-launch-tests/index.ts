@@ -1204,11 +1204,12 @@ Deno.serve(async (req: Request) => {
       // Revora-provided ad accounts are paid for by Revora's card, so nothing goes live on one unless the
       // customer's wallet has money in it.
       if (anchor.ad_account_id) {
-        const { data: acct } = await supabase.from("ad_accounts").select("billing_mode, company_id").eq("id", anchor.ad_account_id).maybeSingle();
+        const { data: acct } = await supabase.from("ad_accounts").select("billing_mode").eq("id", anchor.ad_account_id).maybeSingle();
         if (acct?.billing_mode === "managed") {
-          const { data: w } = await supabase.rpc("company_wallet_balance", { p_company: acct.company_id });
+          // The wallet that pays for this account: its buyer's wallet, or the company wallet when an owner/admin holds it.
+          const { data: w } = await supabase.rpc("account_wallet_balance", { p_account: anchor.ad_account_id });
           if (Number(w ?? 0) <= 0) {
-            launchErrors.push(`"${anchor.file_name}": your wallet is empty. Add funds to your wallet, then publish again.`);
+            launchErrors.push(`"${anchor.file_name}": the wallet for this ad account is empty. Top up your wallet, then publish again.`);
             continue;
           }
         }

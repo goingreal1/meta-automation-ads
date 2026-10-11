@@ -1733,6 +1733,7 @@ async function init() {
   bvApplyCompanyProfile();
   bvBuildBottomNav();
   bvLoadBilling();
+  bvTopUpReturn();
 
   // meta-oauth-callback redirects the browser back here (per DASHBOARD_URL)
   // with ?meta_oauth=connected|error&detail=... once a buyer finishes
@@ -10715,8 +10716,8 @@ const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0 });
 async function bvWalletGate() {
   const a = (accountsList || []).find(x => x.id === activeAccountId);
   if (!a || a.billing_mode !== "managed") return;
-  const r = await supabaseClient.rpc("my_company_wallet_balance");
-  if (!r.error && Number(r.data || 0) <= 0) throw new Error("Your wallet is empty, so this can't go live yet. Add funds to your wallet, then publish again.");
+  const r = await supabaseClient.rpc("my_account_wallet_balance", { p_account: a.id });
+  if (!r.error && Number(r.data || 0) <= 0) throw new Error("The wallet for this ad account is empty, so this can't go live yet. Top up your wallet in the Wallet tab, then publish again.");
 }
 
 async function fetchWalletBalances() {
@@ -11151,6 +11152,76 @@ async function bvDecideMatch(requestId, decision, paymentId, orderId) {
   renderWallet(document.getElementById("mainContent"));
 }
 
+// ---- Revora ad-account wallets: a buyer's own wallet pays for the Revora accounts shared with them ----
+function bvWalletModal(inner) {
+  bvCloseModal();
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay"; overlay.className = "bv-overlay";
+  overlay.onclick = e => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>${inner}</div>`;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+function bvTopUpModal(target, name) {
+  const who = name ? `${escH(name)}'s Revora wallet` : target === "company" ? "the company wallet" : "your Revora wallet";
+  const ov = bvWalletModal(`<div class="ph-title" style="margin-bottom:6px;">Top up ${who}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Pay securely with card, bank transfer or USSD. The money is added to the wallet as soon as the payment is confirmed.</div>
+    <div class="field"><label>Amount (₦)</label><input id="tuAmt" type="number" min="1000" step="500" value="10000"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;">${[5000, 10000, 20000, 50000, 100000].map(n => `<button type="button" class="btn" data-a="${n}" style="padding:3px 10px;font-size:10.5px;">${n.toLocaleString()}</button>`).join("")}</div>
+    <button type="button" class="btn btn-a btn-full" id="tuGo">Continue to payment</button><div id="tuMsg" style="margin-top:8px;"></div>`);
+  ov.querySelectorAll("[data-a]").forEach(b => b.onclick = () => { ov.querySelector("#tuAmt").value = b.dataset.a; });
+  ov.querySelector("#tuGo").onclick = async e => {
+    const btn = e.target, msg = ov.querySelector("#tuMsg"); btn.disabled = true; btn.textContent = "Starting…";
+    const r = await sbFn("wallet-topup", { action: "start", amount: Number(ov.querySelector("#tuAmt").value), target, return_url: location.origin + location.pathname + "?wallet=done" }).catch(err => ({ error: err.message }));
+    if (r.error || !r.authorization_url) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.error || "Could not start the payment.")}</div>`; btn.disabled = false; btn.textContent = "Continue to payment"; return; }
+    location.href = r.authorization_url;
+  };
+}
+function bvMoveFundsModal(buyerId, name, mode) {
+  const give = mode === "allocate";
+  const ov = bvWalletModal(`<div class="ph-title" style="margin-bottom:6px;">${give ? "Give funds to" : "Take funds back from"} ${escH(name)}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">${give ? "Moves money from the company wallet into their Revora wallet, so their Revora ad accounts can run." : "Moves unused money from their Revora wallet back to the company wallet."}</div>
+    <div class="field"><label>Amount (₦)</label><input id="mvAmt" type="number" min="100" step="500" value="5000"></div>
+    <button type="button" class="btn btn-a btn-full" id="mvGo" style="margin-top:8px;">${give ? "Give funds" : "Take back"}</button><div id="mvMsg" style="margin-top:8px;"></div>`);
+  ov.querySelector("#mvGo").onclick = async e => {
+    const btn = e.target, msg = ov.querySelector("#mvMsg"); btn.disabled = true;
+    const r = await sbFn("wallet-topup", { action: mode, buyer_id: buyerId, amount: Number(ov.querySelector("#mvAmt").value) }).catch(err => ({ error: err.message }));
+    if (r.error) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; btn.disabled = false; return; }
+    bvCloseModal(); bvToast(give ? "Funds given" : "Funds taken back"); renderWallet(document.getElementById("mainContent"));
+  };
+}
+// Coming back from Paystack: confirm the payment and credit the wallet.
+async function bvTopUpReturn() {
+  try {
+    const q = new URLSearchParams(location.search), ref = q.get("reference") || q.get("trxref");
+    if (q.get("wallet") !== "done" || !ref || !/^wt_/.test(ref)) return;
+    const v = await sbFn("wallet-topup", { action: "verify", reference: ref });
+    history.replaceState(null, "", location.pathname);
+    bvToast(v?.ok ? "Top-up received. Your wallet is updated." : (v?.error || "We could not confirm that payment yet. If you were charged it will show within a few minutes."), v?.ok ? "ok" : "err");
+    const t = document.querySelector('[data-tab="wallet"]'); if (t) t.click();
+  } catch (e) { console.warn("wallet return", e); }
+}
+function bvRevoraWalletPanel(rw, isAdmin) {
+  if (!rw || rw.error) return "";
+  const pill = st => st === "confirmed" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Paid</span>` : st === "pending" ? `<span class="pill watch">Waiting</span>` : `<span class="pill" style="background:rgba(220,38,38,.12);color:#dc2626;">${escH(st)}</span>`;
+  const topups = (rw.topups || []).length ? `<div class="tbl-wrap" style="margin-top:10px;"><table><tr><th>When</th>${isAdmin ? "<th>For</th>" : ""}<th>Amount</th><th>Status</th></tr>${rw.topups.map(t => `<tr><td class="s">${new Date(t.created_at).toLocaleString()}</td>${isAdmin ? `<td class="s">${t.media_buyer_id ? escH((rw.buyers || []).find(b => b.id === t.media_buyer_id)?.name || "Buyer") : "Company"}</td>` : ""}<td class="n">${fN(t.amount_naira)}</td><td>${pill(t.status)}</td></tr>`).join("")}</table></div>` : "";
+  if (!isAdmin) {
+    if (rw.my_wallet === undefined) return "";
+    return `<div class="panel"><div class="ph"><div class="ph-title">Your Revora wallet</div></div>
+      <div class="wallet-hero" style="margin-bottom:0;"><div class="wallet-hero-lbl">Balance</div><div class="wallet-hero-val" style="${rw.my_wallet <= 0 ? "color:var(--danger);" : ""}">${fN(rw.my_wallet)}</div>
+      <div class="wallet-hero-sub">Pays for the Revora ad accounts shared with you. Your ads pause when it runs out. Ad accounts you brought yourself are funded from Meta, or use "Request funds" above.</div>
+      <div class="wallet-hero-actions"><button type="button" class="btn btn-a" onclick="bvTopUpModal('me')">+ Top up</button></div></div>${topups}</div>`;
+  }
+  const rows = (rw.buyers || []).map(b => `<tr><td class="n">${escH(b.name)}</td><td class="n" style="${b.balance <= 0 ? "color:var(--danger);" : ""}">${fN(b.balance)}</td><td class="n">${fN(b.spent)}</td>
+    <td style="white-space:nowrap;"><button type="button" class="btn btn-a" style="padding:3px 8px;font-size:10px;" onclick="bvMoveFundsModal('${b.id}', ${JSON.stringify(b.name).replace(/"/g, "&quot;")}, 'allocate')">Give funds</button>
+    <button type="button" class="btn" style="padding:3px 8px;font-size:10px;" onclick="bvTopUpModal('${b.id}', ${JSON.stringify(b.name).replace(/"/g, "&quot;")})">Top up by card</button>
+    <button type="button" class="btn" style="padding:3px 8px;font-size:10px;" onclick="bvMoveFundsModal('${b.id}', ${JSON.stringify(b.name).replace(/"/g, "&quot;")}, 'take_back')">Take back</button></td></tr>`).join("");
+  return `<div class="panel"><div class="ph"><div class="ph-title">Revora ad account wallets</div></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A Revora ad account shared with a media buyer is paid from that buyer's wallet. Give them funds from the company wallet, or let them top up themselves. Accounts you hold yourself are paid from the company funding wallet.</div>
+    <div style="margin-bottom:10px;"><button type="button" class="btn btn-a" onclick="bvTopUpModal('company')">Top up the company wallet by card</button></div>
+    ${rows ? `<div class="tbl-wrap"><table><tr><th>Media buyer</th><th>Wallet</th><th>Spent</th><th></th></tr>${rows}</table></div>` : `<div style="font-size:11.5px;color:var(--muted);">No team media buyers yet.</div>`}${topups}</div>`;
+}
+
 async function renderWallet(el) {
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
   const myId = window.myProfile?.media_buyer_id || null;
@@ -11173,6 +11244,7 @@ async function renderWallet(el) {
   const matchReqs = await sbQuery("payment_match_requests", "select=id,payment_id,order_id,media_buyer_id,status,requested_at,orders(customer_name,product_name,order_value_naira)&order=requested_at.desc&limit=100").catch(() => []);
   const pendingByPayment = new Map((matchReqs || []).filter(r => r.status === "pending").map(r => [r.payment_id, r]));
 
+  const rw = await sbFn("wallet-topup", { action: "overview" }).catch(() => null);
   const myRevenue = myId ? (walletBalances[myId] || walletBlank()) : walletBlank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
 
@@ -11263,6 +11335,7 @@ async function renderWallet(el) {
         </div>
       </div>
     </div>
+    ${bvRevoraWalletPanel(rw, isAdmin)}
     ${heldDeposits.length ? `
     <div class="panel">
       <div class="ph"><div class="ph-title">Unmatched deposits${isAdmin ? "" : " to your account"} (${fN(heldTotal)})</div></div>
@@ -11785,6 +11858,15 @@ async function bvRenderSetupSlot() {
   if (st && !st.done) slot.innerHTML = bvSetupChecklistHtml(st);
 }
 
+async function bvShareAccount(sel) {
+  sel.disabled = true;
+  const r = await sbFn("ad-account-pool", { action: "share", ad_account_id: sel.dataset.id, media_buyer_id: sel.value || null }).catch(err => ({ error: err.message }));
+  sel.disabled = false;
+  if (r.error) { bvToast(r.error, "err"); return; }
+  bvToast(sel.value ? "Shared. Its spend now comes from that buyer's wallet." : "Unshared. It is paid from the company wallet.");
+  await loadAccounts();
+}
+
 async function renderSettings(el) {
   if (bvLimitedRole()) bvSettingsSec = "automation";
   const isAdmin = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
@@ -11792,11 +11874,14 @@ async function renderSettings(el) {
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     sbQuery("companies", "select=id,name,slug&limit=1").then(r => r?.[0]).catch(() => null),
     isAdmin ? sbQuery("company_invites", "select=*&order=created_at.desc&limit=30").catch(() => []) : [],
-    isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at&order=created_at.asc").catch(() => []) : [],
+    isAdmin ? sbQuery("profiles", "select=id,role,display_name,created_at,media_buyer_id&order=created_at.asc").catch(() => []) : [],
     sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => r.business_id).catch(() => null),
   ]);
   const oauthToast = window.oauthToast;
   delete window.oauthToast;
+  // Who an ad account can be shared with. A Revora account shared with a team media buyer is paid from that buyer's wallet.
+  const teamBuyerIds = new Set((teamMembers || []).filter(m => m.role === "buyer").map(m => m.media_buyer_id));
+  const shareOpts = cur => `<option value="">Nobody (company)</option>` + (buyers || []).filter(b => b.active !== false).map(b => `<option value="${b.id}" ${b.id === cur ? "selected" : ""}>${escH(b.name)}${teamBuyerIds.has(b.id) ? "" : " (owner/admin)"}</option>`).join("");
 
   el.innerHTML = `
     <div class="sh"><div class="sh-title">Settings</div></div>
@@ -11812,6 +11897,7 @@ async function renderSettings(el) {
       <div class="set-lbl">Your ad accounts</div>
       <div class="set-card">${accountsList.map(a => `
         <div class="set-item"><span class="set-ic" style="background:#1877F2">📣</span><div class="set-tx"><b>${escH(a.nickname || a.name || "Ad account")}</b><span>${escH(a.meta_ad_account_id || "")} · Balance ${fN(a.balance_naira)}</span></div><span class="pill ${a.status === "active" ? "active" : "paused"}">${a.status === "active" ? "Active" : escH(a.status || "—")}</span></div>
+        ${isAdmin ? `<div class="set-item"><span class="set-ic" style="background:#af52de">👥</span><div class="set-tx"><b>Shared with</b><span>${a.billing_mode === "managed" ? "A Revora account is paid from the wallet of the buyer it is shared with." : "The media buyer who runs this account."}</span></div><select class="acctShare" data-id="${a.id}" onchange="bvShareAccount(this)" style="max-width:170px;">${shareOpts(a.media_buyer_id)}</select></div>` : ""}
         <div class="set-item"><span class="set-ic" style="background:#8e8e93">🔌</span><div class="set-tx"><b>Pixel</b><span>${escH(a.pixel_name || a.meta_pixel_id || "Not set — verify below")}</span></div>${a.meta_pixel_id ? '<span class="set-ok">✓ Connected</span>' : '<span class="set-warn">Not set</span>'}</div>
         <div class="set-item"><span class="set-ic" style="background:#34c759">💬</span><div class="set-tx"><b>Facebook page &amp; WhatsApp</b><span>${escH(a.fb_page_name || a.fb_page_id || "Not set — verify below")}${a.whatsapp_number ? " · " + escH(a.whatsapp_number) : ""}</span></div>${a.fb_page_id ? '<span class="set-ok">✓ Connected</span>' : '<span class="set-warn">Not set</span>'}</div>`).join("")}
       </div>
