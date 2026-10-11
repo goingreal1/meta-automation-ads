@@ -10945,9 +10945,18 @@ async function bvShowAdminWithdrawModal() {
   });
 }
 
-// Buyer-only: "Request funds" and "Transfer" each get their own button on
-// the Funding wallet card, each opening its own single-purpose modal.
-async function bvShowRequestFundsModal() {
+// Buyer-only: "Request funds". A buyer never sends money. They give the amount plus the account number and bank that Meta shows
+// under Ads Manager > Billing > Add funds; Revora asks the bank who owns it and only accepts Meta/Facebook. The admin then approves
+// with their transfer PIN, which sends the money.
+let bvBanksCache = null;
+async function bvLoadBanks(sel) {
+  try {
+    if (!bvBanksCache) { const r = await sbFn("paystack-list-banks", null, "GET"); bvBanksCache = r.banks || []; }
+    if (!bvBanksCache.length) throw new Error("none");
+    sel.innerHTML = `<option value="">Select bank…</option>` + bvBanksCache.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
+  } catch { sel.innerHTML = `<option value="">Couldn't load banks</option>`; }
+}
+async function bvShowRequestFundsModal(editId) {
   bvCloseModal();
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
@@ -10956,108 +10965,95 @@ async function bvShowRequestFundsModal() {
   overlay.innerHTML = `
     <div class="bv-modal">
       <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-      <div class="ph-title" style="margin-bottom:10px;">Request funds</div>
+      <div class="ph-title" style="margin-bottom:6px;">${editId ? "Send a fresh Meta account number" : "Request funds"}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">In Facebook Ads Manager open <b>Billing → Add funds → Bank transfer</b>. Meta shows an account number and a bank: enter them here. Your admin approves with their PIN and the money goes straight to Meta.</div>
       <form id="modalFundReqForm" novalidate>
         <div class="fg">
-          <div class="field"><label>Amount to request *</label><input id="modal_fr_amount" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 50000"></div>
-          <div class="field"><label>Note (optional)</label><input id="modal_fr_note" placeholder="what it's for"></div>
+          ${editId ? "" : `<div class="field"><label>Amount to request *</label><input id="modal_fr_amount" type="number" min="100" step="1" inputmode="numeric" placeholder="e.g. 50000"></div>`}
+          <div class="field"><label>Bank shown by Meta *</label><select id="modal_fr_bank"><option value="">Loading banks…</option></select></div>
+          <div class="field"><label>Account number from Meta *</label><input id="modal_fr_acct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number"></div>
+          ${editId ? "" : `<div class="field"><label>Note (optional)</label><input id="modal_fr_note" placeholder="what it's for"></div>`}
         </div>
-        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Request funds</button>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">${editId ? "Update request" : "Request funds"}</button>
         <div id="modalFundReqMsg"></div>
       </form>
     </div>`;
   document.body.appendChild(overlay);
+  bvLoadBanks(document.getElementById("modal_fr_bank"));
 
-  // novalidate + manual check below on purpose -- the browser's native
-  // "required" validation bubble doesn't position itself reliably inside
-  // this modal, so a blank/invalid amount silently blocks the submit event
-  // with no visible feedback. Looked exactly like "the button doesn't
-  // work" -- it was actually working every time, just invisibly refusing.
+  // novalidate + manual checks on purpose: the browser's native "required" bubble does not position itself reliably inside this modal.
   document.getElementById("modalFundReqForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const btn = e.target.querySelector("button[type=submit]");
     const msg = document.getElementById("modalFundReqMsg");
-    const amount = Number(document.getElementById("modal_fr_amount").value);
-    const note = document.getElementById("modal_fr_note").value.trim();
-    if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter a valid amount.</div>`; return; }
+    const amount = editId ? 0 : Number(document.getElementById("modal_fr_amount").value);
+    const bank_code = document.getElementById("modal_fr_bank").value;
+    const account_number = document.getElementById("modal_fr_acct").value.replace(/\s+/g, "");
+    const note = editId ? "" : document.getElementById("modal_fr_note").value.trim();
+    if (!editId && (!amount || amount < 100)) { msg.innerHTML = `<div class="msg err">❌ Enter an amount of at least ₦100.</div>`; return; }
+    if (!bank_code) { msg.innerHTML = `<div class="msg err">❌ Pick the bank Meta shows.</div>`; return; }
+    if (!/^\d{10}$/.test(account_number)) { msg.innerHTML = `<div class="msg err">❌ The account number is 10 digits.</div>`; return; }
     if (btn.disabled) return;
-    btn.disabled = true; btn.textContent = "Submitting…";
-    const { data: inserted, error } = await supabaseClient.from("fund_requests").insert({
-      company_id: window.myProfile.company_id,
-      media_buyer_id: window.myProfile.media_buyer_id,
-      amount_naira: amount,
-      note: note || null,
-    }).select().single();
-    if (error) { msg.innerHTML = `<div class="msg err">❌ Could not submit request: ${error.message}</div>`; btn.disabled = false; btn.textContent = "Request funds"; return; }
-    msg.innerHTML = `<div class="msg ok">✅ Request submitted.</div>`;
-    sbFn("send-internal-whatsapp", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
-    sbFn("send-internal-email", { type: "fund_request_submitted", fund_request_id: inserted.id }).catch(() => {});
-    bvCloseModal();
-    renderWallet(document.getElementById("mainContent"));
+    btn.disabled = true; btn.textContent = "Checking the account…";
+    try {
+      const r = await sbFn("fund-request-submit", editId ? { action: "change_account", fund_request_id: editId, account_number, bank_code } : { amount_naira: amount, account_number, bank_code, note });
+      if (r.verified === false) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.reason || "That account was not accepted.")}</div>`; btn.disabled = false; btn.textContent = editId ? "Update request" : "Request funds"; return; }
+      if (r.error) throw new Error(r.error);
+      bvToast(editId ? "Account updated" : `Request sent. Bank says: ${r.account_name}`);
+      bvCloseModal();
+      renderWallet(document.getElementById("mainContent"));
+    } catch (err) {
+      msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = editId ? "Update request" : "Request funds";
+    }
   });
 }
 
-async function bvShowTransferModal() {
+// Owner/admin: approve one funding request with the transfer PIN. The PIN check, a fresh bank check of the Meta account name and
+// the transfer all happen in one step on the server (fund-request-send). If the account can no longer be verified nothing is sent.
+function bvShowSendPinModal(id, summary) {
   bvCloseModal();
   const overlay = document.createElement("div");
   overlay.id = "bvModalOverlay";
   overlay.className = "bv-overlay";
   overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
-  overlay.innerHTML = `<div class="bv-modal"><div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Loading…</div></div>`;
+  overlay.innerHTML = `
+    <div class="bv-modal">
+      <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="ph-title" style="margin-bottom:6px;">Approve and send</div>
+      <div style="font-size:12px;margin-bottom:10px;">${summary}</div>
+      <form id="sendPinForm" novalidate>
+        <div class="field"><label>Your transfer PIN *</label><input id="sendPinInput" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="4 to 6 digits"></div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;" id="sendPinBtn">Approve and send</button>
+        <div id="sendPinMsg"></div>
+      </form>
+    </div>`;
   document.body.appendChild(overlay);
-
-  const myId = window.myProfile?.media_buyer_id;
-  const wallet = await fetchWalletBalances();
-  const readyToSend = myId ? (wallet.fundRequests || []).filter(f => f.media_buyer_id === myId && f.status === "approved") : [];
-
-  const modal = document.querySelector("#bvModalOverlay .bv-modal");
-  if (!modal) return;
-  modal.innerHTML = `
-    <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-    <div class="ph-title" style="margin-bottom:10px;">Transfer to your ad account</div>
-    ${!readyToSend.length ? `<div style="font-size:11.5px;color:var(--muted);">Nothing approved yet.</div>` : readyToSend.map(f => `
-    <div style="border-bottom:1px solid var(--border);padding:8px 0;">
-      <div style="font-size:12px;margin-bottom:6px;">${fN(f.amount_naira)} <span style="color:var(--muted);font-size:10.5px;">${escH(f.note || "")}</span></div>
-      <div class="fg">
-        <div class="field"><label>Bank</label><select class="modalMetaSendBank" data-id="${f.id}"><option value="">Loading banks…</option></select></div>
-        <div class="field"><label>Account number</label><input type="text" class="modalMetaSendAcctNum" data-id="${f.id}" placeholder="10-digit account number"></div>
-      </div>
-      <button type="button" class="btn btn-a modalSendToMetaBtn" data-id="${f.id}" style="margin-top:6px;padding:4px 10px;font-size:10px;">Transfer</button>
-      <div class="modalSendToMetaMsg" data-id="${f.id}" style="margin-top:6px;"></div>
-    </div>`).join("")}
-  `;
-
-  document.querySelectorAll(".modalMetaSendBank").forEach(sel => {
-    sbFn("paystack-list-banks", null, "GET").then(r => {
-      if (!r.banks?.length) { sel.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
-      sel.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
-    }).catch(() => { sel.innerHTML = `<option value="">Couldn't load banks</option>`; });
-  });
-
-  document.querySelectorAll(".modalSendToMetaBtn").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.id;
-    const bank_code = document.querySelector(`.modalMetaSendBank[data-id="${id}"]`).value;
-    const account_number = document.querySelector(`.modalMetaSendAcctNum[data-id="${id}"]`).value.trim();
-    const msg = document.querySelector(`.modalSendToMetaMsg[data-id="${id}"]`);
-    if (!bank_code || !account_number) { msg.innerHTML = `<div class="msg err">❌ Pick a bank and enter the account number.</div>`; return; }
-    if (!confirm("Confirm this transfer?")) return;
-    btn.disabled = true; btn.textContent = "Sending…";
+  document.getElementById("sendPinInput")?.focus();
+  document.getElementById("sendPinForm")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = document.getElementById("sendPinBtn"), msg = document.getElementById("sendPinMsg");
+    const pin = document.getElementById("sendPinInput").value.trim();
+    if (!/^\d{4,6}$/.test(pin)) { msg.innerHTML = `<div class="msg err">❌ Enter your 4 to 6 digit transfer PIN. Set one in Settings → Security if you have not.</div>`; return; }
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = "Checking the account and sending…";
     try {
-      const r = await sbFn("paystack-transfer-to-meta", { fund_request_id: id, account_number, bank_code });
-      if (r.error) throw new Error(r.error);
-      if (!r.ok) {
-        msg.innerHTML = `<div class="msg err">❌ Could not verify this account. Please check the account number and bank, then try again.</div>`;
-        btn.disabled = false; btn.textContent = "Transfer";
+      const r = await sbFn("fund-request-send", { action: "send", fund_request_id: id, pin });
+      if (r.verified === false) {
+        msg.innerHTML = `<div class="msg err">❌ Nothing was sent. ${escH(r.reason || "The account could not be verified.")}</div>`;
+        btn.disabled = false; btn.textContent = "Approve and send";
         return;
       }
-      bvToast("Transfer sent");
+      if (r.error) throw new Error(r.error);
       bvCloseModal();
+      bvToast(`Sent to ${r.account_name || "Meta"}`);
+      if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
       renderWallet(document.getElementById("mainContent"));
     } catch (err) {
       msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
-      btn.disabled = false; btn.textContent = "Transfer";
+      btn.disabled = false; btn.textContent = "Approve and send";
     }
-  }));
+  });
 }
 
 // Matching an unmatched (held) deposit to an order. An admin matches directly; a buyer can only ask, for their own orders.
@@ -11133,7 +11129,6 @@ async function renderWallet(el) {
 
   const myRevenue = myId ? (walletBalances[myId] || walletBlank()) : walletBlank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
-  const readyToSendCount = myRequests.filter(f => f.status === "approved").length;
 
   // One combined, chronological ledger -- "where did this number come
   // from": a customer payment or an admin deposit is a credit; a transfer
@@ -11204,20 +11199,19 @@ async function renderWallet(el) {
       </div>
 
       <div class="wallet-hero" style="margin-bottom:0;${isAdmin && fundingWalletBalance < 0 ? "outline:2px solid var(--danger);" : ""}">
-        <div class="wallet-hero-lbl">Funding wallet${isAdmin ? "" : " (ready to send)"}</div>
-        <div class="wallet-hero-val" style="${!isAdmin || fundingWalletBalance >= 0 ? "" : "color:var(--danger);"}">${fN(isAdmin ? fundingWalletBalance : myRevenue.approved)}</div>
+        <div class="wallet-hero-lbl">${isAdmin ? "Funding wallet" : "Waiting for your admin"}</div>
+        <div class="wallet-hero-val" style="${!isAdmin || fundingWalletBalance >= 0 ? "" : "color:var(--danger);"}">${fN(isAdmin ? fundingWalletBalance : myRequests.filter(f => f.status === "pending").reduce((t, f) => t + Number(f.amount_naira || 0), 0))}</div>
         <div class="wallet-hero-sub">${isAdmin
           ? (fundingWalletBalance < 0
               ? "⚠️ Low balance -- you've approved more than you've deposited."
               : "What you've personally deposited, minus what's approved/sent/withdrawn.")
-          : "Approved by admin, ready for you to send to your ad account."}</div>
+          : "Ad funding you asked for. Your admin approves it with their PIN and the money goes straight to your Meta ad account. You never send money yourself."}</div>
         <div class="wallet-hero-actions">
           ${isAdmin ? `
           ${fundingWalletBalance < 0 ? `<button type="button" class="btn" style="background:var(--danger);border-color:var(--danger);color:#fff;" onclick="bvShowAddFundsModal()">⚠️ Top up now</button>` : `<button type="button" class="btn" onclick="bvShowAddFundsModal()">+ Add funds</button>`}
           <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Withdraw</button>
           ` : myId ? `
           <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds</button>
-          ${readyToSendCount ? `<button type="button" class="btn" onclick="bvShowTransferModal()">Transfer</button>` : ""}
           ` : ""}
         </div>
       </div>
@@ -11278,21 +11272,32 @@ async function renderWallet(el) {
     </div>` : ""}
 
     ${isAdmin ? (() => {
-      const pending = (fundRequests || []).filter(f => f.status === "pending");
+      // "approved" with no transfer is an older request from before account numbers were required: its money is set aside already.
+      const pending = (fundRequests || []).filter(f => (f.status === "pending" || f.status === "approved") && !f.paystack_transfer_code);
       return `
     <div class="panel">
-      <div class="ph"><div class="ph-title">Funding requests${pending.length ? ` (${pending.length} pending)` : ""}</div></div>
-      ${!pending.length ? `<div class="empty"><div class="empty-ico">💸</div>No pending requests.</div>` : pending.map(f => {
+      <div class="ph"><div class="ph-title">Funding requests${pending.length ? ` (${pending.length} waiting)` : ""}</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A buyer gives the amount and the Meta account number. Revora asked the bank who owns it. <b>Approve and send</b> asks for your transfer PIN, checks the Meta account name again, then sends the money. If the check fails nothing is sent and the request stays open.</div>
+      ${!pending.length ? `<div class="empty"><div class="empty-ico">💸</div>No requests waiting.</div>` : pending.map(f => {
         const buyerName = (buyers || []).find(b => b.id === f.media_buyer_id)?.name || "—";
-        const short = Number(f.amount_naira) > fundingWalletBalance;
+        const reserved = f.status === "approved" ? Number(f.amount_naira) : 0;
+        const short = Number(f.amount_naira) > fundingWalletBalance + reserved;
+        const hours = (Date.now() - new Date(f.requested_at).getTime()) / 3600000;
+        const hasAcct = !!f.req_account_number;
+        const summary = `<b>${fN(f.amount_naira)}</b> for <b>${escH(buyerName)}</b> to <b>${escH(f.req_account_name || "Meta")}</b> · ${escH(f.req_bank_name || "")} ${escH(f.req_account_number || "")}`;
         return `
         <div style="border-bottom:1px solid var(--border);padding:8px 0;">
           <div style="font-size:12.5px;"><b>${escH(buyerName)}</b> -- ${fN(f.amount_naira)}</div>
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px;">${escH(f.note || "")} -- ${ago(f.requested_at)}</div>
-          ${short
-            ? `<div style="font-size:10.5px;color:var(--danger);">⚠️ Funding wallet short by ${fN(Number(f.amount_naira) - fundingWalletBalance)}</div>`
-            : `<button type="button" class="btn btn-a fundDecideBtn" data-id="${f.id}" data-decision="approved" style="padding:3px 10px;font-size:10px;">Approve</button>
-               <button type="button" class="btn fundDecideBtn" data-id="${f.id}" data-decision="declined" style="padding:3px 10px;font-size:10px;">Decline</button>`}
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:4px;">${escH(f.note || "")} -- ${ago(f.requested_at)}</div>
+          ${hasAcct
+            ? `<div style="font-size:11.5px;margin-bottom:4px;">To <b>${escH(f.req_account_name || "—")}</b> · ${escH(f.req_bank_name || "")} · <span style="font-family:'JetBrains Mono',monospace;">${escH(f.req_account_number)}</span> <span style="color:var(--muted);font-size:10px;">(checked ${f.req_verified_at ? ago(f.req_verified_at) : "—"})</span></div>`
+            : `<div style="font-size:11px;color:var(--warn);margin-bottom:4px;">⚠️ Older request with no Meta account number. Decline it and ask the buyer to send a new one.</div>`}
+          ${f.last_verify_error ? `<div style="font-size:10.5px;color:var(--danger);margin-bottom:4px;">⚠️ ${escH(f.last_verify_error)}</div>` : ""}
+          ${hasAcct && hours >= 1 && !f.last_verify_error ? `<div style="font-size:10.5px;color:var(--warn);margin-bottom:4px;">⏳ Waiting ${hours < 24 ? Math.floor(hours) + " h" : Math.floor(hours / 24) + " d"}. Meta's account number may have expired: use Re-check, or just approve (it is checked again before anything is sent).</div>` : ""}
+          ${short ? `<div style="font-size:10.5px;color:var(--danger);margin-bottom:4px;">⚠️ Funding wallet short by ${fN(Number(f.amount_naira) - fundingWalletBalance - reserved)}</div>` : ""}
+          ${hasAcct && !short ? `<button type="button" class="btn btn-a fundSendBtn" data-id="${f.id}" data-summary="${escH(summary)}" style="padding:3px 10px;font-size:10px;">Approve and send</button>` : ""}
+          ${hasAcct ? `<button type="button" class="btn fundRecheckBtn" data-id="${f.id}" style="padding:3px 10px;font-size:10px;">Re-check account</button>` : ""}
+          <button type="button" class="btn fundDeclineBtn" data-id="${f.id}" style="padding:3px 10px;font-size:10px;">Decline</button>
         </div>`;
       }).join("")}
     </div>`;
@@ -11332,14 +11337,16 @@ async function renderWallet(el) {
       <div class="ph"><div class="ph-title">Your requests</div></div>
       ${!myRequests.length ? `<div class="empty"><div class="empty-ico">💸</div>No requests yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Requested</th><th>Amount</th><th>Note</th><th>Status</th><th>Sent to</th></tr>
-        ${myRequests.map(f => `<tr>
-          <td>${ago(f.requested_at)}</td>
+        <tr><th>Requested</th><th>Amount</th><th>Meta account</th><th>Status</th><th></th></tr>
+        ${myRequests.map(f => {
+          const open = f.status === "pending" && !f.paystack_transfer_code;
+          return `<tr>
+          <td>${ago(f.requested_at)}<div style="color:var(--muted);font-size:10px;">${escH(f.note || "")}</div></td>
           <td class="n">${fN(f.amount_naira)}</td>
-          <td class="s">${escH(f.note || "—")}</td>
-          <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "approved" ? "pending" : f.status === "declined" ? "cancelled" : "pending"}">${escH(f.status)}</span>${f.transfer_error ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">${escH(f.transfer_error)}</div>` : ""}</td>
-          <td class="s">${f.destination_account_name ? `${escH(f.destination_account_name)} (${escH(f.destination_bank_name || "")})` : "—"}</td>
-        </tr>`).join("")}
+          <td class="s">${f.destination_account_name ? `${escH(f.destination_account_name)} (${escH(f.destination_bank_name || "")})` : f.req_account_number ? `${escH(f.req_account_name || "")} · ${escH(f.req_bank_name || "")} ${escH(f.req_account_number)}` : "—"}</td>
+          <td><span class="pill ${f.status === "transferred" ? "active" : f.status === "declined" ? "cancelled" : "pending"}">${f.status === "transferred" ? "sent to Meta" : f.status === "declined" ? "declined" : "waiting for admin"}</span>${f.last_verify_error && open ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">Admin could not verify the Meta account. Send a fresh account number.</div>` : ""}${f.transfer_error ? `<div style="font-size:9.5px;color:var(--danger);margin-top:2px;">${escH(f.transfer_error)}</div>` : ""}</td>
+          <td>${open ? `<button type="button" class="btn btn-a frChangeBtn" data-id="${f.id}" style="padding:3px 10px;font-size:10px;">Fresh account number</button> <button type="button" class="btn frCancelBtn" data-id="${f.id}" style="padding:3px 10px;font-size:10px;">Cancel</button>` : ""}</td>
+        </tr>`; }).join("")}
       </table></div>`}
     </div>` : ""}
 
@@ -11406,34 +11413,35 @@ async function renderWallet(el) {
     }
   });
 
-  document.querySelectorAll(".fundDecideBtn").forEach(btn => btn.addEventListener("click", async () => {
-    const decision = btn.dataset.decision;
-    if (decision === "declined" && !confirm("Decline this funding request?")) return;
-    if (decision === "approved") {
-      // Re-check against a fresh balance at the moment of the click, not
-      // just the number the page happened to render with -- avoids
-      // approving past the funding wallet if something else changed it
-      // (another admin approving, a new deposit) since this page loaded.
-      const [{ fundingWalletBalance: freshBalance }, freshReq] = await Promise.all([
-        fetchWalletBalances(),
-        supabaseClient.from("fund_requests").select("amount_naira, status").eq("id", btn.dataset.id).maybeSingle().then(r => r.data),
-      ]);
-      if (!freshReq || freshReq.status !== "pending") { alert("This request isn't pending anymore -- refreshing."); renderWallet(el); return; }
-      if (Number(freshReq.amount_naira) > freshBalance) {
-        alert(`Funding wallet balance (${fN(freshBalance)}) can't cover this request (${fN(freshReq.amount_naira)}). Add funds first.`);
-        renderWallet(el);
-        return;
-      }
-    }
+  document.querySelectorAll(".fundSendBtn").forEach(btn => btn.addEventListener("click", () => bvShowSendPinModal(btn.dataset.id, btn.dataset.summary)));
+  document.querySelectorAll(".fundRecheckBtn").forEach(btn => btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.textContent = "Checking…";
+    try {
+      const r = await sbFn("fund-request-send", { action: "recheck", fund_request_id: btn.dataset.id });
+      if (r.error) throw new Error(r.error);
+      bvToast(r.verified ? `Still valid: ${r.account_name}` : "Could not verify. See the note on the request.");
+    } catch (err) { alert(err.message); }
+    renderWallet(el);
+  }));
+  document.querySelectorAll(".fundDeclineBtn").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Decline this funding request?")) return;
     btn.disabled = true;
     const { error } = await supabaseClient.from("fund_requests").update({
-      status: decision,
+      status: "declined",
       decided_at: new Date().toISOString(),
       decided_by: sessionData.user.id,
-    }).eq("id", btn.dataset.id);
+    }).eq("id", btn.dataset.id).in("status", ["pending", "approved"]);
     if (error) { alert("Could not update request: " + error.message); btn.disabled = false; return; }
     sbFn("send-internal-whatsapp", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
     sbFn("send-internal-email", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
+    renderWallet(el);
+  }));
+  document.querySelectorAll(".frChangeBtn").forEach(btn => btn.addEventListener("click", () => bvShowRequestFundsModal(btn.dataset.id)));
+  document.querySelectorAll(".frCancelBtn").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Cancel this request?")) return;
+    btn.disabled = true;
+    const r = await sbFn("fund-request-submit", { action: "cancel", fund_request_id: btn.dataset.id }).catch(e => ({ error: e.message }));
+    if (r.error) { alert(r.error); btn.disabled = false; return; }
     renderWallet(el);
   }));
 }

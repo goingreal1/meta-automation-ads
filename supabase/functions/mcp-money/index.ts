@@ -201,49 +201,52 @@ async function executeApproval(approvalId: string) {
     r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-admin-withdraw`, { method: "POST", headers, body: JSON.stringify({ on_behalf_of: ap.user_id, amount_naira: amt, account_number: acct.account_number, bank_code: acct.bank_code, reference: "mcp" + String(ap.id).replace(/-/g, ""), source: "assistant", approved_with: "pin" }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
   } else {
     if (!ap.fund_request_id) return fail("This approval is missing its funding request. Ask your assistant to start again.");
-    const { data: fr } = await admin.from("fund_requests").select("id, media_buyer_id, amount_naira, status, paystack_transfer_code").eq("id", ap.fund_request_id).eq("company_id", c.companyId).maybeSingle();
-    if (!fr || fr.status !== "approved" || fr.paystack_transfer_code) return fail("That funding request is no longer waiting to be sent.");
-    if (Math.abs(Number(fr.amount_naira) - amt) > 0.5) return fail("The approved amount changed. Ask your assistant to start again.");
-    if (!isAdminRole(c) && fr.media_buyer_id !== c.mediaBuyerId) return fail("That funding request is not yours.");
+    if (!isAdminRole(c)) return fail("Only an owner or admin can send money to Meta.");
+    const { data: fr } = await admin.from("fund_requests").select("id, media_buyer_id, amount_naira, status, paystack_transfer_code, req_account_number, req_bank_code").eq("id", ap.fund_request_id).eq("company_id", c.companyId).maybeSingle();
+    if (!fr || (fr.status !== "pending" && fr.status !== "approved") || fr.paystack_transfer_code) return fail("That funding request is no longer waiting to be sent.");
+    if (Math.abs(Number(fr.amount_naira) - amt) > 0.5) return fail("The requested amount changed. Ask your assistant to start again.");
+    if (!fr.req_account_number || fr.req_account_number !== acct.account_number || fr.req_bank_code !== acct.bank_code) return fail("The account on the request changed. Ask your assistant to start again.");
     const { data: allowed } = await admin.from("transfer_allowed_names").select("name_key").eq("company_id", c.companyId);
     const key = String(ap.account_name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
     const okName = (allowed ?? []).length ? (allowed ?? []).some((x: any) => x.name_key === key) : /(facebook|meta)/i.test(String(ap.account_name ?? ""));
     if (!okName) return fail("That account is not Meta or Facebook, so nothing was sent.");
-    r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-transfer-to-meta`, { method: "POST", headers, body: JSON.stringify({ on_behalf_of: ap.user_id, fund_request_id: fr.id, account_number: acct.account_number, bank_code: acct.bank_code, source: "assistant", approved_with: "pin" }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
+    r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-transfer-to-meta`, { method: "POST", headers, body: JSON.stringify({ on_behalf_of: ap.user_id, fund_request_id: fr.id, source: "assistant", approved_with: "pin" }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
     if (r?.verified === false) return fail(r.reason || "That account was not accepted.");
   }
   if (r?.error) return fail(r.error);
   return { widget: { ...sentWidget(naira(amt), acct, r), approval_id: ap.id } };
 }
 
-async function topUpMetaRun(a: any, c: Ctx) {
-      if (!c.mediaBuyerId && !isAdminRole(c)) return { error: "Only media buyers and admins can top up Meta." };
-      const acct: any = await resolveAccount(a?.account_number, a?.bank_name); if (acct.error) return acct;
-      if (a?.confirmed === true) { const done = await recentSent(c, null, acct); if (done) return done; }
-      const { data: allowed } = await admin.from("transfer_allowed_names").select("name_key").eq("company_id", c.companyId);
-      const key = acct.account_name.trim().toLowerCase().replace(/\s+/g, " ");
-      const okName = (allowed ?? []).length ? (allowed ?? []).some((x: any) => x.name_key === key) : /(facebook|meta)/i.test(acct.account_name);
-      if (!okName) return { error: `The bank says that account belongs to "${acct.account_name}", which is not Meta or Facebook, so nothing was sent. Copy today's account number from Ads Manager (Billing, Add funds) again.` };
-      let q = admin.from("fund_requests").select("id, media_buyer_id, amount_naira, requested_at, note").eq("company_id", c.companyId).eq("status", "approved").is("paystack_transfer_code", null).order("requested_at");
-      if (!isAdminRole(c)) q = q.eq("media_buyer_id", c.mediaBuyerId);
-      if (a?.fund_request_id) q = q.eq("id", String(a.fund_request_id));
-      const { data: open } = await q;
-      if (!open?.length) return { error: "No approved funding request is waiting to be sent. Ask for funding with request_funds and wait for the admin to approve it." };
-      if (open.length > 1) return { error: "More than one approved request. Ask which one, then pass fund_request_id.", requests: open.map((f: any) => ({ fund_request_id: f.id, amount: naira(f.amount_naira), requested: String(f.requested_at).slice(0, 10), note: f.note })) };
-      const fr = open[0];
-      if (a?.amount_naira != null && Math.abs(Number(a.amount_naira) - Number(fr.amount_naira)) > 0.5) return { error: `The approved funding request is ${naira(fr.amount_naira)}, not ${naira(a.amount_naira)}. A buyer can only send what the admin approved. Ask for ${naira(a.amount_naira)} with request_funds if that is what is needed.` };
-      const show = { amount: naira(fr.amount_naira), to_account_name: acct.account_name, account_number: acct.account_number, bank: acct.bank_name };
-
-      if (a?.confirmed !== true) {
-        const ap: any = await pinApprovalFor(c, "meta", Number(fr.amount_naira), acct, { fund_request_id: fr.id });
-        return { needs_confirmation: true, not_sent_yet: true, top_up: show, fund_request_id: fr.id, ...ap, next: ap.pin_setup_required ? PIN_SETUP_NEXT : "NOT sent. A PIN form is already shown to the person under this reply and it lists the amount, name and bank, so DO NOT draw your own confirmation card, table or buttons and DO NOT ask them to confirm separately: entering their PIN in that form IS their confirmation. Reply with ONE short line only, e.g. \"Enter your transfer PIN in the form above to approve.\" (Meta's one-time account number expires in about 30 minutes.) Never give the person a link: if no form showed, tell them this transfer could not be approved in this chat. NEVER ask for or accept the PIN in chat. The form sends the money itself the moment they approve and then shows the receipt: do NOT call this tool again unless they ask you to check, and never give the person a link." };
-      }
-      const claim: any = await claimApproval(c, "meta", Number(fr.amount_naira), acct); if (claim.error) return claim;
-      const r: any = await fn("paystack-transfer-to-meta", { fund_request_id: fr.id, account_number: acct.account_number, bank_code: acct.bank_code, source: "assistant", approved_with: "pin" }, c);
-      if (r?.error) { await releaseApproval(claim.id); return { error: r.error }; }
-      if (r?.verified === false) { await releaseApproval(claim.id); return { error: r.reason || "That account was not accepted." }; }
-      const sw = sentWidget(show.amount, acct, r);
-      return { ok: true, sent: true, top_up: show, pin_widget: sw, receipt_no: sw.receipt_no, transfer_code: r.transfer_code, note: "Sent to Meta. A receipt card is already shown under this reply with the receipt number: do NOT draw your own receipt or table. Reply in one or two short lines, mention the receipt number,. Never mention or give any link. It usually shows in Ads Manager within a few minutes to an hour." };
+// Owner/admin approves a buyer's funding request: the account on the request is verified again right now, then the PIN form appears;
+// entering the PIN sends the money (see executeApproval). Buyers can never send money.
+async function approveFundRequest(a: any, c: Ctx) {
+  if (!isAdminRole(c)) return { error: "Buyers cannot send money. Only an owner or admin approves a funding request, with their transfer PIN, and that sends it." };
+  const { data: fr } = await admin.from("fund_requests").select("id, media_buyer_id, amount_naira, status, note, requested_at, paystack_transfer_code, req_account_number, req_bank_code, req_bank_name, req_account_name").eq("id", String(a?.fund_request_id ?? "")).eq("company_id", c.companyId).maybeSingle();
+  if (!fr) return { error: "Funding request not found. Use list_fund_requests." };
+  if ((fr.status !== "pending" && fr.status !== "approved") || fr.paystack_transfer_code) return { error: `That request is already ${fr.status}.` };
+  if (!fr.req_account_number || !fr.req_bank_code) return { error: "This request has no Meta account number (it is an older request). Decline it and ask the buyer to send a new one with the account number and bank from Ads Manager." };
+  const w = await fundingWallet(c.companyId);
+  const available = w.balance + (fr.status === "approved" ? Number(fr.amount_naira) : 0);
+  if (Number(fr.amount_naira) > available) return { error: `The funding wallet has ${naira(Math.max(0, available))}, which cannot cover ${naira(fr.amount_naira)}. Deposit more first (get_deposit_account).` };
+  const { data: b } = await admin.from("media_buyers").select("name").eq("id", fr.media_buyer_id).maybeSingle();
+  // Ask the bank again, now: Meta's account numbers are short lived.
+  const look = await ps(`/bank/resolve?account_number=${fr.req_account_number}&bank_code=${encodeURIComponent(fr.req_bank_code)}`).catch(() => null);
+  const name = String((look as any)?.data?.account_name ?? "");
+  const { data: allowed } = await admin.from("transfer_allowed_names").select("name_key").eq("company_id", c.companyId);
+  const key = name.trim().toLowerCase().replace(/\s+/g, " ");
+  const okName = !!name && ((allowed ?? []).length ? (allowed ?? []).some((x: any) => x.name_key === key) : /(facebook|meta)/i.test(name));
+  if (!okName) {
+    const reason = !name ? "The bank can no longer verify this account number. It has probably expired." : `The bank says this account belongs to "${name}", which is not Meta.`;
+    await admin.from("fund_requests").update({ last_verify_error: reason, last_verify_at: new Date().toISOString() }).eq("id", fr.id);
+    return { error: reason + " NOTHING was sent and the request stays open.", next: "Tell the person the buyer must send a fresh Meta account number (Ads Manager, Billing, Add funds). The buyer can update this request with request_funds or in Revora. Never give a link." };
+  }
+  await admin.from("fund_requests").update({ last_verify_error: null, last_verify_at: new Date().toISOString(), req_account_name: name }).eq("id", fr.id);
+  const acct = { account_number: fr.req_account_number, bank_code: fr.req_bank_code, bank_name: fr.req_bank_name ?? fr.req_bank_code, account_name: name };
+  const amt = Number(fr.amount_naira);
+  const show = { buyer: b?.name ?? "Unknown", amount: naira(amt), to_account_name: name, account_number: acct.account_number, bank: acct.bank_name, note: fr.note, funding_wallet_balance: naira(w.balance) };
+  const done = await recentSent(c, amt, acct); if (done) return done;
+  const ap: any = await pinApprovalFor(c, "meta", amt, acct, { fund_request_id: fr.id });
+  return { needs_confirmation: true, not_sent_yet: true, approve_request: show, fund_request_id: fr.id, ...ap, next: ap.pin_setup_required ? PIN_SETUP_NEXT : "NOT sent. The account was just verified as Meta at the bank. A PIN form is shown to the person under this reply with the amount, name and bank, so DO NOT draw your own confirmation card, table or buttons and DO NOT ask them to confirm separately: entering their PIN in that form IS their approval and it sends the money itself, then shows the receipt. Reply with ONE short line only, e.g. \"Enter your transfer PIN in the form above to approve and send.\" Never give the person a link: if no form showed, tell them this could not be approved in this chat. NEVER ask for or accept the PIN in chat. Do NOT call this tool again unless they ask you to check." };
 }
 
 const TOOLS: Tool[] = [
@@ -259,56 +262,63 @@ const TOOLS: Tool[] = [
       const r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-account`, { method: "POST", headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ media_buyer_id: c.mediaBuyerId }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach payments." }));
       return r?.error ? { error: r.error } : { kind: "customer payment account", account_number: r.account_number, bank: r.bank_name, account_name: r.account_name, note: "Customers pay their orders into this account. It is not a spending wallet: to get ad money use request_funds." };
     } },
-  { name: "request_funds", title: "Ask the admin for ad funding (asks for confirmation)", description: "A media buyer asks the owner/admin for money to top up their Meta ad account. It only creates a request; nothing is sent until an admin approves it. ALWAYS call first WITHOUT confirmed, show the summary, and call again with confirmed true only after a clear yes.", inputSchema: OBJ({ amount_naira: { type: "number", description: "Amount in naira" }, note: str("Why, e.g. which campaign"), confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["amount_naira"]), annotations: { readOnlyHint: false, destructiveHint: false }, write: true,
+  { name: "request_funds", title: "Ask the admin for ad funding (asks for confirmation)", description: "A media buyer asks the owner/admin for money to top up their Meta ad account. Buyers never send money themselves. The buyer opens Facebook Ads Manager, Billing, Add funds, bank transfer, and Meta shows an account number and bank: pass both here with the amount. Revora asks the bank who owns that account and only accepts a Meta or Facebook name; it then waits for the admin, who approves with their transfer PIN and that sends the money. There is no automatic expiry, but Meta's account number goes stale, so if the admin finds it expired the buyer sends a fresh number (call this tool again with the same amount and the new number: the open request is updated). ALWAYS call first WITHOUT confirmed, show the verified name, and call again with confirmed true only after a clear yes.", inputSchema: OBJ({ amount_naira: { type: "number", description: "Amount in naira" }, account_number: str("The 10-digit account number Meta shows under Add funds"), bank_name: str("The bank Meta shows, e.g. Wema Bank"), note: str("Why, e.g. which campaign"), confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["amount_naira", "account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: false }, write: true,
     run: async (a, c) => {
       if (!c.mediaBuyerId) return { error: "Only a media buyer can ask for ad funding. This login is not a buyer." };
       const amt = Math.round(Number(a?.amount_naira));
       if (!Number.isFinite(amt) || amt < 100 || amt > 50_000_000) return { error: "Give an amount between ₦100 and ₦50,000,000." };
       const note = String(a?.note ?? "").trim().slice(0, 300) || null;
-      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, request: { amount: naira(amt), note }, next: "NOT sent yet. Tell the person this asks the admin for " + naira(amt) + ". Call again with confirmed true only after a clear yes." };
-      const { data, error } = await admin.from("fund_requests").insert({ company_id: c.companyId, media_buyer_id: c.mediaBuyerId, amount_naira: amt, note }).select("id").single();
-      if (error) return { error: error.message };
-      notifyFund("fund_request_submitted", data.id);
-      return { ok: true, submitted: true, fund_request_id: data.id, amount: naira(amt), status: "pending", next: "The admin has been told. When it is approved, use top_up_meta to send it to the Meta ad account." };
+      const acct: any = await resolveAccount(a?.account_number, a?.bank_name); if (acct.error) return acct;
+      const { data: allowed } = await admin.from("transfer_allowed_names").select("name_key").eq("company_id", c.companyId);
+      const key = acct.account_name.trim().toLowerCase().replace(/\s+/g, " ");
+      const okName = (allowed ?? []).length ? (allowed ?? []).some((x: any) => x.name_key === key) : /(facebook|meta)/i.test(acct.account_name);
+      if (!okName) return { error: `The bank says that account belongs to "${acct.account_name}", which is not Meta or Facebook, so no request was made. Copy today's account number and bank from Ads Manager (Billing, Add funds).` };
+      const show = { amount: naira(amt), meta_account_name: acct.account_name, account_number: acct.account_number, bank: acct.bank_name, note };
+      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, request: show, next: "NOT sent yet. The bank confirms this is a Meta account. Tell the person this asks the admin for " + naira(amt) + " to be sent to " + acct.account_name + ", and that the admin approves with their PIN, which sends it. Call again with confirmed true only after a clear yes." };
+      // The same buyer asking again for the same amount while an earlier request is still open means "here is a fresh account number": update that request.
+      const { data: open } = await admin.from("fund_requests").select("id").eq("company_id", c.companyId).eq("media_buyer_id", c.mediaBuyerId).eq("status", "pending").eq("amount_naira", amt).neq("req_account_number", acct.account_number).order("requested_at", { ascending: false }).limit(1);
+      const upd = open?.[0]?.id;
+      const r: any = await fetch(`${SUPABASE_URL}/functions/v1/fund-request-submit`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY }, body: JSON.stringify(upd ? { on_behalf_of: c.userId, action: "change_account", fund_request_id: upd, account_number: acct.account_number, bank_code: acct.bank_code } : { on_behalf_of: c.userId, amount_naira: amt, account_number: acct.account_number, bank_code: acct.bank_code, note }) }).then((x) => x.json()).catch(() => ({ error: "Could not reach funding." }));
+      if (r?.verified === false) return { error: r.reason || "That account was not accepted." };
+      if (r?.error) return { error: r.error };
+      return { ok: true, submitted: true, ...(upd ? { updated_existing_request: true } : {}), fund_request_id: r.id ?? upd, request: show, status: "pending", next: "The admin has been told. They approve it in Revora or with their assistant using their transfer PIN, and that sends the money to Meta. You cannot send it yourself. If the admin says the account number expired, send a fresh one with request_funds." };
     } },
-  { name: "list_fund_requests", title: "Funding requests", description: "Funding requests with status (pending, approved, transferred, declined). An owner/admin sees the whole company with the funding wallet balance; a media buyer sees only their own.", inputSchema: OBJ({ status: { type: "string", enum: ["pending", "approved", "transferred", "declined", "all"], description: "Default pending for admins, all for buyers." } }), annotations: { readOnlyHint: true },
+  { name: "list_fund_requests", title: "Funding requests", description: "Funding requests with status (pending, transferred, declined). Each pending request carries the Meta account the buyer gave (verified by the bank) and how long it has waited. An owner/admin sees the whole company with the funding wallet balance; a media buyer sees only their own.", inputSchema: OBJ({ status: { type: "string", enum: ["pending", "approved", "transferred", "declined", "all"], description: "Default pending for admins, all for buyers." } }), annotations: { readOnlyHint: true },
     run: async (a, c) => {
       const adminView = isAdminRole(c);
       if (!adminView && !c.mediaBuyerId) return { error: "Only owners, admins and media buyers have funding requests." };
       const want = ["pending", "approved", "transferred", "declined"].includes(a?.status) ? a.status : a?.status === "all" || !adminView ? "all" : "pending";
-      let q = admin.from("fund_requests").select("id, media_buyer_id, amount_naira, status, note, requested_at, decided_at, transferred_at, destination_account_name").eq("company_id", c.companyId).order("requested_at", { ascending: false }).limit(40);
+      let q = admin.from("fund_requests").select("id, media_buyer_id, amount_naira, status, note, requested_at, decided_at, transferred_at, destination_account_name, req_account_name, req_bank_name, req_account_number, last_verify_error").eq("company_id", c.companyId).order("requested_at", { ascending: false }).limit(40);
       if (!adminView) q = q.eq("media_buyer_id", c.mediaBuyerId); if (want !== "all") q = q.eq("status", want);
       const [{ data }, { data: buyers }] = await Promise.all([q, admin.from("media_buyers").select("id, name").eq("company_id", c.companyId)]);
       const nm = new Map((buyers ?? []).map((b: any) => [b.id, b.name]));
-      const rows = (data ?? []).map((r: any) => ({ fund_request_id: r.id, buyer: nm.get(r.media_buyer_id) ?? "Unknown", amount: naira(r.amount_naira), status: r.status, note: r.note, requested: String(r.requested_at).slice(0, 16).replace("T", " "), sent_to: r.destination_account_name ?? undefined }));
+      const rows = (data ?? []).map((r: any) => ({ fund_request_id: r.id, buyer: nm.get(r.media_buyer_id) ?? "Unknown", amount: naira(r.amount_naira), status: r.status, note: r.note, requested: String(r.requested_at).slice(0, 16).replace("T", " "), sent_to: r.destination_account_name ?? undefined, meta_account: r.req_account_number ? `${r.req_account_name ?? "?"} - ${r.req_bank_name ?? ""} ${r.req_account_number}` : "none (older request: decline it)", waiting_hours: r.status === "pending" ? Math.round((Date.now() - new Date(r.requested_at).getTime()) / 360000) / 10 : undefined, problem: r.last_verify_error ?? undefined }));
       const out: any = { requests: rows };
       if (adminView) { const w = await fundingWallet(c.companyId); out.funding_wallet_balance = naira(w.balance); out.approved_waiting_to_be_sent = naira(w.approved); }
       return out;
     } },
-  { name: "decide_fund_request", title: "Approve or decline a funding request (asks for confirmation)", description: "Owner/admin only. Approve (sets the money aside for that buyer, who then sends it to their Meta ad account with top_up_meta) or decline a pending request. Approval is refused if the funding wallet cannot cover it. ALWAYS call first WITHOUT confirmed, show the summary and wallet balance, and call again with confirmed true only after a clear yes.", inputSchema: OBJ({ fund_request_id: str("From list_fund_requests"), decision: { type: "string", enum: ["approve", "decline"] }, confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["fund_request_id", "decision"]), annotations: { readOnlyHint: false, destructiveHint: false }, write: true,
+  { name: "decide_fund_request", title: "Approve and send, or decline, a funding request", description: "Owner/admin only. Approve = send the buyer's requested amount to the Meta account on the request. The account is verified at the bank again right now (if it can no longer be verified as Meta, nothing is sent and the buyer must give a fresh number). A PIN form then appears under your reply with the amount, name and bank: the admin enters their transfer PIN there, which approves AND sends the money and shows the receipt. Do NOT add your own confirmation card or ask again, and NEVER ask for or accept a PIN in chat or give any link. Decline = refuse the request (ask for a clear yes first, call with confirmed true).", inputSchema: OBJ({ fund_request_id: str("From list_fund_requests"), decision: { type: "string", enum: ["approve", "decline"] }, confirmed: { type: "boolean", description: "Decline only: true after the person said yes." } }, ["fund_request_id", "decision"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
     run: async (a, c) => {
       if (!isAdminRole(c)) return { error: "Only an owner or admin can approve or decline funding requests." };
+      if (a?.decision !== "decline") return approveFundRequest(a, c);
       const { data: fr } = await admin.from("fund_requests").select("id, company_id, media_buyer_id, amount_naira, status, note").eq("id", String(a?.fund_request_id ?? "")).eq("company_id", c.companyId).maybeSingle();
       if (!fr) return { error: "Funding request not found." };
-      if (fr.status !== "pending") return { error: `That request is already ${fr.status}.` };
-      const approve = a?.decision === "approve";
+      if (fr.status !== "pending" && fr.status !== "approved") return { error: `That request is already ${fr.status}.` };
       const { data: b } = await admin.from("media_buyers").select("name").eq("id", fr.media_buyer_id).maybeSingle();
-      const w = await fundingWallet(c.companyId);
-      if (approve && Number(fr.amount_naira) > w.balance) return { error: `The funding wallet has ${naira(w.balance)}, which cannot cover ${naira(fr.amount_naira)}. Deposit more with get_deposit_account first.`, funding_wallet_balance: naira(w.balance) };
-      const show = { buyer: b?.name ?? "Unknown", amount: naira(fr.amount_naira), note: fr.note, decision: approve ? "approve" : "decline", funding_wallet_balance: naira(w.balance), balance_after: approve ? naira(w.balance - Number(fr.amount_naira)) : naira(w.balance) };
-      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, request: show, next: "NOT done yet. Say plainly what will happen (" + (approve ? "this amount is set aside for the buyer, who can then send it to their Meta ad account" : "the request is declined") + ") and ask. Call again with confirmed true only after a clear yes." };
-      const { error } = await admin.from("fund_requests").update({ status: approve ? "approved" : "declined", decided_at: new Date().toISOString(), decided_by: c.userId }).eq("id", fr.id).eq("status", "pending");
+      const show = { buyer: b?.name ?? "Unknown", amount: naira(fr.amount_naira), note: fr.note, decision: "decline" };
+      if (a?.confirmed !== true) return { needs_confirmation: true, not_saved_yet: true, request: show, next: "NOT done yet. Say plainly that the request will be declined and the buyer told, and ask. Call again with confirmed true only after a clear yes." };
+      const { error } = await admin.from("fund_requests").update({ status: "declined", decided_at: new Date().toISOString(), decided_by: c.userId }).eq("id", fr.id).in("status", ["pending", "approved"]);
       if (error) return { error: error.message };
       notifyFund("fund_request_decided", fr.id);
-      return { ok: true, request: { ...show, status: approve ? "approved" : "declined" }, next: approve ? "Approved. The buyer can now use top_up_meta, or open Revora." : "Declined. The buyer was told." };
+      return { ok: true, request: { ...show, status: "declined" }, next: "Declined. The buyer was told." };
     } },
-  { name: "transfer_money", title: "SEND MONEY to a bank account (asks for confirmation)", description: "USE THIS FOR ANY REQUEST TO SEND, TRANSFER, PAY, FUND, TOP UP OR \"HELP ME WITH\" MONEY, whatever words the person uses. It looks up the account holder's name at the bank FIRST, then checks the role. Owners/admins can pay ANY Nigerian bank account from the company funding wallet; media buyers can only pay an account whose bank name is Meta or Facebook (paid from their admin-approved funding). This moves real money. ALWAYS call first WITHOUT confirmed: it looks up the account holder's name at the bank and shows amount, account name and wallet balance. A PIN form appears under your reply with the amount, name and bank: do NOT add your own confirmation card, buttons or extra \"please confirm\" step, just say in one short line to enter the transfer PIN in the form (that IS the confirmation). The form sends the money itself when the person approves and then shows the receipt, so do not call again unless no form showed (then tell the person it could not be approved in this chat; never give a link). NEVER ask for, accept or repeat a PIN in chat. " + MONEY_WARN + " Limits apply per transfer and per day.", inputSchema: OBJ({ amount_naira: { type: "number", description: "Amount in naira" }, account_number: str("10-digit account number"), bank_name: str("Bank name, e.g. GTBank, Access, Opay"), note: str("What it is for (for the record)"), confirmed: { type: "boolean", description: "True ONLY after the person said yes to this exact amount and account name." } }, ["amount_naira", "account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
+  { name: "transfer_money", title: "SEND MONEY to a bank account (asks for confirmation)", description: "USE THIS FOR ANY REQUEST TO SEND, TRANSFER, PAY, FUND, TOP UP OR \"HELP ME WITH\" MONEY, whatever words the person uses. It looks up the account holder's name at the bank FIRST, then checks the role. Owners/admins can pay ANY Nigerian bank account from the company funding wallet; media buyers cannot send money at all (they use request_funds). This moves real money. ALWAYS call first WITHOUT confirmed: it looks up the account holder's name at the bank and shows amount, account name and wallet balance. A PIN form appears under your reply with the amount, name and bank: do NOT add your own confirmation card, buttons or extra \"please confirm\" step, just say in one short line to enter the transfer PIN in the form (that IS the confirmation). The form sends the money itself when the person approves and then shows the receipt, so do not call again unless no form showed (then tell the person it could not be approved in this chat; never give a link). NEVER ask for, accept or repeat a PIN in chat. " + MONEY_WARN + " Limits apply per transfer and per day.", inputSchema: OBJ({ amount_naira: { type: "number", description: "Amount in naira" }, account_number: str("10-digit account number"), bank_name: str("Bank name, e.g. GTBank, Access, Opay"), note: str("What it is for (for the record)"), confirmed: { type: "boolean", description: "True ONLY after the person said yes to this exact amount and account name." } }, ["amount_naira", "account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
     run: async (a, c) => {
       if (!isAdminRole(c)) {
         // Buyers (and anyone else): look up the account holder first. Meta/Facebook is paid from the buyer's approved funding; nothing else is.
         const look: any = await resolveAccount(a?.account_number, a?.bank_name);
         if (look.error) return look;
-        if (/(facebook|meta)/i.test(look.account_name) && c.mediaBuyerId) return topUpMetaRun(a, c);
+        if (/(facebook|meta)/i.test(look.account_name) && c.mediaBuyerId) return { error: "Media buyers cannot send money. To fund the Meta ad account, ask the admin with request_funds (amount plus this Meta account number and bank); the admin approves with their PIN, which sends it.", next: "Offer to call request_funds with this account." };
         return { error: `The bank says ${look.account_number} (${look.bank_name}) belongs to "${look.account_name}". Only an owner or admin can send money to accounts that are not Meta or Facebook, so nothing was sent.`, next: "Tell the person who the account belongs to. They can ask the admin to send it, or ask for funding with request_funds." };
       }
       const amt = Math.round(Number(a?.amount_naira));
@@ -334,8 +344,8 @@ const TOOLS: Tool[] = [
       const sw = sentWidget(show.amount, acct, r);
       return { ok: true, sent: true, transfer: { ...show, balance_after: naira(w.balance - amt) }, pin_widget: sw, receipt_no: sw.receipt_no, transfer_code: r.transfer_code, note: "Sent. A receipt card is already shown under this reply with the receipt number: do NOT draw your own receipt or table. Reply in one or two short lines, mention the receipt number,. Never mention or give any link. It normally arrives within a minute or two." };
     } },
-  { name: "top_up_meta", title: "Send approved funds to the Meta ad account (asks for confirmation)", description: "Same as transfer_money for a Meta (Facebook) ad billing account: sends an APPROVED funding request to it. In Facebook Ads Manager, open Billing, Add funds, and pick bank transfer: Meta shows a one-time account number and bank. Give that account_number and bank_name. This can only ever pay an account whose bank name is Meta or Facebook; anything else is refused. The amount is fixed by the approved request. ALWAYS call first WITHOUT confirmed: it checks the account name and shows it. The person approves in the PIN form that appears under your reply, which then sends the money itself and shows the receipt; NEVER ask for, accept or repeat a PIN in chat, NEVER give any link, and do not call again unless asked to check. " + MONEY_WARN, inputSchema: OBJ({ account_number: str("The one-time account number from Meta's Add funds screen"), bank_name: str("The bank shown by Meta, e.g. Wema Bank"), fund_request_id: str("Which approved request (from list_fund_requests). Optional when there is only one."), confirmed: { type: "boolean", description: "True ONLY after the person said yes." } }, ["account_number", "bank_name"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
-    run: (a, c) => topUpMetaRun(a, c) },
+  { name: "top_up_meta", title: "Approve and send a funding request to Meta", description: "Owner/admin only, same as decide_fund_request with decision approve: verifies the Meta account on the request again, then shows the PIN form that approves and sends. Media buyers cannot send money: they use request_funds. NEVER ask for, accept or repeat a PIN in chat and NEVER give any link.", inputSchema: OBJ({ fund_request_id: str("Which request (from list_fund_requests)") }, ["fund_request_id"]), annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true }, write: true, heavy: true, meta: PIN_UI_META,
+    run: (a, c) => approveFundRequest(a, c) },
 ];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
