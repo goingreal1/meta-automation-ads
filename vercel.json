@@ -108,6 +108,26 @@
   ],
   "rewrites": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "dash.revoracrm.app"
+        }
+      ],
+      "destination": "/dashboard_new.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "hq.revoracrm.app"
+        }
+      ],
+      "destination": "/dashboard_new.html"
+    },
+    {
       "source": "/.well-known/oauth-protected-resource",
       "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
     },
@@ -147,6 +167,28 @@
     }
   },
   "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.revoracrm.app"
+        }
+      ],
+      "destination": "https://revoracrm.app/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "revoracrm.app"
+        }
+      ],
+      "destination": "https://dash.revoracrm.app/$1.html",
+      "permanent": false
+    },
     {
       "source": "/",
       "has": [

@@ -40,3 +40,11 @@ imp-l7.jpg  Better decisions: seller reviewing a notebook and a phone at a cafe 
 ## Content to generate beyond pictures
 - 3 short vertical videos (6-10 s, 9:16) from lp-hero-1, imp-l6 and ac-l8 for engagement ads.
 - Optional: a 15-second screen recording of the Revora dashboard (Ads, Orders, Wallet) for the intro of each page.
+
+## Buy an ad account (/ad-accounts.html)
+Same style as above (no text, no logos; the labels are added on the page).
+bp-intro.jpg  Confident Nigerian seller at a laptop in a bright room, phone in hand, smiling (ready to run ads).
+bp-l1.jpg  Person tapping "buy" on a laptop; a clean desk, soft light, a small plant (no readable screen).
+bp-l2.jpg  Hands holding a bank card next to a phone, bright background (topping up a wallet).
+bp-l3.jpg  Person at a laptop with a product box beside it, linking a page (screen not readable).
+bp-l4.jpg  Business owner and two media buyers around one laptop, sharing work, smiling.

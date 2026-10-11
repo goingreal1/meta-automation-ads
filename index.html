@@ -186,6 +186,13 @@ footer{background:var(--dark2);padding:60px 0 32px;}
 .cta-section .container{position:relative;z-index:1;}
 @media (max-width:640px){ .hero-photo{margin-top:36px;} .hero-photo+.mock-wrap{margin-top:-40px;} }
 
+
+/* Labels on photos */
+.photo .pchip{position:absolute;z-index:2;display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--text);font:600 clamp(11px,1.9vw,14px)/1 'Inter',sans-serif;border-radius:999px;padding:9px 14px;box-shadow:0 8px 24px rgba(20,19,15,.18);}
+.photo .pchip i{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none;}
+.photo .pchip.ok i{background:#22a45d;}
+.photo .pchip.blue{background:var(--accent);color:#fff;}.photo .pchip.blue i{background:#fff;}
+
 /* ── PRODUCT TOUR (illustrated sample screens) ─────────────────────────────────────────────── */
 .tour-tabs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:0 0 22px;}
 .tour-tab{border:1px solid var(--border);background:#fff;color:var(--text2);font:600 13.5px 'Inter',sans-serif;padding:9px 16px;border-radius:99px;cursor:pointer;transition:all .15s;}
@@ -307,7 +314,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     </div>
     <div class="hero-note">7-day free trial · No credit card required · Set up your company in minutes</div>
   </div>
-  <figure class="photo hero-photo"><img src="images/landing/hero-office.jpg" alt="A media buyer reviewing ad spend, orders and delivery on a Revora dashboard in a bright office" width="1680" height="720" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+  <figure class="photo hero-photo"><img src="images/landing/hero-office.jpg" alt="A media buyer reviewing ad spend, orders and delivery on a Revora dashboard in a bright office" width="1680" height="720" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;top:9%"><i></i>Ad spend to delivered revenue</span><span class="pchip ok" style="right:5%;top:24%"><i></i>Real ROAS</span></figure>
 
   <div class="mock-wrap">
     <div class="mock">
@@ -365,7 +372,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     </div>
     <div class="hub-grid">
       <div class="hub-card">
-        <figure class="photo hub-photo"><img src="images/landing/module-marketing.jpg" alt="A marketer comparing campaign results with real revenue" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+        <figure class="photo hub-photo"><img src="images/landing/module-marketing.jpg" alt="A marketer comparing campaign results with real revenue" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>Ads that sell</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Real ROAS</span></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
           <h3>Marketing</h3>
@@ -377,7 +384,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
-        <figure class="photo hub-photo"><img src="images/landing/module-sales.jpg" alt="A customer care agent chatting with customers on WhatsApp while the order list updates" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+        <figure class="photo hub-photo"><img src="images/landing/module-sales.jpg" alt="A customer care agent chatting with customers on WhatsApp while the order list updates" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>WhatsApp chats</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Order confirmed</span></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
           <h3>Sales &amp; CRM</h3>
@@ -389,7 +396,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
-        <figure class="photo hub-photo"><img src="images/landing/module-operations.jpg" alt="A dispatcher coordinating delivery agents and orders" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+        <figure class="photo hub-photo"><img src="images/landing/module-operations.jpg" alt="A dispatcher coordinating delivery agents and orders" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>Delivery tracked</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Rider assigned</span></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span>
           <h3>Operations</h3>
@@ -401,7 +408,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
-        <figure class="photo hub-photo"><img src="images/landing/module-finance.jpg" alt="A finance lead checking wallet balances and payments" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+        <figure class="photo hub-photo"><img src="images/landing/module-finance.jpg" alt="A finance lead checking wallet balances and payments" width="800" height="450" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>Wallet and payments</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Payment received</span></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
           <h3>Finance</h3>
@@ -413,7 +420,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
-        <figure class="photo hub-photo"><img src="images/landing/module-ai.jpg" alt="An operations lead watching an AI assistant confirm orders and answer customers automatically" width="800" height="533" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+        <figure class="photo hub-photo"><img src="images/landing/module-ai.jpg" alt="An operations lead watching an AI assistant confirm orders and answer customers automatically" width="800" height="533" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>AI confirms orders</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Replies in seconds</span></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
           <h3>AI</h3>
@@ -425,7 +432,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
         </ul>
       </div>
       <div class="hub-card">
-        <figure class="photo hub-photo"><img src="images/landing/module-roas.jpg" alt="A founder comparing ad spend with cash actually collected on delivery" width="800" height="533" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+        <figure class="photo hub-photo"><img src="images/landing/module-roas.jpg" alt="A founder comparing ad spend with cash actually collected on delivery" width="800" height="533" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>Ad spend vs cash collected</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Know what really works</span></figure>
         <div class="hub-head">
           <span class="ico hub-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
           <h3>Real ROAS</h3>
@@ -583,7 +590,7 @@ footer{background:var(--dark2);padding:60px 0 32px;}
       <h2 class="serif">Everyone sees what's theirs</h2>
       <p>No role sees a cluttered dashboard full of tools that aren't their job.</p>
     </div>
-<figure class="photo team-photo"><img src="images/landing/team.jpg" alt="A mixed team of media buyers, customer care and delivery staff working together" width="1680" height="640" loading="lazy" onerror="this.closest('.photo').remove()"></figure>
+<figure class="photo team-photo"><img src="images/landing/team.jpg" alt="A mixed team of media buyers, customer care and delivery staff working together" width="1680" height="640" loading="lazy" onerror="this.closest('.photo').remove()"><span class="pchip blue" style="left:5%;bottom:9%"><i></i>One team, one dashboard</span><span class="pchip ok" style="right:5%;top:9%"><i></i>Everyone on the same numbers</span></figure>
     <div class="roles">
       <div class="role-card">
         <span class="ico role-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2-6.3-4.5-6.3 4.5 2.3-7.2-6-4.4h7.6z"/></svg></span>
@@ -776,5 +783,6 @@ document.getElementById('yr').textContent = new Date().getFullYear();
   window.addEventListener('resize', apply);
 })();
 </script>
+<script src="/host-links.js" defer></script>
 </body>
 </html>
