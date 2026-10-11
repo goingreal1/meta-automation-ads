@@ -1319,6 +1319,17 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 4px var(--accentBg);}
 .set-warn{font-size:12.5px;font-weight:600;color:#b86e00;white-space:nowrap;}
 @media(max-width:760px){.set-nav{min-width:0;}.set-nav-btn{background:var(--panel2);}}
 /* Settings polish */
+.biz-steps{display:grid;gap:10px;margin:2px 0 14px;}
+.biz-step{display:flex;gap:12px;align-items:flex-start;font-size:13px;line-height:1.45;color:var(--text2);}
+.biz-step>b{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:12px;}
+.biz-id{display:inline-block;margin-top:3px;background:var(--panel2);padding:3px 8px;border-radius:6px;font-family:ui-monospace,monospace;font-size:12.5px;color:var(--text);user-select:all;}
+.setup-slim{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--accentBdr);border-radius:999px;padding:7px 8px 7px 14px;margin:0 0 14px;cursor:pointer;}
+.setup-slim .seg{display:flex;gap:3px;flex:none}
+.setup-slim .seg i{width:16px;height:6px;border-radius:99px;background:var(--panel2);display:block}
+.setup-slim .seg i.on{background:var(--accent)}
+.setup-slim .nx{flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2)}
+.setup-slim .nx b{color:var(--text)}
+.setup-slim button{border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
 .set-body .panel{background:var(--panel);border:1px solid var(--border);}
 .set-body .panel .ph{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:14px;}
 .set-body .panel .ph-title{font-size:16px;}
@@ -1436,7 +1447,8 @@ body.assist-on .chat-toggle{display:none !important;}
 }
 
 /* ── Billing: trial pill, plan cards, lock screen ── */
-#bvBillPill{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:60;display:none;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--accentBdr);color:var(--text);padding:6px 8px 6px 14px;border-radius:999px;font-size:12.5px;box-shadow:0 4px 18px rgba(0,0,0,.12);max-width:calc(100vw - 24px);}
+#bvBillPill{position:fixed;left:12px;bottom:84px;z-index:60;display:none;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--accentBdr);color:var(--text);padding:5px 6px 5px 12px;border-radius:999px;font-size:12.5px;white-space:nowrap;width:max-content;max-width:calc(100vw - 24px);box-shadow:0 4px 18px rgba(0,0,0,.14);}
+@media(min-width:900px){#bvBillPill{bottom:18px;left:auto;right:84px;}}
 #bvBillPill.on{display:flex;}
 #bvBillPill.warn{border-color:#f5a524;}
 #bvBillPill button{border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;font-size:12px;padding:5px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;}
@@ -1828,7 +1840,7 @@ function bvApplyCompanyProfile() {
 // ── BILLING + 7-DAY TRIAL ────────────────────────────────────────────────────
 // State comes from paystack-balance (action billing_status). Prices live on the server.
 const BV_PLAN_COPY = {
-  media_buyer: { name: "Media buyer", price: 10000, pts: ["1 media buyer login", "Meta ad accounts and real ROAS", "Order forms and websites", "WhatsApp on your own number"] },
+  media_buyer: { name: "Media buyer", price: 5000, pts: ["Connect ChatGPT or Claude", "Build sales pages", "AI creative generator", "Launch ads with ChatGPT or Claude", "Orders and delivery tracking"] },
   business: { name: "Business", price: 25000, pts: ["Admin plus up to 5 media buyers", "Delivery agents and customer care", "Leaderboard, approvals, team roles", "Virtual accounts and auto payment confirmation"] },
 };
 let bvBillMonths = 1;
@@ -1884,6 +1896,7 @@ function bvPaintBilling() {
 }
 function bvOpenBilling() {
   bvSettingsSec = "billing";
+  if (activeTab === "settings") { render(); return; }
   const t = document.querySelector('[data-tab="settings"]'); if (t) t.click();
 }
 async function bvLoadBilling() {
@@ -11784,12 +11797,7 @@ async function bvRevoraAcctPanel() {
   const av = await sbFn("ad-account-pool", { action: "availability" }).catch(() => ({ error: "offline" }));
   const mine = (accountsList || []).filter(a => a.billing_mode === "managed");
   let html = `<div class="ph"><div class="ph-title">Buy a Meta ad account from Revora</div><div class="ph-count">${Number(av.fee || 0) ? "₦" + Number(av.fee).toLocaleString() + " each" : ""}</div></div>
-    <div style="font-size:12.5px;color:var(--text2);margin-bottom:10px;">Need an ad account? Buy a ready Meta ad account from Revora and manage it from this dashboard. No Business Manager setup needed on your side.</div>
-    <ol class="set-steps"><li><b>Buy it</b> below. The price is taken from your Revora wallet, so top up first if your balance is low.</li>
-      <li><b>It's yours instantly</b> and appears under Your ad accounts above.</li>
-      <li><b>Create a dataset (pixel)</b> so Meta can track your orders.</li>
-      <li><b>Link your Facebook Page</b> (Pages tab) by sharing it with Revora and pasting its ID.</li>
-      <li><b>Fund your wallet</b>. Your ad spend is paid from it, and ads pause automatically when it is empty.</li></ol>`;
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:10px;">A ready Meta ad account, paid from your wallet.</div>`;
   if (mine.length) html += mine.map(a => `<div style="border-bottom:1px solid var(--border);padding:8px 0;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
       <div><b>${escH(a.nickname || a.name)}</b><div style="font-size:10.5px;color:var(--muted);">Dataset: ${escH(a.pixel_name || a.meta_pixel_id || "none yet")}</div></div>
       ${a.meta_pixel_id ? "" : `<button type="button" class="btn btn-a mkDatasetBtn" data-id="${a.id}" style="padding:3px 10px;font-size:10px;">Create dataset</button>`}</div>`).join("");
@@ -11847,6 +11855,7 @@ async function bvRevoraAcctPanel() {
 // ── SETTINGS: sections + setup checklist ─────────────────────────────────────
 let bvSettingsSec = "accounts";
 function bvLimitedRole() { const r = window.myProfile?.role; return r === "delivery_agent" || r === "customer_care"; }
+const BV_SHOW_WHATSAPP = false; // switch on once the Revora WhatsApp account is verified
 function bvSettingsSections(isAdmin) {
   // Riders and customer care have no ad accounts, pixels or domains: they only manage their own alerts.
   const r = window.myProfile?.role;
@@ -11854,7 +11863,7 @@ function bvSettingsSections(isAdmin) {
   const list = [
     { id: "accounts", icon: "🔌", label: "Ad accounts" },
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "pages", icon: "📄", label: "Pages" }] : []),
-    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "whatsapp", icon: "💬", label: "WhatsApp" }] : []),
+    ...(BV_SHOW_WHATSAPP && ["owner", "admin", "buyer"].includes(r) ? [{ id: "whatsapp", icon: "💬", label: "WhatsApp" }] : []),
     { id: "domains", icon: "🌐", label: "Domains" },
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "events", icon: "📡", label: "Event Manager" }] : []),
     { id: "automation", icon: "⚙️", label: "Automation & alerts" },
@@ -11876,38 +11885,34 @@ function bvSettingsWire() {
   });
 }
 async function bvSetupState() {
-  const role = window.myProfile?.role, admin = role === "owner" || role === "admin";
+  const role = window.myProfile?.role;
   if (!["owner", "admin", "buyer"].includes(role)) return { done: true, items: [] };
-  const mine = admin ? accountsList : accountsList;
-  const [products, sites, domains, buyers] = await Promise.all([
+  const mine = accountsList;
+  const [products, sites, camps, ai] = await Promise.all([
     sbCount("products", "is_active=eq.true").catch(() => 0),
     sbQuery("sites", "select=id,status&limit=50").catch(() => []),
-    sbQuery("site_domains", "select=id,status&limit=50").catch(() => []),
-    admin ? sbQuery("media_buyers", "select=id&limit=2").catch(() => []) : [],
+    sbCount("campaigns", "").catch(() => 0),
+    sbFn("ai-connections", { action: "list" }).then(r => (r?.apps || []).length).catch(() => 0),
   ]);
-  const items = [];
-  if (admin) items.push({ label: "Add your first media buyer", done: (buyers || []).length > 0, go: ["settings", "business"] });
-  if (admin && window.myCompany) items.unshift({ label: "Tell us about your business (1 minute)", done: !!window.myCompany.onboarding_completed_at, go: ["__profile"] });
-  items.push({ label: "Connect a Meta ad account", done: mine.length > 0, go: ["settings", "accounts"] });
-  items.push({ label: "Set the pixel and Facebook page on it", done: mine.some(a => a.meta_pixel_id && a.fb_page_id), go: ["settings", "accounts"] });
-  items.push({ label: "Add a product", done: products > 0, go: ["products"] });
-  items.push({ label: "Publish a website", done: (sites || []).some(x => x.status === "published"), go: ["websites"] });
-  items.push({ label: "Connect your own domain (optional)", done: (domains || []).length > 0, go: ["settings", "domains"], optional: true });
-  items.push({ label: "Add your WhatsApp number for alerts", done: !!window.myProfile?.whatsapp_number, go: ["settings", "automation"] });
-  items.push({ label: "Turn on notifications", done: typeof Notification !== "undefined" && Notification.permission === "granted", go: ["settings", "automation"] });
-  const need = items.filter(i => !i.optional);
-  return { items, done: need.every(i => i.done), pct: Math.round(need.filter(i => i.done).length / need.length * 100) };
+  const items = [
+    { label: "Get an ad account", done: mine.length > 0, go: ["settings", "accounts"] },
+    { label: "Set your pixel and Page", done: mine.some(a => a.meta_pixel_id && a.fb_page_id), go: ["settings", "pages"] },
+    { label: "Connect your favourite AI app", done: ai > 0, go: ["settings", "aiapps"] },
+    { label: "Build your sales page", done: (sites || []).some(x => x.status === "published") || (sites || []).length > 0, go: ["websites"] },
+    { label: "Launch your first ad", done: camps > 0, go: ["campaigns"] },
+  ];
+  return { items, done: items.every(i => i.done), pct: Math.round(items.filter(i => i.done).length / items.length * 100) };
 }
-function bvSetupChecklistHtml(st, compact) {
-  const next = st.items.filter(i => !i.done);
-  return `<div class="panel setup-card">
-    <div class="ph"><div class="ph-title">Finish setting up</div><div class="ph-count">${st.pct}% done</div></div>
-    <div class="setup-bar"><div style="width:${st.pct}%"></div></div>
-    <div class="setup-list">${st.items.map(i => `<div class="setup-row ${i.done ? "done" : ""}">
-      <span class="setup-tick">${i.done ? "✓" : ""}</span><span class="setup-lbl">${escH(i.label)}</span>
-      ${i.done ? "" : `<button type="button" class="btn btn-g" style="padding:3px 9px;font-size:10px;" onclick="bvSetupGo('${i.go[0]}','${i.go[1] || ""}')">Do it</button>`}
-    </div>`).join("")}</div>
-  </div>`;
+function bvSetupChecklistHtml(st) {
+  const next = st.items.find(i => !i.done);
+  return `<div class="setup-slim" onclick="bvSetupAll()"><div class="seg">${st.items.map(i => `<i class="${i.done ? "on" : ""}"></i>`).join("")}</div>
+    <div class="nx">Next: <b>${escH(next.label)}</b></div>
+    <button type="button" onclick="event.stopPropagation();bvSetupGo('${next.go[0]}','${next.go[1] || ""}')">Do it</button></div>`;
+}
+function bvSetupAll() {
+  bvSetupState().then(st => bvModal("Get started", `<div class="setup-list" style="margin-top:4px;">${st.items.map(i => `<div class="setup-row ${i.done ? "done" : ""}" style="padding:8px 0;font-size:14px;">
+    <span class="setup-tick">${i.done ? "✓" : ""}</span><span class="setup-lbl" style="flex:1;">${escH(i.label)}</span>
+    ${i.done ? "" : `<button type="button" class="btn btn-g" style="padding:4px 12px;font-size:11px;" onclick="bvCloseModal();bvSetupGo('${i.go[0]}','${i.go[1] || ""}')">Do it</button>`}</div>`).join("")}</div>`));
 }
 function bvSetupGo(tab, sec) { if (tab === "__profile") { location.href = "setup-company.html?profile=1"; return; } if (sec) bvSettingsSec = sec; bvGoToTab(tab); }
 async function bvRenderSetupSlot() {
@@ -11962,7 +11967,6 @@ async function renderSettings(el) {
     </div>` : ""}
 
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="accounts" id="revoraAcctPanel"></div>' : ""}
-    <div class="panel" data-sec="accounts" id="fbConnectPanel"></div>
 
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="pages" id="pagesPanel"></div><div class="panel" data-sec="whatsapp" id="waPanel"></div>' : ""}
 
@@ -12078,8 +12082,12 @@ async function renderSettings(el) {
     </div>
 
     <div class="panel" data-sec="accounts">
-      <div class="ph"><div class="ph-title">Partner-shared ad accounts</div><button class="btn btn-g" style="padding:3px 6px;font-size:10px;margin-left:6px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync all</button></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Each buyer shares their own ad account with us directly from their own Meta Business Settings (self-service panel below, or you can enter their Business ID for them here). Give them our Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(partnerBizId || "unavailable right now")}</code>. You'll get a request to approve in your own Meta Business Settings -- approve it there, then hit Sync here.</div>
+      <div class="ph"><div class="ph-title">Use your own ad account</div><button class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync</button></div>
+      <div class="biz-steps">
+        <div class="biz-step"><b>1</b><div>Copy Revora's Business ID<br><span class="biz-id" id="revBizId">${escH(partnerBizId || "unavailable")}</span> <button type="button" class="btn btn-g" style="padding:2px 9px;font-size:10.5px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('revBizId').textContent);bvToast('Copied')">Copy</button></div></div>
+        <div class="biz-step"><b>2</b><div>In Meta Business Settings, open <i>Accounts</i> → <i>Ad accounts</i>, pick your account, tap <i>Add partner</i>, paste the ID and allow <i>Manage ad account</i>.</div></div>
+        <div class="biz-step"><b>3</b><div>Paste <i>your</i> Business ID below (Business Settings → <i>Business info</i>), tap Save, then Sync.</div></div>
+      </div>
       ${!buyers?.length ? `<div class="empty"><div class="empty-ico">🔌</div>Add a buyer above first.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Buyer</th><th>Their Business ID</th><th></th></tr>
@@ -12094,7 +12102,7 @@ async function renderSettings(el) {
 
     ${(isAdmin || window.myProfile?.media_buyer_id) ? `
     <div class="panel" data-sec="accounts">
-      <div class="ph"><div class="ph-title">Link New Meta Ad Account</div><div class="sh-actions" style="font-size:10.5px;color:var(--muted);">Manual entry -- for an account you're not connecting via OAuth above</div></div>
+      <div class="ph"><div class="ph-title">Add an ad account by ID</div></div>
       <form id="acctForm">
         <div class="fg">
           <div class="field"><label>Account Name *</label><input id="a_name" required placeholder="e.g. Quality Herb - Main"></div>
