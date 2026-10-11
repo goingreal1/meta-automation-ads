@@ -221,6 +221,30 @@ function renderWizard(session, isProfile) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      if (!isProfile) {
+        let acc = null;
+        try {
+          const { data: mb } = await sb.from("media_buyers").select("name,dedicated_account_number,dedicated_account_bank").not("dedicated_account_number", "is", null).limit(1);
+          const { data: co } = await sb.from("companies").select("name,dedicated_account_number,dedicated_account_bank").not("dedicated_account_number", "is", null).limit(1);
+          const r = (mb && mb[0]) || (co && co[0]);
+          if (r) acc = { number: r.dedicated_account_number, bank: r.dedicated_account_bank, name: r.name };
+        } catch (_) { /* skip the card */ }
+        if (acc) {
+          const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+          box.innerHTML = `<h1>You're all set</h1><div class="sub">Your payment account is ready.</div>
+            <div style="border:1.5px solid #dee3e9;border-radius:16px;padding:16px 18px;margin:16px 0;">
+              <div style="font-size:12px;color:#6b7a86;">Bank</div><div style="font-weight:600;margin-bottom:10px;">${esc(acc.bank)}</div>
+              <div style="font-size:12px;color:#6b7a86;">Account number</div><div style="font-weight:700;font-size:26px;letter-spacing:.04em;margin-bottom:4px;" id="accNo">${esc(acc.number)}</div>
+              <div style="font-size:12px;color:#6b7a86;margin-top:8px;">Account name</div><div style="font-weight:600;">${esc(acc.name)}</div>
+            </div>
+            <div class="sub" style="font-size:13px;">Customers pay for orders into this account. You can see the money in Revora, but it can't be sent from here.</div>
+            <button class="btn" id="copyAcc" type="button" style="margin-top:6px;">Copy account number</button>
+            <button class="btn" id="goDash" type="button" style="margin-top:10px;">Go to my dashboard</button>`;
+          document.getElementById("copyAcc").onclick = () => { try { navigator.clipboard.writeText(acc.number); document.getElementById("copyAcc").textContent = "Copied"; } catch (_) {} };
+          document.getElementById("goDash").onclick = () => location.href = "dashboard_new.html";
+          return;
+        }
+      }
       msg.textContent = "All set! Taking you to your dashboard…"; msg.className = "msg ok";
       setTimeout(() => location.href = "dashboard_new.html", 600);
     } catch (e) {

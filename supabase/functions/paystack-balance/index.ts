@@ -25,7 +25,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // Naira per month. Prices live here, never in the browser. 12 months = 10 months' price.
 const PLANS: Record<string, { label: string; monthly: number }> = {
-  media_buyer: { label: "Media buyer", monthly: 10000 },
+  media_buyer: { label: "Media buyer", monthly: 5000 },
   business: { label: "Business", monthly: 25000 },
 };
 const MONTHS = [1, 3, 6, 12];
