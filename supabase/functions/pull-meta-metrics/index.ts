@@ -95,17 +95,21 @@ async function fetchAllInsights(firstUrl: string): Promise<{ data: any[]; error:
 }
 
 /** The numbers we keep for one insights row. Messages and purchases are separate columns so WhatsApp ads are not shown as "0 orders". */
-function metricsFromRow(row: any) {
+// factor > 1 for a Revora-managed ad account: every money figure is stored (and so shown, decided on and billed) with Revora's markup.
+// The raw Meta spend is kept beside it so Revora's earnings are always billed minus raw.
+const markupFactor = (account: any) => (account?.billing_mode === "managed" ? 1 + Number(account?.markup_pct ?? 0) / 100 : 1);
+function metricsFromRow(row: any, factor = 1) {
   const acts: { action_type: string; value: string }[] = row.actions ?? [];
   const val = (types: string[]) => { for (const t of types) { const a = acts.find((x) => x.action_type === t); if (a) return parseInt(a.value) || 0; } return 0; };
-  const spend = parseFloat(row.spend ?? "0");
+  const rawSpend = parseFloat(row.spend ?? "0");
+  const spend = rawSpend * factor;
   const purchases = val(PURCHASE_ACTIONS);
   const conversations = val([MSG_ACTION]);
   return {
-    spend, purchases, conversations,
+    spend, rawSpend, purchases, conversations,
     impressions: parseInt(row.impressions ?? "0"), reach: parseInt(row.reach ?? "0"),
     clicks: parseInt(row.clicks ?? "0"), link_clicks: parseInt(row.inline_link_clicks ?? "0"),
-    ctr: parseFloat(row.ctr ?? "0"), cpc: parseFloat(row.cpc ?? "0"), cpm: parseFloat(row.cpm ?? "0"), frequency: parseFloat(row.frequency ?? "0"),
+    ctr: parseFloat(row.ctr ?? "0"), cpc: parseFloat(row.cpc ?? "0") * factor, cpm: parseFloat(row.cpm ?? "0") * factor, frequency: parseFloat(row.frequency ?? "0"),
     costPerOrder: purchases > 0 ? spend / purchases : null,
   };
 }
@@ -376,7 +380,7 @@ Deno.serve(async (req: Request) => {
               .maybeSingle();
             if (!adSetAdRow) continue;
 
-            const m = metricsFromRow(row);
+            const m = metricsFromRow(row, markupFactor(account));
 
             const { error: adMetricErr } = await supabase.from("daily_metrics").upsert({
               ad_set_ad_id: adSetAdRow.id,
@@ -390,6 +394,7 @@ Deno.serve(async (req: Request) => {
               company_id: account.company_id,
               metric_date: row.date_start || today,
               spend_naira: m.spend,
+              raw_spend_naira: m.rawSpend,
               impressions: m.impressions,
               reach: m.reach,
               clicks: m.clicks,
@@ -433,7 +438,7 @@ Deno.serve(async (req: Request) => {
       for (const row of rows) {
         totalAdsetsProcessed++;
         const metaAdsetId  = row.adset_id;
-        const m = metricsFromRow(row);
+        const m = metricsFromRow(row, markupFactor(account));
         const { spend, impressions, reach, clicks, ctr, cpc, cpm, frequency, costPerOrder } = m;
         const orders = m.purchases;
 
@@ -491,6 +496,7 @@ Deno.serve(async (req: Request) => {
             company_id:           account.company_id,
             metric_date:          metricDate,
             spend_naira:          spend,
+            raw_spend_naira:      m.rawSpend,
             impressions,
             reach,
             clicks,

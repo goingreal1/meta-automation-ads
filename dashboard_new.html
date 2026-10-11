@@ -10710,14 +10710,17 @@ async function bvShowBuyerProfile(row) {
 // balance a buyer can spend directly.
 const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0 });
 async function fetchWalletBalances() {
-  const [buyers, confirmedPayments, fundRequests, withdrawals] = await Promise.all([
+  const [buyers, confirmedPayments, fundRequests, withdrawals, managedSpendRes] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
     // RLS scopes this to "my own buyer row" for a buyer, or the whole
     // company for an admin -- one query serves both.
     sbQuery("payments", "select=media_buyer_id,amount_naira,source&status=eq.confirmed").catch(() => []),
     sbQuery("fund_requests", "select=*&order=requested_at.desc&limit=100").catch(() => []),
     sbQuery("admin_withdrawals", "select=amount_naira,status&order=created_at.desc&limit=200").catch(() => []),
+    // What this company's Revora-managed ad accounts have spent (shown with Revora's markup): paid out of the same funding wallet.
+    supabaseClient.rpc("my_managed_billed_spend").then(r => Number(r.data || 0)).catch(() => 0),
   ]);
+  const managedSpend = Number(managedSpendRes || 0);
   const walletBalances = {};
   for (const b of buyers || []) walletBalances[b.id] = walletBlank();
   let companyTopups = 0;
@@ -10739,8 +10742,8 @@ async function fetchWalletBalances() {
   }
   const withdrawnTotal = (withdrawals || []).filter(w => w.status === "sent").reduce((s, w) => s + Number(w.amount_naira || 0), 0);
   const totalRevenue = Object.values(walletBalances).reduce((s, w) => s + w.confirmed, 0);
-  const fundingWalletBalance = companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
-  return { buyers: buyers || [], fundRequests: fundRequests || [], withdrawals: withdrawals || [], walletBalances, companyTopups, approvedTotal, transferredTotal, withdrawnTotal, totalRevenue, fundingWalletBalance };
+  const fundingWalletBalance = companyTopups - approvedTotal - transferredTotal - withdrawnTotal - managedSpend;
+  return { managedSpend, buyers: buyers || [], fundRequests: fundRequests || [], withdrawals: withdrawals || [], walletBalances, companyTopups, approvedTotal, transferredTotal, withdrawnTotal, totalRevenue, fundingWalletBalance };
 }
 
 // Admin-only. One focused modal per action -- "Add funds", "Withdraw" --
@@ -11143,7 +11146,7 @@ async function renderWallet(el) {
   const myId = window.myProfile?.media_buyer_id || null;
   const blank = walletBlank;
 
-  const [{ buyers, fundRequests, withdrawals, walletBalances, companyTopups, totalRevenue, fundingWalletBalance }, company] = await Promise.all([
+  const [{ buyers, fundRequests, withdrawals, walletBalances, companyTopups, totalRevenue, fundingWalletBalance, managedSpend }, company] = await Promise.all([
     fetchWalletBalances(),
     sbQuery("companies", "select=id,name,dedicated_account_number,dedicated_account_bank&limit=1").then(r => r?.[0]).catch(() => null),
   ]);
@@ -11237,7 +11240,7 @@ async function renderWallet(el) {
         <div class="wallet-hero-sub">${isAdmin
           ? (fundingWalletBalance < 0
               ? "⚠️ Low balance -- you've approved more than you've deposited."
-              : "What you've personally deposited, minus what's approved/sent/withdrawn.")
+              : "What you've personally deposited, minus what's approved/sent/withdrawn" + (managedSpend > 0 ? `, minus ${fN(managedSpend)} spent on your Revora ad accounts.` : "."))
           : "Ad funding you asked for. Your admin approves it with their PIN and the money goes straight to your Meta ad account. You never send money yourself."}</div>
         <div class="wallet-hero-actions">
           ${isAdmin ? `
@@ -11580,6 +11583,10 @@ async function bvRevoraAcctPanel() {
     <div class="tbl-wrap"><table><tr><th>Ad account</th><th>Name on Meta</th><th>Status</th><th></th></tr>
     ${rows.map(r => `<tr><td class="n">${escH(r.meta_ad_account_id)}</td><td class="s">${escH(r.meta_name || r.label || "")}</td><td>${escH(r.status)}</td><td>${r.status === "available" ? `<button type="button" class="btn btn-g poolRetire" data-id="${r.id}" style="padding:2px 8px;font-size:10px;">Retire</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="4" class="s">Empty. Add your first one below.</td></tr>`}</table></div>
     <form id="poolAddForm" style="margin-top:8px;display:flex;gap:6px;" novalidate><input id="poolAddId" placeholder="Ad account number" style="flex:1;"><button type="submit" class="btn btn-a" style="padding:4px 10px;font-size:10px;">Add to pool</button></form><div id="poolMsg"></div></div>`;
+  sbFn("ad-account-pool", { action: "pool_earnings", days: 30 }).then(e => {
+    if (e.error) return;
+    pa.insertAdjacentHTML("afterbegin", `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px;"><b>Last 30 days:</b> customers were billed ${fN(e.billed)}, Meta charged ${fN(e.raw)}, your earnings <b>${fN(e.profit)}</b>.</div>`);
+  }).catch(() => {});
   pa.querySelector("#poolAddForm").addEventListener("submit", async e => {
     e.preventDefault();
     const r = await sbFn("ad-account-pool", { action: "pool_add", meta_ad_account_id: pa.querySelector("#poolAddId").value }).catch(err => ({ error: err.message }));

@@ -110,15 +110,9 @@ Deno.serve(async (req: Request) => {
     if (fr.req_account_number && ((acctIn && String(acctIn) !== account_number) || (bankIn && String(bankIn) !== bank_code))) return json({ error: "The account on this request changed. Open the request again." }, 409);
     // The money must be there: pending requests reserve nothing, so the funding wallet must cover this amount now.
     {
-      const [{ data: pays }, { data: frs }, { data: wds }] = await Promise.all([
-        supabase.from("payments").select("amount_naira, source, media_buyer_id").eq("company_id", fr.company_id).eq("status", "confirmed"),
-        supabase.from("fund_requests").select("amount_naira, status").eq("company_id", fr.company_id),
-        supabase.from("admin_withdrawals").select("amount_naira, status").eq("company_id", fr.company_id),
-      ]);
-      const sum = (a: any[]) => a.reduce((t, x) => t + Number(x.amount_naira || 0), 0);
-      const topups = sum((pays ?? []).filter((p: any) => !p.media_buyer_id && p.source === "admin_topup"));
-      const balance = topups - sum((frs ?? []).filter((f: any) => f.status === "approved")) - sum((frs ?? []).filter((f: any) => f.status === "transferred")) - sum((wds ?? []).filter((w: any) => w.status === "sent"));
-      const available = balance + (fr.status === "approved" ? Number(fr.amount_naira) : 0);
+      // The funding wallet (deposits, minus money set aside or sent, minus what Revora-managed ad accounts have spent) must cover this now.
+      const { data: bal } = await supabase.rpc("company_wallet_balance", { p_company: fr.company_id });
+      const available = Number(bal ?? 0) + (fr.status === "approved" ? Number(fr.amount_naira) : 0);
       if (Number(fr.amount_naira) > available) return json({ error: `The funding wallet has ₦${Math.max(0, Math.round(available)).toLocaleString("en-NG")}, which cannot cover ₦${Math.round(Number(fr.amount_naira)).toLocaleString("en-NG")}. Add funds first.` }, 400);
     }
 

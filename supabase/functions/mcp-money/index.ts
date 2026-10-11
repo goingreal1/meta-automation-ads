@@ -91,7 +91,8 @@ async function fundingWallet(companyId: string) {
   const withdrawn = (wds ?? []).filter((w: any) => w.status === "sent").reduce((t: number, w: any) => t + Number(w.amount_naira || 0), 0);
   const since = Date.now() - 24 * 3600 * 1000;
   const withdrawn24h = (wds ?? []).filter((w: any) => w.status === "sent" && new Date(w.created_at).getTime() >= since).reduce((t: number, w: any) => t + Number(w.amount_naira || 0), 0);
-  return { balance: topups - approved - sentToMeta - withdrawn, topups, approved, sentToMeta, withdrawn, withdrawn24h };
+  const { data: managed } = await admin.rpc("managed_billed_spend", { p_company: companyId });
+  return { balance: topups - approved - sentToMeta - withdrawn - Number(managed ?? 0), topups, approved, sentToMeta, withdrawn, withdrawn24h, managedSpend: Number(managed ?? 0) };
 }
 async function findBank(query: unknown): Promise<{ bank: { name: string; code: string } } | { error: string; matches?: string[] }> {
   const nb = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); // "Paystack Titan" matches "Paystack-Titan"

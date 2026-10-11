@@ -63,15 +63,9 @@ Deno.serve(async (req: Request) => {
     const pin = String(b?.pin ?? "");
     if (!PIN_RE.test(pin)) return json({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
     {
-      // The funding wallet must cover it (deposits minus money set aside, sent to Meta or already sent out).
-      const [{ data: pays }, { data: frs }, { data: wds }] = await Promise.all([
-        admin.from("payments").select("amount_naira, source, media_buyer_id").eq("company_id", me.company_id).eq("status", "confirmed"),
-        admin.from("fund_requests").select("amount_naira, status").eq("company_id", me.company_id),
-        admin.from("admin_withdrawals").select("amount_naira, status").eq("company_id", me.company_id),
-      ]);
-      const sum = (a: any[]) => a.reduce((t, x) => t + Number(x.amount_naira || 0), 0);
-      const bal = sum((pays ?? []).filter((x: any) => !x.media_buyer_id && x.source === "admin_topup")) - sum((frs ?? []).filter((f: any) => f.status === "approved" || f.status === "transferred")) - sum((wds ?? []).filter((w: any) => w.status === "sent"));
-      if (amt > bal) return json({ error: `The funding wallet has ₦${Math.max(0, Math.round(bal)).toLocaleString("en-NG")}, which cannot cover ₦${amt.toLocaleString("en-NG")}. Add funds first.` }, 400);
+      // The funding wallet must cover it (deposits minus money set aside, sent to Meta, already sent out, or spent by Revora-managed ad accounts).
+      const { data: bal } = await admin.rpc("company_wallet_balance", { p_company: me.company_id });
+      if (amt > Number(bal ?? 0)) return json({ error: `The funding wallet has ₦${Math.max(0, Math.round(Number(bal ?? 0))).toLocaleString("en-NG")}, which cannot cover ₦${amt.toLocaleString("en-NG")}. Add funds first.` }, 400);
     }
     const p = await checkPin(me.id, pin);
     if (!p.ok) return json({ error: p.error }, 403);
