@@ -46,6 +46,43 @@ Deno.serve(async (req: Request) => {
   if (!u?.user) return json({ error: "Not signed in." }, 401);
   const { data: me } = await admin.from("profiles").select("id, role, company_id").eq("id", u.user.id).maybeSingle();
   if (!me?.company_id || (me.role !== "owner" && me.role !== "admin")) return json({ error: "Only an owner or admin can do this." }, 403);
+  if (b?.action === "lookup" || b?.action === "withdraw") {
+    // Send money to any Nigerian bank account (owner/admin only). "lookup" asks the bank whose account it is; "withdraw" needs the transfer PIN.
+    const acctNo = String(b?.account_number ?? "").replace(/\s+/g, ""), bankCode = String(b?.bank_code ?? "").trim();
+    if (!/^\d{10}$/.test(acctNo) || !bankCode) return json({ error: "Pick the bank and enter the 10-digit account number." }, 400);
+    if (b.action === "lookup") {
+      try {
+        const r = await fetch(`https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(acctNo)}&bank_code=${encodeURIComponent(bankCode)}`, { headers: { Authorization: `Bearer ${PAYSTACK_KEY}` } });
+        const j: any = await r.json().catch(() => ({}));
+        const name = r.ok && j?.status !== false ? String(j?.data?.account_name ?? "") : "";
+        return name ? json({ ok: true, account_name: name }) : json({ error: "The bank could not verify that account. Check the number and bank." }, 400);
+      } catch { return json({ error: "Could not reach the bank." }, 502); }
+    }
+    const amt = Math.round(Number(b?.amount_naira));
+    if (!Number.isFinite(amt) || amt < 100 || amt > 20_000_000) return json({ error: "Enter an amount between ₦100 and ₦20,000,000." }, 400);
+    const pin = String(b?.pin ?? "");
+    if (!PIN_RE.test(pin)) return json({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+    {
+      // The funding wallet must cover it (deposits minus money set aside, sent to Meta or already sent out).
+      const [{ data: pays }, { data: frs }, { data: wds }] = await Promise.all([
+        admin.from("payments").select("amount_naira, source, media_buyer_id").eq("company_id", me.company_id).eq("status", "confirmed"),
+        admin.from("fund_requests").select("amount_naira, status").eq("company_id", me.company_id),
+        admin.from("admin_withdrawals").select("amount_naira, status").eq("company_id", me.company_id),
+      ]);
+      const sum = (a: any[]) => a.reduce((t, x) => t + Number(x.amount_naira || 0), 0);
+      const bal = sum((pays ?? []).filter((x: any) => !x.media_buyer_id && x.source === "admin_topup")) - sum((frs ?? []).filter((f: any) => f.status === "approved" || f.status === "transferred")) - sum((wds ?? []).filter((w: any) => w.status === "sent"));
+      if (amt > bal) return json({ error: `The funding wallet has ₦${Math.max(0, Math.round(bal)).toLocaleString("en-NG")}, which cannot cover ₦${amt.toLocaleString("en-NG")}. Add funds first.` }, 400);
+    }
+    const p = await checkPin(me.id, pin);
+    if (!p.ok) return json({ error: p.error }, 403);
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-admin-withdraw`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, "x-internal-key": SERVICE_KEY },
+      body: JSON.stringify({ on_behalf_of: me.id, amount_naira: amt, account_number: acctNo, bank_code: bankCode, approved_with: "pin", source: "dashboard" }),
+    });
+    const j: any = await r.json().catch(() => ({ error: "No answer from the payment service." }));
+    return json(j, r.ok ? 200 : (r.status === 401 ? 500 : r.status));
+  }
   if (b?.action === "set_auto") {
     // Turn auto-approve on or off for one buyer. It needs the admin's transfer PIN, and a per-request and a daily limit.
     const bid = String(b?.media_buyer_id ?? "");

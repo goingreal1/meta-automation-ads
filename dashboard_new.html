@@ -10894,6 +10894,8 @@ async function bvShowCustomerModal(customerId) {
   `;
 }
 
+// Owner/admin: send money from the funding wallet to ANY Nigerian bank account. The bank's name for the account is shown first and the
+// transfer PIN is needed to send. (Media buyers can only ask for Meta funding; they never send.)
 async function bvShowAdminWithdrawModal() {
   bvCloseModal();
   const overlay = document.createElement("div");
@@ -10903,45 +10905,63 @@ async function bvShowAdminWithdrawModal() {
   overlay.innerHTML = `
     <div class="bv-modal">
       <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
-      <div class="ph-title" style="margin-bottom:10px;">Withdraw to your bank</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Move money out of the funding wallet straight to any of your own real bank accounts.</div>
-      <div class="fg">
-        <div class="field"><label>Bank</label><select id="modalWithdrawBank"><option value="">Loading banks…</option></select></div>
-        <div class="field"><label>Account number</label><input type="text" id="modalWithdrawAcctNum" placeholder="10-digit account number"></div>
-        <div class="field"><label>Amount</label><input type="number" min="1" step="1" id="modalWithdrawAmount" placeholder="e.g. 50000"></div>
-      </div>
-      <button type="button" class="btn btn-a" id="modalWithdrawBtn" style="margin-top:10px;padding:4px 10px;font-size:10px;">Withdraw</button>
-      <div id="modalWithdrawResult" style="margin-top:8px;"></div>
+      <div class="ph-title" style="margin-bottom:6px;">Send money</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Pay any Nigerian bank account from the funding wallet: your own account, a supplier, a rider. Revora shows who owns the account before you confirm with your transfer PIN.</div>
+      <form id="sendMoneyForm" novalidate>
+        <div class="fg">
+          <div class="field"><label>Bank *</label><select id="smBank"><option value="">Loading banks…</option></select></div>
+          <div class="field"><label>Account number *</label><input type="text" id="smAcct" inputmode="numeric" maxlength="10" placeholder="10-digit account number"></div>
+          <div class="field"><label>Amount (₦) *</label><input type="number" min="100" step="1" id="smAmt" placeholder="e.g. 50000"></div>
+        </div>
+        <div id="smName" style="margin-top:8px;"></div>
+        <div class="field" id="smPinWrap" style="display:none;margin-top:8px;"><label>Your transfer PIN *</label><input id="smPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="4 to 6 digits"></div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;" id="smBtn">Check account</button>
+        <div id="smMsg" style="margin-top:8px;"></div>
+      </form>
     </div>`;
   document.body.appendChild(overlay);
-
-  sbFn("paystack-list-banks", null, "GET").then(r => {
-    const sel = document.getElementById("modalWithdrawBank");
-    if (!sel) return;
-    if (!r.banks?.length) { sel.innerHTML = `<option value="">Couldn't load banks</option>`; return; }
-    sel.innerHTML = `<option value="">Select bank…</option>` + r.banks.map(b => `<option value="${escH(b.code)}">${escH(b.name)}</option>`).join("");
-  }).catch(() => {});
-
-  document.getElementById("modalWithdrawBtn")?.addEventListener("click", async (e) => {
-    const btn = e.target;
-    const result = document.getElementById("modalWithdrawResult");
-    const bank_code = document.getElementById("modalWithdrawBank").value;
-    const account_number = document.getElementById("modalWithdrawAcctNum").value.trim();
-    const amount_naira = Number(document.getElementById("modalWithdrawAmount").value);
-    if (!bank_code || !account_number || !amount_naira) { result.innerHTML = `<div class="msg err">❌ Fill in bank, account number and amount.</div>`; return; }
-    if (!confirm(`Withdraw ${fN(amount_naira)} to this account? This sends real money.`)) return;
-    btn.disabled = true; btn.textContent = "Sending…";
+  bvLoadBanks(document.getElementById("smBank"));
+  let checked = ""; // "bank|account" that has been looked up
+  const form = document.getElementById("sendMoneyForm");
+  const reset = () => { checked = ""; document.getElementById("smName").innerHTML = ""; document.getElementById("smPinWrap").style.display = "none"; document.getElementById("smBtn").textContent = "Check account"; };
+  document.getElementById("smBank").addEventListener("change", reset);
+  document.getElementById("smAcct").addEventListener("input", reset);
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const btn = document.getElementById("smBtn"), msg = document.getElementById("smMsg");
+    const bank_code = document.getElementById("smBank").value, account_number = document.getElementById("smAcct").value.replace(/\s+/g, "");
+    const amount_naira = Number(document.getElementById("smAmt").value);
+    if (!bank_code || !/^\d{10}$/.test(account_number)) { msg.innerHTML = `<div class="msg err">❌ Pick the bank and enter the 10-digit account number.</div>`; return; }
+    if (!amount_naira || amount_naira < 100) { msg.innerHTML = `<div class="msg err">❌ Enter an amount of at least ₦100.</div>`; return; }
+    if (btn.disabled) return;
+    msg.innerHTML = ""; btn.disabled = true;
     try {
-      const r = await sbFn("paystack-admin-withdraw", { access_token: sessionData.access_token, amount_naira, account_number, bank_code });
-      if (r.error) throw new Error(r.error);
-      bvToast(`Sent to ${r.account_name}`);
-      bvCloseModal();
-      if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
-      renderWallet(document.getElementById("mainContent"));
+      if (checked !== bank_code + "|" + account_number) {
+        btn.textContent = "Checking…";
+        const r = await sbFn("fund-request-send", { action: "lookup", account_number, bank_code });
+        if (r.error) throw new Error(r.error);
+        checked = bank_code + "|" + account_number;
+        document.getElementById("smName").innerHTML = `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12.5px;">Pay <b>${fN(amount_naira)}</b> to <b>${escH(r.account_name)}</b><div style="color:var(--muted);font-size:10.5px;">Check the name is right before you continue.</div></div>`;
+        document.getElementById("smPinWrap").style.display = "";
+        document.getElementById("smPin").focus();
+        btn.textContent = "Confirm and send";
+      } else {
+        const pin = document.getElementById("smPin").value.trim();
+        if (!/^\d{4,6}$/.test(pin)) throw new Error("Enter your 4 to 6 digit transfer PIN. Set one in Settings → Security if you have not.");
+        btn.textContent = "Sending…";
+        const r = await sbFn("fund-request-send", { action: "withdraw", amount_naira, account_number, bank_code, pin });
+        if (r.error) throw new Error(r.error);
+        bvToast(`Sent to ${r.account_name}`);
+        bvCloseModal();
+        if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
+        renderWallet(document.getElementById("mainContent"));
+        return;
+      }
     } catch (err) {
-      result.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
-      btn.disabled = false; btn.textContent = "Withdraw";
+      msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`;
+      btn.textContent = checked ? "Confirm and send" : "Check account";
     }
+    btn.disabled = false;
   });
 }
 
@@ -11222,7 +11242,7 @@ async function renderWallet(el) {
         <div class="wallet-hero-actions">
           ${isAdmin ? `
           ${fundingWalletBalance < 0 ? `<button type="button" class="btn" style="background:var(--danger);border-color:var(--danger);color:#fff;" onclick="bvShowAddFundsModal()">⚠️ Top up now</button>` : `<button type="button" class="btn" onclick="bvShowAddFundsModal()">+ Add funds</button>`}
-          <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Withdraw</button>
+          <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Send money</button>
           ${myId ? `<button type="button" class="btn" onclick="bvShowRequestFundsModal()">Send to Meta</button>` : ""}
           ` : myId ? `
           <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds</button>
@@ -11670,8 +11690,8 @@ async function renderSettings(el) {
       </table></div>` : ""}
       ${teamMembers?.length ? `
       <div class="tbl-wrap" style="margin-top:16px;"><table>
-        <tr><th>Team member</th><th>Role</th><th>Joined</th></tr>
-        ${teamMembers.map(m => `<tr><td class="s">${escH(m.display_name || m.id.slice(0, 8))}</td><td>${escH(m.role)}</td><td>${ago(m.created_at)}</td></tr>`).join("")}
+        <tr><th>Team member</th><th>Role</th><th>Joined</th><th></th></tr>
+        ${teamMembers.map(m => `<tr><td class="s">${escH(m.display_name || m.id.slice(0, 8))}</td><td>${escH(m.role)}</td><td>${ago(m.created_at)}</td><td>${m.id !== window.myProfile?.id && m.role !== "owner" && (m.role !== "admin" || window.myProfile?.role === "owner") ? `<button type="button" class="btn btn-g removeMemberBtn" data-id="${m.id}" data-name="${escH(m.display_name || "this person")}" data-role="${escH(m.role)}" style="padding:3px 8px;font-size:10px;">Remove</button>` : ""}</td></tr>`).join("")}
       </table></div>` : ""}`}
     </div>
 
@@ -11900,6 +11920,17 @@ async function bvSaveAdAccountConnection(accountId) {
   // "Media buyers & Meta connections" and "Link New Meta Ad Account" are both
   // admin-only panels -- these forms simply aren't in the DOM for a buyer/
   // delivery_agent, so every handler below is guarded rather than assumed present.
+  document.querySelectorAll(".removeMemberBtn").forEach(btn => btn.addEventListener("click", async () => {
+    const warn = btn.dataset.role === "buyer" ? "They are signed out everywhere, lose access, their AI apps are disconnected, auto-approve is switched off and any waiting funding request from them is declined. Their orders, ROAS and receipts stay with your company." : "They are signed out everywhere and lose access to your company. Their past work stays.";
+    if (!confirm(`Remove ${btn.dataset.name} from your company?\n\n${warn}\n\nYou can invite them again later.`)) return;
+    btn.disabled = true; btn.textContent = "Removing…";
+    try {
+      const r = await sbFn("remove-team-member", { user_id: btn.dataset.id });
+      if (r.error) throw new Error(r.error);
+      bvToast(`${r.name || "They"} removed` + (r.pending_requests_declined ? `, ${r.pending_requests_declined} waiting request(s) declined` : ""));
+      renderSettings ? renderSettings(el) : location.reload();
+    } catch (err) { alert(err.message); btn.disabled = false; btn.textContent = "Remove"; }
+  }));
   document.getElementById("inviteForm")?.addEventListener("submit", async e => {
     e.preventDefault();
     const msg = document.getElementById("inviteMsg");
