@@ -10966,7 +10966,7 @@ async function bvShowRequestFundsModal(editId) {
     <div class="bv-modal">
       <button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
       <div class="ph-title" style="margin-bottom:6px;">${editId ? "Send a fresh Meta account number" : "Request funds"}</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">In Facebook Ads Manager open <b>Billing → Add funds → Bank transfer</b>. Meta shows an account number and a bank: enter them here. Your admin approves with their PIN and the money goes straight to Meta.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">In Facebook Ads Manager open <b>Billing → Add funds → Bank transfer</b>. Meta shows an account number and a bank: enter them here. ${window.myProfile?.role === "buyer" ? "Your admin approves with their PIN and the money goes straight to Meta." : "You will approve it with your own transfer PIN and the money goes straight to Meta."}</div>
       <form id="modalFundReqForm" novalidate>
         <div class="fg">
           ${editId ? "" : `<div class="field"><label>Amount to request *</label><input id="modal_fr_amount" type="number" min="100" step="1" inputmode="numeric" placeholder="e.g. 50000"></div>`}
@@ -10999,7 +10999,20 @@ async function bvShowRequestFundsModal(editId) {
       const r = await sbFn("fund-request-submit", editId ? { action: "change_account", fund_request_id: editId, account_number, bank_code } : { amount_naira: amount, account_number, bank_code, note });
       if (r.verified === false) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.reason || "That account was not accepted.")}</div>`; btn.disabled = false; btn.textContent = editId ? "Update request" : "Request funds"; return; }
       if (r.error) throw new Error(r.error);
-      bvToast(editId ? "Account updated" : `Request sent. Bank says: ${r.account_name}`);
+      const solo = window.myProfile?.role === "owner" || window.myProfile?.role === "admin";
+      if (!editId && solo) {
+        // A one-person workspace: you asked, so you approve with your PIN right away.
+        const nm = bvBanksCache?.find(b => b.code === bank_code)?.name || "";
+        bvShowSendPinModal(r.id, `<b>${fN(amount)}</b> to <b>${escH(r.account_name || "Meta")}</b> · ${escH(nm)} ${escH(account_number)}`);
+        return;
+      }
+      if (r.auto_sent) {
+        bvToast("Sent to Meta automatically");
+        if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
+      } else {
+        bvToast(editId ? "Account updated" : `Request sent. Bank says: ${r.account_name}`);
+        if (r.auto_note) alert(r.auto_note);
+      }
       bvCloseModal();
       renderWallet(document.getElementById("mainContent"));
     } catch (err) {
@@ -11210,6 +11223,7 @@ async function renderWallet(el) {
           ${isAdmin ? `
           ${fundingWalletBalance < 0 ? `<button type="button" class="btn" style="background:var(--danger);border-color:var(--danger);color:#fff;" onclick="bvShowAddFundsModal()">⚠️ Top up now</button>` : `<button type="button" class="btn" onclick="bvShowAddFundsModal()">+ Add funds</button>`}
           <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Withdraw</button>
+          ${myId ? `<button type="button" class="btn" onclick="bvShowRequestFundsModal()">Send to Meta</button>` : ""}
           ` : myId ? `
           <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds</button>
           ` : ""}
@@ -11302,6 +11316,21 @@ async function renderWallet(el) {
       }).join("")}
     </div>`;
     })() : ""}
+
+    ${isAdmin && (buyers || []).filter(b => b.id !== myId).length ? `
+    <div class="panel">
+      <div class="ph"><div class="ph-title">Auto-approve for trusted buyers</div></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Switch this on for a buyer and their funding requests are sent to Meta <b>immediately</b>, with no PIN from you each time. Revora still checks that the account belongs to Meta, the funding wallet must cover it, and anything over your limits waits for your normal approval. You set the limits and your PIN is needed to change them.</div>
+      ${(buyers || []).filter(b => b.id !== myId).map(b => `
+      <div style="border-bottom:1px solid var(--border);padding:8px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div><b>${escH(b.name)}</b> <span style="color:var(--muted);font-size:10.5px;">[${escH(b.code)}]</span>
+          <div style="font-size:10.5px;color:${b.auto_send_enabled ? "var(--ok,#16a34a)" : "var(--muted)"};">${b.auto_send_enabled ? `On · up to ${fN(b.auto_send_max_naira)} each, ${fN(b.auto_send_daily_max_naira)} a day` : "Off · every request needs your approval"}</div></div>
+        <div>
+          <button type="button" class="btn btn-a autoSendBtn" data-id="${b.id}" data-name="${escH(b.name)}" data-max="${b.auto_send_max_naira || ""}" data-day="${b.auto_send_daily_max_naira || ""}" style="padding:3px 10px;font-size:10px;">${b.auto_send_enabled ? "Change limits" : "Turn on"}</button>
+          ${b.auto_send_enabled ? `<button type="button" class="btn autoSendOffBtn" data-id="${b.id}" data-name="${escH(b.name)}" style="padding:3px 10px;font-size:10px;">Turn off</button>` : ""}
+        </div>
+      </div>`).join("")}
+    </div>` : ""}
 
     ${!isAdmin && myId ? (() => {
       const myBuyerRow = (buyers || []).find(b => b.id === myId);
@@ -11436,6 +11465,41 @@ async function renderWallet(el) {
     sbFn("send-internal-email", { type: "fund_request_decided", fund_request_id: btn.dataset.id }).catch(() => {});
     renderWallet(el);
   }));
+  const autoModal = (id, name, enable, max, day) => {
+    bvCloseModal();
+    const overlay = document.createElement("div");
+    overlay.id = "bvModalOverlay"; overlay.className = "bv-overlay";
+    overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+    overlay.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+      <div class="ph-title" style="margin-bottom:6px;">${enable ? "Auto-approve for " + escH(name) : "Turn off auto-approve for " + escH(name)}</div>
+      <form id="autoSendForm" novalidate>
+        ${enable ? `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">Requests up to these limits are sent to Meta at once, with no PIN from you. Anything bigger waits for your approval.</div>
+        <div class="fg">
+          <div class="field"><label>Most for one request (₦) *</label><input id="autoMax" type="number" min="100" step="1" value="${max || ""}" placeholder="e.g. 50000"></div>
+          <div class="field"><label>Most per 24 hours (₦) *</label><input id="autoDay" type="number" min="100" step="1" value="${day || ""}" placeholder="e.g. 150000"></div>
+        </div>` : ""}
+        <div class="field" style="margin-top:8px;"><label>Your transfer PIN *</label><input id="autoPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="4 to 6 digits"></div>
+        <button type="submit" class="btn btn-a btn-full" style="margin-top:12px;" id="autoBtn">${enable ? "Save" : "Turn off"}</button>
+        <div id="autoMsg"></div>
+      </form></div>`;
+    document.body.appendChild(overlay);
+    document.getElementById("autoSendForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const btn = document.getElementById("autoBtn"), msg = document.getElementById("autoMsg");
+      const pin = document.getElementById("autoPin").value.trim();
+      if (!/^\d{4,6}$/.test(pin)) { msg.innerHTML = `<div class="msg err">❌ Enter your 4 to 6 digit transfer PIN.</div>`; return; }
+      const body = { action: "set_auto", media_buyer_id: id, enabled: enable, pin };
+      if (enable) { body.max_naira = Number(document.getElementById("autoMax").value); body.daily_max_naira = Number(document.getElementById("autoDay").value); }
+      btn.disabled = true;
+      try {
+        const r = await sbFn("fund-request-send", body);
+        if (r.error) throw new Error(r.error);
+        bvCloseModal(); bvToast(enable ? "Auto-approve is on" : "Auto-approve is off"); renderWallet(el);
+      } catch (err) { msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`; btn.disabled = false; }
+    });
+  };
+  document.querySelectorAll(".autoSendBtn").forEach(btn => btn.addEventListener("click", () => autoModal(btn.dataset.id, btn.dataset.name, true, btn.dataset.max, btn.dataset.day)));
+  document.querySelectorAll(".autoSendOffBtn").forEach(btn => btn.addEventListener("click", () => autoModal(btn.dataset.id, btn.dataset.name, false)));
   document.querySelectorAll(".frChangeBtn").forEach(btn => btn.addEventListener("click", () => bvShowRequestFundsModal(btn.dataset.id)));
   document.querySelectorAll(".frCancelBtn").forEach(btn => btn.addEventListener("click", async () => {
     if (!confirm("Cancel this request?")) return;
