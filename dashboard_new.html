@@ -11190,6 +11190,25 @@ function bvMoveFundsModal(buyerId, name, mode) {
     bvCloseModal(); bvToast(give ? "Funds given" : "Funds taken back"); renderWallet(document.getElementById("mainContent"));
   };
 }
+function bvAskWalletModal() {
+  const ov = bvWalletModal(`<div class="ph-title" style="margin-bottom:6px;">Ask your admin for funds</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Your admin sends the money straight into your Revora wallet, so your Revora ad accounts can keep running. (For an ad account you brought yourself, use "Request funds" in the section above instead.)</div>
+    <div class="field"><label>Amount (₦)</label><input id="awAmt" type="number" min="500" step="500" value="10000"></div>
+    <div class="field" style="margin-top:8px;"><label>Note (optional)</label><input id="awNote" maxlength="200" placeholder="e.g. scaling the herbal tea campaign"></div>
+    <button type="button" class="btn btn-a btn-full" id="awGo" style="margin-top:10px;">Send request</button><div id="awMsg" style="margin-top:8px;"></div>`);
+  ov.querySelector("#awGo").onclick = async e => {
+    const btn = e.target, msg = ov.querySelector("#awMsg"); btn.disabled = true;
+    const r = await sbFn("wallet-topup", { action: "request", amount: Number(ov.querySelector("#awAmt").value), note: ov.querySelector("#awNote").value }).catch(err => ({ error: err.message }));
+    if (r.error) { msg.innerHTML = `<div class="msg err">❌ ${escH(r.error)}</div>`; btn.disabled = false; return; }
+    bvCloseModal(); bvToast("Request sent to your admin"); renderWallet(document.getElementById("mainContent"));
+  };
+}
+async function bvDecideWalletReq(id, decision, btn) {
+  btn.disabled = true;
+  const r = await sbFn("wallet-topup", { action: "decide", id, decision }).catch(err => ({ error: err.message }));
+  if (r.error) { bvToast(r.error, "err"); btn.disabled = false; return; }
+  bvToast(decision === "approve" ? "Sent to their wallet" : "Declined"); renderWallet(document.getElementById("mainContent"));
+}
 // Coming back from Paystack: confirm the payment and credit the wallet.
 async function bvTopUpReturn() {
   try {
@@ -11205,12 +11224,16 @@ function bvRevoraWalletPanel(rw, isAdmin) {
   if (!rw || rw.error) return "";
   const pill = st => st === "confirmed" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Paid</span>` : st === "pending" ? `<span class="pill watch">Waiting</span>` : `<span class="pill" style="background:rgba(220,38,38,.12);color:#dc2626;">${escH(st)}</span>`;
   const topups = (rw.topups || []).length ? `<div class="tbl-wrap" style="margin-top:10px;"><table><tr><th>When</th>${isAdmin ? "<th>For</th>" : ""}<th>Amount</th><th>Status</th></tr>${rw.topups.map(t => `<tr><td class="s">${new Date(t.created_at).toLocaleString()}</td>${isAdmin ? `<td class="s">${t.media_buyer_id ? escH((rw.buyers || []).find(b => b.id === t.media_buyer_id)?.name || "Buyer") : "Company"}</td>` : ""}<td class="n">${fN(t.amount_naira)}</td><td>${pill(t.status)}</td></tr>`).join("")}</table></div>` : "";
+  const rpill = st => st === "approved" ? `<span class="pill" style="background:rgba(22,163,74,.15);color:#16a34a;">Funded</span>` : st === "pending" ? `<span class="pill watch">Waiting for admin</span>` : `<span class="pill" style="background:rgba(220,38,38,.12);color:#dc2626;">${escH(st)}</span>`;
+  const reqRows = (!isAdmin && (rw.requests || []).length) ? `<div class="tbl-wrap" style="margin-top:10px;"><table><tr><th>Your requests</th><th>Amount</th><th>Status</th></tr>${rw.requests.slice(0, 6).map(r => `<tr><td class="s">${new Date(r.requested_at).toLocaleString()}${r.note ? " · " + escH(r.note) : ""}</td><td class="n">${fN(r.amount_naira)}</td><td>${rpill(r.status)}</td></tr>`).join("")}</table></div>` : "";
+  const pendingReqs = isAdmin ? (rw.requests || []).filter(r => r.status === "pending") : [];
+  const reqPanel = pendingReqs.length ? `<div style="border:1px solid var(--warn,#d97706);border-radius:10px;padding:10px 12px;margin-bottom:12px;"><div style="font-weight:600;font-size:12.5px;margin-bottom:6px;">Wallet requests (${pendingReqs.length})</div>${pendingReqs.map(r => `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;padding:6px 0;border-top:1px solid var(--border);"><div style="font-size:12.5px;"><b>${escH((rw.buyers || []).find(b => b.id === r.media_buyer_id)?.name || "Buyer")}</b> asks for <b>${fN(r.amount_naira)}</b>${r.note ? ` <span style="color:var(--muted);">· ${escH(r.note)}</span>` : ""}<div style="font-size:10.5px;color:var(--muted);">${ago(r.requested_at)}</div></div><div><button type="button" class="btn btn-a" style="padding:3px 10px;font-size:10px;" onclick="bvDecideWalletReq('${r.id}','approve',this)">Send to their wallet</button> <button type="button" class="btn" style="padding:3px 10px;font-size:10px;" onclick="bvDecideWalletReq('${r.id}','decline',this)">Decline</button></div></div>`).join("")}</div>` : "";
   if (!isAdmin) {
     if (rw.my_wallet === undefined) return "";
     return `<div class="panel"><div class="ph"><div class="ph-title">Your Revora wallet</div></div>
       <div class="wallet-hero" style="margin-bottom:0;"><div class="wallet-hero-lbl">Balance</div><div class="wallet-hero-val" style="${rw.my_wallet <= 0 ? "color:var(--danger);" : ""}">${fN(rw.my_wallet)}</div>
       <div class="wallet-hero-sub">Pays for the Revora ad accounts shared with you. Your ads pause when it runs out. Ad accounts you brought yourself are funded from Meta, or use "Request funds" above.</div>
-      <div class="wallet-hero-actions"><button type="button" class="btn btn-a" onclick="bvTopUpModal('me')">+ Top up</button></div></div>${topups}</div>`;
+      <div class="wallet-hero-actions"><button type="button" class="btn btn-a" onclick="bvTopUpModal('me')">+ Top up</button><button type="button" class="btn" onclick="bvAskWalletModal()">Ask my admin for funds</button></div></div>${reqRows}${topups}</div>`;
   }
   const rows = (rw.buyers || []).map(b => `<tr><td class="n">${escH(b.name)}</td><td class="n" style="${b.balance <= 0 ? "color:var(--danger);" : ""}">${fN(b.balance)}</td><td class="n">${fN(b.spent)}</td>
     <td style="white-space:nowrap;"><button type="button" class="btn btn-a" style="padding:3px 8px;font-size:10px;" onclick="bvMoveFundsModal('${b.id}', ${JSON.stringify(b.name).replace(/"/g, "&quot;")}, 'allocate')">Give funds</button>
@@ -11218,6 +11241,7 @@ function bvRevoraWalletPanel(rw, isAdmin) {
     <button type="button" class="btn" style="padding:3px 8px;font-size:10px;" onclick="bvMoveFundsModal('${b.id}', ${JSON.stringify(b.name).replace(/"/g, "&quot;")}, 'take_back')">Take back</button></td></tr>`).join("");
   return `<div class="panel"><div class="ph"><div class="ph-title">Revora ad account wallets</div></div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A Revora ad account shared with a media buyer is paid from that buyer's wallet. Give them funds from the company wallet, or let them top up themselves. Accounts you hold yourself are paid from the company funding wallet.</div>
+    ${reqPanel}
     <div style="margin-bottom:10px;"><button type="button" class="btn btn-a" onclick="bvTopUpModal('company')">Top up the company wallet by card</button></div>
     ${rows ? `<div class="tbl-wrap"><table><tr><th>Media buyer</th><th>Wallet</th><th>Spent</th><th></th></tr>${rows}</table></div>` : `<div style="font-size:11.5px;color:var(--muted);">No team media buyers yet.</div>`}${topups}</div>`;
 }
@@ -11330,7 +11354,7 @@ async function renderWallet(el) {
           <button type="button" class="btn" onclick="bvShowAdminWithdrawModal()">Send money</button>
           ${myId ? `<button type="button" class="btn" onclick="bvShowRequestFundsModal()">Send to Meta</button>` : ""}
           ` : myId ? `
-          <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds</button>
+          <button type="button" class="btn" onclick="bvShowRequestFundsModal()">+ Request funds for my own Meta account</button>
           ` : ""}
         </div>
       </div>
