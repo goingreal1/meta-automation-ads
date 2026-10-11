@@ -11795,7 +11795,7 @@ async function bvRevoraAcctPanel() {
   else html += `<form id="claimAcctForm" style="margin-top:10px;" novalidate>
       <div class="fg"><div class="field"><label>Name your ad account *</label><input id="claimName" placeholder="e.g. Quality Herb Main"></div></div>
       <label style="font-size:11.5px;display:flex;gap:6px;align-items:center;margin-top:6px;"><input type="checkbox" id="claimPixel" checked> Create a dataset (pixel) for it now</label>
-      <div style="font-size:11.5px;margin-top:8px;">Price: <b>₦${Number(av.fee || 0).toLocaleString()}</b> from your wallet (balance ₦${Math.max(0, Math.round(av.wallet || 0)).toLocaleString()}).${(av.wallet || 0) < (av.fee || 0) ? ' <span style="color:var(--warn);"><a href="javascript:void(0)" onclick="bvGoToTab('wallet')" style="color:var(--accent);">Top up your wallet first</a>.</span>' : ""}</div>
+      <div style="font-size:11.5px;margin-top:8px;">Price: <b>₦${Number(av.fee || 0).toLocaleString()}</b> from your wallet (balance ₦${Math.max(0, Math.round(av.wallet || 0)).toLocaleString()}).${(av.wallet || 0) < (av.fee || 0) ? ' <span style="color:var(--warn);"><a href="javascript:void(0)" onclick="bvGoToTab(&quot;wallet&quot;)" style="color:var(--accent);">Top up your wallet first</a>.</span>' : ""}</div>
       <button type="submit" class="btn btn-a btn-full" style="margin-top:10px;" id="claimBtn">Buy ad account · ₦${Number(av.fee || 0).toLocaleString()}</button><div id="claimMsg"></div></form>`;
   html += `<div id="poolAdmin"></div>`;
   box.innerHTML = html;
