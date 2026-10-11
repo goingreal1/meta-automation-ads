@@ -99,8 +99,10 @@ function actionValue(actions: any[] | undefined, types: string[]): number {
   return 0;
 }
 
-function insightRow(r: any) {
-  const spend = num(r.spend);
+// factor > 1 on a Revora-managed ad account: every money figure is shown with Revora's markup, so numbers, kill rules and balances agree.
+const factorOf = (a: any) => (a?.billing_mode === "managed" ? 1 + num(a?.markup_pct) / 100 : 1);
+function insightRow(r: any, factor = 1) {
+  const spend = num(r.spend) * factor;
   const conversations = actionValue(r.actions, [MSG_ACTION]);
   const purchases = actionValue(r.actions, PURCHASE_ACTIONS);
   const landingPageViews = actionValue(r.actions, LPV_ACTIONS);
@@ -111,7 +113,7 @@ function insightRow(r: any) {
     frequency: num(r.frequency),
     clicks: num(r.inline_link_clicks ?? r.clicks),
     ctr: num(r.ctr),
-    cpm: num(r.cpm),
+    cpm: num(r.cpm) * factor,
     conversations,
     cost_per_conversation: conversations > 0 ? spend / conversations : null,
     purchases,
@@ -127,7 +129,7 @@ function latestTime(a?: string, b?: string): string | undefined {
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
-async function insightsByLevel(actId: string, level: "campaign" | "adset" | "ad", range: string, token: string) {
+async function insightsByLevel(actId: string, level: "campaign" | "adset" | "ad", range: string, token: string, factor = 1) {
   const idField = level === "ad" ? "ad_id" : level === "adset" ? "adset_id" : "campaign_id";
   const rows = await graphGetAll(`act_${actId}/insights`, {
     level,
@@ -135,7 +137,7 @@ async function insightsByLevel(actId: string, level: "campaign" | "adset" | "ad"
     ...rangeParams(range),
   }, token);
   const map: Record<string, ReturnType<typeof insightRow>> = {};
-  for (const r of rows) map[r[idField]] = insightRow(r);
+  for (const r of rows) map[r[idField]] = insightRow(r, factor);
   return map;
 }
 
@@ -193,12 +195,12 @@ async function getUserContext(req: Request) {
 async function getAccount(userClient: any, adAccountId: string) {
   if (!adAccountId) throw new HttpError(400, "ad_account_id is required.");
   const { data: account } = await userClient
-    .from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id")
+    .from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct")
     .eq("id", adAccountId).maybeSingle();
   if (!account) throw new HttpError(404, "Ad account not found or not yours.");
   const actId = String(account.meta_ad_account_id ?? "").replace(/^act_/, "");
   if (!/^\d+$/.test(actId)) throw new HttpError(400, "This ad account is not connected to Meta.");
-  return { account, actId };
+  return { account, actId, factor: factorOf(account) };
 }
 
 // -- WhatsApp greeting + pre-filled message of a Click-to-WhatsApp ad --
@@ -214,21 +216,21 @@ function readWaMessage(creative: any): { greeting: string; prefill: string } | n
 }
 
 // -- list --
-async function loadAccountObjects(actId: string, token: string, range: string, needLifetimeAds: boolean) {
+async function loadAccountObjects(actId: string, token: string, range: string, needLifetimeAds: boolean, factor = 1) {
   const [campaigns, adsets, ads, cIns, sIns, aIns, aLife] = await Promise.all([
     graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time" }, token),
     graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,destination_type,created_time,start_time" }, token),
     graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,thumbnail_url,object_story_spec}" }, token),
-    insightsByLevel(actId, "campaign", range, token),
-    insightsByLevel(actId, "adset", range, token),
-    insightsByLevel(actId, "ad", range, token),
-    needLifetimeAds ? insightsByLevel(actId, "ad", "lifetime", token) : Promise.resolve(null),
+    insightsByLevel(actId, "campaign", range, token, factor),
+    insightsByLevel(actId, "adset", range, token, factor),
+    insightsByLevel(actId, "ad", range, token, factor),
+    needLifetimeAds ? insightsByLevel(actId, "ad", "lifetime", token, factor) : Promise.resolve(null),
   ]);
   return { campaigns, adsets, ads, cIns, sIns, aIns, aLife: aLife ?? aIns };
 }
 
 async function handleList(userClient: any, profile: any, body: any) {
-  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const { account, actId, factor } = await getAccount(userClient, body.ad_account_id);
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const token = await resolveToken(admin, account);
   const range = ["today", "yesterday", "last3", "last7", "last30", "lifetime"].includes(body.range) ? body.range : "last7";
@@ -237,7 +239,7 @@ async function handleList(userClient: any, profile: any, body: any) {
   const rules: Record<string, Rule> = {};
   for (const r of ruleRows ?? []) rules[r.kind] = r;
 
-  const { campaigns, adsets, ads, cIns, sIns, aIns, aLife } = await loadAccountObjects(actId, token, range, range !== "lifetime");
+  const { campaigns, adsets, ads, cIns, sIns, aIns, aLife } = await loadAccountObjects(actId, token, range, range !== "lifetime", factor);
 
   const adsetById: Record<string, any> = {};
   const campKinds: Record<string, Set<string>> = {};
@@ -248,7 +250,7 @@ async function handleList(userClient: any, profile: any, body: any) {
     const m = sIns[a.id] ?? EMPTY;
     return {
       id: a.id, name: a.name, campaign_id: a.campaign_id, status: a.status, effective_status: a.effective_status,
-      daily_budget: a.daily_budget ? num(a.daily_budget) / 100 : null, kind, created_time: a.created_time, start_time: a.start_time ?? null,
+      daily_budget: a.daily_budget ? Math.round(num(a.daily_budget) * factor) / 100 : null, kind, created_time: a.created_time, start_time: a.start_time ?? null,
       ...m, ...withResults(kind, m),
     };
   });
@@ -258,7 +260,7 @@ async function handleList(userClient: any, profile: any, body: any) {
     const m = cIns[c.id] ?? EMPTY;
     return {
       id: c.id, name: c.name, objective: c.objective, status: c.status, effective_status: c.effective_status,
-      daily_budget: c.daily_budget ? num(c.daily_budget) / 100 : null, kind, created_time: c.created_time,
+      daily_budget: c.daily_budget ? Math.round(num(c.daily_budget) * factor) / 100 : null, kind, created_time: c.created_time,
       ...m, ...withResults(kind, m),
     };
   });
@@ -293,13 +295,14 @@ async function handleDaily(userClient: any, body: any) {
   const since = String(body.since ?? ""), until = String(body.until ?? "");
   if (!DATE_RE.test(since) || !DATE_RE.test(until) || since > until) throw new HttpError(400, "since/until must be YYYY-MM-DD dates.");
   if ((new Date(until).getTime() - new Date(since).getTime()) / 86400_000 > 92) throw new HttpError(400, "Range is limited to 92 days.");
-  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id").eq("status", "active");
+  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, billing_mode, markup_pct").eq("status", "active");
   if (body.ad_account_id) q = q.eq("id", body.ad_account_id);
   const { data: accounts } = await q;
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const usable = (accounts ?? []).filter((a: any) => /^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
   const results = await Promise.allSettled(usable.map(async (a: any) => {
     const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
+    const factor = factorOf(a);
     const token = await resolveToken(admin, a);
     const rows = await graphGetAll(`act_${actId}/insights`, {
       level: "adset", time_increment: "1", time_range: JSON.stringify({ since, until }),
@@ -312,7 +315,7 @@ async function handleDaily(userClient: any, body: any) {
       kind: kindById.get(String(r.adset_id)) ?? "other",
       date: r.date_start, account_id: a.id, media_buyer_id: a.media_buyer_id ?? null,
       campaign_id: r.campaign_id, campaign_name: r.campaign_name, adset_id: r.adset_id, adset_name: r.adset_name,
-      ...insightRow(r), cpc: num(r.cpc),
+      ...insightRow(r, factor), cpc: num(r.cpc) * factor,
     }));
   }));
   const rows: any[] = [];
@@ -333,7 +336,7 @@ function parseAvailable(display: string | undefined): number | null {
   return m ? parseFloat(m[1].replace(/,/g, "")) : null;
 }
 async function handleBalances(userClient: any, body: any) {
-  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, meta_connection_id, low_balance_threshold_naira").eq("status", "active");
+  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, meta_connection_id, low_balance_threshold_naira, billing_mode, company_id").eq("status", "active");
   if (body.ad_account_id) q = q.eq("id", body.ad_account_id);
   const { data: accounts } = await q;
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -341,6 +344,12 @@ async function handleBalances(userClient: any, body: any) {
   const results = await Promise.allSettled(usable.map(async (a: any) => {
     const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
     const token = await resolveToken(admin, a);
+    if (a.billing_mode === "managed") {
+      // A Revora-managed account is paid by Revora's card: what the customer has left is their Revora wallet, not anything Meta shows.
+      const { data: w } = await admin.rpc("company_wallet_balance", { p_company: a.company_id });
+      const avail = Math.max(0, Number(w ?? 0));
+      return { id: a.id, name: a.nickname, currency: "NGN", available: avail, is_prepay: true, owed: null, funding_label: "Revora wallet", account_status: 1, low_threshold: a.low_balance_threshold_naira != null ? num(a.low_balance_threshold_naira) : null };
+    }
     const d = await graphGet(`act_${actId}`, { fields: "account_status,currency,balance,amount_spent,spend_cap,is_prepay_account,funding_source_details" }, token);
     const available = parseAvailable(d.funding_source_details?.display_string);
     if (available !== null) {
@@ -467,14 +476,15 @@ async function handleSetBudget(userClient: any, profile: any, body: any) {
   if (!["campaign", "adset"].includes(level)) throw new HttpError(400, "level must be campaign or adset.");
   if (!/^\d+$/.test(objectId)) throw new HttpError(400, "Invalid object_id.");
   if (!Number.isFinite(naira) || naira < 500 || naira > 5_000_000) throw new HttpError(400, "daily_budget must be between ₦500 and ₦5,000,000.");
-  const { account, actId } = await getAccount(userClient, body.ad_account_id);
+  const { account, actId, factor } = await getAccount(userClient, body.ad_account_id);
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const token = await resolveToken(admin, account);
   const obj = await graphGet(objectId, { fields: "account_id,name,daily_budget,lifetime_budget" }, token);
   if (String(obj.account_id ?? "").replace(/^act_/, "") !== actId) throw new HttpError(403, "That item is not in this ad account.");
   if (!obj.daily_budget) throw new HttpError(400, "This item has no daily budget (it may use a lifetime budget or the budget sits on the campaign).");
-  const before = num(obj.daily_budget) / 100;
-  const res = await fetch(`${GRAPH}/${objectId}`, { method: "POST", body: new URLSearchParams({ daily_budget: String(Math.round(naira * 100)), access_token: token }) });
+  // On a Revora-managed account the person works in marked-up naira; Meta gets the real (smaller) amount.
+  const before = Math.round(num(obj.daily_budget) * factor) / 100;
+  const res = await fetch(`${GRAPH}/${objectId}`, { method: "POST", body: new URLSearchParams({ daily_budget: String(Math.round(naira / factor * 100)), access_token: token }) });
   const data = await res.json();
   if (!res.ok || data.error || data.success === false) throw new HttpError(502, data?.error?.error_user_msg || data?.error?.message || "Meta refused the budget change.");
   const after = await graphGet(objectId, { fields: "daily_budget" }, token);
@@ -483,7 +493,7 @@ async function handleSetBudget(userClient: any, profile: any, body: any) {
     object_name: obj.name, action: "scaled", source: "manual",
     actor_profile_id: profile.id, reason: `Budget ₦${before.toLocaleString("en-NG")} → ₦${naira.toLocaleString("en-NG")}${body.reason ? " · " + String(body.reason).slice(0, 200) : ""}`,
   });
-  return { ok: true, name: obj.name as string, previous_daily_budget: before, daily_budget: num(after.daily_budget) / 100 };
+  return { ok: true, name: obj.name as string, previous_daily_budget: before, daily_budget: Math.round(num(after.daily_budget) * factor) / 100 };
 }
 
 // -- previews + image swap (so a creative is shown whole, not cropped) --
@@ -691,7 +701,7 @@ async function handleAutoKill(dryRun = false) {
   for (const r of ruleRows ?? []) (rulesByProfile[r.profile_id] ??= {})[r.kind] = r;
 
   const { data: accounts } = await admin.from("ad_accounts")
-    .select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id").eq("status", "active");
+    .select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct").eq("status", "active");
   const { data: people } = await admin.from("profiles").select("id, company_id, role, media_buyer_id").in("role", ["owner", "admin", "buyer"]);
 
   const summary: any[] = [];
@@ -711,7 +721,7 @@ async function handleAutoKill(dryRun = false) {
         graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,effective_status,created_time", effective_status: JSON.stringify(["ACTIVE"]) }, token),
         graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,optimization_goal,destination_type,start_time,effective_status,created_time" }, token),
         graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time", effective_status: JSON.stringify(["ACTIVE"]) }, token),
-        insightsByLevel(actId, "ad", "lifetime", token),
+        insightsByLevel(actId, "ad", "lifetime", token, factorOf(account)),
       ]);
       const setById: Record<string, any> = {};
       for (const s of adsets) setById[s.id] = { ...s, kind: adsetKind(s) };

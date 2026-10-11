@@ -58,6 +58,12 @@ Deno.serve(async (req: Request) => {
       if (error) return json({ error: /duplicate/i.test(error.message) ? "That ad account is already in the pool." : error.message }, 400);
       return json({ ok: true, name: info?.name ?? null, currency: info?.currency ?? null, status: info?.account_status ?? null });
     }
+    if (action === "pool_earnings") {
+      const { data } = await admin.rpc("managed_earnings", { p_days: Math.min(Math.max(Number(b?.days) || 30, 1), 365) });
+      const rows: any[] = data ?? [];
+      const sum = (k: string) => rows.reduce((t, r) => t + Number(r[k] || 0), 0);
+      return json({ days: rows, billed: sum("billed"), raw: sum("raw"), profit: sum("profit") });
+    }
     if (action === "pool_retire") {
       await admin.from("sellable_ad_accounts").update({ status: "retired" }).eq("id", String(b?.id ?? "")).eq("status", "available");
       return json({ ok: true });

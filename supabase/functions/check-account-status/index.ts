@@ -69,8 +69,15 @@ Deno.serve(async (req: Request) => {
     // it should only be used as a last-resort fallback for non-wallet
     // (card/threshold-billed) accounts that have no wallet balance at all.
     const walletBalance = parseWalletBalance(data.funding_source_details?.display_string);
-    const finalBalance = walletBalance !== null ? walletBalance : (data.balance !== undefined ? Number(data.balance) / 100 : null);
-    const amountSpent = data.amount_spent !== undefined ? Number(data.amount_spent) / 100 : null;
+    let finalBalance = walletBalance !== null ? walletBalance : (data.balance !== undefined ? Number(data.balance) / 100 : null);
+    let amountSpent = data.amount_spent !== undefined ? Number(data.amount_spent) / 100 : null;
+    // A Revora-managed ad account is paid by Revora's card: the customer's balance is their Revora wallet, and spend is shown with Revora's markup.
+    const managed = accountRow.billing_mode === "managed";
+    if (managed) {
+      const { data: w } = await supabase.rpc("company_wallet_balance", { p_company: accountRow.company_id });
+      finalBalance = Math.max(0, Number(w ?? 0));
+      if (amountSpent !== null) amountSpent = amountSpent * (1 + Number(accountRow.markup_pct ?? 0) / 100);
+    }
 
     await supabase.from("ad_accounts").update({
       balance_naira: finalBalance,
@@ -79,14 +86,14 @@ Deno.serve(async (req: Request) => {
 
     return json({
       success: true,
-      balance_source: walletBalance !== null ? "wallet" : "accrued_spend_fallback",
+      balance_source: managed ? "wallet" : walletBalance !== null ? "wallet" : "accrued_spend_fallback",
       balance_naira: finalBalance,
       name: data.name,
       currency: data.currency ?? "NGN",
       status: data.account_status === 1 ? "ACTIVE" : `status_code_${data.account_status}`,
       amount_spent_naira: amountSpent,
-      spend_cap_naira: data.spend_cap ? Number(data.spend_cap) / 100 : null,
-      raw: data,
+      spend_cap_naira: managed ? null : data.spend_cap ? Number(data.spend_cap) / 100 : null,
+      ...(managed ? {} : { raw: data }),
     });
   } catch (err: any) {
     return json({ error: err.message }, 500);
