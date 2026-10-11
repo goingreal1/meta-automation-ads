@@ -9,6 +9,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "overview", ad_account_id, days? (1..30) }          -> { can_create, pixels: [{id,name,last_fired_time,active,events,daily,methods}] }
 //   POST { action: "create_dataset", ad_account_id, name? }           -> { ok, pixel_id }
 //   POST { action: "use_dataset", ad_account_id, pixel_id }           -> { ok }
+//   POST { action: "quality", ad_account_id, pixel_id?, days? }       -> { ok, keys: {email:n,phone:n,...}, total }   (customer details sent with events; Meta's 0-10 match score is not available through the API)
+//   POST { action: "conversions", ad_account_id }                      -> { ok, items: [{id,name,type,rule,pixel,value,last_fired_time}] }
+//   POST { action: "conversion_create", ad_account_id, name, contains, type?, value?, pixel_id? } -> { ok, id }
 //   POST { action: "test_event", ad_account_id, pixel_id, test_code, event_name? } -> { ok, events_received }
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -97,6 +100,42 @@ Deno.serve(async (req: Request) => {
       if (!hit) return json({ error: "That dataset is not linked to this ad account." }, 400);
       await admin.from("ad_accounts").update({ meta_pixel_id: hit.id, pixel_name: hit.name }).eq("id", acct.id);
       return json({ ok: true });
+    }
+
+    if (action === "quality") {
+      const pid = String(b?.pixel_id ?? acct.meta_pixel_id ?? "");
+      if (!/^\d+$/.test(pid)) return json({ error: "Pick a dataset first." }, 400);
+      const days = Math.min(Math.max(Number(b?.days) || 7, 1), 30);
+      const start = Math.floor(Date.now() / 1000) - days * 86400;
+      const keys: Record<string, number> = {}; let total = 0;
+      const ev = await g(`/${pid}/stats?aggregation=event&start_time=${start}`, token);
+      for (const bucket of ev?.data ?? []) for (const e of bucket?.data ?? []) total += Number(e.count || 0);
+      try {
+        const k = await g(`/${pid}/stats?aggregation=pii_keys&start_time=${start}`, token);
+        for (const bucket of k?.data ?? []) for (const e of bucket?.data ?? []) keys[String(e.value)] = (keys[String(e.value)] || 0) + Number(e.count || 0);
+      } catch (e) { return json({ ok: true, total, keys: {}, days, unavailable: "Meta did not return customer-detail counts for this dataset." }); }
+      return json({ ok: true, total, keys, days });
+    }
+
+    if (action === "conversions") {
+      const r = await g(`/act_${act}/customconversions?fields=id,name,custom_event_type,rule,default_conversion_value,last_fired_time,is_archived,pixel&limit=50`, token);
+      const items = (r?.data ?? []).filter((c: any) => !c.is_archived).map((c: any) => ({ id: c.id, name: c.name, type: c.custom_event_type, rule: c.rule, value: c.default_conversion_value ?? 0, last_fired_time: c.last_fired_time ?? null, pixel: c.pixel?.id ?? null }));
+      return json({ ok: true, items });
+    }
+
+    if (action === "conversion_create") {
+      const name = String(b?.name ?? "").trim().slice(0, 100);
+      const contains = String(b?.contains ?? "").trim().slice(0, 200);
+      const TYPES = ["PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "ADD_TO_CART", "INITIATED_CHECKOUT", "CONTENT_VIEW", "OTHER"];
+      const type = TYPES.includes(String(b?.type)) ? String(b.type) : "OTHER";
+      const pid = String(b?.pixel_id ?? acct.meta_pixel_id ?? "");
+      if (!name) return json({ error: "Give the conversion a name." }, 400);
+      if (!contains) return json({ error: "Say which page address counts, for example thank-you." }, 400);
+      if (!/^\d+$/.test(pid)) return json({ error: "Pick a dataset first." }, 400);
+      const body: Record<string, string> = { name, event_source_id: pid, custom_event_type: type, rule: JSON.stringify({ url: { i_contains: contains } }) };
+      const val = Number(b?.value); if (val > 0) body.default_conversion_value = String(val);
+      const r = await g(`/act_${act}/customconversions`, token, "POST", body);
+      return json({ ok: true, id: r?.id });
     }
 
     if (action === "test_event") {

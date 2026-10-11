@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-// Safety net for Revora-managed ad accounts (the ones Revora's card pays Meta for). Runs every 10 minutes (pg_cron).
+// Safety net for Revora-managed ad accounts (the ones Revora's card pays Meta for). Runs every 5 minutes (pg_cron).
 // For each managed account:
 //   1. balance_naira is set to the customer's Revora wallet (what they see as "balance"; low-balance alerts use it).
 //   2. Meta's spend cap on the account is set to what Meta has already charged plus what the wallet can still pay for
@@ -36,6 +36,10 @@ Deno.serve(async (req: Request) => {
   const { data: accounts } = await db.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, company_id, markup_pct").eq("billing_mode", "managed").eq("status", "active");
   const out: any[] = [];
   const wallets = new Map<string, number>();
+  // One wallet pays for every managed account a company has, so each account only gets an equal share of it as room.
+  // That way all of them together can never run up more than the wallet holds.
+  const perCompany = new Map<string, number>();
+  for (const a of accounts ?? []) perCompany.set(a.company_id, (perCompany.get(a.company_id) ?? 0) + 1);
   for (const a of accounts ?? []) {
     const res: any = { account: a.nickname || a.name, actions: [] as string[] };
     try {
@@ -48,7 +52,7 @@ Deno.serve(async (req: Request) => {
       try {
         const info = await graph(`/act_${act}?fields=amount_spent,spend_cap`);
         const spentMinor = Number(info?.amount_spent ?? 0);
-        const room = Math.max(0, wallet) / factor;
+        const room = Math.max(0, wallet) / (perCompany.get(a.company_id) || 1) / factor;
         const capMinor = Math.round(spentMinor + room * 100);
         if (Number(info?.spend_cap ?? 0) !== capMinor) { await graph(`/act_${act}`, "POST", { spend_cap: String(capMinor) }); res.actions.push("spend cap updated"); }
       } catch (e) { res.actions.push("spend cap not set: " + (e as Error).message.slice(0, 120)); }

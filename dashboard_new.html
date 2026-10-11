@@ -3752,6 +3752,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       // This is the actual launch -- everything above only staged rows in the
       // database. Nothing exists on Meta, and nothing shows in the Campaigns
       // tab, until this call creates the real campaign/ad sets/ads.
+      await bvWalletGate();
       const launchRes = await sbFn("ai-auto-launch-tests", { creative_ids: assetIds });
       if (launchRes.error) throw new Error(launchRes.error);
 
@@ -7600,6 +7601,7 @@ async function bvPublishProduct(productId, productName) {
   btn.innerHTML = '<span class="spin"></span> Publishing…';
   msg.innerHTML = "";
   try {
+    await bvWalletGate();
     const res = await fetch(`${SUPA_URL}/functions/v1/ai-auto-launch-tests`, {
       method: "POST",
       headers: {
@@ -10709,6 +10711,14 @@ async function bvShowBuyerProfile(row) {
 // attribution (plus their own approved/transferred activity), never a
 // balance a buyer can spend directly.
 const walletBlank = () => ({ confirmed: 0, approved: 0, transferred: 0 });
+// Revora-managed ad accounts are paid for by Revora's card, so nothing goes live on one while the wallet is empty.
+async function bvWalletGate() {
+  const a = (accountsList || []).find(x => x.id === activeAccountId);
+  if (!a || a.billing_mode !== "managed") return;
+  const r = await supabaseClient.rpc("my_company_wallet_balance");
+  if (!r.error && Number(r.data || 0) <= 0) throw new Error("Your wallet is empty, so this can't go live yet. Add funds to your wallet, then publish again.");
+}
+
 async function fetchWalletBalances() {
   const [buyers, confirmedPayments, fundRequests, withdrawals, managedSpendRes] = await Promise.all([
     sbQuery("media_buyers", "select=*&order=code.asc").catch(() => []),
@@ -11579,7 +11589,10 @@ async function bvEventsPanel() {
     </div>`;
   }
   html += `<div style="font-size:10.5px;color:var(--muted);">Server events (Conversions API): Revora sends a purchase event from your orders automatically for any ad account that has a dataset, so they appear above under "from server".</div>`;
+  if (r.pixels.length) html += `<div id="evQuality" style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><b>Customer details sent with events</b><div style="font-size:10.5px;color:var(--muted);">Loading…</div></div>
+    <div id="evConv" style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><b>Custom conversions</b><div style="font-size:10.5px;color:var(--muted);">Loading…</div></div>`;
   body.innerHTML = html;
+  if (r.pixels.length) bvEventsExtras(body, r);
   body.querySelector("#evCreate")?.addEventListener("click", async e => {
     e.target.disabled = true; e.target.textContent = "Creating…";
     const c = await sbFn("events-manager", { action: "create_dataset", ad_account_id: bvEventsAcct }).catch(err => ({ error: err.message }));
@@ -11600,6 +11613,43 @@ async function bvEventsPanel() {
     msg.innerHTML = c.error ? `<div class="msg err">❌ ${escH(c.error)}</div>` : `<div class="msg ok">✅ Sent ${escH(c.event_name)}. Meta received ${c.events_received}. Check the Test events tab.</div>`;
     b2.disabled = false; b2.textContent = "Send test";
   }));
+}
+
+// Customer-detail quality and custom conversions for the chosen ad account.
+async function bvEventsExtras(body, r) {
+  const q = await sbFn("events-manager", { action: "quality", ad_account_id: bvEventsAcct, days: bvEventsDays }).catch(err => ({ error: err.message }));
+  const qb = body.querySelector("#evQuality");
+  if (qb) {
+    const names = { em: "Email", ph: "Phone", fn: "First name", ln: "Last name", ct: "City", st: "State", zp: "Postcode", country: "Country", external_id: "Customer ID", fbp: "Browser ID (fbp)", fbc: "Click ID (fbc)", client_ip_address: "IP address", client_user_agent: "Device info" };
+    if (q.error) qb.innerHTML = `<b>Customer details sent with events</b><div class="msg err">❌ ${escH(q.error)}</div>`;
+    else {
+      const rows = Object.entries(q.keys || {}).sort((a, b) => b[1] - a[1]);
+      const good = ["em", "ph", "fbc", "fbp", "external_id"];
+      const have = good.filter(k => (q.keys || {})[k] > 0).length;
+      qb.innerHTML = `<b>Customer details sent with events</b>
+        <div style="font-size:10.5px;color:var(--muted);margin:4px 0 8px;">The more details each event carries (email, phone, click ID), the better Meta can match it to a person, and the better your ads optimise. Meta's own 0 to 10 match score is only shown inside Meta, so this lists what is actually being sent.</div>
+        ${q.unavailable ? `<div style="font-size:11px;color:var(--warn);">${escH(q.unavailable)}</div>` : rows.length ? rows.map(([k, n]) => { const pc = q.total ? Math.min(100, Math.round(n / q.total * 100)) : 0; return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:11px;"><div style="width:130px;">${escH(names[k] || k)}</div><div style="flex:1;background:var(--panel2);border-radius:4px;height:8px;"><div style="width:${pc}%;background:var(--accent);height:8px;border-radius:4px;"></div></div><div style="width:78px;text-align:right;color:var(--muted);">${n.toLocaleString()} (${pc}%)</div></div>`; }).join("") + `<div style="font-size:11px;margin-top:8px;">${have >= 4 ? "✅ Good coverage." : have >= 2 ? "⚠️ Fair. Sending email and phone with purchases will help." : "⚠️ Low. Few customer details are reaching Meta."}</div>` : `<div style="font-size:11px;color:var(--muted);">No customer details recorded in this period.</div>`}`;
+    }
+  }
+  const cv = await sbFn("events-manager", { action: "conversions", ad_account_id: bvEventsAcct }).catch(err => ({ error: err.message }));
+  const cb = body.querySelector("#evConv");
+  if (!cb) return;
+  const types = ["PURCHASE", "LEAD", "COMPLETE_REGISTRATION", "ADD_TO_CART", "INITIATED_CHECKOUT", "CONTENT_VIEW", "OTHER"];
+  cb.innerHTML = `<b>Custom conversions</b>
+    <div style="font-size:10.5px;color:var(--muted);margin:4px 0 8px;">Count a visit to a page as a result, for example any page whose address contains "thank-you".</div>
+    ${cv.error ? `<div class="msg err">❌ ${escH(cv.error)}</div>` : (cv.items || []).length ? (cv.items || []).map(c => `<div style="border-bottom:1px solid var(--border);padding:5px 0;font-size:11.5px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span><b>${escH(c.name)}</b> · ${escH(c.type || "")}</span><span style="color:var(--muted);">${escH((() => { try { return "page contains " + (JSON.parse(c.rule)?.url?.i_contains ?? JSON.parse(c.rule)?.and?.[0]?.url?.i_contains ?? ""); } catch { return ""; } })())}${c.last_fired_time ? " · last " + new Date(c.last_fired_time).toLocaleDateString() : ""}</span></div>`).join("") : `<div style="font-size:11px;color:var(--muted);">None yet.</div>`}
+    <div class="fg" style="margin-top:8px;"><div class="field"><label>Name</label><input id="cvName" placeholder="Thank-you page visit"></div>
+    <div class="field"><label>Page address contains</label><input id="cvContains" placeholder="thank-you"></div>
+    <div class="field"><label>Counts as</label><select id="cvType">${types.map(t => `<option>${t}</option>`).join("")}</select></div>
+    <div class="field"><label>Value each (₦, optional)</label><input id="cvValue" type="number" min="0"></div></div>
+    <button type="button" class="btn btn-a" id="cvAdd" style="margin-top:6px;">Create custom conversion</button><div id="cvMsg" style="margin-top:6px;"></div>`;
+  cb.querySelector("#cvAdd").addEventListener("click", async e => {
+    const msg = cb.querySelector("#cvMsg"); e.target.disabled = true;
+    const c = await sbFn("events-manager", { action: "conversion_create", ad_account_id: bvEventsAcct, name: cb.querySelector("#cvName").value, contains: cb.querySelector("#cvContains").value, type: cb.querySelector("#cvType").value, value: cb.querySelector("#cvValue").value }).catch(err => ({ error: err.message }));
+    e.target.disabled = false;
+    if (c.error) { msg.innerHTML = `<div class="msg err">❌ ${escH(c.error)}</div>`; return; }
+    bvToast("Custom conversion created"); bvEventsPanel();
+  });
 }
 
 // "Get a Revora ad account": the customer takes a ready ad account from Revora's pool, names it, and can create a dataset (pixel) at once.
@@ -12953,6 +13003,7 @@ function appendLaunchCard(p) {
   ok.onclick = async () => {
     ok.disabled = no.disabled = true; ok.textContent = "Launching…";
     try {
+      await bvWalletGate();
       const r = await fetch(`${SUPA_URL}/functions/v1/ai-auto-launch-tests`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json" }, body: JSON.stringify({ creative_ids: p.creative_ids }) }).then(x => x.json());
       if (r.error) throw new Error(r.error);
       card.classList.add("done"); card.querySelector(".ch-act-btns").remove();
