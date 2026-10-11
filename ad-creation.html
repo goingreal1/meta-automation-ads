@@ -39,6 +39,10 @@ header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.95);backdro
 .eyebrow{font-size:14px;font-weight:600;color:var(--blue);letter-spacing:.02em;margin-bottom:10px}
 .lesson h2{font-size:clamp(30px,5.4vw,44px);line-height:1.1;letter-spacing:-.025em;font-weight:600}
 .lesson p{color:var(--ink2);margin-top:16px;max-width:40em}
+.chip{position:absolute;z-index:2;display:inline-flex;align-items:center;gap:8px;background:#fff;color:var(--ink);font-weight:600;font-size:clamp(11px,2.1vw,15px);line-height:1;border-radius:999px;padding:9px 14px;box-shadow:0 8px 24px rgba(20,40,60,.18);white-space:nowrap}
+.chip i{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none}
+.chip.ok i{background:#22a45d}.chip.stop i{background:#e5484d}
+.chip.blue{background:var(--blue);color:#fff}.chip.blue i{background:#fff}
 .pic.lp{margin:26px 0 4px;aspect-ratio:16/10;max-width:40em;background:var(--soft)}
 .lesson ul,.lesson ol{margin:16px 0 0 22px;color:var(--ink2);max-width:40em}.lesson li{margin:7px 0}
 .lesson li b{color:var(--ink)}
@@ -120,7 +124,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 3 of 9</div>
   <h2>Choose where people go.</h2>
   <p>Every ad needs a destination. The choice decides how your ad is judged, so decide it before anything else.</p>
-  <div class="pic lp"><img src="/images/landing/ac-l3.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
+  <div class="pic lp"><img src="/images/landing/ac-l3.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip ok" style="left:6%;bottom:7%"><i></i>WhatsApp</span><span class="chip " style="left:62%;bottom:7%"><i></i>Sales page</span></div>
   <div class="cards two">
     <div class="card"><span class="ico">💬</span><h3>WhatsApp</h3><p>People tap the ad and start a chat with you. Best when you like to talk to buyers first. The ad is judged on the cost of each message.</p></div>
     <div class="card"><span class="ico">🛒</span><h3>Sales page</h3><p>People land on a page and order there. Best when the page can do the selling. The ad is judged on the cost of each purchase.</p></div>
@@ -186,7 +190,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 8 of 9</div>
   <h2>Review, approve and launch.</h2>
   <p>The AI shows you the whole plan in plain words: who sees the ad, the budget, the pictures, the words and the rule that decides when a bad ad is stopped. You read it, ask for changes and only then say yes.</p>
-  <div class="pic lp"><img src="/images/landing/ac-l8.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
+  <div class="pic lp"><img src="/images/landing/ac-l8.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip blue" style="left:6%;bottom:8%"><i></i>Approve and launch</span></div>
   <ul>
     <li><b>Approving turns the ads on right away</b> and starts spending your money.</li>
     <li>A <b>kill rule</b> flags ads that cost too much per result. Winners are never stopped.</li>
@@ -199,7 +203,7 @@ footer a{text-decoration:none}footer a:hover{text-decoration:underline}
   <div class="eyebrow">Lesson 9 of 9</div>
   <h2>Fund your ad account.</h2>
   <p>Ads run on the balance in your Meta ad account. Revora helps you top it up safely, and checks your balance live from Meta.</p>
-  <div class="pic lp"><img src="/images/landing/ac-l9.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>
+  <div class="pic lp"><img src="/images/landing/ac-l9.jpg" alt="" loading="lazy" onerror="this.parentNode.remove()"><span class="chip ok" style="left:61%;top:34%"><i></i>Transfer sent successfully</span></div>
   <ul>
     <li>Media buyers <b>ask for funding</b>, and the owner or an admin approves it.</li>
     <li>The approved amount is sent to the Meta account's bank-transfer details, and nothing else is ever accepted.</li>
