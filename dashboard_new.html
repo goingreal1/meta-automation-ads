@@ -2526,7 +2526,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderWaPanel(); bvRenderBillingPanel(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderPagesPanel(); bvRenderWaPanel(); bvRenderBillingPanel(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -11822,6 +11822,7 @@ function bvSettingsSections(isAdmin) {
   if (r === "delivery_agent" || r === "customer_care") return [{ id: "automation", icon: "🔔", label: "Alerts & notifications" }];
   const list = [
     { id: "accounts", icon: "🔌", label: "Ad accounts" },
+    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "pages", icon: "📄", label: "Pages" }] : []),
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "whatsapp", icon: "💬", label: "WhatsApp" }] : []),
     { id: "domains", icon: "🌐", label: "Domains" },
     ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "events", icon: "📡", label: "Event Manager" }] : []),
@@ -11931,7 +11932,7 @@ async function renderSettings(el) {
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="accounts" id="revoraAcctPanel"></div>' : ""}
     <div class="panel" data-sec="accounts" id="fbConnectPanel"></div>
 
-    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="whatsapp" id="waPanel"></div>' : ""}
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="pages" id="pagesPanel"></div><div class="panel" data-sec="whatsapp" id="waPanel"></div>' : ""}
 
     <div class="panel" data-sec="automation" id="notifPanel"></div>
 
@@ -12460,6 +12461,33 @@ async function bvSavePartnerBizId(mediaBuyerId, value, btn) {
 // stays as the fallback for people who would rather not log in.
 
 // ── Settings → WhatsApp: numbers hosted on Revora's own WhatsApp Business account (no Facebook login needed) ──
+// Link a Page by its ID: it must be shared with Revora's Business Manager and usable by the ad account.
+function bvRenderPagesPanel() {
+  const el = document.getElementById("pagesPanel"); if (!el) return;
+  const list = accountsList || [];
+  el.innerHTML = `
+    <div class="ph"><div class="ph-title">Facebook Pages</div></div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:12px;">Your ads run as a Facebook Page. Share the Page with Revora in Meta Business Settings (Pages → Add partner, with permission to create ads), then paste its Page ID here and we link it to the ad account.</div>
+    ${list.length ? `<div class="set-card">${list.map(a => `<div class="set-item"><span class="set-ic" style="background:#1877F2">📄</span><div class="set-tx"><b>${escH(a.nickname || a.name || "Ad account")}</b><span>${a.fb_page_id ? "✓ " + escH(a.fb_page_name || "Page") + " (" + escH(a.fb_page_id) + ")" : "No Page linked yet"}</span></div><button type="button" class="btn ${a.fb_page_id ? "btn-g" : "btn-a"}" style="width:auto;padding:7px 14px;" onclick="bvLinkPage('${a.id}')">${a.fb_page_id ? "Change" : "Link Page"}</button></div>`).join("")}</div>` : `<div style="font-size:12.5px;color:var(--muted);">Add an ad account first (Ad accounts tab).</div>`}`;
+}
+
+function bvLinkPage(accountId) {
+  bvModal("Link your Facebook Page", `
+    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">1. Share the Page with Revora: Meta Business Settings → Pages → Add partner, then give it permission to create ads.<br>2. Paste the Page ID below (Page → About → Page transparency).</div>
+    <div class="field"><label>Page ID</label><input id="lpId" inputmode="numeric" placeholder="e.g. 105123456789012"></div>
+    <div id="lpMsg" class="msg err" style="display:none;"></div>
+    <button type="button" class="btn btn-a" id="lpGo">Check &amp; link</button>`);
+  document.getElementById("lpGo").onclick = async () => {
+    const b = document.getElementById("lpGo"), m = document.getElementById("lpMsg");
+    b.disabled = true; b.textContent = "Checking…"; m.style.display = "none";
+    try {
+      const r = await sbFn("link-page", { ad_account_id: accountId, page_id: document.getElementById("lpId").value });
+      if (r.status === "linked") { bvCloseModal(); bvToast(`Linked ${r.page_name || "Page"}`); await loadAccounts(); if (activeTab === "settings") render(); return; }
+      m.textContent = r.error || "Could not link that Page."; m.style.display = "block";
+    } finally { b.disabled = false; b.textContent = "Check & link"; }
+  };
+}
+
 async function bvRenderWaPanel() {
   const el = document.getElementById("waPanel"); if (!el) return;
   const isAdm = bvIsAdminRole(), myBuyer = window.myProfile?.media_buyer_id;
