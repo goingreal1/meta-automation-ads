@@ -621,6 +621,15 @@ async function planAction(body: any, p: { companyId: string; role: string; media
     }));
     const { error: cErr } = await supabase.from("ad_set_configs").insert(cfgs);
     if (cErr) throw new Error("Could not save the ad sets: " + cErr.message);
+    {
+      // Revora-provided ad accounts are paid for by Revora's card: nothing goes live while the wallet is empty.
+      const { data: first } = await supabase.from("creative_assets").select("ad_account_id").eq("id", ids[0]).maybeSingle();
+      const { data: acc } = first?.ad_account_id ? await supabase.from("ad_accounts").select("billing_mode").eq("id", first.ad_account_id).maybeSingle() : { data: null as any };
+      if (acc?.billing_mode === "managed") {
+        const { data: w } = await supabase.rpc("account_wallet_balance", { p_account: first.ad_account_id });
+        if (Number(w ?? 0) <= 0) throw new Error("The wallet for this ad account is empty, so this can't go live yet. Top up your wallet, then try again.");
+      }
+    }
     const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-auto-launch-tests`, { method: "POST", headers: { Authorization: p.authHeader, "Content-Type": "application/json" }, body: JSON.stringify({ creative_ids: ids }) }).then((r) => r.json()).catch(() => null);
     if (!res || res.error) throw new Error(res?.error || "The launcher did not answer.");
     await supabase.from("ai_plans").update({ status: "launched", launched_at: new Date().toISOString(), result: res }).eq("id", row.id);
@@ -862,12 +871,13 @@ Rules:
 - Money is in Naira — use ₦.
 - Be concise and direct: short paragraphs or bullet points, not a wall of text. This person is busy.
 - For an action tool (request_funds, approve_fund_request): if the user already gave you what's needed (e.g. "request 50000 for TikTok ads"), just call it — don't ask for confirmation first, the same way clicking the button on the dashboard doesn't ask twice. Only ask a clarifying question if something required is actually missing (e.g. no amount given).
-- request_funds only works for a buyer; approve_fund_request and list_pending_fund_requests only work for an owner/admin. If the signed-in person's role doesn't allow it, say so plainly instead of calling the tool.
+- request_funds only works for a buyer and needs the Meta account number and bank Meta shows (ask for them if missing); list_pending_fund_requests only works for an owner/admin; approve_fund_request cannot send money (it needs the admin's transfer PIN on the Wallet tab), so tell the admin to approve there. If the signed-in person's role doesn't allow it, say so plainly instead of calling the tool.
+- Revora-provided ad accounts are paid from the wallet of the media buyer they are shared with (an owner/admin's own are paid from the company wallet). Nobody requests funds for them: the buyer tops up their wallet on the Wallet tab (Top up). request_funds is only for the person's OWN (personal) ad accounts.
 - If you call list_ad_accounts and there's more than one account, list them clearly (name + balance) in your answer so the person can see all of them at once.
 - For performance/KPI questions about a specific ad account (spend, CTR, orders, CPA, impressions, clicks) use get_ad_account_performance, not list_ad_accounts (that one only has balance). If the name is ambiguous it'll tell you the matches it found.
 - query_data is your general-purpose lookup for anything else across the site: orders (search by customer name/phone, filter by status), ad sets, daily performance metrics, creatives, products, the leaderboard (media_buyers), pending approvals, AI call logs (voice_calls), and website leads. Use it instead of saying you don't have something.
 - Sending real money (e.g. "send 5k to 238193057227 Paga") is DIFFERENT from request_funds/approve_fund_request: it is owner/admin only, and you can NEVER send it yourself. Call resolve_bank_account with the account number, bank name, and amount they stated. That ONLY verifies whose account it is -- it never moves money. Once it comes back verified, tell them the account name it resolved to and that you've put up a confirm card for them -- the actual send happens only when they click Confirm and re-enter their password on the dashboard, which you cannot do for them. Never say the money has been sent or is on its way -- you don't know that; only the confirm step knows.
-- A buyer sending money is narrower: resolve_meta_transfer_account only works for a buyer sending their OWN already-approved fund request into their Meta/Facebook Ads billing account. It automatically finds their approved request and rejects the account outright if it doesn't resolve to a Facebook/Meta name. If they have more than one approved request it comes back ambiguous with a list -- ask which one, then call it again passing amount_naira set to the exact amount they picked so it can tell them apart (it can't be identified by date alone). Same as resolve_bank_account, it only verifies -- the real send still needs their Confirm-and-password step on the dashboard.
+- Buyers never send money themselves (an admin approves with a transfer PIN and Revora sends it), so do not use resolve_meta_transfer_account.
 
 - ACTIVE AD ACCOUNT: ${ctx.account ? `the person is currently working in the ad account "${ctx.account.name}" (id ${ctx.account.id})${ctx.account.balance != null ? `, prepaid balance about ${fmtNaira(ctx.account.balance)}` : ""}. When they say "my ad account", "this account", "my ads", "how are my ads doing" etc., they mean THIS one — NEVER ask which ad account. Only talk about a different account if they name one.` : "none is selected right now (the person is on the all-accounts view). If they ask about ads, call list_ad_accounts and ask which one only if there is more than one."}
 - For ad set / ad level questions call get_live_ads (live from Meta: spend, messages/conversations, cost per message, reach, frequency, CTR per ad set and per ad). List the ads under each ad set when asked, and comment on what is working or not. Judge against THIS PERSON'S kill thresholds (below), not made-up benchmarks; the tool also marks ads that break them.
@@ -1102,14 +1112,16 @@ ${JSON.stringify(data)}`;
     {
       type: "function", function: {
         name: "request_funds",
-        description: "Submit a fund request for the signed-in buyer, exactly like clicking 'Request funds' on the Wallet tab. Buyer role only.",
+        description: "Submit a fund request for the signed-in buyer, exactly like clicking 'Request funds' on the Wallet tab. The money goes to the person's Meta ad account billing account, so the Meta account number and bank (shown by Meta as Meta/Facebook) are required; Revora checks the account really belongs to Meta/Facebook. Buyer role only. Nothing is sent until an admin approves with their transfer PIN.",
         parameters: {
           type: "object",
           properties: {
             amount_naira: { type: "number", description: "Amount in Naira to request" },
+            account_number: { type: "string", description: "The 10-digit account number Meta shows for paying into the ad account" },
+            bank_name: { type: "string", description: "The bank Meta shows with that account number" },
             note: { type: "string", description: "Optional note on what it's for" },
           },
-          required: ["amount_naira"],
+          required: ["amount_naira", "account_number", "bank_name"],
         },
       },
     },
@@ -1150,13 +1162,13 @@ ${JSON.stringify(data)}`;
     {
       type: "function", function: {
         name: "resolve_meta_transfer_account",
-        description: "For a buyer only: verify a destination account before sending THEIR OWN already-approved fund request balance into Meta/Facebook Ads billing. Finds their approved request automatically (the amount is fixed by that approval, never chosen here) and the account is rejected unless it resolves to a Facebook/Meta name. This ONLY verifies -- it never moves money.",
+        description: "No longer used: media buyers do not send money themselves any more (an admin approves with a transfer PIN and Revora sends it).",
         parameters: {
           type: "object",
           properties: {
-            account_number: { type: "string", description: "The destination account number (today's one-time Meta Ads top-up account from Ads Manager)" },
-            bank_name: { type: "string", description: "The bank name, e.g. 'Zenith Bank', 'GTBank'" },
-            amount_naira: { type: "number", description: "Only needed if the buyer has more than one approved fund request: the amount (in Naira) of the specific approved request they picked, e.g. from a disambiguation list you showed them." },
+            account_number: { type: "string", description: "The destination account number" },
+            bank_name: { type: "string", description: "The bank name" },
+            amount_naira: { type: "number", description: "Unused" },
           },
           required: ["account_number", "bank_name"],
         },
@@ -1210,9 +1222,8 @@ ${JSON.stringify(data)}`;
         if (tc.function.name === "resolve_bank_account" && (result as any)?.verified) {
           pendingPayment = result;
         }
-        if (tc.function.name === "resolve_meta_transfer_account") {
-          if ((result as any)?.verified) pendingPayment = result;
-          if ((result as any)?.ambiguous) quickReplies = ((result as any).matches || []).slice(0, 6).map((m: string) => `Use ${m}`);
+        if (tc.function.name === "request_funds" && (result as any)?.ambiguous) {
+          quickReplies = ((result as any).matches || []).slice(0, 6).map((m: string) => `Use ${m}`);
         }
         messages.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
       }
@@ -1448,11 +1459,15 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
         else { per[f.media_buyer_id].transferred += Number(f.amount_naira || 0); transferredTotal += Number(f.amount_naira || 0); }
       }
       const withdrawnTotal = (withdrawals || []).filter(w => w.status === "sent").reduce((s, w) => s + Number(w.amount_naira || 0), 0);
-      const fundingWalletBalance = companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
+      // Ad spend on Revora-provided (managed) accounts and account fees come out of the same wallet; one function holds that maths.
+      const { data: cw } = await supabase.rpc("company_wallet_balance", { p_company: ctx.companyId });
+      const fundingWalletBalance = cw != null ? Number(cw) : companyTopups - approvedTotal - transferredTotal - withdrawnTotal;
+      const spentOnRevoraAccounts = Math.max(0, (companyTopups - approvedTotal - transferredTotal - withdrawnTotal) - fundingWalletBalance);
 
+      const { data: myRevoraWallet } = ctx.role === "buyer" && ctx.mediaBuyerId ? await supabase.rpc("buyer_wallet_balance", { p_buyer: ctx.mediaBuyerId }) : { data: null as any };
       if (ctx.role === "buyer") {
         const mine = ctx.mediaBuyerId ? per[ctx.mediaBuyerId] || { confirmed: 0, approved: 0, transferred: 0 } : { confirmed: 0, approved: 0, transferred: 0 };
-        return { your_confirmed_revenue: fmtNaira(mine.confirmed), your_approved_not_yet_sent: fmtNaira(mine.approved), your_transferred_to_ad_account: fmtNaira(mine.transferred) };
+        return { your_confirmed_revenue: fmtNaira(mine.confirmed), your_approved_not_yet_sent: fmtNaira(mine.approved), your_transferred_to_ad_account: fmtNaira(mine.transferred), your_revora_wallet: fmtNaira(Math.max(0, Number(myRevoraWallet ?? 0))), note: "your_revora_wallet pays for Revora ad accounts shared with you; the company funding wallet pays for requests on your own ad accounts." };
       }
       return {
         company_funding_wallet_balance: fmtNaira(fundingWalletBalance),
@@ -1460,6 +1475,7 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
         approved_awaiting_transfer: fmtNaira(approvedTotal),
         already_transferred_to_ad_accounts: fmtNaira(transferredTotal),
         withdrawn_by_admin: fmtNaira(withdrawnTotal),
+        spent_on_revora_ad_accounts_and_fees: fmtNaira(spentOnRevoraAccounts),
         per_buyer: (buyers || []).map(b => ({ name: b.name, confirmed_revenue: fmtNaira(per[b.id]?.confirmed || 0), approved_not_yet_sent: fmtNaira(per[b.id]?.approved || 0) })),
       };
     }
@@ -1468,14 +1484,21 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
       if (ctx.role !== "buyer" || !ctx.mediaBuyerId) return { error: "Only a media buyer can request funds. This account isn't a buyer." };
       const amount = Number(args?.amount_naira);
       if (!amount || amount <= 0) return { error: "A valid positive amount_naira is required." };
-      const { data: inserted, error } = await supabase.from("fund_requests").insert({
-        company_id: ctx.companyId, media_buyer_id: ctx.mediaBuyerId, amount_naira: amount, note: args?.note || null,
-      }).select().single();
-      if (error) return { error: "Could not submit request: " + error.message };
-      // Same notifications the dashboard's own "Request funds" button fires -- fire-and-forget.
-      fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ type: "fund_request_submitted", fund_request_id: inserted.id }) }).catch(() => {});
-      fetch(`${SUPABASE_URL}/functions/v1/send-internal-email`, { method: "POST", headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ type: "fund_request_submitted", fund_request_id: inserted.id }) }).catch(() => {});
-      return { ok: true, submitted: { id: inserted.id, amount: fmtNaira(amount), note: args?.note || null, status: "pending" } };
+      const accountNumber = (args?.account_number || "").toString().replace(/\s+/g, "");
+      const bankNameQuery = (args?.bank_name || "").toString().trim().toLowerCase();
+      if (!/^\d{10}$/.test(accountNumber) || !bankNameQuery) return { error: "I need the 10-digit account number and the bank that Meta shows for paying into the ad account. Ask the person for both." };
+      const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
+      const bl = await fetch("https://api.paystack.co/bank?country=nigeria", { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } }).then((r) => r.json()).catch(() => null);
+      const banks: any[] = bl?.data ?? [];
+      const exact = banks.find((x) => x.name.toLowerCase() === bankNameQuery);
+      const found = exact ? [exact] : banks.filter((x) => x.name.toLowerCase().includes(bankNameQuery) || (x.slug || "").toLowerCase().includes(bankNameQuery));
+      if (!found.length) return { error: `No bank matching "${args?.bank_name}" found.` };
+      if (found.length > 1) return { ambiguous: true, matches: found.slice(0, 8).map((x) => x.name) };
+      const r: any = await fetch(`${SUPABASE_URL}/functions/v1/fund-request-submit`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, "x-internal-key": SERVICE_KEY }, body: JSON.stringify({ on_behalf_of: ctx.userId, action: "submit", amount_naira: amount, note: args?.note || null, account_number: accountNumber, bank_code: found[0].code }) }).then((x) => x.json()).catch(() => null);
+      if (!r) return { error: "Could not reach the funding service. Try again." };
+      if (r.error) return { error: r.error };
+      if (r.verified === false) return { error: `That account was not accepted: ${r.reason || "it did not resolve to Meta/Facebook"}${r.account_name ? ` (it belongs to ${r.account_name})` : ""}. Check the account number and bank Meta shows.` };
+      return { ok: true, submitted: { amount: fmtNaira(amount), status: r.auto_sent ? "sent automatically" : "pending admin approval", note: args?.note || null }, auto_note: r.auto_note || undefined };
     }
 
     case "list_pending_fund_requests": {
@@ -1489,14 +1512,8 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
 
     case "approve_fund_request": {
       if (ctx.role !== "owner" && ctx.role !== "admin") return { error: "Only an owner/admin can approve fund requests." };
-      const id = args?.fund_request_id;
-      if (!id) return { error: "fund_request_id is required." };
-      const { data: existing } = await supabase.from("fund_requests").select("id, company_id, status, amount_naira, media_buyer_id").eq("id", id).maybeSingle();
-      if (!existing || existing.company_id !== ctx.companyId) return { error: "Fund request not found." };
-      if (existing.status !== "pending") return { error: `This request is already "${existing.status}", not pending.` };
-      const { error } = await supabase.from("fund_requests").update({ status: "approved", decided_at: new Date().toISOString(), decided_by: ctx.userId }).eq("id", id);
-      if (error) return { error: error.message };
-      return { ok: true, approved: { fund_request_id: id, amount: fmtNaira(existing.amount_naira) } };
+      // Approving sends real money, so it needs the admin's transfer PIN, which is only ever typed on the dashboard (or the connector's PIN widget), never in chat.
+      return { error: "Approving a fund request sends the money, so it needs your transfer PIN. Open the Wallet tab and tap 'Approve and send' on the request, and enter your PIN there. Nothing has been sent." };
     }
 
     case "resolve_bank_account": {
@@ -1537,63 +1554,8 @@ async function runTool(name: string, args: any, ctx: Ctx): Promise<unknown> {
     }
 
     case "resolve_meta_transfer_account": {
-      if (ctx.role !== "buyer" || !ctx.mediaBuyerId) return { error: "This is only for media buyers sending their own approved funds." };
-      const accountNumber = (args?.account_number || "").toString().trim();
-      const bankNameQuery = (args?.bank_name || "").toString().trim();
-      if (!accountNumber || !bankNameQuery) return { error: "account_number and bank_name are required." };
-
-      const { data: approved } = await supabase.from("fund_requests")
-        .select("id, amount_naira, note, requested_at")
-        .eq("company_id", ctx.companyId).eq("media_buyer_id", ctx.mediaBuyerId)
-        .eq("status", "approved").is("paystack_transfer_code", null)
-        .order("requested_at", { ascending: true });
-      if (!approved || !approved.length) return { error: "You have no approved fund requests ready to transfer. Request funds first and wait for admin approval." };
-
-      let fr = approved[0];
-      if (approved.length > 1) {
-        const pickedAmount = args?.amount_naira != null ? Number(args.amount_naira) : null;
-        const picked = pickedAmount != null ? approved.find(f => Number(f.amount_naira) === pickedAmount) : null;
-        if (!picked) {
-          return { ambiguous: true, matches: approved.map(f => `${fmtNaira(f.amount_naira)} request from ${new Date(f.requested_at).toLocaleDateString()}`) };
-        }
-        fr = picked;
-      }
-
-      const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
-      if (!PAYSTACK_SECRET_KEY) return { error: "Paystack isn't configured yet (PAYSTACK_SECRET_KEY missing)." };
-
-      const bankListRes = await fetch("https://api.paystack.co/bank?country=nigeria", { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
-      const bankList = await bankListRes.json().catch(() => null);
-      if (!bankListRes.ok || !bankList?.data) return { error: "Could not load the bank list from Paystack." };
-
-      const q = bankNameQuery.toLowerCase();
-      const exact = bankList.data.find((b: any) => b.name.toLowerCase() === q);
-      const matches = exact ? [exact] : bankList.data.filter((b: any) => b.name.toLowerCase().includes(q) || (b.slug || "").toLowerCase().includes(q));
-      if (!matches.length) return { error: `No bank matching "${bankNameQuery}" found.` };
-      if (matches.length > 1) return { ambiguous: true, matches: matches.slice(0, 8).map((b: any) => b.name) };
-      const bank = matches[0];
-
-      const resolveRes = await fetch(`https://api.paystack.co/bank/resolve?account_number=${encodeURIComponent(accountNumber)}&bank_code=${encodeURIComponent(bank.code)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
-      const resolved = await resolveRes.json().catch(() => null);
-      if (!resolveRes.ok || !resolved?.data?.account_name) return { error: resolved?.message || "Could not verify this account. Double-check the account number and bank." };
-      const accountName = resolved.data.account_name;
-
-      if (!/facebook|meta/i.test(accountName)) {
-        return { error: `This account resolved to "${accountName}", which isn't a Facebook/Meta account. Only transfers into your Meta Ads billing account are allowed -- double-check you copied today's top-up account number from Ads Manager, not an old one.` };
-      }
-
-      return {
-        verified: true,
-        kind: "meta_transfer",
-        fund_request_id: fr.id,
-        account_number: accountNumber,
-        bank_name: bank.name,
-        bank_code: bank.code,
-        account_name: accountName,
-        amount_naira: fr.amount_naira,
-        amount: fmtNaira(fr.amount_naira),
-        note: "Meta/Facebook Ads billing top-up",
-      };
+      // Buyers no longer send money themselves: an admin approves with a transfer PIN and Revora sends it.
+      return { error: "Media buyers don't send money themselves. Once an admin approves your request, Revora sends it to your Meta account for you." };
     }
 
     default:
