@@ -316,7 +316,7 @@ async function createAdCreative(
   media: { videoId?: string; imageUrl?: string },
   destinationLink: string,
   ctaType: string,
-  destinationType: "website" | "whatsapp",
+  destinationType: Dest,
   productName: string
 ): Promise<string | null> {
   try {
@@ -356,6 +356,16 @@ async function createAdCreative(
           },
         },
       };
+    } else if (destinationType === "messenger" || destinationType === "instagram") {
+      // Click-to-Messenger / Click-to-Instagram-Direct: a message button, no website.
+      const ig = destinationType === "instagram";
+      const cta = ig
+        ? { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT" } }
+        : { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } };
+      const msgLink = "https://fb.com/messenger_doc/";
+      objectStorySpec = media.videoId
+        ? { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), video_data: { video_id: media.videoId, title: creative.headline || undefined, message: creative.primary_text || "", call_to_action: cta } }
+        : { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), link_data: { picture: media.imageUrl, link: msgLink, message: creative.primary_text || "", name: creative.headline || undefined, description: creative.description || undefined, call_to_action: cta } };
     } else {
       const cta = { type: ctaType, value: { link: destinationLink } };
       objectStorySpec = media.videoId
@@ -414,7 +424,8 @@ async function createAdWithCTA(
   adsetId: string,
   creativeId: string,
   adName: string,
-  accountId: string
+  accountId: string,
+  status: "ACTIVE" | "PAUSED" = "ACTIVE"
 ): Promise<string | null> {
   try {
     const adPayload = {
@@ -424,7 +435,7 @@ async function createAdWithCTA(
       // A future-dated launch still creates this now; the ad set's own
       // start_time (see buildAdSetPayload) is what actually holds delivery
       // until then, a native Meta behavior, not something this app enforces.
-      status: "ACTIVE",
+      status,
       name: adName,
       access_token: META_ACCESS_TOKEN,
     };
@@ -540,8 +551,11 @@ function placementSpec(keys: any): Record<string, any> | null {
 // deliberately NOT in this map -- it needs a real Meta Lead Ads form, which
 // nothing here creates yet, so the dashboard disables that choice entirely
 // rather than silently launching something broken.
+type Dest = "website" | "whatsapp" | "messenger" | "instagram";
+const MSG_DESTINATIONS = ["whatsapp", "messenger", "instagram"];
 const OBJECTIVE_CONFIG: Record<string, { optimizationGoal: string; promotedObject: (pixelId: string, pageId: string) => Record<string, any> | null }> = {
   OUTCOME_SALES: { optimizationGoal: REAL_OPTIMIZATION_GOAL, promotedObject: (pixelId) => ({ pixel_id: pixelId, custom_event_type: "PURCHASE" }) },
+  OUTCOME_LEADS: { optimizationGoal: REAL_OPTIMIZATION_GOAL, promotedObject: (pixelId) => ({ pixel_id: pixelId, custom_event_type: "LEAD" }) },
   OUTCOME_TRAFFIC: { optimizationGoal: "LINK_CLICKS", promotedObject: () => null },
   OUTCOME_ENGAGEMENT: { optimizationGoal: "POST_ENGAGEMENT", promotedObject: (_pixelId, pageId) => ({ page_id: pageId }) },
   OUTCOME_AWARENESS: { optimizationGoal: "REACH", promotedObject: () => null },
@@ -578,8 +592,11 @@ async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: stri
 // Ad-set config comes directly from the dashboard's ad-set builder (one row =
 // one ad set, "Duplicate x N" clones it) -- real, direct fields the user set
 // themselves (budget, age, gender, geography), not an abstract named preset.
-async function buildTargetingFromConfig(config: any, destinationType: "website" | "whatsapp"): Promise<Record<string, any>> {
-  const basePlacements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS : REAL_PLACEMENTS;
+async function buildTargetingFromConfig(config: any, destinationType: Dest): Promise<Record<string, any>> {
+  const basePlacements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS
+    : destinationType === "instagram" ? { publisher_platforms: ["instagram"], facebook_positions: [] as string[], instagram_positions: ["stream", "story", "reels"], device_platforms: ["mobile"] }
+    : destinationType === "messenger" ? { publisher_platforms: ["facebook", "instagram"], facebook_positions: ["feed", "story", "facebook_reels"], instagram_positions: ["stream", "story", "reels"], device_platforms: ["mobile"] }
+    : REAL_PLACEMENTS;
   // "automatic"/null (the default) keeps the exact existing broad preset;
   // any other value swaps in a narrower, user-chosen preset instead. Publisher
   // platforms and device platforms are deliberately NOT swapped by the preset
@@ -591,17 +608,21 @@ async function buildTargetingFromConfig(config: any, destinationType: "website" 
   const genders = GENDER_MAP[config.gender ?? "all"] ?? [1, 2];
   // Advantage+ audience expansion defaults ON (existing behavior) -- only a
   // row that explicitly set advantage_audience=false turns it off.
-  const advantageOn = config.advantage_audience !== false;
+  // Meta only lets Advantage+ audience use a minimum age of 25 or lower and a maximum of 65; a narrower age
+  // range is a hard limit, so it needs Advantage+ off (this is what rejected a 30-60 ad set).
+  const ageMin = config.age_min ?? 25, ageMax = config.age_max ?? 65;
+  const advantageOn = config.advantage_audience !== false && ageMin <= 25 && ageMax >= 65;
   const targeting: Record<string, any> = {
     genders,
-    age_min: config.age_min ?? 25,
-    age_max: config.age_max ?? 65,
+    age_min: ageMin,
+    age_max: ageMax,
     ...(advantageOn ? { targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: 1 } } } : { targeting_automation: { advantage_audience: 0 } }),
     publisher_platforms: basePlacements.publisher_platforms,
     facebook_positions: positionOverride?.facebook_positions ?? basePlacements.facebook_positions,
     instagram_positions: positionOverride?.instagram_positions ?? basePlacements.instagram_positions,
     device_platforms: devicePlatforms.length ? devicePlatforms : basePlacements.device_platforms,
   };
+  for (const k of ["facebook_positions", "instagram_positions"]) if (Array.isArray(targeting[k]) && !targeting[k].length) delete targeting[k];
   // Placements picked one by one replace the preset/default entirely.
   const chosen = placementSpec(config.placements);
   if (chosen) {
@@ -650,7 +671,8 @@ function buildAdSetPayload(opts: {
   bidStrategy: string;
   bidAmountNaira?: number | null;
   billingEvent: string;
-  destinationType: "website" | "whatsapp";
+  destinationType: Dest;
+  status?: "ACTIVE" | "PAUSED";
   startTime?: string | null;
   endTime?: string | null;
 }) {
@@ -663,7 +685,7 @@ function buildAdSetPayload(opts: {
     // Goes live immediately; start_time (below, when set) is what actually
     // delays real delivery for a scheduled launch -- Meta won't spend on an
     // ACTIVE ad set before its own start_time arrives.
-    status: "ACTIVE",
+    status: opts.status ?? "ACTIVE",
     access_token: META_ACCESS_TOKEN,
   };
   // Traffic/Awareness objectives need no promoted_object at all -- Meta
@@ -679,9 +701,9 @@ function buildAdSetPayload(opts: {
   // Required alongside CONVERSATIONS optimization for Click-to-WhatsApp ad
   // sets under OUTCOME_SALES -- without it Meta rejects the optimization_goal
   // itself with "Performance goal isn't available", confirmed via live testing.
-  if (opts.destinationType === "whatsapp") {
-    payload.destination_type = "WHATSAPP";
-  }
+  if (opts.destinationType === "whatsapp") payload.destination_type = "WHATSAPP";
+  else if (opts.destinationType === "messenger") payload.destination_type = "MESSENGER";
+  else if (opts.destinationType === "instagram") payload.destination_type = "INSTAGRAM_DIRECT";
   // CBO: budget lives on the campaign, not here -- Meta rejects an ad set that
   // sets its own budget under a campaign-budget-optimized campaign.
   if (opts.budgetType === "abo") {
@@ -717,8 +739,11 @@ async function launchAdSetGroup(
     // product's own fields are still the fallback, so an older product-linked
     // row (or one where only the product side was filled in) launches exactly
     // as it did before this existed.
-    const destinationType: "website" | "whatsapp" =
-      (creative.destination_type || creative.products?.destination_type) === "whatsapp" ? "whatsapp" : "website";
+    const rawDest = String(creative.destination_type || creative.products?.destination_type || "");
+    const destinationType: Dest = (MSG_DESTINATIONS.includes(rawDest) ? rawDest : "website") as Dest;
+    const isMsg = destinationType !== "website";
+    // Draft mode: everything is created on Meta but left PAUSED, so it shows in Ads Manager and nothing spends.
+    const liveStatus: "ACTIVE" | "PAUSED" = creative.launch_paused === true ? "PAUSED" : "ACTIVE";
     const whatsappNumber = creative.whatsapp_number || creative.products?.whatsapp_number || "";
     const destinationLink = creative.landing_page_url || creative.products?.landing_page_url || "";
     const ctaType = creative.cta_type || "SHOP_NOW";
@@ -748,11 +773,19 @@ async function launchAdSetGroup(
     // The campaign builder's objective step -- WhatsApp destination stays
     // forced to OUTCOME_SALES regardless of what's picked (that destination
     // IS a sales-via-messaging flow in this app, same as always).
+    // WhatsApp is always Sales. Messenger / Instagram messages can be Sales, Leads or Engagement. Website: any objective.
     const campaignObjective = destinationType === "whatsapp"
       ? "OUTCOME_SALES"
-      : (VALID_OBJECTIVES.includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES");
+      : isMsg
+        ? (["OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT"].includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES")
+        : (VALID_OBJECTIVES.includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES");
     const objectiveDefaults = OBJECTIVE_CONFIG[campaignObjective];
-    if (destinationType === "website" && campaignObjective === "OUTCOME_SALES" && !pixelId) {
+    if (destinationType === "instagram" && !igUserId) {
+      const msg = `Creative ${creative.id} is set to Instagram messages but this ad account has no Instagram account linked.`;
+      console.error(msg);
+      return { error: msg };
+    }
+    if (destinationType === "website" && (campaignObjective === "OUTCOME_SALES" || campaignObjective === "OUTCOME_LEADS") && !pixelId) {
       const msg = `Missing pixel_id for creative ${creative.id} -- check the ad_accounts row (Sales objective needs a connected pixel).`;
       console.error(msg);
       return { error: msg };
@@ -766,7 +799,9 @@ async function launchAdSetGroup(
     const promotedObject =
       destinationType === "whatsapp"
         ? { page_id: pageId, whatsapp_phone_number: whatsappNumber }
-        : objectiveDefaults.promotedObject(pixelId, pageId);
+        : isMsg
+          ? { page_id: pageId }
+          : objectiveDefaults.promotedObject(pixelId, pageId);
 
     // Ad sets to create for this creative -- built directly in the dashboard's
     // ad-set builder (one row = one ad set; "Duplicate x N" clones it into more
@@ -805,7 +840,7 @@ async function launchAdSetGroup(
       // Goes live immediately -- no approval gate. A scheduled launch is
       // still created ACTIVE now; its ad set's start_time (native Meta
       // scheduling) is what holds real delivery until that time.
-      status: "ACTIVE",
+      status: liveStatus,
       access_token: META_ACCESS_TOKEN,
     };
     if (budgetType === "cbo") {
@@ -847,7 +882,7 @@ async function launchAdSetGroup(
         daily_budget_naira: budgetType === "abo" ? null : totalBudgetNaira,
         // Mirrors the real Meta object's status -- goes live immediately now
         // that nothing flips this from "paused" to "active" on approval anymore.
-        status: "active",
+        status: liveStatus === "PAUSED" ? "paused" : "active",
         ad_account_id: creative.ad_account_id,
         // Every row below (campaigns/creatives/ad_sets/ad_set_ads) must carry
         // company_id -- every read anywhere in the dashboard filters by
@@ -959,7 +994,7 @@ async function launchAdSetGroup(
       // OUTCOME_SALES offers a real per-ad-set choice (Conversions/Link
       // clicks/Landing page views) -- Traffic/Engagement/Awareness each have
       // one objective-correct goal, not several worth exposing.
-      const optimizationGoal = destinationType === "whatsapp"
+      const optimizationGoal = isMsg
         ? "CONVERSATIONS"
         : campaignObjective === "OUTCOME_SALES"
           ? (VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL)
@@ -989,6 +1024,7 @@ async function launchAdSetGroup(
             bidAmountNaira: config.bid_amount_naira ? Number(config.bid_amount_naira) : null,
             billingEvent,
             destinationType,
+            status: liveStatus,
             startTime,
             endTime,
           }),
@@ -1013,7 +1049,7 @@ async function launchAdSetGroup(
           ad_account_id: creative.ad_account_id,
           // Mirrors the real Meta ad set's status -- same reasoning as the
           // campaigns-row status above.
-          status: "active",
+          status: liveStatus === "PAUSED" ? "paused" : "active",
           age_min: config.age_min,
           age_max: config.age_max,
           genders: targeting.genders,
@@ -1058,7 +1094,8 @@ async function launchAdSetGroup(
           a.metaId,
           lc.metaCreativeId,
           lc.adName || `AD-${a.label}-${lc.fileName.substring(0, 20)}-${Date.now()}`,
-          accountId
+          accountId,
+          liveStatus
         );
         if (!adId) {
           console.error(`Failed to create ad for "${a.label}" ad set with creative ${lc.id} (${lc.fileName})`);
@@ -1229,6 +1266,7 @@ Deno.serve(async (req: Request) => {
       launchPlans.push({
         creative_name: anchor.products?.product_name ? `${copyNames} (${anchor.products.product_name})` : copyNames,
         campaign_id: result.campaign_id,
+        paused: anchor.launch_paused === true,
       });
     }
 
@@ -1253,17 +1291,20 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    const allPaused = launchPlans.every((p: any) => p.paused);
     return new Response(
       JSON.stringify({
         success: true,
-        status: "live",
+        status: allPaused ? "paused" : "live",
         creatives: launchPlans.length,
         ad_sets: totalAdSetsCreated,
         budget_naira: totalBudget,
         campaign_ids: launchPlans.map((p) => p.campaign_id),
         message: launchErrors.length
           ? `✅ Launched ${launchPlans.length} creative(s), but ${launchErrors.length} failed.`
-          : `✅ Launched ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s), ₦${totalBudget.toLocaleString()}/day total.`,
+          : allPaused
+            ? `✅ Created ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s) on Meta, PAUSED (nothing is spending). Turn it on in Ads Manager or in Revora when ready.`
+            : `✅ Launched ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s), ₦${totalBudget.toLocaleString()}/day total.`,
         errors: launchErrors.length ? launchErrors : undefined,
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }

@@ -2892,15 +2892,17 @@ async function triggerSync() {
 // whether the CTA select applies (Meta forces its own "Send Message" CTA on
 // WhatsApp ads, so that field is irrelevant there).
 function bvOnDestinationChange() {
-  const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
+  const destVal = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
+  const isWhatsapp = destVal === "whatsapp";
+  const isMsgDest = destVal !== "website";
   document.getElementById("f_whatsappNumberField").style.display = isWhatsapp ? "" : "none";
-  document.getElementById("f_landingUrlField").style.display = isWhatsapp ? "none" : "";
+  document.getElementById("f_landingUrlField").style.display = isMsgDest ? "none" : "";
   const ctaSelect = document.getElementById("f_cta");
   const ctaNote = document.getElementById("f_ctaNote");
-  if (ctaSelect) ctaSelect.disabled = isWhatsapp;
+  if (ctaSelect) ctaSelect.disabled = isMsgDest;
   const waBox = document.getElementById("f_waMsgBox");
   if (waBox) waBox.style.display = isWhatsapp ? "" : "none";
-  if (ctaNote) ctaNote.innerHTML = isWhatsapp ? `Ignored for WhatsApp ads — Meta uses its own "Send Message" button automatically.` : "";
+  if (ctaNote) ctaNote.innerHTML = isMsgDest ? `Ignored for chat ads — Meta uses its own message button automatically.` : "";
   bvRenderAdSetRows();
   bvRenderBuilderSummary();
   bvRenderWhatsappPicker();
@@ -3019,7 +3021,7 @@ const OBJECTIVE_GATE_OPTIONS = [
   { value: "OUTCOME_AWARENESS", icon: "📣", label: "Awareness", desc: "Reach as many people as possible" },
   { value: "OUTCOME_TRAFFIC", icon: "👆", label: "Traffic", desc: "Drive clicks to your link" },
   { value: "OUTCOME_ENGAGEMENT", icon: "💬", label: "Engagement", desc: "Likes, comments, shares on the post" },
-  { value: "OUTCOME_LEADS", icon: "🎯", label: "Leads", disabled: true, desc: "Coming soon — needs a Meta lead form, not built yet" },
+  { value: "OUTCOME_LEADS", icon: "🎯", label: "Leads", desc: "People who sign up or message you" },
   { value: "OUTCOME_SALES", icon: "🛒", label: "Sales", desc: "Drive purchases — also what WhatsApp ads always use" },
 ];
 
@@ -3255,12 +3257,18 @@ function bvOpenCampaignBuilder(presetObjective) {
           <div class="wz-sub">Set it up in a few steps. Your ads start paused until you approve them.</div>
           <div class="wz-steps" id="bvWzSteps">${BV_WZ.map((w, i) => `<button type="button" class="wz-step" data-wz="${w[0]}" onclick="bvWzGo('${w[0]}')"><span class="wz-n">${i + 1}</span>${w[1]}</button>`).join("")}</div>
           <div class="field" data-wzs="goal"><label>Where do you want customers to go? *</label>
-            <div style="display:flex;gap:18px;margin-top:4px;">
+            <div style="display:flex;gap:18px;margin-top:4px;flex-wrap:wrap;">
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
                 <input type="radio" name="f_destination" value="whatsapp" ${!presetObjective || presetObjective === "OUTCOME_SALES" ? "checked" : ""} onchange="bvOnDestinationChange()"> WhatsApp — opens a chat
               </label>
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
                 <input type="radio" name="f_destination" value="website" ${presetObjective && presetObjective !== "OUTCOME_SALES" ? "checked" : ""} onchange="bvOnDestinationChange()"> Website — clicks through to a link
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
+                <input type="radio" name="f_destination" value="messenger" onchange="bvOnDestinationChange()"> Messenger — opens a chat
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
+                <input type="radio" name="f_destination" value="instagram" onchange="bvOnDestinationChange()"> Instagram — opens a DM
               </label>
             </div>
           </div>
@@ -3300,7 +3308,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                   <option value="OUTCOME_TRAFFIC" ${presetObjective === "OUTCOME_TRAFFIC" ? "selected" : ""}>Traffic — drive clicks to your link</option>
                   <option value="OUTCOME_ENGAGEMENT" ${presetObjective === "OUTCOME_ENGAGEMENT" ? "selected" : ""}>Engagement — likes, comments, shares on the post</option>
                   <option value="OUTCOME_AWARENESS" ${presetObjective === "OUTCOME_AWARENESS" ? "selected" : ""}>Awareness — reach as many people as possible</option>
-                  <option value="OUTCOME_LEADS" disabled>Leads — coming soon (needs a Meta lead form, not built yet)</option>
+                  <option value="OUTCOME_LEADS">Leads — people who sign up or enquire (website needs a pixel; also works for Messenger and Instagram)</option>
                 </select>
                 <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
               </div>
@@ -3308,6 +3316,8 @@ function bvOpenCampaignBuilder(presetObjective) {
 
             <div class="bv-section-card" data-wzs="budget">
               <div class="bv-section-card-title"><span class="bv-ico">💰</span> Budget & schedule</div>
+              <div class="field" style="margin-bottom:12px;"><label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;"><input type="checkbox" id="f_launch_paused" style="width:auto;"> Create it paused (draft)</label>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Everything is created on Meta but left paused, so you can show it or switch it on later. Nothing spends.</div></div>
               <div class="field"><label>Budget type</label>
                 <select id="f_budget_type" onchange="bvRenderBuilderSummary()">
                   <option value="abo">ABO — budget set per ad set</option>
@@ -3580,9 +3590,10 @@ function bvOpenReviewModal(copies) {
     || selectedProduct?.product_name
     || (isWhatsapp ? document.getElementById("f_whatsapp_number")?.value.trim() : document.getElementById("f_landing_url")?.value.trim())
     || "this campaign";
-  const destLabel = isWhatsapp ? "Click-to-WhatsApp" : "Website";
+  const destRaw = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
+  const destLabel = { whatsapp: "Click-to-WhatsApp", website: "Website", messenger: "Click-to-Messenger", instagram: "Click-to-Instagram DM" }[destRaw] || "Website";
   const objectiveLabels = {
-    OUTCOME_SALES: "Sales", OUTCOME_TRAFFIC: "Traffic", OUTCOME_ENGAGEMENT: "Engagement", OUTCOME_AWARENESS: "Awareness",
+    OUTCOME_SALES: "Sales", OUTCOME_LEADS: "Leads", OUTCOME_TRAFFIC: "Traffic", OUTCOME_ENGAGEMENT: "Engagement", OUTCOME_AWARENESS: "Awareness",
   };
   const objective = isWhatsapp ? "OUTCOME_SALES" : (document.getElementById("f_objective")?.value || "OUTCOME_SALES");
   const totalBudget = bvAdSetRows.reduce((s, r) => s + (Number(r.budget_naira) || 0), 0);
@@ -3655,8 +3666,9 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       const isWhatsapp = document.querySelector('input[name="f_destination"]:checked')?.value === "whatsapp";
       const whatsappNumber = document.getElementById("f_whatsapp_number").value.trim();
       const landingUrl = document.getElementById("f_landing_url").value.trim();
+      const destVal = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
       if (isWhatsapp && !whatsappNumber) throw new Error("Enter a WhatsApp number to launch to.");
-      if (!isWhatsapp && !landingUrl) throw new Error("Enter a landing page URL to launch to.");
+      if (destVal === "website" && !landingUrl) throw new Error("Enter a landing page URL to launch to.");
 
       // Multiple ad copies in one launch get grouped by a shared batch id so
       // ai-auto-launch-tests treats them as one campaign with N ads per ad set
@@ -3736,9 +3748,10 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       const endDate = document.getElementById("f_end_date").value;
       const sharedFields = {
         ...(productId ? { product_id: productId } : {}),
-        destination_type: isWhatsapp ? "whatsapp" : "website",
+        destination_type: destVal,
         whatsapp_number: isWhatsapp ? whatsappNumber : null,
-        landing_page_url: isWhatsapp ? null : landingUrl,
+        landing_page_url: destVal === "website" ? landingUrl : null,
+        launch_paused: document.getElementById("f_launch_paused")?.checked === true,
         campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
         campaign_objective: isWhatsapp ? "OUTCOME_SALES" : (document.getElementById("f_objective").value || "OUTCOME_SALES"),
         budget_type: document.getElementById("f_budget_type").value,
@@ -4037,7 +4050,7 @@ function bvRenderBuilderSummary() {
       <div class="bv-builder-summary-title">${escH(campaignName)}</div>
       <dl>
         <dt>Objective</dt><dd>${escH(objLabel)}</dd>
-        <dt>Destination</dt><dd>${isWhatsapp ? "WhatsApp" : "Website"}</dd>
+        <dt>Destination</dt><dd>${{ whatsapp: "WhatsApp", website: "Website", messenger: "Messenger", instagram: "Instagram DM" }[document.querySelector('input[name="f_destination"]:checked')?.value] || "Website"}</dd>
         <dt>Budget type</dt><dd>${budgetType}</dd>
         <dt>Ad sets</dt><dd>${adSetCount}</dd>
         <dt>Ads</dt><dd>${adCount}</dd>
@@ -4992,14 +5005,19 @@ function bvRenderAdSetRows() {
   // something ai-auto-launch-tests will silently override.
   const objSelect = document.getElementById("f_objective");
   const objNote = document.getElementById("f_objectiveNote");
+  const destNow = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
   if (objSelect) {
     objSelect.disabled = isWhatsappDest;
     if (isWhatsappDest) objSelect.value = "OUTCOME_SALES";
+    // Messenger / Instagram chats can only be Sales, Leads or Engagement.
+    const chatOnly = destNow === "messenger" || destNow === "instagram";
+    for (const o of objSelect.options) o.hidden = chatOnly && !["OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT"].includes(o.value);
+    if (chatOnly && ["OUTCOME_TRAFFIC", "OUTCOME_AWARENESS"].includes(objSelect.value)) objSelect.value = "OUTCOME_SALES";
   }
   if (objNote) {
     objNote.textContent = isWhatsappDest
       ? "WhatsApp ads are always Sales/Conversations — Meta requires this for Click-to-WhatsApp."
-      : "";
+      : (destNow === "messenger" || destNow === "instagram") ? "Chat ads can be Sales, Leads or Engagement." : "";
   }
 
   wrap.innerHTML = bvAdSetRows.map((row, i) => bvAdSetCardHtml(row, i, isWhatsappDest)).join("") + `
