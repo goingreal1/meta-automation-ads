@@ -318,7 +318,7 @@ async function createAdCreative(
   ctaType: string,
   destinationType: Dest,
   productName: string
-): Promise<string | null> {
+): Promise<{ id?: string; error?: string }> {
   try {
     let objectStorySpec: Record<string, any>;
 
@@ -356,6 +356,14 @@ async function createAdCreative(
           },
         },
       };
+    } else if (destinationType === "form") {
+      // Instant (lead) form: the person fills a form inside Facebook / Instagram.
+      const okCta = ["SIGN_UP", "LEARN_MORE", "APPLY_NOW", "GET_QUOTE", "SUBSCRIBE", "DOWNLOAD", "BOOK_TRAVEL"].includes(ctaType) ? ctaType : "SIGN_UP";
+      const cta = { type: okCta, value: { lead_gen_form_id: String(creative.lead_form_id) } };
+      const formLink = destinationLink || `https://www.facebook.com/${pageId}`;
+      objectStorySpec = media.videoId
+        ? { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), video_data: { video_id: media.videoId, title: creative.headline || undefined, message: creative.primary_text || "", call_to_action: cta } }
+        : { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), link_data: { picture: media.imageUrl, link: formLink, message: creative.primary_text || "", name: creative.headline || undefined, description: creative.description || undefined, call_to_action: cta } };
     } else if (destinationType === "messenger" || destinationType === "instagram") {
       // Click-to-Messenger / Click-to-Instagram-Direct: a message button, no website.
       const ig = destinationType === "instagram";
@@ -409,12 +417,12 @@ async function createAdCreative(
     const data = await res.json();
     if (!data.id) {
       console.error("Ad creative creation failed:", data);
-      return null;
+      return { error: JSON.stringify(data.error || data) };
     }
-    return data.id;
+    return { id: data.id };
   } catch (err) {
     console.error("createAdCreative error:", err);
-    return null;
+    return { error: String((err as Error)?.message || err) };
   }
 }
 
@@ -551,7 +559,7 @@ function placementSpec(keys: any): Record<string, any> | null {
 // deliberately NOT in this map -- it needs a real Meta Lead Ads form, which
 // nothing here creates yet, so the dashboard disables that choice entirely
 // rather than silently launching something broken.
-type Dest = "website" | "whatsapp" | "messenger" | "instagram";
+type Dest = "website" | "whatsapp" | "messenger" | "instagram" | "form";
 const MSG_DESTINATIONS = ["whatsapp", "messenger", "instagram"];
 const OBJECTIVE_CONFIG: Record<string, { optimizationGoal: string; promotedObject: (pixelId: string, pageId: string) => Record<string, any> | null }> = {
   OUTCOME_SALES: { optimizationGoal: REAL_OPTIMIZATION_GOAL, promotedObject: (pixelId) => ({ pixel_id: pixelId, custom_event_type: "PURCHASE" }) },
@@ -595,6 +603,7 @@ async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: stri
 async function buildTargetingFromConfig(config: any, destinationType: Dest): Promise<Record<string, any>> {
   const basePlacements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS
     : destinationType === "instagram" ? { publisher_platforms: ["instagram"], facebook_positions: [] as string[], instagram_positions: ["stream", "story", "reels"], device_platforms: ["mobile"] }
+    : destinationType === "form" ? { publisher_platforms: ["facebook", "instagram"], facebook_positions: ["feed", "facebook_reels"], instagram_positions: ["stream", "reels"], device_platforms: ["mobile"] }
     : destinationType === "messenger" ? { publisher_platforms: ["facebook", "instagram"], facebook_positions: ["feed", "story", "facebook_reels"], instagram_positions: ["stream", "story", "reels"], device_platforms: ["mobile"] }
     : REAL_PLACEMENTS;
   // "automatic"/null (the default) keeps the exact existing broad preset;
@@ -672,6 +681,7 @@ function buildAdSetPayload(opts: {
   bidAmountNaira?: number | null;
   billingEvent: string;
   destinationType: Dest;
+  objective?: string;
   status?: "ACTIVE" | "PAUSED";
   startTime?: string | null;
   endTime?: string | null;
@@ -704,6 +714,9 @@ function buildAdSetPayload(opts: {
   if (opts.destinationType === "whatsapp") payload.destination_type = "WHATSAPP";
   else if (opts.destinationType === "messenger") payload.destination_type = "MESSENGER";
   else if (opts.destinationType === "instagram") payload.destination_type = "INSTAGRAM_DIRECT";
+  else if (opts.destinationType === "form") payload.destination_type = "ON_AD";
+  // Engagement on a website ad is "post engagement": Meta needs the destination type ON_POST for that goal.
+  else if (opts.objective === "OUTCOME_ENGAGEMENT") payload.destination_type = "ON_POST";
   // CBO: budget lives on the campaign, not here -- Meta rejects an ad set that
   // sets its own budget under a campaign-budget-optimized campaign.
   if (opts.budgetType === "abo") {
@@ -740,8 +753,9 @@ async function launchAdSetGroup(
     // row (or one where only the product side was filled in) launches exactly
     // as it did before this existed.
     const rawDest = String(creative.destination_type || creative.products?.destination_type || "");
-    const destinationType: Dest = (MSG_DESTINATIONS.includes(rawDest) ? rawDest : "website") as Dest;
-    const isMsg = destinationType !== "website";
+    const destinationType: Dest = (MSG_DESTINATIONS.includes(rawDest) || rawDest === "form" ? rawDest : "website") as Dest;
+    const isForm = destinationType === "form";
+    const isMsg = destinationType !== "website" && !isForm;
     // Draft mode: everything is created on Meta but left PAUSED, so it shows in Ads Manager and nothing spends.
     const liveStatus: "ACTIVE" | "PAUSED" = creative.launch_paused === true ? "PAUSED" : "ACTIVE";
     const whatsappNumber = creative.whatsapp_number || creative.products?.whatsapp_number || "";
@@ -764,6 +778,11 @@ async function launchAdSetGroup(
       console.error(msg);
       return { error: msg };
     }
+    if (isForm && !creative.lead_form_id) {
+      const msg = `Creative ${creative.id} is set to an Instant form but no lead form was chosen.`;
+      console.error(msg);
+      return { error: msg };
+    }
     if (destinationType === "website" && !destinationLink) {
       const msg = `Missing a landing page URL for creative ${creative.id} (set directly on the campaign, or on its linked product).`;
       console.error(msg);
@@ -774,7 +793,9 @@ async function launchAdSetGroup(
     // forced to OUTCOME_SALES regardless of what's picked (that destination
     // IS a sales-via-messaging flow in this app, same as always).
     // WhatsApp is always Sales. Messenger / Instagram messages can be Sales, Leads or Engagement. Website: any objective.
-    const campaignObjective = destinationType === "whatsapp"
+    const campaignObjective = isForm
+      ? "OUTCOME_LEADS"
+      : destinationType === "whatsapp"
       ? "OUTCOME_SALES"
       : isMsg
         ? (["OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT"].includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES")
@@ -799,7 +820,7 @@ async function launchAdSetGroup(
     const promotedObject =
       destinationType === "whatsapp"
         ? { page_id: pageId, whatsapp_phone_number: whatsappNumber }
-        : isMsg
+        : isMsg || isForm
           ? { page_id: pageId }
           : objectiveDefaults.promotedObject(pixelId, pageId);
 
@@ -923,9 +944,10 @@ async function launchAdSetGroup(
       if (!media || media.error) {
         return await abortAndCleanup(`Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`);
       }
-      const adCreativeId = await createAdCreative(accountId, pageId, igUserId, copy, media, destinationLink, ctaType, destinationType, creative.products?.product_name || "");
+      const adCreativeRes = await createAdCreative(accountId, pageId, igUserId, copy, media, destinationLink, ctaType, destinationType, creative.products?.product_name || "");
+      const adCreativeId = adCreativeRes?.id;
       if (!adCreativeId) {
-        return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}).`);
+        return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}): ${adCreativeRes?.error || "no reason given"}`);
       }
       const { data: localCreativeRow, error: localCreativeErr } = await supabase
         .from("creatives")
@@ -994,7 +1016,9 @@ async function launchAdSetGroup(
       // OUTCOME_SALES offers a real per-ad-set choice (Conversions/Link
       // clicks/Landing page views) -- Traffic/Engagement/Awareness each have
       // one objective-correct goal, not several worth exposing.
-      const optimizationGoal = isMsg
+      const optimizationGoal = isForm
+        ? "LEAD_GENERATION"
+        : isMsg
         ? "CONVERSATIONS"
         : campaignObjective === "OUTCOME_SALES"
           ? (VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL)
@@ -1024,6 +1048,7 @@ async function launchAdSetGroup(
             bidAmountNaira: config.bid_amount_naira ? Number(config.bid_amount_naira) : null,
             billingEvent,
             destinationType,
+            objective: campaignObjective,
             status: liveStatus,
             startTime,
             endTime,

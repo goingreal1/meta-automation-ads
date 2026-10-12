@@ -2894,7 +2894,7 @@ async function triggerSync() {
 function bvOnDestinationChange() {
   const destVal = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
   const isWhatsapp = destVal === "whatsapp";
-  const isMsgDest = destVal !== "website";
+  const isMsgDest = destVal !== "website"; // chat or form: no website link, Meta supplies the button
   document.getElementById("f_whatsappNumberField").style.display = isWhatsapp ? "" : "none";
   document.getElementById("f_landingUrlField").style.display = isMsgDest ? "none" : "";
   const ctaSelect = document.getElementById("f_cta");
@@ -3270,6 +3270,9 @@ function bvOpenCampaignBuilder(presetObjective) {
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
                 <input type="radio" name="f_destination" value="instagram" onchange="bvOnDestinationChange()"> Instagram — opens a DM
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
+                <input type="radio" name="f_destination" value="form" onchange="bvOnDestinationChange()"> Instant form — people fill a form on Facebook/Instagram
+              </label>
             </div>
           </div>
           <div class="fg" style="margin-top:10px;" data-wzs="goal">
@@ -3591,7 +3594,7 @@ function bvOpenReviewModal(copies) {
     || (isWhatsapp ? document.getElementById("f_whatsapp_number")?.value.trim() : document.getElementById("f_landing_url")?.value.trim())
     || "this campaign";
   const destRaw = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
-  const destLabel = { whatsapp: "Click-to-WhatsApp", website: "Website", messenger: "Click-to-Messenger", instagram: "Click-to-Instagram DM" }[destRaw] || "Website";
+  const destLabel = { whatsapp: "Click-to-WhatsApp", website: "Website", messenger: "Click-to-Messenger", instagram: "Click-to-Instagram DM", form: "Instant form" }[destRaw] || "Website";
   const objectiveLabels = {
     OUTCOME_SALES: "Sales", OUTCOME_LEADS: "Leads", OUTCOME_TRAFFIC: "Traffic", OUTCOME_ENGAGEMENT: "Engagement", OUTCOME_AWARENESS: "Awareness",
   };
@@ -3669,6 +3672,12 @@ async function bvExecuteLaunch(copies, scheduledIso) {
       const destVal = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
       if (isWhatsapp && !whatsappNumber) throw new Error("Enter a WhatsApp number to launch to.");
       if (destVal === "website" && !landingUrl) throw new Error("Enter a landing page URL to launch to.");
+      let leadFormId = null;
+      if (destVal === "form") {
+        const fr = await sbFn("page-tools", { action: "forms_create", ad_account_id: activeAccountId, name: (document.getElementById("f_campaign_name").value.trim() || "Revora Instant Form").slice(0, 80) + " form" });
+        if (!fr?.ok || !fr.form_id) throw new Error("Could not set up the lead form: " + (fr?.error || "no answer from Meta"));
+        leadFormId = String(fr.form_id);
+      }
 
       // Multiple ad copies in one launch get grouped by a shared batch id so
       // ai-auto-launch-tests treats them as one campaign with N ads per ad set
@@ -3752,8 +3761,9 @@ async function bvExecuteLaunch(copies, scheduledIso) {
         whatsapp_number: isWhatsapp ? whatsappNumber : null,
         landing_page_url: destVal === "website" ? landingUrl : null,
         launch_paused: document.getElementById("f_launch_paused")?.checked === true,
+        ...(leadFormId ? { lead_form_id: leadFormId } : {}),
         campaign_name: document.getElementById("f_campaign_name").value.trim() || null,
-        campaign_objective: isWhatsapp ? "OUTCOME_SALES" : (document.getElementById("f_objective").value || "OUTCOME_SALES"),
+        campaign_objective: isWhatsapp ? "OUTCOME_SALES" : destVal === "form" ? "OUTCOME_LEADS" : (document.getElementById("f_objective").value || "OUTCOME_SALES"),
         budget_type: document.getElementById("f_budget_type").value,
         scheduled_for: scheduledIso || null,
         campaign_end_date: endDate ? new Date(endDate).toISOString() : null,
@@ -4050,7 +4060,7 @@ function bvRenderBuilderSummary() {
       <div class="bv-builder-summary-title">${escH(campaignName)}</div>
       <dl>
         <dt>Objective</dt><dd>${escH(objLabel)}</dd>
-        <dt>Destination</dt><dd>${{ whatsapp: "WhatsApp", website: "Website", messenger: "Messenger", instagram: "Instagram DM" }[document.querySelector('input[name="f_destination"]:checked')?.value] || "Website"}</dd>
+        <dt>Destination</dt><dd>${{ whatsapp: "WhatsApp", website: "Website", messenger: "Messenger", instagram: "Instagram DM", form: "Instant form" }[document.querySelector('input[name="f_destination"]:checked')?.value] || "Website"}</dd>
         <dt>Budget type</dt><dd>${budgetType}</dd>
         <dt>Ad sets</dt><dd>${adSetCount}</dd>
         <dt>Ads</dt><dd>${adCount}</dd>
@@ -5007,8 +5017,9 @@ function bvRenderAdSetRows() {
   const objNote = document.getElementById("f_objectiveNote");
   const destNow = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
   if (objSelect) {
-    objSelect.disabled = isWhatsappDest;
+    objSelect.disabled = isWhatsappDest || destNow === "form";
     if (isWhatsappDest) objSelect.value = "OUTCOME_SALES";
+    if (destNow === "form") objSelect.value = "OUTCOME_LEADS";
     // Messenger / Instagram chats can only be Sales, Leads or Engagement.
     const chatOnly = destNow === "messenger" || destNow === "instagram";
     for (const o of objSelect.options) o.hidden = chatOnly && !["OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT"].includes(o.value);
@@ -5017,6 +5028,7 @@ function bvRenderAdSetRows() {
   if (objNote) {
     objNote.textContent = isWhatsappDest
       ? "WhatsApp ads are always Sales/Conversations — Meta requires this for Click-to-WhatsApp."
+      : destNow === "form" ? "Instant form ads are always Leads: people fill a form without leaving Facebook or Instagram."
       : (destNow === "messenger" || destNow === "instagram") ? "Chat ads can be Sales, Leads or Engagement." : "";
   }
 
