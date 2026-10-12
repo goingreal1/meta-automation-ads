@@ -1859,6 +1859,8 @@ textarea.cat-in{min-height:78px;resize:vertical;}
 .adx-steps{margin:10px 0 0;padding-left:22px;font-size:14px;line-height:1.5;color:var(--text2);}
 .adx-steps li{margin-bottom:14px;}.adx-steps li b{color:var(--text);}
 .adx-steps.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px 16px 4px 36px;}
+.adx-share{margin-top:8px;background:var(--panel2);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.6;}
+.adx-share span{display:block;font-weight:600;color:var(--text);margin-bottom:2px;}
 .adx-copy{display:flex;gap:8px;align-items:center;margin-top:8px;}
 .adx-copy code{flex:1;min-width:0;background:var(--panel2);border-radius:10px;padding:12px;font-size:14px;word-break:break-all;}
 .adx-found{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;margin-bottom:8px;background:var(--panel);border:1px solid var(--border);border-radius:14px;}
@@ -2552,8 +2554,9 @@ async function adxLink(root) {
   const avail = (conn?.discovered_ad_accounts || []).filter(a => !have.has(String(a.account_id)));
   root.innerHTML = `
     ${mineList.length > 1 ? `<div class="adx-panel"><label class="adx-lbl">Linking for</label><select id="adxBuyer">${mineList.map(b => `<option value="${b.id}" ${b.id === sel ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}</select></div>` : ""}
+    <div class="adx-intro"><b>Bring your ad account, Page and dataset together</b><p>Pick one way below. Either way you can share all three, so Revora can run ads, create your dataset and use your Page.</p></div>
     <div class="adx-opt"><div class="adx-opt-tag">Easiest</div><h3>Continue with Facebook</h3>
-      <p>Log in with Facebook once and pick the ad accounts, Pages and numbers to share. No ID to type.</p>
+      <p>Log in with Facebook once and choose your ad account, Page and dataset. No ID to type.</p>
       <p class="adx-help">${conn ? `Connected as ${escH(conn.fb_user_name || "a Facebook user")}.` : "Not connected yet."}</p>
       <button type="button" class="adx-btn" onclick="bvFbStart('${sel}')">${conn ? "Reconnect Facebook" : "Continue with Facebook"}</button>
       ${avail.length ? `<div class="adx-h" style="margin-top:16px;">Found on your Facebook — tap to add</div>${avail.map(a => `<div class="adx-found"><div><b>${escH(a.name || a.account_id)}</b><small>${escH(a.account_id)}</small></div><button type="button" class="adx-btn small" onclick="bvAdxAddFound(this,'${conn.id}','${sel}','${escH(a.account_id)}','${escH(String(a.name || "").replace(/'/g, ""))}')">Add</button></div>`).join("")}` : ""}
@@ -2561,11 +2564,13 @@ async function adxLink(root) {
     <div class="adx-opt"><h3>Or share with a Business ID</h3>
       <ol class="adx-steps">
         <li><b>Copy Revora's Business ID</b><div class="adx-copy"><code>${escH(bizId || "unavailable")}</code>${bizId ? `<button type="button" class="adx-btn small ghost" onclick="navigator.clipboard?.writeText('${escH(bizId)}');bvToast('Copied')">Copy</button>` : ""}</div></li>
-        <li><b>In Meta Business Settings</b>, open Accounts, then Ad accounts. Pick your account, tap <i>Add partner</i>, paste the ID and allow <i>Manage ad account</i>.</li>
+        <li><b>In Meta Business Settings</b>, open Users, then Partners, and tap <i>Add</i>. Choose <i>Give a partner access to your assets</i> and paste the ID.
+          <div class="adx-share"><span>Share all three in this one step:</span><div>✓ <b>Ad account</b> with <i>Manage ad account</i></div><div>✓ <b>Page</b> with <i>Create ads</i></div><div>✓ <b>Dataset (pixel)</b> with <i>Manage dataset</i></div></div></li>
         <li><b>Paste your own Business ID</b> (Business Settings, then Business info) and save it.
           <div class="adx-copy"><input id="adxBiz" inputmode="numeric" placeholder="e.g. 123456789012345" value="${escH(buyer?.meta_partner_business_id || "")}"><button type="button" class="adx-btn small" id="adxBizSave">Save</button></div></li>
         <li><b>Check and import</b> your ad account.<button type="button" class="adx-btn ghost" id="adxSync" style="margin-top:8px;">Check and import</button><div id="adxSyncMsg"></div></li>
       </ol></div>
+    ${(() => { const todo = (accountsList || []).filter(a => !a.meta_pixel_id || !a.fb_page_id); return todo.length ? `<div class="adx-h">Still to finish</div>${todo.map(a => `<button type="button" class="adx-step" onclick="bvAdxGo('acct','${a.id}')"><span class="adx-num">!</span><span class="adx-step-tx"><b>${escH(adxName(a))}</b><small>${[a.meta_pixel_id ? "" : "Needs a dataset", a.fb_page_id ? "" : "Needs a Page"].filter(Boolean).join(" · ")}</small></span>${ADX_CHEV}</button>`).join("")}` : ""; })()}
     <p class="adx-help" style="padding:0 4px;">To add an ad account by its ID instead, use the desktop version of Settings.</p>`;
   root.querySelector("#adxBuyer")?.addEventListener("change", e => { window.bvAdxBuyer = e.target.value; render(); });
   root.querySelector("#adxBizSave").addEventListener("click", async e => {
@@ -2580,7 +2585,7 @@ async function adxLink(root) {
       const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
       const mine = (r.results || []).find(x => x.media_buyer === buyer?.name) || r.results?.[0];
       if (!mine) out.innerHTML = `<div class="adx-note">Save your Business ID first.</div>`;
-      else if (mine.status === "confirmed") { out.innerHTML = `<div class="adx-note ok">✓ Confirmed. ${mine.imported} ad account${mine.imported === 1 ? "" : "s"} imported.</div>`; await loadAccounts(); bvAdx.fresh = false; }
+      else if (mine.status === "confirmed") { out.innerHTML = `<div class="adx-note ok">✓ Confirmed. ${mine.imported} ad account${mine.imported === 1 ? "" : "s"} imported.</div><button type="button" class="adx-btn" onclick="bvAdxOpen('list')">See my ad accounts and finish setup</button>`; await loadAccounts(); bvAdx.fresh = false; }
       else out.innerHTML = `<div class="adx-note">Not confirmed yet. Make sure you shared the ad account and that the share was approved in Meta Business Settings.</div>`;
     } catch (err) { out.innerHTML = bvAdxErr(err.message); }
     b.disabled = false; b.textContent = "Check and import";
@@ -2593,7 +2598,9 @@ async function bvAdxAddFound(btn, connId, buyerId, actId, name) {
     meta_ad_account_id: actId, status: "active", meta_connection_id: connId, connected_via: "oauth",
   });
   if (error) { btn.disabled = false; btn.textContent = "Add"; bvToast("Could not add: " + error.message, "err"); return; }
-  bvToast("Ad account added"); await loadAccounts(); bvAdx.fresh = false; bvAdx.stack = []; bvAdx.screen = "list"; render();
+  bvToast("Ad account added. Finish its setup below."); await loadAccounts(); bvAdx.fresh = false;
+  const added = (accountsList || []).find(a => String(a.meta_ad_account_id || "").replace(/^act_/, "") === String(actId));
+  bvAdx.stack = [{ screen: "list", id: null }]; bvAdx.screen = added ? "acct" : "list"; bvAdx.id = added?.id || null; render();
 }
 function adxPickList(root, intro, target, sub) {
   const all = accountsList || [];
@@ -3658,7 +3665,7 @@ async function renderAdminOverview(el) {
     <div class="g4">
       <div class="kc"><div class="kc-lbl">Orders · 7 days</div><div class="kc-val">${cur.length}</div><div class="kc-sub">${delta(cur.length, old.length)}</div></div>
       <div class="kc"><div class="kc-lbl">Order value · 7 days</div><div class="kc-val a">${fN(sum(cur))}</div><div class="kc-sub">${delta(sum(cur), sum(old))}</div></div>
-      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rate == null ? "" : rate >= 70 ? "a" : rate >= 50 ? "w" : "d"}">${rate == null ? "—" : rate.toFixed(0) + "%"}</div><div class="kc-sub">${cnt(cur, "delivered")} delivered · ${cnt(cur, "returned")} returned</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate · 7 days</div><div class="kc-val ${rate == null ? "" : rate >= 70 ? "a" : rate >= 50 ? "w" : "d"}">${rate == null ? "—" : rate.toFixed(0) + "%"}</div><div class="kc-sub">${cnt(cur, "delivered")} delivered · ${cnt(cur, "returned")} returned</div></div>
       <div class="kc"><div class="kc-lbl">Waiting to be handled</div><div class="kc-val ${cnt(cur, "pending") ? "w" : ""}">${cnt(cur, "pending")}</div><div class="kc-sub">pending orders this week</div></div>
     </div>
     <div class="panel">
@@ -8945,7 +8952,8 @@ async function renderOrders(el) {
     o.payment = (o.payments || [])[0] || null;
   });
 
-  const rate  = tot ? (deliv / tot * 100).toFixed(1) : "0";
+  // Same definition as the Home screen: delivered out of the orders that have finished (delivered + returned).
+  const rate  = (deliv + ret) ? (deliv / (deliv + ret) * 100).toFixed(1) : "0";
   const rC    = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
   const pageCount = Math.max(1, Math.ceil(tot / ORDERS_PAGE_SIZE));
   const pageStart = tot ? ordersPage * ORDERS_PAGE_SIZE + 1 : 0;
@@ -8955,10 +8963,10 @@ async function renderOrders(el) {
     <div class="sh"><div class="sh-title">Orders</div><div class="sh-actions"><button class="btn btn-g" id="ordersExportBtn" onclick="bvExportOrdersCsv(this)">⬇ Download CSV</button><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
 
     <div class="g4">
-      <div class="kc"><div class="kc-lbl">Total orders</div><div class="kc-val">${tot}</div></div>
-      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${deliv}</div></div>
-      <div class="kc"><div class="kc-lbl">Returned</div><div class="kc-val d">${ret}</div></div>
-      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rC}">${rate}%</div><div class="kc-sub">${pend} still pending</div></div>
+      <div class="kc"><div class="kc-lbl">Total orders</div><div class="kc-val">${tot}</div><div class="kc-sub">all time</div></div>
+      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${deliv}</div><div class="kc-sub">all time</div></div>
+      <div class="kc"><div class="kc-lbl">Returned</div><div class="kc-val d">${ret}</div><div class="kc-sub">all time</div></div>
+      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rC}">${rate}%</div><div class="kc-sub">of delivered + returned · ${pend} still pending</div></div>
     </div>
 
     ${flagged?.length ? `
