@@ -26,5 +26,5 @@
 ## Marketing (this week)
 - [ ] Record 3 clean clips in a NEW ChatGPT/Claude web chat with a neutral product (not Lunessa): plan a campaign, build the sales page and connect pixel, kill an ad. Text only, no banner, Do Not Disturb on.
 - [ ] Save clean screenshots as images/landing/ai-chat-ads.png and ai-chat-website.png (crop status bar, keyboard, message box).
-- [ ] Paste the Meta pixel ID into ai.html, start.html and the guide pages (REVORA_PIXEL_ID).
+- [x] Pixel "Revora Website" (2286908208516633) created in the Business and shared with Muse; added to ai.html, start.html and guide pages. Still to do: link a Facebook Page to Muse.
 - [ ] Post the 5-person pilot invite in the media buyers group; collect quotes for the hidden testimonials section on /ai.
