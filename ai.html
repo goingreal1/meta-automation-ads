@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Let ChatGPT or Claude run your ads · Revora</title>
+<meta name="description" content="Create campaigns, kill the ads that cost you and scale what wins, from the chat app you already use. Start free for 7 days.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1877F2">
+<link rel="icon" href="/icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0a1624;--ink2:#41566a;--line:#e3e9f0;--soft:#f3f7fd;--blue:#1877F2;--blue2:#0b5fd1;--navy:#0b2a5b}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font:17px/1.6 Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:#fff;-webkit-font-smoothing:antialiased;overflow-x:hidden;padding-bottom:72px}
+a{color:inherit}
+.wrap{max-width:1040px;margin:0 auto;padding:0 22px}
+/* top bar: logo and one button only */
+.bar{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.bar .in{display:flex;align-items:center;justify-content:space-between;height:62px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:20px;letter-spacing:-.02em;text-decoration:none}
+.logo i{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#4a9bff,#0b3a8f);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:17px;box-shadow:0 6px 16px -6px rgba(24,119,242,.7)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;font-weight:700;font-size:16px;border-radius:999px;padding:15px 30px;border:0;cursor:pointer;font-family:inherit;transition:transform .15s,box-shadow .15s,background .15s}
+.btn.p{background:linear-gradient(180deg,#2a86ff,#1269e3);color:#fff;box-shadow:0 10px 26px -10px rgba(24,119,242,.9),inset 0 1px 0 rgba(255,255,255,.35)}
+.btn.p:hover{transform:translateY(-1px);box-shadow:0 14px 30px -10px rgba(24,119,242,1),inset 0 1px 0 rgba(255,255,255,.35)}
+.btn.g{background:#fff;color:var(--ink);border:1.5px solid var(--ink)}
+.btn.g:hover{background:var(--soft)}
+.btn.s{padding:10px 20px;font-size:14.5px}
+/* shining text */
+.shine{background:linear-gradient(105deg,#0a1624 0%,#0a1624 38%,#4f9bff 50%,#0a1624 62%,#0a1624 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:shine 6s ease-in-out infinite}
+.shine.blue{background-image:linear-gradient(105deg,#1877F2 0%,#1877F2 38%,#8fc3ff 50%,#1877F2 62%,#1877F2 100%)}
+.shine.white{background-image:linear-gradient(105deg,#fff 0%,#fff 38%,#9fcbff 50%,#fff 62%,#fff 100%)}
+@keyframes shine{0%{background-position:120% 0}60%,100%{background-position:-120% 0}}
+@media(prefers-reduced-motion:reduce){.shine{animation:none;background-position:0 0}}
+/* hero */
+.hero{position:relative;overflow:hidden;padding:64px 0 54px;background:radial-gradient(900px 420px at 80% -10%,#dcebff 0%,rgba(220,235,255,0) 70%),radial-gradient(700px 360px at -10% 10%,#eaf3ff 0%,rgba(234,243,255,0) 70%),#fff}
+.pill{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #cfe0f7;color:var(--blue2);font-weight:600;font-size:14px;border-radius:999px;padding:7px 14px;box-shadow:0 6px 18px -10px rgba(24,119,242,.5)}
+.pill i{width:8px;height:8px;border-radius:50%;background:#22a45d;box-shadow:0 0 0 4px rgba(34,164,93,.18)}
+h1{font-size:clamp(40px,8.4vw,76px);line-height:1.02;letter-spacing:-.04em;font-weight:800;margin:18px 0 18px;max-width:11.5em}
+.hero p.sub{font-size:clamp(18px,2.6vw,22px);color:var(--ink2);max-width:30em}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.note{margin-top:14px;font-size:14px;color:var(--ink2)}
+.apps{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+.app{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:600;font-size:14.5px}
+.app b{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:12px}
+/* chat mock */
+@media(min-width:960px){.hgrid{display:grid;grid-template-columns:1.1fr .9fr;gap:44px;align-items:center}.hgrid .chat{margin-top:0}}
+.chat{margin-top:44px;background:#fff;border:1px solid var(--line);border-radius:28px;box-shadow:0 40px 80px -40px rgba(11,42,91,.45);overflow:hidden;max-width:620px}
+.chat .hd{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#f7faff,#fff);font-weight:600;font-size:14px;color:var(--ink2)}
+.chat .hd i{width:10px;height:10px;border-radius:50%;background:#dbe5f2;display:block}
+.chat .hd span{margin-left:auto;font-size:12px;font-weight:600;background:#fff3d6;color:#8a5a00;border-radius:999px;padding:3px 10px}
+.msgs{padding:18px;display:grid;gap:10px}
+.m{max-width:88%;padding:11px 15px;border-radius:18px;font-size:15.5px;line-height:1.45}
+.m.u{justify-self:end;background:var(--blue);color:#fff;border-bottom-right-radius:6px}
+.m.a{justify-self:start;background:var(--soft);border-bottom-left-radius:6px}
+.m.a b{color:var(--navy)}
+.m .ok{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:700;background:#e3f6ea;color:#17803f;border-radius:999px;padding:3px 10px}
+/* sections */
+section{padding:72px 0}
+section.alt{background:var(--soft)}
+.eyebrow{font-weight:700;font-size:14px;letter-spacing:.04em;text-transform:uppercase;color:var(--blue)}
+h2{font-size:clamp(30px,5.4vw,50px);line-height:1.08;letter-spacing:-.03em;font-weight:800;margin:10px 0 14px;max-width:16em}
+.lead{color:var(--ink2);font-size:clamp(17px,2.2vw,20px);max-width:36em}
+.grid{display:grid;gap:16px;margin-top:34px}
+@media(min-width:800px){.grid.three{grid-template-columns:repeat(3,1fr)}.grid.two{grid-template-columns:repeat(2,1fr)}}
+.card{background:#fff;border:1px solid var(--line);border-radius:26px;padding:26px;box-shadow:0 18px 40px -30px rgba(11,42,91,.35)}
+.card .ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:22px;background:linear-gradient(135deg,#e6f1ff,#cfe3ff);margin-bottom:14px}
+.card h3{font-size:22px;letter-spacing:-.02em;margin-bottom:6px}
+.card p{color:var(--ink2);font-size:16.5px}
+/* story */
+.story{background:linear-gradient(160deg,#0b2a5b,#0a1d3f 60%,#08152e);color:#fff;border-radius:34px;padding:42px 28px;position:relative;overflow:hidden}
+.story:before{content:"";position:absolute;right:-80px;top:-80px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(79,155,255,.45),rgba(79,155,255,0) 70%)}
+.story h2{max-width:14em;margin-top:0}
+.story p{color:#c9d8ee;font-size:18px;max-width:34em;margin-top:12px;position:relative}
+.story p b{color:#fff}
+.story .big{font-size:clamp(34px,6vw,56px);font-weight:800;letter-spacing:-.03em;margin:8px 0}
+/* steps */
+.steps{display:grid;gap:14px;margin-top:34px;counter-reset:s}
+@media(min-width:800px){.steps{grid-template-columns:repeat(4,1fr)}}
+.step{background:#fff;border:1px solid var(--line);border-radius:24px;padding:22px;position:relative}
+.step:before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;margin-bottom:12px;box-shadow:0 8px 18px -8px rgba(24,119,242,.9)}
+.step h3{font-size:19px;margin-bottom:4px;letter-spacing:-.01em}
+.step p{color:var(--ink2);font-size:15.5px}
+.addr{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:22px;background:#fff;border:1.5px dashed #b8d3f7;border-radius:18px;padding:12px 14px}
+.addr code{font:600 15px ui-monospace,Menlo,monospace;color:var(--navy);word-break:break-all;flex:1;min-width:180px}
+/* control */
+.control{display:grid;gap:12px;margin-top:30px}
+@media(min-width:800px){.control{grid-template-columns:repeat(3,1fr)}}
+.chip{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px}
+.chip i{font-style:normal;font-size:22px}
+.chip b{display:block;font-size:17px}
+.chip span{color:var(--ink2);font-size:15.5px}
+/* price */
+.price{display:grid;gap:18px;align-items:center;background:linear-gradient(135deg,#1877F2,#0b4fb8);color:#fff;border-radius:34px;padding:38px 28px;box-shadow:0 40px 70px -40px rgba(24,119,242,.9)}
+@media(min-width:800px){.price{grid-template-columns:1.2fr .8fr;padding:48px}}
+.price h2{margin:0 0 8px}
+.price p{color:#dbe9ff;font-size:18px}
+.amt{font-size:clamp(46px,8vw,72px);font-weight:800;letter-spacing:-.04em;line-height:1}
+.amt small{font-size:18px;font-weight:600;color:#cfe2ff;letter-spacing:0}
+.price ul{margin:12px 0 0 20px;color:#eaf3ff;font-size:16.5px}.price li{margin:5px 0}
+.price .btn.p{background:#fff;color:var(--blue2);box-shadow:0 14px 30px -14px rgba(0,0,0,.5)}
+details{border:1.5px solid var(--line);border-radius:20px;padding:0 20px;margin-top:10px;background:#fff}
+summary{cursor:pointer;font-weight:700;padding:17px 0;list-style:none;font-size:17px}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"+";float:right;color:var(--blue);font-weight:600;font-size:22px;line-height:1}
+details[open] summary:after{content:"–"}
+details p{color:var(--ink2);padding-bottom:18px}
+.final{text-align:center;padding:84px 0}
+.final h2{margin-left:auto;margin-right:auto}
+.final .cta{justify-content:center}
+.testi{display:none}
+footer{padding:30px 0 40px;color:var(--ink2);font-size:14px;text-align:center}
+footer a{text-decoration:underline;margin:0 8px}
+.sticky{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;justify-content:center}
+.sticky .btn{flex:1;max-width:340px;padding:13px 18px}
+@media(min-width:900px){.sticky{display:none}body{padding-bottom:0}}
+</style>
+<script>window.REVORA_PIXEL_ID = ""; // paste your Meta Pixel ID here to track visits and sign-up clicks</script>
+</head>
+<body>
+<div class="bar"><div class="wrap in"><a class="logo" href="/ai"><i>R</i>Revora</a><a class="btn p s" href="/login.html?mode=signup" data-cta="top">Start free</a></div></div>
+
+<main>
+<section class="hero"><div class="wrap hgrid"><div class="hl">
+  <span class="pill"><i></i>Works inside ChatGPT and Claude</span>
+  <h1><span class="shine">Let ChatGPT or Claude run your ads.</span></h1>
+  <p class="sub">Create campaigns, kill the ads that cost you, and scale what wins. From the chat app you already use.</p>
+  <div class="cta"><a class="btn p" href="/login.html?mode=signup" data-cta="hero">Start free for 7 days</a><a class="btn g" href="#how">See how it works</a></div>
+  <div class="note">No card needed · Nothing spends without your yes</div>
+  <div class="apps"><span class="app"><b style="background:#10a37f">G</b>ChatGPT</span><span class="app"><b style="background:#d97757">C</b>Claude</span><span class="app"><b style="background:#1877F2">M</b>Meta Ads</span></div></div>
+  <div class="chat" aria-label="Example conversation">
+    <div class="hd"><i></i><i></i><i></i>Chat <span>Example</span></div>
+    <div class="msgs">
+      <div class="m u">Plan a campaign for my herbal tea. ₦5,000 a day, send people to WhatsApp.</div>
+      <div class="m a"><b>Plan ready.</b> 3 ads, 2 audiences, a WhatsApp button and a ₦5,000 daily budget. Want me to launch it?</div>
+      <div class="m u">Yes, launch.</div>
+      <div class="m a">Done. Your campaign is live. <span class="ok">✓ Launched</span></div>
+      <div class="m u">Which ad should I kill?</div>
+      <div class="m a">Ad 2 spent ₦6,200 with no orders. Pause it and move the budget to Ad 1?</div>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">The problem</div>
+  <h2><span class="shine">A losing ad never takes a day off.</span></h2>
+  <p class="lead">While you sleep, eat or run errands, it keeps spending. Checking every ad, every day, by hand is slow, and the one you miss is the one that costs you.</p>
+  <div class="grid three">
+    <div class="card"><div class="ico">⏰</div><h3>You can't watch it all</h3><p>Results change by the hour. Nobody checks that often.</p></div>
+    <div class="card"><div class="ico">🧩</div><h3>Too many tools</h3><p>Ads Manager, copy, pictures, pages, pixels. Each in a different place.</p></div>
+    <div class="card"><div class="ico">❓</div><h3>Guessing what to scale</h3><p>Likes look good. Orders are what matter.</p></div>
+  </div>
+</div></section>
+
+<section class="alt"><div class="wrap">
+  <div class="eyebrow">What it does</div>
+  <h2><span class="shine">Plan it. Launch it. Fix it.</span></h2>
+  <p class="lead">Say what you want in plain words. Revora does the work and asks for your yes before it spends.</p>
+  <div class="grid three">
+    <div class="card"><div class="ico">🚀</div><h3>Create campaigns</h3><p>Describe your product and goal. Get a full campaign plan, ready to launch.</p></div>
+    <div class="card"><div class="ico">✂️</div><h3>Kill what costs you</h3><p>It spots ads that spend without selling and offers to pause them.</p></div>
+    <div class="card"><div class="ico">📈</div><h3>Scale what wins</h3><p>Move budget to the ads that bring orders, in one message.</p></div>
+    <div class="card"><div class="ico">🎨</div><h3>Pictures and words</h3><p>Generate creatives, ad copy and headlines in the same chat.</p></div>
+    <div class="card"><div class="ico">🛒</div><h3>Sales page and pixel</h3><p>Build your sales page and connect your pixel without leaving the conversation.</p></div>
+    <div class="card"><div class="ico">💬</div><h3>Your numbers, explained</h3><p>Ask how your ads are doing and get a plain answer, not a table of numbers.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="story">
+    <div class="eyebrow" style="color:#8fc3ff">Picture this</div>
+    <h2><span class="shine white">Monday, 7 a.m. You open Ads Manager.</span></h2>
+    <p>A weekend of spending. Three ads, one that sold. The other two kept running because nobody was looking.</p>
+    <div class="big"><span class="shine white">What if you had asked at 7 p.m. on Friday?</span></div>
+    <p>Now picture a message that says: <b>"Ad 2 has spent ₦6,200 with no orders. Pause it?"</b> You reply <b>"yes"</b>, and go back to your weekend.</p>
+    <p style="font-size:14px;color:#9db4d6">An example scenario, not a real customer.</p>
+  </div>
+</div></section>
+
+<section class="alt" id="how"><div class="wrap">
+  <div class="eyebrow">How to start</div>
+  <h2><span class="shine">Connected in about 3 minutes.</span></h2>
+  <p class="lead">You add Revora to ChatGPT or Claude once. After that you just chat.</p>
+  <div class="steps">
+    <div class="step"><h3>Create your account</h3><p>Sign up free and connect or buy an ad account.</p></div>
+    <div class="step"><h3>Add the connector</h3><p>In ChatGPT or Claude, open Settings, then Connectors, and add Revora with this address.</p></div>
+    <div class="step"><h3>Sign in and allow</h3><p>Log in with your Revora account and tap Allow. It acts only as you.</p></div>
+    <div class="step"><h3>Say what you want</h3><p>Try: "Plan my first campaign." Then approve it.</p></div>
+  </div>
+  <div class="addr"><code id="addr">https://revoracrm.app/mcp</code><button type="button" class="btn g s" id="copyAddr">Copy address</button></div>
+  <p class="note">Step by step help: <a href="/connector.html" style="color:var(--blue);font-weight:600">Connector guide</a></p>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">You stay in charge</div>
+  <h2><span class="shine">It asks. You decide.</span></h2>
+  <p class="lead">Your ads never change money without your clear yes.</p>
+  <div class="control">
+    <div class="chip"><i>✅</i><div><b>Approve before launch</b><span>Every launch waits for your yes.</span></div></div>
+    <div class="chip"><i>🔐</i><div><b>PIN for money moves</b><span>Sending money needs your private PIN.</span></div></div>
+    <div class="chip"><i>⏸️</i><div><b>Wallet limits</b><span>On ad accounts bought from Revora, ads pause when your wallet is empty.</span></div></div>
+  </div>
+</div></section>
+
+<section class="alt testi" id="testimonials"><div class="wrap"><!-- Add real customer quotes here, then remove "testi" from this section's class so it shows. Never use made-up quotes. --></div></section>
+
+<section><div class="wrap">
+  <div class="price">
+    <div>
+      <div class="eyebrow" style="color:#bcd8ff">Simple price</div>
+      <h2><span class="shine white">Start free. Stay if it works.</span></h2>
+      <p>Every plan starts with a 7-day free trial. No card needed.</p>
+      <ul><li>Connect ChatGPT or Claude</li><li>Build sales pages</li><li>AI creative generator</li><li>Launch ads with ChatGPT or Claude</li></ul>
+    </div>
+    <div><div class="amt">₦5,000<small> / month</small></div><p style="margin:6px 0 18px">Media buyer plan</p><a class="btn p" href="/login.html?mode=signup" data-cta="price" style="width:100%">Start free for 7 days</a></div>
+  </div>
+</div></section>
+
+<section class="alt"><div class="wrap">
+  <div class="eyebrow">Questions</div>
+  <h2><span class="shine">Before you start.</span></h2>
+  <details><summary>Do I need ChatGPT Plus or Claude Pro?</summary><p>Connectors depend on your plan with ChatGPT or Claude. Check their current plans to see what's included for you.</p></details>
+  <details><summary>Will it spend my money by itself?</summary><p>No. It asks for your yes before launching, and money moves need your PIN.</p></details>
+  <details><summary>Do I need my own ad account?</summary><p>No. Connect one you have, or buy a ready one from Revora.</p></details>
+  <details><summary>Can I disconnect it?</summary><p>Yes, any time in Settings under AI apps.</p></details>
+</div></section>
+
+<section class="final"><div class="wrap">
+  <h2><span class="shine">Stop checking. Start asking.</span></h2>
+  <p class="lead" style="margin:0 auto">Let your chat app watch your ads while you get on with your day.</p>
+  <div class="cta"><a class="btn p" href="/login.html?mode=signup" data-cta="final">Start free for 7 days</a><a class="btn g" href="https://wa.me/2348104965538?text=Hi%20Revora%2C%20I%20have%20a%20question." rel="noopener" data-cta="whatsapp">Ask us on WhatsApp</a></div>
+</div></section>
+</main>
+
+<footer><div class="wrap">© 2026 Revora, a product of Pip install -AI Technologies (RC 8553896), Ibadan, Nigeria. Not affiliated with or endorsed by Meta, OpenAI or Anthropic.<br><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div></footer>
+
+<div class="sticky"><a class="btn p" href="/login.html?mode=signup" data-cta="sticky">Start free for 7 days</a></div>
+
+<script>
+(function () {
+  var a = document.getElementById("addr"); if (a) a.textContent = location.origin + "/mcp";
+  var c = document.getElementById("copyAddr");
+  if (c) c.onclick = function () { try { navigator.clipboard.writeText(a.textContent).then(function () { c.textContent = "Copied"; setTimeout(function () { c.textContent = "Copy address"; }, 1500); }); } catch (e) { c.textContent = "Select and copy"; } };
+  var id = window.REVORA_PIXEL_ID;
+  if (id) {
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', id); fbq('track', 'PageView');
+  }
+  var q = new URLSearchParams(location.search), carry = new URLSearchParams();
+  ["utm_source", "utm_medium", "utm_campaign", "utm_content", "fbclid"].forEach(function (k) { if (q.get(k)) carry.set(k, q.get(k)); });
+  document.querySelectorAll("a[data-cta]").forEach(function (el) {
+    var href = el.getAttribute("href");
+    if (carry.toString() && href.indexOf("/login.html") === 0) el.setAttribute("href", href + (href.indexOf("?") > -1 ? "&" : "?") + carry.toString());
+    el.addEventListener("click", function () { if (window.fbq) fbq("track", "Lead", { content_name: el.getAttribute("data-cta") }); });
+  });
+})();
+</script>
+<script src="/host-links.js" defer></script>
+</body>
+</html>
