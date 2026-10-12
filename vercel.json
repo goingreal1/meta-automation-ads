@@ -254,6 +254,10 @@
     {
       "source": "/certificate",
       "destination": "/certificate.html"
+    },
+    {
+      "source": "/ai",
+      "destination": "/ai.html"
     }
   ],
   "functions": {
