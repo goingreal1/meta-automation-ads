@@ -110,6 +110,20 @@ details p{color:var(--ink2);padding-bottom:18px}
 .final{text-align:center;padding:84px 0}
 .final h2{margin-left:auto;margin-right:auto}
 .final .cta{justify-content:center}
+
+.real{display:none;width:100%;height:auto}
+.chat.has .real{display:block}
+.chat.has .hd,.chat.has .msgs{display:none}
+.duo{display:grid;gap:34px;align-items:center}
+@media(min-width:900px){.duo{grid-template-columns:1fr 1fr;gap:56px}}
+.duo .chat{margin-top:0;max-width:none}
+.how2{display:grid;gap:16px;margin-top:30px}
+@media(min-width:900px){.how2{grid-template-columns:1fr 1fr}}
+.how2 .card h3{display:flex;align-items:center;gap:10px}
+.how2 ol{margin:12px 0 0 22px;color:var(--ink2);font-size:16.5px}.how2 li{margin:9px 0}
+.how2 li b{color:var(--ink)}
+.callout{margin-top:22px;background:#fff8e6;border:1px solid #f3dca0;border-radius:18px;padding:14px 18px;font-size:16px;color:#6b4a00}
+.callout b{color:#4a3200}
 .testi{display:none}
 footer{padding:30px 0 40px;color:var(--ink2);font-size:14px;text-align:center}
 footer a{text-decoration:underline;margin:0 8px}
@@ -131,6 +145,7 @@ footer a{text-decoration:underline;margin:0 8px}
   <div class="note">No card needed · Nothing spends without your yes</div>
   <div class="apps"><span class="app"><b style="background:#10a37f">G</b>ChatGPT</span><span class="app"><b style="background:#d97757">C</b>Claude</span><span class="app"><b style="background:#1877F2">M</b>Meta Ads</span></div></div>
   <div class="chat" aria-label="Example conversation">
+    <img class="real" src="/images/landing/ai-chat-ads.png" alt="Revora inside ChatGPT: planning and launching a campaign" onload="this.parentNode.classList.add('has')" onerror="this.remove()">
     <div class="hd"><i></i><i></i><i></i>Chat <span>Example</span></div>
     <div class="msgs">
       <div class="m u">Plan a campaign for my herbal tea. ₦5,000 a day, send people to WhatsApp.</div>
@@ -169,6 +184,28 @@ footer a{text-decoration:underline;margin:0 8px}
 </div></section>
 
 <section><div class="wrap">
+  <div class="duo">
+    <div>
+      <div class="eyebrow">Send people to a sales page</div>
+      <h2><span class="shine">Plan the campaign. Build the page. Same chat.</span></h2>
+      <p class="lead">Tell it what you sell and where people should go. It plans the ads, builds the sales page and connects your pixel, then waits for your yes.</p>
+    </div>
+    <div class="chat" aria-label="Example conversation: website campaign">
+      <img class="real" src="/images/landing/ai-chat-website.png" alt="Revora inside ChatGPT: planning a website campaign and building the sales page" onload="this.parentNode.classList.add('has')" onerror="this.remove()">
+      <div class="hd"><i></i><i></i><i></i>Chat <span>Example</span></div>
+      <div class="msgs">
+        <div class="m u">Plan a website campaign for my hair oil. ₦8,000 a day. Build the sales page too.</div>
+        <div class="m a"><b>Here's the plan.</b> Goal: orders on your website. 2 audiences, 3 ads, ₦8,000 a day. I will also build a sales page for the hair oil and connect your pixel.</div>
+        <div class="m u">Looks good. Build the page first.</div>
+        <div class="m a">Your sales page is ready to check. <span class="ok">✓ Page built</span> <span class="ok">✓ Pixel connected</span></div>
+        <div class="m u">Great. Launch the campaign.</div>
+        <div class="m a">Done. Your campaign is live and sending people to your page. <span class="ok">✓ Launched</span></div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
   <div class="story">
     <div class="eyebrow" style="color:#8fc3ff">Picture this</div>
     <h2><span class="shine white">Monday, 7 a.m. You open Ads Manager.</span></h2>
@@ -181,16 +218,33 @@ footer a{text-decoration:underline;margin:0 8px}
 
 <section class="alt" id="how"><div class="wrap">
   <div class="eyebrow">How to start</div>
-  <h2><span class="shine">Connected in about 3 minutes.</span></h2>
-  <p class="lead">You add Revora to ChatGPT or Claude once. After that you just chat.</p>
-  <div class="steps">
-    <div class="step"><h3>Create your account</h3><p>Sign up free and connect or buy an ad account.</p></div>
-    <div class="step"><h3>Add the connector</h3><p>In ChatGPT or Claude, open Settings, then Connectors, and add Revora with this address.</p></div>
-    <div class="step"><h3>Sign in and allow</h3><p>Log in with your Revora account and tap Allow. It acts only as you.</p></div>
-    <div class="step"><h3>Say what you want</h3><p>Try: "Plan my first campaign." Then approve it.</p></div>
+  <h2><span class="shine">Connect it in about 3 minutes.</span></h2>
+  <p class="lead">You connect Revora to ChatGPT or Claude one time. After that, you just chat.</p>
+  <div class="callout"><b>Use the website, not the phone app.</b> Open ChatGPT or Claude in your browser to connect. When Revora has its own app, you will be able to connect from the app too.</div>
+  <div class="how2">
+    <div class="card"><h3><span style="color:#10a37f">●</span> ChatGPT</h3>
+      <ol>
+        <li>Create your free Revora account.</li>
+        <li>Open <b>ChatGPT on the web</b> and log in.</li>
+        <li>Go to <b>Settings</b>, then <b>Plugins</b>.</li>
+        <li>Tap the <b>+</b> to add one, then choose <b>Connect MCP</b>.</li>
+        <li>Name it <b>Revora</b>. Paste the link below. Leave it on <b>OAuth</b>.</li>
+        <li>Log in with your Revora account and tap <b>Allow</b>.</li>
+      </ol>
+    </div>
+    <div class="card"><h3><span style="color:#d97757">●</span> Claude</h3>
+      <ol>
+        <li>Create your free Revora account.</li>
+        <li>Open <b>Claude on the web</b> and log in.</li>
+        <li>Go to <b>Settings</b>, then <b>Connectors</b>.</li>
+        <li>Choose <b>Add custom connector</b>.</li>
+        <li>Name it <b>Revora</b> and paste the link below.</li>
+        <li>Log in with your Revora account and tap <b>Allow</b>.</li>
+      </ol>
+    </div>
   </div>
-  <div class="addr"><code id="addr">https://revoracrm.app/mcp</code><button type="button" class="btn g s" id="copyAddr">Copy address</button></div>
-  <p class="note">Step by step help: <a href="/connector.html" style="color:var(--blue);font-weight:600">Connector guide</a></p>
+  <div class="addr"><code id="addr">https://revoracrm.app/mcp</code><button type="button" class="btn g s" id="copyAddr">Copy link</button></div>
+  <p class="note">Then say: <b>"Plan my first campaign."</b> Menu names can change a little. See the <a href="/connector.html" style="color:var(--blue);font-weight:600">full connector guide</a> if you get stuck.</p>
 </div></section>
 
 <section><div class="wrap">
@@ -224,6 +278,7 @@ footer a{text-decoration:underline;margin:0 8px}
   <details><summary>Do I need ChatGPT Plus or Claude Pro?</summary><p>Connectors depend on your plan with ChatGPT or Claude. Check their current plans to see what's included for you.</p></details>
   <details><summary>Will it spend my money by itself?</summary><p>No. It asks for your yes before launching, and money moves need your PIN.</p></details>
   <details><summary>Do I need my own ad account?</summary><p>No. Connect one you have, or buy a ready one from Revora.</p></details>
+  <details><summary>Can I connect from the phone app?</summary><p>Set it up on the website first (chatgpt.com or claude.ai). A Revora app is coming soon, and you will be able to connect from inside it.</p></details>
   <details><summary>Can I disconnect it?</summary><p>Yes, any time in Settings under AI apps.</p></details>
 </div></section>
 
@@ -242,7 +297,7 @@ footer a{text-decoration:underline;margin:0 8px}
 (function () {
   var a = document.getElementById("addr"); if (a) a.textContent = location.origin + "/mcp";
   var c = document.getElementById("copyAddr");
-  if (c) c.onclick = function () { try { navigator.clipboard.writeText(a.textContent).then(function () { c.textContent = "Copied"; setTimeout(function () { c.textContent = "Copy address"; }, 1500); }); } catch (e) { c.textContent = "Select and copy"; } };
+  if (c) c.onclick = function () { try { navigator.clipboard.writeText(a.textContent).then(function () { c.textContent = "Copied"; setTimeout(function () { c.textContent = "Copy link"; }, 1500); }); } catch (e) { c.textContent = "Select and copy"; } };
   var id = window.REVORA_PIXEL_ID;
   if (id) {
     !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
