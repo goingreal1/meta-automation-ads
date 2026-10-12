@@ -246,6 +246,14 @@
     {
       "source": "/blog/whatsapp-or-website",
       "destination": "/blog/whatsapp-or-website.html"
+    },
+    {
+      "source": "/integrations",
+      "destination": "/integrations.html"
+    },
+    {
+      "source": "/certificate",
+      "destination": "/certificate.html"
     }
   ],
   "functions": {

@@ -55,6 +55,17 @@ img,svg{display:block;}
 .nav-links a:hover{color:var(--text);}
 .nav-actions{display:flex;align-items:center;gap:8px;}
 @media (max-width:780px){ .nav-links{display:none;} }
+.nav-burger{display:none;flex-direction:column;justify-content:center;gap:5px;width:42px;height:42px;border:1px solid var(--border);border-radius:12px;background:#fff;cursor:pointer;padding:0 11px;}
+.nav-burger span{display:block;height:2px;background:var(--text);border-radius:2px;}
+.nav-menu{display:none;background:#fff;border-top:1px solid var(--border);max-height:calc(100vh - 72px);overflow-y:auto;}
+.nav-menu.open{display:block;}
+.nav-menu .container{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px;padding-top:8px;padding-bottom:14px;}
+.nav-menu a{padding:12px 4px;font-size:16px;font-weight:500;border-bottom:1px solid var(--border);}
+.nav-menu a.lg{grid-column:1/-1;color:var(--accent);font-weight:600;border-bottom:0;}
+@media (min-width:781px){.nav-menu{display:none!important;}}
+@media (max-width:780px){ .nav-burger{display:inline-flex;} .nav-actions .btn-ghost{display:none;} .nav-actions .btn-dark{padding:9px 14px;font-size:13px;} }
+html,body{overflow-x:hidden;}
+
 
 /* ── HERO ─────────────────────────────────────────────────────────────────── */
 .hero{padding:88px 0 0;}
@@ -289,21 +300,25 @@ footer{background:var(--dark2);padding:60px 0 32px;}
     <a href="#" class="nav-logo serif">Revora</a>
     <div class="nav-links">
       <a href="#platform">Platform</a>
-      <a href="#modules">Modules</a>
-      <a href="#tour">Product</a>
-      <a href="#how">How it works</a>
-      <a href="#roles">Your team</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#faq">FAQ</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/ad-accounts.html">Ad accounts</a>
       <a href="/help">Docs</a>
+      <a href="/blog">Blog</a>
       <a href="/academy">Academy</a>
-      <a href="#contact">Contact</a>
+      <a href="/contact">Support</a>
     </div>
     <div class="nav-actions">
       <a href="login.html" class="btn btn-ghost">Log in</a>
       <a href="login.html?mode=signup" class="btn btn-dark">Start free trial</a>
+      <button class="nav-burger" type="button" aria-label="Menu" aria-expanded="false" onclick="var m=document.getElementById('navMenu');var o=m.classList.toggle('open');this.setAttribute('aria-expanded',o)"><span></span><span></span><span></span></button>
     </div>
   </div>
+  <div class="nav-menu" id="navMenu"><div class="container">
+    <a href="#platform">Platform</a><a href="#how">How it works</a><a href="/pricing">Pricing</a><a href="/ad-accounts.html">Ad accounts</a>
+    <a href="/help">Docs</a><a href="/blog">Blog</a><a href="/integrations">Integrations</a><a href="/academy">Academy</a>
+    <a href="/certificate">Certificate</a><a href="/developers">Developers</a><a href="/contact">Support</a><a href="/security">Security</a>
+    <a href="/about">About</a><a href="login.html" class="lg">Log in</a>
+  </div></div>
 </nav>
 
 <!-- HERO -->
