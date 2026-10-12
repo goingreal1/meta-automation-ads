@@ -1738,6 +1738,71 @@ textarea.cat-in{min-height:78px;resize:vertical;}
   .am-tbl td:nth-child(7)::before{content:"Cost";}
   .am-row .am-c-chk{display:none;}
 }
+
+/* ── PHONE CAMPAIGN CREATOR: one question per screen (see BV_MS) ── */
+.ms-top{display:none;}
+@media(max-width:760px){
+  #bvBuilderOverlay .bv-builder-sidebar,#bvBuilderOverlay .wz-sub,#bvBuilderOverlay .wz-steps{display:none!important;}
+  #bvBuilderOverlay .ms-top{display:block;order:1;position:sticky;top:0;z-index:6;background:var(--bg);padding:12px 16px 4px;}
+  #bvBuilderOverlay .ms-bar{height:5px;border-radius:3px;background:var(--border);overflow:hidden;}
+  #bvBuilderOverlay .ms-bar i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .25s;}
+  #bvBuilderOverlay .ms-step{font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.05em;}
+  #bvBuilderOverlay .ms-top h2{font-size:24px;line-height:1.2;letter-spacing:-.02em;margin:0;}
+  #bvBuilderOverlay .ms-top p{font-size:14px;color:var(--text2);margin:6px 0 8px;line-height:1.4;}
+
+  /* head + sections are always "open"; each tagged group shows only on its own screen */
+  #bvBuilderOverlay:not([data-step="campaign"]) .bv-builder-head{display:block;}
+  #bvBuilderOverlay .bv-builder-head{padding:0 16px;}
+  #bvBuilderOverlay .bv-builder-section{display:block!important;}
+  #bvBuilderOverlay .bv-builder-section > *:not([data-ms]){display:none!important;}
+  #bvBuilderOverlay [data-ms]{display:none!important;}
+  #bvBuilderOverlay[data-mscur="dest"] [data-ms~="dest"],#bvBuilderOverlay[data-mscur="name"] [data-ms~="name"],
+  #bvBuilderOverlay[data-mscur="who"] [data-ms~="who"],#bvBuilderOverlay[data-mscur="budget"] [data-ms~="budget"],
+  #bvBuilderOverlay[data-mscur="budget"] [data-ms~="budget2"],#bvBuilderOverlay[data-mscur="media"] [data-ms~="media"],
+  #bvBuilderOverlay[data-mscur="copy"] [data-ms~="copy"],#bvBuilderOverlay[data-mscur="adv"] [data-ms~="adv"]{display:block!important;}
+  /* shared cards lose their box/title and only show the pieces tagged for the current screen */
+  #bvBuilderOverlay .ms-split > :not([data-ms]){display:none!important;}
+  #bvBuilderOverlay[data-mscur="copy"] #bvSection-ad{display:flex!important;flex-direction:column;}
+  #bvBuilderOverlay[data-mscur="copy"] .ms-copycard{order:-1;display:flex!important;flex-direction:column;}
+  #bvBuilderOverlay .fg[data-ms~="who"]{display:grid!important;grid-template-columns:1fr 1fr;gap:0 12px;}
+  #bvBuilderOverlay[data-mscur]:not([data-mscur="who"]) .fg[data-ms~="who"]{display:none!important;}
+  #bvBuilderOverlay .fg[data-ms~="who"] > .field:first-child{grid-column:1/-1;}
+  /* the goal was already chosen on the first screen */
+  #bvBuilderOverlay .field:has(#f_objective){display:none!important;}
+  #bvBuilderOverlay .bv-section-card{border:0;background:none;box-shadow:none;padding:0;}
+  #bvBuilderOverlay .bv-section-card-title{display:none!important;}
+  #bvBuilderOverlay .field{margin-bottom:16px;}
+  #bvBuilderOverlay .field label{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;display:block;}
+  #bvBuilderOverlay .fg{grid-template-columns:1fr;gap:0;}
+  #bvBuilderOverlay input:not([type=checkbox]):not([type=radio]):not([type=file]),#bvBuilderOverlay select,#bvBuilderOverlay textarea{min-height:50px;border-radius:12px;padding:12px 14px;width:100%;}
+  #bvBuilderOverlay textarea{min-height:110px;}
+  /* Daily budget: the one big number on its screen */
+  #bvBuilderOverlay[data-mscur="budget"] [data-ms~="budget"] input[type=number]{font-size:28px;font-weight:700;min-height:64px;}
+
+  /* destination cards */
+  #bvBuilderOverlay .ms-opt{display:flex!important;align-items:center;gap:14px;padding:14px;margin:0 0 10px;border:1.5px solid var(--border);border-radius:16px;background:var(--panel);cursor:pointer;font-weight:400;}
+  #bvBuilderOverlay .ms-opt[hidden]{display:none!important;}
+  #bvBuilderOverlay .ms-opt input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;}
+  #bvBuilderOverlay .ms-opt:has(input:checked){border-color:var(--accent);background:var(--accentBg);box-shadow:0 0 0 3px var(--accentBg);}
+  #bvBuilderOverlay .ms-opt-ic{font-size:26px;flex:none;width:44px;text-align:center;}
+  #bvBuilderOverlay .ms-opt-tx b{display:block;font-size:16px;color:var(--text);}
+  #bvBuilderOverlay .ms-opt-tx small{display:block;font-size:13px;color:var(--text2);margin-top:2px;line-height:1.35;}
+  #bvBuilderOverlay .field[data-ms~="dest"] > div:first-of-type{display:block!important;}
+  #bvBuilderOverlay .field[data-ms~="dest"] > label:first-child{display:none!important;}
+
+  /* footer: Back + Next on every screen; Review & Launch only on the last */
+  #bvBuilderOverlay[data-mscur="dest"] #bvTabBackBtn{display:none;}
+  #bvBuilderOverlay #bvDraftStatus{display:none;}
+  #bvBuilderOverlay #bvTabBackBtn{display:flex!important;visibility:visible!important;}
+  #bvBuilderOverlay #bvTabNextBtn{display:flex!important;visibility:visible!important;}
+  #bvBuilderOverlay[data-mscur="review"] #bvTabNextBtn{display:none!important;}
+  #bvBuilderOverlay[data-mscur="review"] .bv-builder-summary{display:block;}
+  #bvBuilderOverlay:not([data-mscur="review"]) .bv-builder-summary{display:none!important;}
+  #bvBuilderOverlay #uploadBtn{display:none;}
+  #bvBuilderOverlay[data-mscur="review"] #uploadBtn{display:flex;flex:1;align-items:center;}
+  #bvBuilderOverlay[data-mscur="review"] .bv-builder-foot > div{flex:0 0 auto;}
+  #bvBuilderOverlay #uploadMsg{order:5;position:sticky;bottom:calc(72px + env(safe-area-inset-bottom));z-index:7;padding:0 16px 8px!important;}
+}
 </style>
 </head>
 <body>
@@ -2183,6 +2248,98 @@ document.addEventListener("click", (e) => {
   if (!tr || e.target.closest("a,button,select,input,label")) return;
   bvOpenOrderScreen(tr.dataset.orderRow);
 });
+
+// ── PHONE CAMPAIGN CREATOR: one clear question per screen ───────────────────
+// The same form (and the same launch code) runs underneath; on phones each group of fields is tagged
+// with the screen it belongs to (data-ms) and only the current screen is shown.
+const BV_MS = [
+  ["dest", "Where should people go?", "Pick what happens when someone taps your ad."],
+  ["name", "Name your campaign", "Only you see this. Pick the product it sells, if any."],
+  ["who", "Who should see it?", "Where they live, their age and gender."],
+  ["budget", "How much do you want to spend?", "A daily amount. You can change or pause it any time."],
+  ["media", "Add your photo or video", "This is what people see in their feed."],
+  ["copy", "Write your ad", "A few short lines. Say what you sell and why they should tap."],
+  ["adv", "More options", "Optional. The defaults work well, so you can skip this."],
+  ["review", "Check and launch", "Your ads are created paused until you approve them."],
+];
+const BV_MS_FROM_WZ = { goal: "dest", product: "name", audience: "who", creative: "media", budget: "budget", review: "review" };
+const BV_MS_TAB = { dest: "campaign", name: "campaign", who: "adset", budget: "adset", media: "ad", copy: "ad", adv: "ad", review: "ad" };
+// Which places each goal can send people (chat/lead-form ads cannot be Traffic or Awareness).
+const BV_MS_DEST_BY_GOAL = {
+  OUTCOME_SALES: ["whatsapp", "website", "messenger", "instagram"],
+  OUTCOME_LEADS: ["form", "messenger", "instagram", "website"],
+  OUTCOME_ENGAGEMENT: ["website", "messenger", "instagram"],
+  OUTCOME_TRAFFIC: ["website"],
+  OUTCOME_AWARENESS: ["website"],
+};
+const BV_MS_DEST_COPY = {
+  whatsapp: ["💬", "WhatsApp chat", "Customers message you on WhatsApp. Best for orders in Nigeria."],
+  website: ["🌐", "Your website", "People tap through to a page you choose."],
+  messenger: ["💭", "Messenger chat", "Customers message your Facebook Page."],
+  instagram: ["📸", "Instagram message", "Customers send you an Instagram DM."],
+  form: ["📝", "Instant form", "People fill in a form without leaving Facebook or Instagram."],
+};
+function bvMsStep(delta) {
+  const ov = document.getElementById("bvBuilderOverlay"); if (!ov) return;
+  const i = BV_MS.findIndex(x => x[0] === (ov.dataset.mscur || "dest"));
+  if (delta > 0) { const err = bvMsCheck(BV_MS[i][0]); if (err) { bvMsErr(err); return; } }
+  bvMsErr("");
+  const n = Math.max(0, Math.min(BV_MS.length - 1, i + delta));
+  bvMsGo(BV_MS[n][0]);
+}
+function bvMsErr(t) {
+  const m = document.getElementById("uploadMsg"); if (!m) return;
+  m.innerHTML = t ? `<div class="msg err" style="display:block;">${escH(t)}</div>` : "";
+}
+function bvMsCheck(step) {
+  const v = id => (document.getElementById(id)?.value || "").trim();
+  const dest = document.querySelector('input[name="f_destination"]:checked')?.value;
+  if (step === "dest") {
+    if (dest === "whatsapp" && !v("f_whatsapp_number")) return "Enter the WhatsApp number customers should message.";
+    if (dest === "website" && !v("f_landing_url")) return "Enter the website link people should land on.";
+  }
+  if (step === "name" && !v("f_campaign_name")) return "Give your campaign a name.";
+  if (step === "media" && !document.getElementById("f_file")?.files?.[0] && !bvReuseAsset && !bvStagedCopies.length) return "Add a photo or video, or reuse one you already uploaded.";
+  if (step === "copy" && !v("f_primary") && !bvStagedCopies.length) return "Write the main text of your ad.";
+  return "";
+}
+function bvMsGo(id) {
+  const ov = document.getElementById("bvBuilderOverlay"); if (!ov) return;
+  const i = Math.max(0, BV_MS.findIndex(x => x[0] === id)), st = BV_MS[i];
+  ov.dataset.mscur = st[0];
+  bvSwitchBuilderTab(BV_MS_TAB[st[0]]);
+  if (st[0] === "dest") bvMsDestCards();
+  document.getElementById("msTitle").textContent = st[1];
+  document.getElementById("msHint").textContent = st[2];
+  document.getElementById("msStep").textContent = `Step ${i + 1} of ${BV_MS.length}`;
+  document.getElementById("msBarFill").style.width = ((i + 1) / BV_MS.length * 100) + "%";
+  const next = document.getElementById("bvTabNextBtn");
+  if (next) next.textContent = st[0] === "adv" ? (bvMsAdvTouched() ? "Next" : "Skip") : st[0] === "copy" ? "Next" : "Next";
+  document.getElementById("uploadForm")?.scrollTo(0, 0);
+  bvMsErr("");
+}
+const bvMsAdvTouched = () => false;
+// Show only the places this goal can send people, as big tap cards with a one-line explanation.
+function bvMsDestCards() {
+  const goal = document.getElementById("f_objective")?.value || "OUTCOME_SALES";
+  const allowed = BV_MS_DEST_BY_GOAL[goal] || BV_MS_DEST_BY_GOAL.OUTCOME_SALES;
+  const radios = [...document.querySelectorAll('input[name="f_destination"]')];
+  radios.forEach(r => {
+    const lab = r.closest("label"); if (!lab) return;
+    lab.hidden = !allowed.includes(r.value);
+    const c = BV_MS_DEST_COPY[r.value];
+    if (c && !lab.dataset.msDone) { lab.dataset.msDone = "1"; lab.classList.add("ms-opt"); lab.innerHTML = ""; lab.appendChild(r); lab.insertAdjacentHTML("beforeend", `<span class="ms-opt-ic">${c[0]}</span><span class="ms-opt-tx"><b>${c[1]}</b><small>${c[2]}</small></span>`); }
+  });
+  const cur = radios.find(r => r.checked);
+  const ov = document.getElementById("bvBuilderOverlay");
+  // First visit: start on the best match for this goal; later visits keep the person's pick.
+  if (!ov?.dataset.msInit || !cur || cur.closest("label").hidden) {
+    if (ov) ov.dataset.msInit = "1";
+    const first = allowed.map(v => radios.find(r => r.value === v)).find(r => r && !r.closest("label").hidden);
+    if (first && first !== cur) first.click();
+  }
+  bvOnDestinationChange();
+}
 
 // Hide what this business will never use, so each seller sees their own app (not every module).
 function bvApplyCompanyProfile() {
@@ -3616,12 +3773,13 @@ function bvOpenCampaignBuilder(presetObjective) {
     <div class="bv-modal bv-modal-xl">
       <button class="bv-modal-close" onclick="bvCloseBuilder()">✕</button>
       <form id="uploadForm" style="display:flex;flex-direction:column;height:100%;min-height:0;">
+        <div class="ms-top" id="msTop"><div class="ms-bar"><i id="msBarFill"></i></div><div class="ms-step" id="msStep"></div><h2 id="msTitle"></h2><p id="msHint"></p></div>
 
         <div class="bv-builder-head">
           <div class="ph-title" style="margin-bottom:4px;">New campaign</div>
           <div class="wz-sub">Set it up in a few steps. Your ads start paused until you approve them.</div>
           <div class="wz-steps" id="bvWzSteps">${BV_WZ.map((w, i) => `<button type="button" class="wz-step" data-wz="${w[0]}" onclick="bvWzGo('${w[0]}')"><span class="wz-n">${i + 1}</span>${w[1]}</button>`).join("")}</div>
-          <div class="field" data-wzs="goal"><label>Where do you want customers to go? *</label>
+          <div class="field" data-wzs="goal" data-ms="dest"><label>Where do you want customers to go? *</label>
             <div style="display:flex;gap:18px;margin-top:4px;flex-wrap:wrap;">
               <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:400;cursor:pointer;">
                 <input type="radio" name="f_destination" value="whatsapp" ${!presetObjective || presetObjective === "OUTCOME_SALES" ? "checked" : ""} onchange="bvOnDestinationChange()"> WhatsApp — opens a chat
@@ -3640,13 +3798,13 @@ function bvOpenCampaignBuilder(presetObjective) {
               </label>
             </div>
           </div>
-          <div class="fg" style="margin-top:10px;" data-wzs="goal">
+          <div class="fg" style="margin-top:10px;" data-wzs="goal" data-ms="dest">
             <div class="field" id="f_whatsappNumberField"><label>WhatsApp number *</label><input id="f_whatsapp_number" placeholder="e.g. 2348012345678" oninput="bvRenderIdentitySection(); bvRenderBuilderSummary();">
               <div id="f_whatsappPicker" style="margin-top:6px;"></div>
             </div>
             <div class="field" id="f_landingUrlField" style="display:none;"><label>Landing page URL *</label><input id="f_landing_url" placeholder="https://…"></div>
           </div>
-          <div class="field" data-wzs="product" style="margin-top:10px;"><label>Link to a product <span style="font-weight:400;color:var(--muted);">(optional — for Shop checkout + Purchase pixel tracking)</span></label>
+          <div class="field" data-wzs="product" data-ms="name" style="margin-top:10px;"><label>Link to a product <span style="font-weight:400;color:var(--muted);">(optional — for Shop checkout + Purchase pixel tracking)</span></label>
             <select id="f_product" onchange="bvOnProductChange()">
               <option value="">— none (standalone campaign) —</option>
               ${pOpts}
@@ -3665,7 +3823,7 @@ function bvOpenCampaignBuilder(presetObjective) {
           <div class="bv-builder-body">
 
           <div class="bv-builder-section active" id="bvSection-campaign">
-            <div class="bv-section-card" data-wzs="goal">
+            <div class="bv-section-card" data-wzs="goal" data-ms="name">
               <div class="bv-section-card-title"><span class="bv-ico">🎯</span> Campaign details</div>
               <div class="field"><label>Campaign name <span style="font-weight:400;color:var(--muted);">(shown in Meta Ads Manager)</span></label>
                 <input id="f_campaign_name" placeholder="e.g. Yorvix SB — Sept 16 Launch" oninput="bvRenderBuilderSummary()">
@@ -3676,13 +3834,13 @@ function bvOpenCampaignBuilder(presetObjective) {
                   <option value="OUTCOME_TRAFFIC" ${presetObjective === "OUTCOME_TRAFFIC" ? "selected" : ""}>Traffic — drive clicks to your link</option>
                   <option value="OUTCOME_ENGAGEMENT" ${presetObjective === "OUTCOME_ENGAGEMENT" ? "selected" : ""}>Engagement — likes, comments, shares on the post</option>
                   <option value="OUTCOME_AWARENESS" ${presetObjective === "OUTCOME_AWARENESS" ? "selected" : ""}>Awareness — reach as many people as possible</option>
-                  <option value="OUTCOME_LEADS">Leads — people who sign up or enquire (website needs a pixel; also works for Messenger and Instagram)</option>
+                  <option value="OUTCOME_LEADS" ${presetObjective === "OUTCOME_LEADS" ? "selected" : ""}>Leads — people who sign up or enquire (website needs a pixel; also works for Messenger and Instagram)</option>
                 </select>
                 <div id="f_objectiveNote" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
               </div>
             </div>
 
-            <div class="bv-section-card" data-wzs="budget">
+            <div class="bv-section-card" data-wzs="budget" data-ms="adv">
               <div class="bv-section-card-title"><span class="bv-ico">💰</span> Budget & schedule</div>
               <div class="field" style="margin-bottom:12px;"><label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;"><input type="checkbox" id="f_launch_paused" style="width:auto;"> Create it paused (draft)</label>
                 <div style="font-size:11px;color:var(--muted);margin-top:4px;">Everything is created on Meta but left paused, so you can show it or switch it on later. Nothing spends.</div></div>
@@ -3707,7 +3865,7 @@ function bvOpenCampaignBuilder(presetObjective) {
 
           <div class="bv-builder-section" id="bvSection-adset">
             <div style="font-size:11.5px;color:var(--muted);margin:0 0 14px;">Each ad set below is its own glass card — budget, audience, placements and bidding all together.</div>
-            <div id="adSetRows"></div>
+            <div id="adSetRows" data-ms="who budget adv"></div>
           </div>
 
           <div class="bv-builder-section" id="bvSection-ad">
@@ -3715,7 +3873,7 @@ function bvOpenCampaignBuilder(presetObjective) {
               This is <b style="color:var(--text2);">ad content for Meta</b> — the video/image people see in the Facebook/Instagram feed. It's not the product's own photo; upload that on the <b style="color:var(--text2);">Products</b> tab instead.
             </div>
 
-            <div class="bv-section-card">
+            <div class="bv-section-card" data-ms="media">
               <div class="bv-section-card-title"><span class="bv-ico">👤</span> Identity</div>
               <div class="field"><label>Facebook Page <span style="font-weight:400;color:var(--muted);">(this ad posts as)</span></label>
                 <div id="f_identityValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
@@ -3726,12 +3884,12 @@ function bvOpenCampaignBuilder(presetObjective) {
               </div>
             </div>
 
-            <div id="bvAdSetTabs" class="bv-adtabs"></div>
+            <div id="bvAdSetTabs" class="bv-adtabs" data-ms="media copy"></div>
             <div id="bvAdTabHint" class="bv-adhint"></div>
 
-            <div class="bv-section-card">
+            <div class="bv-section-card ms-split" data-ms="media copy adv">
               <div class="bv-section-card-title"><span class="bv-ico">🎬</span> Ad creative</div>
-              <div class="dz" id="dropZone" onclick="document.getElementById('f_file').click()">
+              <div class="dz" data-ms="media" id="dropZone" onclick="document.getElementById('f_file').click()">
                 <div class="dz-ico">🎬</div>
                 <div class="dz-txt">Drag & drop your ad video or image here</div>
                 <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
@@ -3739,10 +3897,10 @@ function bvOpenCampaignBuilder(presetObjective) {
                 <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
                 <div style="margin-top:8px;font-size:11px;"><button type="button" class="btn btn-a" style="width:auto;padding:8px 16px;font-size:12px;" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()">📁 Choose from creative vault ▾</button></div>
               </div>
-              <div id="dzFit"></div>
-              <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:10px;" onclick="bvOpenAdPreview()">👁 Preview on phone &amp; laptop</button>
-              <div class="fg" style="margin-top:14px;">
-                <div class="field"><label>Mechanism</label>
+              <div id="dzFit" data-ms="media"></div>
+              <button type="button" data-ms="media" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:10px;" onclick="bvOpenAdPreview()">👁 Preview on phone &amp; laptop</button>
+              <div class="fg" data-ms="copy adv" style="margin-top:14px;">
+                <div class="field" data-ms="adv"><label>Mechanism</label>
                   <select id="f_mechanism">
                     <option value="root_cause">Root cause</option>
                     <option value="why_others_failed">Why others failed</option>
@@ -3751,7 +3909,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                     <option value="why_product_works">Why product works</option>
                   </select>
                 </div>
-                <div class="field"><label>Format</label>
+                <div class="field" data-ms="adv"><label>Format</label>
                   <select id="f_format">
                     <option value="customer_review">Customer review</option>
                     <option value="before_after">Before / After</option>
@@ -3760,7 +3918,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                     <option value="ugly_text">Ugly text ad</option>
                   </select>
                 </div>
-                <div class="field"><label>CTA</label>
+                <div class="field" data-ms="copy"><label>Button</label>
                   <select id="f_cta">
                     <option value="SHOP_NOW">Shop Now</option>
                     <option value="LEARN_MORE">Learn More</option>
@@ -3771,25 +3929,25 @@ function bvOpenCampaignBuilder(presetObjective) {
               </div>
             </div>
 
-            <div class="bv-section-card">
+            <div class="bv-section-card ms-split ms-copycard" data-ms="copy adv">
               <div class="bv-section-card-title" id="bvAdFormTitle"><span class="bv-ico">✏️</span> Ad copy</div>
-              <div class="field" style="margin-bottom:14px;"><label>Ad name <span style="font-weight:400;color:var(--muted);">(optional — shown on Meta exactly as you type it)</span></label>
+              <div class="field" data-ms="adv" style="margin-bottom:14px;"><label>Ad name <span style="font-weight:400;color:var(--muted);">(optional — shown on Meta exactly as you type it)</span></label>
                 <input id="f_ad_name" maxlength="120" placeholder="e.g. Mama Ngozi testimonial video"></div>
-              <div id="f_waMsgBox" class="bv-wa-box">
+              <div id="f_waMsgBox" data-ms="copy" class="bv-wa-box" style="order:3;">
                 <div class="field"><label>WhatsApp greeting <span style="font-weight:400;color:var(--muted);">(what the customer sees when the chat opens · max 300)</span></label>
                   <textarea id="f_wa_greeting" rows="2" maxlength="300" placeholder="Short & punchy, e.g. Welcome 👋 Want real orders from your ads? Tap send and I'll show you how."></textarea></div>
                 <div class="field" style="margin-top:12px;"><label>Pre-filled message <span style="font-weight:400;color:var(--muted);">(already typed in the customer's message box · max 500)</span></label>
                   <textarea id="f_wa_prefill" rows="2" maxlength="500" placeholder="e.g. Hi, I'm interested in getting more orders 🔥"></textarea></div>
                 <div style="font-size:11px;color:var(--muted);margin-top:6px;">Meta uses exactly what you type here. Left blank, a neutral line is used ("Hi, I saw your ad and I'd like to know more.") — never the campaign name.</div>
               </div>
-              <div class="field" style="margin-top:14px;"><label>Primary text (ad copy) *</label>
+              <div class="field" data-ms="copy" style="margin-top:14px;order:1;"><label>Primary text (ad copy) *</label>
                 <textarea id="f_primary" rows="3" placeholder="The copy that appears above your ad… (optional if ad copies are already staged below)" oninput="bvRenderBuilderSummary()"></textarea>
               </div>
-              <div class="fg" style="margin-top:14px;">
+              <div class="fg" data-ms="copy" style="margin-top:14px;order:2;">
                 <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook" oninput="bvRenderBuilderSummary()"></div>
                 <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
               </div>
-              <div style="margin-top:14px;position:relative;display:inline-block;">
+              <div data-ms="adv" style="margin-top:14px;position:relative;display:inline-block;">
                 <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvToggleKebab('bvAdActionsMenu', event)">⋯ Actions for this ad</button>
                 <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-left:8px;" onclick="bvOpenAdListModal()">☰ View all ads (<span id="bvAdCount">0</span>)</button>
                 <div id="bvAdActionsMenu" class="bv-kebab-dropdown" style="display:none;">
@@ -3798,10 +3956,10 @@ function bvOpenCampaignBuilder(presetObjective) {
                   <button type="button" onclick="bvCloseKebabs(); bvQuickDuplicateAd()">⧉ Quickly duplicate</button>
                 </div>
               </div>
-              <div id="stagedCopies" style="margin-top:8px;"></div>
+              <div id="stagedCopies" data-ms="adv" style="margin-top:8px;"></div>
             </div>
 
-            <div class="bv-section-card">
+            <div class="bv-section-card" data-ms="adv">
               <div class="bv-section-card-title"><span class="bv-ico">🎯</span> Tracking</div>
               <div class="field"><label>Pixel <span style="font-weight:400;color:var(--muted);">(conversion events for this ad account)</span></label>
                 <div id="f_pixelValue" style="font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2);"></div>
@@ -3911,6 +4069,7 @@ function bvWzPaint() {
 }
 function bvWzGo(id) {
   const ov = document.getElementById("bvBuilderOverlay"); if (!ov) return;
+  if (mobileMq.matches) return bvMsGo(BV_MS_FROM_WZ[id] || "dest");
   ov.dataset.wz = id;
   bvSwitchBuilderTab(BV_WZ.find(w => w[0] === id)[2]);
 }
@@ -3941,6 +4100,7 @@ function bvSwitchBuilderTab(tab) {
 }
 
 function bvBuilderTabStep(delta) {
+  if (mobileMq.matches) return bvMsStep(delta);
   const cur = document.getElementById("bvBuilderOverlay")?.dataset.wz || "goal";
   const i = Math.max(0, Math.min(BV_WZ.length - 1, BV_WZ.findIndex(w => w[0] === cur) + delta));
   bvWzGo(BV_WZ[i][0]);
@@ -5288,22 +5448,22 @@ async function bvRunReach() {
 
 function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
   return `
-    <div class="bv-section-card">
+    <div class="bv-section-card ms-split" data-ms="who budget adv">
       <div class="bv-section-card-title" style="justify-content:space-between;margin-bottom:10px;">
         <span><span class="bv-ico">▦</span> <span data-astitle="${i}">${escH(bvAdSetName(row))}</span>${i === 0 ? " (original)" : " (copy)"}</span>
         ${i > 0 && !inModal ? `<button type="button" onclick="bvRemoveAdSetRow(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;font-weight:400;">✕ Remove</button>` : ""}
       </div>
-      <div class="field" style="margin-bottom:14px;"><label>Ad set name <span style="font-weight:400;color:var(--muted);">(shown on Meta exactly as you type it)</span></label>
+      <div class="field" data-ms="who" style="margin-bottom:14px;"><label>Ad set name <span style="font-weight:400;color:var(--muted);">(shown on Meta exactly as you type it)</span></label>
         <input value="${escH(row.display_name || "")}" maxlength="120" placeholder="${escH(row.label)} — type your own name" oninput="bvSetAdSetName(${i}, this.value)">
       </div>
 
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin-bottom:8px;">Budget</div>
-      <div class="fg">
+      <div data-ms="budget" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin-bottom:8px;">Budget</div>
+      <div class="fg" data-ms="budget">
         <div class="field"><label>Daily budget (₦)</label><input type="number" min="100" step="100" value="${row.budget_naira}" onchange="bvUpdateAdSetRow(${i}, 'budget_naira', this.value)"></div>
       </div>
 
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Audience</div>
-      <div class="fg">
+      <div data-ms="who" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Audience</div>
+      <div class="fg" data-ms="who">
         <div class="field"><label>Gender</label>
           <select onchange="bvUpdateAdSetRow(${i}, 'gender', this.value)">
             <option value="all" ${row.gender === "all" ? "selected" : ""}>All</option>
@@ -5314,11 +5474,11 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
         <div class="field"><label>Age min</label><input type="number" min="13" max="65" value="${row.age_min}" onchange="bvUpdateAdSetRow(${i}, 'age_min', this.value)"></div>
         <div class="field"><label>Age max</label><input type="number" min="13" max="65" value="${row.age_max}" onchange="bvUpdateAdSetRow(${i}, 'age_max', this.value)"></div>
       </div>
-      ${bvGeoAudienceHtml(row, i)}
+      <div data-ms="who">${bvGeoAudienceHtml(row, i)}</div>
 
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Placements</div>
-      ${bvPlacementsHtml(row, i, isWhatsappDest)}
-      <div class="field" style="margin-top:8px;"><label>Devices</label>
+      <div data-ms="adv" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Placements</div>
+      <div data-ms="adv">${bvPlacementsHtml(row, i, isWhatsappDest)}</div>
+      <div class="field" data-ms="adv" style="margin-top:8px;"><label>Devices</label>
         <div style="display:flex;gap:14px;margin-top:4px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:400;cursor:pointer;">
             <input type="checkbox" ${!row.device_platforms?.length || row.device_platforms.includes("mobile") ? "checked" : ""} onchange="bvToggleAdSetDevice(${i}, 'mobile', this.checked)"> Mobile
@@ -5329,10 +5489,10 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
         </div>
       </div>
 
-      <div class="bv-reach" data-uid="${row.uid}">${bvReachHtml(row)}</div>
+      <div class="bv-reach" data-ms="who budget" data-uid="${row.uid}">${bvReachHtml(row)}</div>
 
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Optimization & bidding</div>
-      <div class="field"><label>Optimization goal <span style="font-weight:400;color:var(--muted);">(what Meta tries to get you the most of)</span></label>
+      <div data-ms="adv" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Optimization & bidding</div>
+      <div class="field" data-ms="adv"><label>Optimization goal <span style="font-weight:400;color:var(--muted);">(what Meta tries to get you the most of)</span></label>
         ${isWhatsappDest
           ? `<input value="Conversations (fixed for WhatsApp ads)" disabled style="color:var(--muted);">`
           : `<select onchange="bvUpdateAdSetRow(${i}, 'optimization_goal', this.value)">
@@ -5341,7 +5501,7 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
               <option value="LANDING_PAGE_VIEWS" ${row.optimization_goal === "LANDING_PAGE_VIEWS" ? "selected" : ""}>Landing page views</option>
             </select>`}
       </div>
-      <div class="fg" style="margin-top:8px;">
+      <div class="fg" data-ms="adv" style="margin-top:8px;">
         <div class="field"><label>Bid strategy</label>
           <select onchange="bvUpdateAdSetRow(${i}, 'bid_strategy', this.value)">
             <option value="LOWEST_COST_WITHOUT_CAP" ${row.bid_strategy === "LOWEST_COST_WITHOUT_CAP" ? "selected" : ""}>Lowest cost (no cap) — recommended</option>
@@ -5357,7 +5517,7 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
         </div>
       </div>
       ${row.bid_strategy && row.bid_strategy !== "LOWEST_COST_WITHOUT_CAP" ? `
-      <div class="field" style="margin-top:8px;"><label>Bid amount (₦) <span style="font-weight:400;color:var(--muted);">(max you'll pay per optimization event)</span></label>
+      <div class="field" data-ms="adv" style="margin-top:8px;"><label>Bid amount (₦) <span style="font-weight:400;color:var(--muted);">(max you'll pay per optimization event)</span></label>
         <input type="number" min="1" step="1" value="${row.bid_amount_naira || ""}" placeholder="e.g. 500" onchange="bvUpdateAdSetRow(${i}, 'bid_amount_naira', this.value)">
       </div>` : ""}
     </div>
@@ -5398,7 +5558,7 @@ function bvRenderAdSetRows() {
   }
 
   wrap.innerHTML = bvAdSetRows.map((row, i) => bvAdSetCardHtml(row, i, isWhatsappDest)).join("") + `
-    <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div data-ms="adv" style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenDuplicateAdSetModal()">⧉ Duplicate ad set…</button>
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenAdSetListModal()">☰ View all ad sets (${bvAdSetRows.length})</button>
       <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
