@@ -1767,6 +1767,9 @@ textarea.cat-in{min-height:78px;resize:vertical;}
   #bvBuilderOverlay .fg[data-ms~="who"]{display:grid!important;grid-template-columns:1fr 1fr;gap:0 12px;}
   #bvBuilderOverlay[data-mscur]:not([data-mscur="who"]) .fg[data-ms~="who"]{display:none!important;}
   #bvBuilderOverlay .fg[data-ms~="who"] > .field:first-child{grid-column:1/-1;}
+  /* anything the form itself hides for this destination (WhatsApp box on a website ad, the button on a chat ad) stays hidden */
+  #bvBuilderOverlay [data-ms][style*="display: none"]{display:none!important;}
+  #bvBuilderOverlay .field:has(#f_cta:disabled){display:none!important;}
   /* the goal was already chosen on the first screen */
   #bvBuilderOverlay .field:has(#f_objective){display:none!important;}
   #bvBuilderOverlay .bv-section-card{border:0;background:none;box-shadow:none;padding:0;}
@@ -3427,6 +3430,8 @@ function bvOnDestinationChange() {
   if (ctaSelect) ctaSelect.disabled = isMsgDest;
   const waBox = document.getElementById("f_waMsgBox");
   if (waBox) waBox.style.display = isWhatsapp ? "" : "none";
+  const idWa = document.getElementById("f_identityWhatsappField");
+  if (idWa) idWa.style.display = isWhatsapp ? "" : "none";
   if (ctaNote) ctaNote.innerHTML = isMsgDest ? `Ignored for chat ads — Meta uses its own message button automatically.` : "";
   bvRenderAdSetRows();
   bvRenderBuilderSummary();
