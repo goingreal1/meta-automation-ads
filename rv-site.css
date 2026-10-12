@@ -64,3 +64,5 @@ nav.main{margin-left:auto}
 .rvmenu .wrap{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;padding-top:10px;padding-bottom:14px}
 .rvmenu a{padding:11px 4px;text-decoration:none;font-weight:500;font-size:16px;border-bottom:1px solid var(--soft)}
 .rvmenu a.lg{grid-column:1/-1;color:var(--blue);font-weight:600;border-bottom:0}
+
+.rlogo{width:32px;height:32px;border-radius:9px;display:block;flex:none;object-fit:contain}
