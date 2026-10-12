@@ -36,10 +36,26 @@ Deno.serve(async (req: Request) => {
     const share = async (pixel: string, acct: string) => {
       const id = String(acct).replace(/\D/g, "");
       if (!id) return null;
-      try { await g(`/${pixel}/shared_accounts`, "POST", { account_id: `act_${id}`, business: BM }); return { shared: true }; }
-      catch (e) { return { shared: false, note: (e as Error).message }; }
+      const tries: Record<string, string>[] = [{ account_id: id, business: BM }, { account_id: `act_${id}`, business: BM }];
+      let last = "";
+      for (const t of tries) {
+        try { await g(`/${pixel}/shared_accounts`, "POST", t); return { shared: true }; } catch (e) { last = (e as Error).message; }
+      }
+      return { shared: false, note: last };
     };
     if (b.action === "list") return json({ pixels: await list() });
+    if (b.action === "overview") {
+      const days = Math.min(Math.max(Number(b.days) || 7, 1), 30), start = Math.floor(Date.now() / 1000) - days * 86400;
+      const l = (await g(`/${BM}/adspixels?fields=id,name,last_fired_time,is_unavailable&limit=50`)).data ?? [];
+      const out: any[] = [];
+      for (const p of l.slice(0, 15)) {
+        const row: any = { id: p.id, name: p.name, last_fired_time: p.last_fired_time ?? null, unavailable: p.is_unavailable === true, events: {}, methods: {} };
+        try { const st = await g(`/${p.id}/stats?aggregation=event&start_time=${start}`); for (const bk of st?.data ?? []) for (const e of bk?.data ?? []) row.events[e.value] = (row.events[e.value] || 0) + Number(e.count || 0); } catch (e) { row.error = (e as Error).message.slice(0, 120); }
+        try { const m = await g(`/${p.id}/stats?aggregation=event_detection_method&start_time=${start}`); for (const bk of m?.data ?? []) for (const e of bk?.data ?? []) row.methods[e.value] = (row.methods[e.value] || 0) + Number(e.count || 0); } catch { /* optional */ }
+        out.push(row);
+      }
+      return json({ ok: true, days, pixels: out });
+    }
     if (b.action === "create") {
       const name = String(b.name ?? "").trim().slice(0, 60);
       if (!name) return json({ error: "name is required" }, 400);
