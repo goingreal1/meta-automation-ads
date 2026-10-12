@@ -12647,8 +12647,20 @@ async function renderHq(el) {
       });
     } else if (bvHqSec === "accounts") {
       const r = await sbFn("hq-admin", { action: "accounts" }); if (r.error) throw new Error(r.error);
-      body.innerHTML = `<div class="set-lbl">Sold Revora ad accounts</div>${tbl(["Account", "Company", "Held by", "Status", "Spend billed", "Sold"], r.sold.map(a => [escH(a.nickname || a.name || a.meta_ad_account_id), escH(a.company), escH(a.buyer || "Company"), escH(a.status || ""), fN(a.billed_spend), d(a.created_at)]))}
-        <div class="set-lbl" style="margin-top:14px;">Pool</div>${tbl(["Meta account", "Name", "Status", "Assigned to"], r.pool.map(p => [escH(p.meta_ad_account_id), escH(p.meta_name || p.label || ""), escH(p.assigned_company_id ? "sold" : p.status), escH(p.company || "")]))}`;
+      body.innerHTML = `<div class="set-lbl">Add an ad account to sell</div>
+        <div class="set-card" style="padding:14px 16px;"><div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Assign it to Revora's system user in Meta Business Manager first, then paste its number.</div>
+          <form id="hqPoolForm" style="display:flex;gap:8px;flex-wrap:wrap;" novalidate><input id="hqPoolId" placeholder="Ad account number" inputmode="numeric" style="flex:1;min-width:150px;"><input id="hqPoolLabel" placeholder="Label (optional)" style="flex:1;min-width:120px;"><button type="submit" class="btn btn-a" style="width:auto;padding:8px 18px;" id="hqPoolBtn">Add to pool</button></form><div id="hqPoolMsg" style="margin-top:8px;"></div></div>
+        <div class="set-lbl" style="margin-top:14px;">Pool</div>${tbl(["Meta account", "Name", "Status", "Assigned to", ""], r.pool.map(p => [escH(p.meta_ad_account_id), escH(p.meta_name || p.label || ""), escH(p.assigned_company_id ? "sold" : p.status), escH(p.company || ""), p.status === "available" && !p.assigned_company_id ? `<button type="button" class="btn btn-g hqRetire" data-id="${p.id}" style="padding:2px 9px;font-size:10px;">Retire</button>` : ""]))}
+        <div class="set-lbl" style="margin-top:14px;">Sold Revora ad accounts</div>${tbl(["Account", "Company", "Held by", "Status", "Spend billed", "Sold"], r.sold.map(a => [escH(a.nickname || a.name || a.meta_ad_account_id), escH(a.company), escH(a.buyer || "Company"), escH(a.status || ""), fN(a.billed_spend), d(a.created_at)]))}`;
+      body.querySelector("#hqPoolForm").onsubmit = async e => {
+        e.preventDefault();
+        const btn = body.querySelector("#hqPoolBtn"), msg = body.querySelector("#hqPoolMsg");
+        btn.disabled = true; btn.textContent = "Adding…"; msg.innerHTML = "";
+        const x = await sbFn("ad-account-pool", { action: "pool_add", meta_ad_account_id: body.querySelector("#hqPoolId").value, label: body.querySelector("#hqPoolLabel").value }).catch(err => ({ error: err.message }));
+        if (x.error) { msg.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(x.error)}</div>`; btn.disabled = false; btn.textContent = "Add to pool"; return; }
+        bvToast(`Added${x.name ? ": " + x.name : ""}`); renderHq(el);
+      };
+      body.querySelectorAll(".hqRetire").forEach(b2 => b2.onclick = async () => { await sbFn("ad-account-pool", { action: "pool_retire", id: b2.dataset.id }); renderHq(el); });
     } else if (bvHqSec === "money") {
       const r = await sbFn("hq-admin", { action: "money" }); if (r.error) throw new Error(r.error);
       body.innerHTML = `<div class="set-lbl">Buyer wallets</div>${tbl(["Company", "Buyer", "Wallet"], r.buyer_wallets.map(w => [escH(w.company), escH(w.buyer), fN(w.wallet)]))}
