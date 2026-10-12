@@ -1671,6 +1671,34 @@ textarea.cat-in{min-height:78px;resize:vertical;}
   .sh-title{font-size:23px;letter-spacing:-.02em;}
   .content{padding-top:12px;}
 }
+
+/* ── ORDER SCREEN (phones): tap an order card to open it full screen ── */
+.ord-screen{display:none;}
+@media(max-width:760px){
+  .ord-screen{display:flex;flex-direction:column;position:fixed;inset:0;z-index:360;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  body:has(#ordScreen) .chat-toggle{display:none;}
+  .ord-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;height:54px;padding:0 10px 0 4px;background:var(--panel);border-bottom:1px solid var(--border);flex:none;}
+  .ord-bar .m-back{max-width:none;}
+  .ord-body{padding:16px 16px calc(32px + env(safe-area-inset-bottom));}
+  .ord-hero{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;}
+  .ord-hero h2{font-size:22px;margin:0 0 4px;letter-spacing:-.02em;}
+  .ord-hero .ord-val{font-size:30px;font-weight:700;margin:10px 0 2px;letter-spacing:-.02em;}
+  .ord-hero .ord-sub{font-size:13px;color:var(--muted);}
+  .ord-act{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;}
+  .ord-act a,.ord-act button{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:14px;font:inherit;font-size:15px;font-weight:600;text-decoration:none;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;}
+  .ord-act .call{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .ord-act .wa{background:#25d366;border-color:#25d366;color:#fff;}
+  .ord-lbl{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:20px 4px 8px;}
+  .ord-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .ord-seg button{padding:13px 8px;border-radius:12px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);font:inherit;font-size:14.5px;font-weight:600;cursor:pointer;}
+  .ord-seg button.on{border-color:var(--accent);background:var(--accentBg);color:var(--accent);}
+  .ord-seg button:disabled{opacity:.45;}
+  .ord-list{background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+  .ord-row{display:flex;justify-content:space-between;gap:16px;padding:13px 14px;border-bottom:1px solid var(--border);font-size:14px;}
+  .ord-row:last-child{border-bottom:0;}
+  .ord-row span:first-child{color:var(--muted);flex:none;}
+  .ord-row span:last-child{text-align:right;min-width:0;word-break:break-word;}
+}
 </style>
 </head>
 <body>
@@ -2055,6 +2083,67 @@ new MutationObserver(() => {
   bvCardQueued = true;
   requestAnimationFrame(() => { bvCardQueued = false; bvCardifyTables(); });
 }).observe(document.getElementById("mainContent"), { childList: true, subtree: true });
+
+// ── Phone order screen: tap an order card to see it on one screen with big Call / WhatsApp / status buttons ──
+let bvOrderChanged = false;
+function bvCloseOrderScreen() {
+  document.getElementById("ordScreen")?.remove();
+  document.body.style.overflow = "";
+  if (bvOrderChanged) { bvOrderChanged = false; render(); }
+}
+function bvOpenOrderScreen(id) {
+  const o = (window.bvOrdersCache || []).find(x => x.id === id);
+  if (!o) return;
+  let scr = document.getElementById("ordScreen");
+  if (!scr) { scr = document.createElement("div"); scr.id = "ordScreen"; scr.className = "ord-screen"; document.body.appendChild(scr); document.body.style.overflow = "hidden"; }
+  const phone = (o.customer_phone || "").replace(/\D/g, "");
+  const opts = [...new DOMParser().parseFromString(bvOrderStatusSelect(o), "text/html").querySelectorAll("option")]
+    .map(x => ({ v: x.value, l: x.textContent.trim(), ok: !x.disabled }));
+  const locked = /disabled/.test(bvOrderStatusSelect(o).split(">")[0]);
+  const cur = o.order_status || "pending";
+  const row = (k, v) => v ? `<div class="ord-row"><span>${k}</span><span>${v}</span></div>` : "";
+  const place = [o.customer_address, o.customer_city, o.customer_state].filter(Boolean).map(escH).join(", ");
+  const extra = o.form_data && typeof o.form_data === "object" ? Object.entries(o.form_data).filter(([, v]) => v).map(([k, v]) => row(escH(k.replace(/_/g, " ")), escH(String(v)))).join("") : "";
+  scr.innerHTML = `<div class="ord-bar"><button type="button" class="m-back" id="ordBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Orders</span></button></div>
+    <div class="ord-body">
+      <div class="ord-hero"><h2>${escH(o.customer_name || "Customer")}</h2><span class="pill ${escH(cur)}">${escH(cur)}</span>${o.possible_duplicate ? ` <span class="pill returned">Possible duplicate</span>` : ""}
+        <div class="ord-val">${fN(o.order_value_naira)}</div><div class="ord-sub">${escH(o.product_name || "")} · ordered ${ago(o.ordered_at)}</div></div>
+      ${phone ? `<div class="ord-act"><a class="call" href="tel:${escH(o.customer_phone)}">${icon("phone", 18)} Call</a><a class="wa" href="https://wa.me/${phone}" target="_blank" rel="noopener">${icon("chat", 18)} WhatsApp</a></div>` : ""}
+      <div class="ord-lbl">Status</div>
+      <div class="ord-seg">${opts.map(x => `<button type="button" data-st="${escH(x.v)}" class="${x.v === cur ? "on" : ""}" ${x.ok && !locked ? "" : "disabled"}>${escH(x.l)}</button>`).join("")}</div>
+      <div id="ordMsg"></div>
+      <div class="ord-lbl">Details</div>
+      <div class="ord-list">
+        ${row("Phone", escH(o.customer_phone || ""))}${row("Delivery", place)}${row("Product", escH(o.product_name || ""))}${row("Value", fN(o.order_value_naira))}
+        ${row("Buyer", escH(o.media_buyers?.name || o.media_buyers?.code || ""))}${row("Ordered", o.ordered_at ? new Date(o.ordered_at).toLocaleString() : "")}${extra}${row("Note", escH(o.care_note || ""))}
+      </div>
+      <div class="ord-lbl">Payment</div><div class="ord-list"><div class="ord-row"><span>Method</span><span>${bvPaymentCell(o)}</span></div></div>
+      <div class="ord-lbl">AI confirmation call</div><div class="ord-list"><div class="ord-row"><span>Status</span><span>${bvOrderCallCell(o)}</span></div></div>
+    </div>`;
+  scr.querySelector("#ordBack").onclick = bvCloseOrderScreen;
+  scr.querySelectorAll(".ord-seg button").forEach(b => b.onclick = async () => {
+    const ns = b.dataset.st; if (ns === cur) return;
+    scr.querySelectorAll(".ord-seg button").forEach(x => x.disabled = true);
+    try {
+      const body = { order_status: ns };
+      if (ns === "delivered") body.delivered_at = new Date().toISOString();
+      const { error } = await supabaseClient.from("orders").update(body).eq("id", o.id);
+      if (error) throw error;
+      o.order_status = ns; bvOrderChanged = true; bvToast("Order marked " + ns); bvOpenOrderScreen(id);
+    } catch (err) { scr.querySelector("#ordMsg").innerHTML = `<div class="msg err" style="display:block;margin-top:10px;">Update failed: ${escH(err.message)}</div>`; bvOpenOrderScreen(id); }
+  });
+  scr.querySelectorAll(".callNowBtn").forEach(btn => btn.onclick = async () => {
+    btn.disabled = true; btn.textContent = "Calling…";
+    try { const r = await sbFn("place-order-call", { order_id: o.id, force: true }); if (r.error) throw new Error(r.error); bvOrderChanged = true; bvToast("Calling the customer…"); }
+    catch (err) { btn.disabled = false; btn.textContent = "📞 Call now"; scr.querySelector("#ordMsg").innerHTML = `<div class="msg err" style="display:block;margin-top:10px;">Could not place call: ${escH(err.message)}</div>`; }
+  });
+}
+document.addEventListener("click", (e) => {
+  if (!mobileMq.matches) return;
+  const tr = e.target.closest("tr[data-order-row]");
+  if (!tr || e.target.closest("a,button,select,input,label")) return;
+  bvOpenOrderScreen(tr.dataset.orderRow);
+});
 
 // Hide what this business will never use, so each seller sees their own app (not every module).
 function bvApplyCompanyProfile() {
@@ -8275,6 +8364,7 @@ async function renderOrders(el) {
     sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
     sbQuery("sites", "select=id,name", { allAccounts: true }).catch(() => []),
   ]);
+  window.bvOrdersCache = orders || [];
   const siteNameById = Object.fromEntries((siteRows || []).map(x => [x.id, x.name]));
   (orders || []).forEach(o => {
     // voice_calls comes back as an array (reverse FK) -- there's at most one
@@ -8325,7 +8415,7 @@ async function renderOrders(el) {
       ${!tot ? `<div class="empty"><div class="empty-ico">📦</div>No orders yet.</div>` : `
       <div class="tbl-wrap"><table>
         <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Buyer</th><th>AI call</th><th>Payment</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
-        ${orders.map(o => `<tr>
+        ${orders.map(o => `<tr class="bv-clickable-row" data-order-row="${o.id}">
           <td class="s n">${o.customer_id
             ? `<a href="javascript:void(0)" onclick="bvShowCustomerModal('${o.customer_id}')" style="color:var(--accent);text-decoration:none;">${escH(o.customer_name ?? "—")}</a>`
             : escH(o.customer_name ?? "—")}${o.form_data && typeof o.form_data === "object" ? `<div style="font-size:10.5px;color:var(--muted);font-weight:400;max-width:220px;">${Object.entries(o.form_data).map(([k, v]) => `${escH(k)}: ${escH(v)}`).join(" · ")}</div>` : ""}</td>
