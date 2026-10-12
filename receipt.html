@@ -42,7 +42,7 @@ button.alt{background:rgba(120,120,120,.2);color:inherit}
     var cls = r.status === "delivered" ? "ok" : r.status === "failed" ? "bad" : "";
     var label = r.status === "delivered" ? "Transfer sent successfully ✓" : r.status === "failed" ? "Failed. The money goes back to the wallet" : "Processing…";
     var when = new Date(r.created_at).toLocaleString("en-NG", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
-    m.innerHTML = '<div class="rc ' + cls + '"><div class="hd"><div class="lg">R</div>Revora Transfer</div>' +
+    m.innerHTML = '<div class="rc ' + cls + '"><div class="hd"><img class="lg" src="/images/brands/revora-logo-64.png" alt="" style="width:26px;height:26px;border-radius:7px;background:none">Revora Transfer</div>' +
       '<div class="am">' + esc(r.amount) + '</div><div class="st">' + label + '</div>' +
       '<div class="rows">' +
       '<div class="rw"><span>To</span><b>' + esc(r.account_name) + '</b></div>' +
