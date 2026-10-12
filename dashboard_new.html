@@ -5449,6 +5449,20 @@ async function bvRunReach() {
   }));
 }
 
+// Only a Sales ad to a website lets you choose what Meta optimises for. Every other goal / destination has one
+// correct setting that Meta (and the launch code) fixes, so say that instead of showing a dropdown that is ignored.
+function bvFixedOptimizationLabel(isWhatsappDest) {
+  const dest = document.querySelector('input[name="f_destination"]:checked')?.value || "whatsapp";
+  const obj = document.getElementById("f_objective")?.value;
+  if (isWhatsappDest) return "Conversations (fixed for WhatsApp ads)";
+  if (dest === "form") return "Lead form submissions (fixed for instant forms)";
+  if (dest === "messenger" || dest === "instagram") return "Conversations (fixed for chat ads)";
+  if (obj === "OUTCOME_TRAFFIC") return "Link clicks (fixed for Traffic)";
+  if (obj === "OUTCOME_ENGAGEMENT") return "Post engagement (fixed for Engagement)";
+  if (obj === "OUTCOME_AWARENESS") return "Reach (fixed for Awareness)";
+  if (obj === "OUTCOME_LEADS") return "Conversions (fixed for Leads)";
+  return "";
+}
 function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
   return `
     <div class="bv-section-card ms-split" data-ms="who budget adv">
@@ -5496,8 +5510,8 @@ function bvAdSetCardHtml(row, i, isWhatsappDest, inModal = false) {
 
       <div data-ms="adv" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text2);margin:14px 0 8px;">Optimization & bidding</div>
       <div class="field" data-ms="adv"><label>Optimization goal <span style="font-weight:400;color:var(--muted);">(what Meta tries to get you the most of)</span></label>
-        ${isWhatsappDest
-          ? `<input value="Conversations (fixed for WhatsApp ads)" disabled style="color:var(--muted);">`
+        ${bvFixedOptimizationLabel(isWhatsappDest)
+          ? `<input value="${escH(bvFixedOptimizationLabel(isWhatsappDest))}" disabled style="color:var(--muted);">`
           : `<select onchange="bvUpdateAdSetRow(${i}, 'optimization_goal', this.value)">
               <option value="OFFSITE_CONVERSIONS" ${row.optimization_goal === "OFFSITE_CONVERSIONS" || !row.optimization_goal ? "selected" : ""}>Conversions (recommended)</option>
               <option value="LINK_CLICKS" ${row.optimization_goal === "LINK_CLICKS" ? "selected" : ""}>Link clicks</option>
