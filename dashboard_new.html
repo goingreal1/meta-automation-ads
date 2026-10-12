@@ -1771,6 +1771,9 @@ textarea.cat-in{min-height:78px;resize:vertical;}
   #bvBuilderOverlay .field:has(#f_objective){display:none!important;}
   #bvBuilderOverlay .bv-section-card{border:0;background:none;box-shadow:none;padding:0;}
   #bvBuilderOverlay .bv-section-card-title{display:none!important;}
+  /* with several ad sets, each card must say which one it is */
+  #bvBuilderOverlay #adSetRows .bv-section-card-title{display:flex!important;font-size:15px;font-weight:700;margin:6px 0 12px;padding-top:12px;border-top:1px solid var(--border);}
+  #bvBuilderOverlay #adSetRows .ms-split:first-child .bv-section-card-title{border-top:0;padding-top:0;}
   #bvBuilderOverlay .field{margin-bottom:16px;}
   #bvBuilderOverlay .field label{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;display:block;}
   #bvBuilderOverlay .fg{grid-template-columns:1fr;gap:0;}
@@ -3947,7 +3950,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                 <div class="field"><label>Headline</label><input id="f_headline" placeholder="Short bold hook" oninput="bvRenderBuilderSummary()"></div>
                 <div class="field"><label>Description</label><input id="f_desc" placeholder="Supporting line under headline"></div>
               </div>
-              <div data-ms="adv" style="margin-top:14px;position:relative;display:inline-block;">
+              <div data-ms="copy adv" style="margin-top:14px;position:relative;display:inline-block;">
                 <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvToggleKebab('bvAdActionsMenu', event)">⋯ Actions for this ad</button>
                 <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-left:8px;" onclick="bvOpenAdListModal()">☰ View all ads (<span id="bvAdCount">0</span>)</button>
                 <div id="bvAdActionsMenu" class="bv-kebab-dropdown" style="display:none;">
@@ -3956,7 +3959,7 @@ function bvOpenCampaignBuilder(presetObjective) {
                   <button type="button" onclick="bvCloseKebabs(); bvQuickDuplicateAd()">⧉ Quickly duplicate</button>
                 </div>
               </div>
-              <div id="stagedCopies" data-ms="adv" style="margin-top:8px;"></div>
+              <div id="stagedCopies" data-ms="copy adv" style="margin-top:8px;"></div>
             </div>
 
             <div class="bv-section-card" data-ms="adv">
@@ -5558,7 +5561,7 @@ function bvRenderAdSetRows() {
   }
 
   wrap.innerHTML = bvAdSetRows.map((row, i) => bvAdSetCardHtml(row, i, isWhatsappDest)).join("") + `
-    <div data-ms="adv" style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div data-ms="who budget adv" style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenDuplicateAdSetModal()">⧉ Duplicate ad set…</button>
       <button type="button" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;" onclick="bvOpenAdSetListModal()">☰ View all ad sets (${bvAdSetRows.length})</button>
       <span style="font-size:11px;color:var(--muted);">${bvAdSetRows.length} ad set${bvAdSetRows.length === 1 ? "" : "s"} will launch • ₦${totalBudget.toLocaleString()}/day total</span>
