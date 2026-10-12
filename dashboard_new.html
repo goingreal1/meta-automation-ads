@@ -1699,6 +1699,45 @@ textarea.cat-in{min-height:78px;resize:vertical;}
   .ord-row span:first-child{color:var(--muted);flex:none;}
   .ord-row span:last-child{text-align:right;min-width:0;word-break:break-word;}
 }
+
+/* ── CAMPAIGN SCREENS (phones): a campaign / ad set opens as its own screen ── */
+.am-drill{display:none;}
+@media(max-width:760px){
+  #amRoot.am-drilled .am-drill{display:block;}
+  #amRoot.am-drilled > .am-head-top,#amRoot.am-drilled > .am-toolbar,#amRoot.am-drilled > .am-bal,#amRoot.am-drilled > .am-kpis,
+  #amRoot.am-drilled > .am-tabs,#amRoot.am-drilled > .am-chips,#amRoot.am-drilled > .am-stamp,#amRoot.am-drilled .am-head,#amRoot.am-drilled .am-foot{display:none;}
+  .am-drill .m-back{padding-left:0;max-width:100%;margin-bottom:8px;}
+  .am-drill-card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;}
+  .am-drill-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;}
+  .am-drill-top h2{margin:0;font-size:19px;line-height:1.25;letter-spacing:-.01em;min-width:0;word-break:break-word;}
+  .am-drill-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+  .am-drill-stats b{display:block;font-size:17px;}
+  .am-drill-stats span{font-size:11.5px;color:var(--muted);}
+  .am-drill-h{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:20px 4px 10px;}
+}
+
+/* Campaign list rows on phones: one card each, whole card opens the campaign. */
+@media(max-width:760px){
+  .am-card{border:0;background:none;box-shadow:none;}
+  .am-scroll{overflow:visible;}
+  .am-tbl,.am-tbl tbody{display:block;width:100%;min-width:0!important;}
+  .am-tbl .num{text-align:left;}
+  .am-tbl thead,.am-tbl tfoot{display:none;}
+  .am-tbl tr{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 10px;padding:14px;margin-bottom:10px;background:var(--panel);border:1px solid var(--border);border-radius:14px;cursor:pointer;}
+  .am-tbl tr:active{background:var(--panel2);}
+  .am-tbl td{display:block;padding:0;border:0;min-width:0;}
+  .am-tbl td.c-chk{display:none;}
+  .am-tbl td:nth-child(2){grid-column:1/4;grid-row:1;}
+  .am-tbl td.c-sw{grid-column:4;grid-row:1;justify-self:end;}
+  .am-tbl td.c-type{grid-column:1/-1;grid-row:2;}
+  .am-tbl td.num{grid-row:3;font-size:14px;margin-top:6px;}
+  .am-tbl td.num::before{display:block;font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;}
+  .am-tbl td:nth-child(4)::before{content:"Budget/day";}
+  .am-tbl td:nth-child(5)::before{content:"Spent";}
+  .am-tbl td:nth-child(6)::before{content:"Results";}
+  .am-tbl td:nth-child(7)::before{content:"Cost";}
+  .am-row .am-c-chk{display:none;}
+}
 </style>
 </head>
 <body>
@@ -5939,7 +5978,7 @@ function amCampaignTable(rows, tot, allChecked) {
     const sets = d.adsets.filter(s => s.campaign_id === r.id && !["DELETED", "ARCHIVED"].includes(s.effective_status)).length;
     const ads = d.ads.filter(a => a.campaign_id === r.id && !["DELETED", "ARCHIVED"].includes(a.effective_status)).length;
     const web = r.kind === "purchase";
-    return `<tr class="${on ? "" : "off"}${am.sel.campaigns.has(r.id) ? " sel" : ""}">
+    return `<tr class="${on ? "" : "off"}${am.sel.campaigns.has(r.id) ? " sel" : ""}" onclick="amTapRow(event,'campaigns','${r.id}')">
       <td class="c-chk"><input type="checkbox" ${am.sel.campaigns.has(r.id) ? "checked" : ""} onchange="amToggleSel('campaigns','${r.id}',this.checked)" aria-label="Select"></td>
       <td><a class="am-link" onclick="amDrill('campaigns','${r.id}')" title="View ad sets"><span class="am-name-t">${escH(r.name)}</span><span class="am-sub">${sets} ad set${sets === 1 ? "" : "s"} · ${ads} ad${ads === 1 ? "" : "s"}</span></a>${busy ? '<span class="spin"></span>' : ""}</td>
       <td class="c-type">${web ? '<span class="tp web">Website</span>' : r.kind === "messaging" ? '<span class="tp wa">WhatsApp</span>' : '<span class="tp">—</span>'}</td>
@@ -5950,7 +5989,7 @@ function amCampaignTable(rows, tot, allChecked) {
       <td class="c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('campaign','${r.id}',this)"><span class="sw-track"></span></label></td>
     </tr>`;
   };
-  return `<div class="am-card"><div class="am-scroll"><table class="am-tbl"><thead><tr>
+  return `<div class="am-card"><div class="am-scroll"><table class="am-tbl no-card"><thead><tr>
     <th class="c-chk"><input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('campaigns',this.checked)" aria-label="Select all"></th>
     <th>Campaign</th><th>Type</th><th class="num">Budget / day</th><th class="num">Spent</th><th class="num">Results</th><th class="num">Cost / result</th><th class="c-sw">Active</th></tr></thead>
     <tbody>${rows.map(tr).join("")}</tbody>
@@ -5987,7 +6026,7 @@ function amRowHtml(level, r) {
   const acts = level === "ads" ? `<span class="am-acts"><a onclick="amPreviewAd('${r.id}')">👁 Preview</a>${r.picture_url ? `<a onclick="amFitImage('${r.id}')" title="Re-fit the whole image so Meta doesn't crop it">⤢ Fit image</a>` : ""}</span>` : "";
   const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}${acts}`;
   return `
-    <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}">
+    <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}" ${next ? `onclick="amTapRow(event,'${level}','${r.id}')"` : ""}>
       <div class="am-top">
         <div class="am-c am-c-chk">${checkable ? `<input type="checkbox" ${checked ? "checked" : ""} onchange="amToggleSel('${level}','${r.id}',this.checked)" aria-label="Select">` : ""}</div>
         <div class="am-c am-c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)"><span class="sw-track"></span></label></div>
@@ -6141,7 +6180,26 @@ function amDraw() {
     ? `<div class="am-table${lvl === "ads" ? " ads" : ""}${am.showLpv ? " lpv" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
     : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
 
-  root.innerHTML = `${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${bulk}${body}
+  // Phones: opening a campaign / ad set becomes its own screen (back button + name + key numbers).
+  let drill = "";
+  const drillOn = lvl !== "campaigns" && (am.sel.campaigns.size || am.sel.adsets.size);
+  if (drillOn) {
+    const adsetId = lvl === "ads" ? [...am.sel.adsets][0] : null;
+    const obj = adsetId ? d.adsets.find(x => x.id === adsetId) : d.campaigns.find(x => x.id === [...am.sel.campaigns][0]);
+    const lvlName = adsetId ? "adset" : "campaign";
+    const parent = adsetId ? (d.campaigns.find(x => x.id === obj?.campaign_id)?.name || "Ad sets") : "Campaigns";
+    if (obj) drill = `<div class="am-drill">
+      <button type="button" class="m-back" onclick="amBack()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>${escH(parent)}</span></button>
+      <div class="am-drill-card">
+        <div class="am-drill-top"><h2>${escH(obj.name)}</h2><label class="switch am-sw"><input type="checkbox" ${obj.status === "ACTIVE" ? "checked" : ""} ${am.busy.has(obj.id) ? "disabled" : ""} onchange="amSwitch('${lvlName}','${obj.id}',this)"><span class="sw-track"></span></label></div>
+        <div>${amDelivery(obj)}${obj.daily_budget ? ` <span class="am-sub" style="display:inline">${fN(obj.daily_budget)}/day</span>` : ""}</div>
+        <div class="am-drill-stats"><div><b>${fN(obj.spend)}</b><span>Spent</span></div><div><b>${amFmtResult(obj)}</b><span>${escH(obj.result_label || "Results")}</span></div><div><b>${obj.cost_per_result != null ? fN(obj.cost_per_result) : "—"}</b><span>${escH(amCostLabel(obj.kind))}</span></div></div>
+      </div>
+      <div class="am-drill-h">${lvl === "adsets" ? "Ad sets" : "Ads"} · ${rows.length}</div>
+    </div>`;
+  }
+  root.classList.toggle("am-drilled", !!drill);
+  root.innerHTML = `${drill}${header}${balance}${am.error ? `<div class="msg err" style="display:block;margin-bottom:12px;">❌ ${escH(am.error)}</div>` : ""}${banner}${kpis}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${bulk}${body}
     <div class="am-stamp">Live from Meta · updated ${ago(new Date(am.at).toISOString())} · switches pause/resume on Meta itself</div>`;
 }
 
@@ -6209,6 +6267,17 @@ async function amSaveMsg(adId) {
 }
 
 function amSetLevel(l) { am.level = l; amDraw(); }
+// Phones: tapping anywhere on a campaign / ad set card opens it (switches, links and checkboxes keep their own job).
+function amTapRow(e, level, id) {
+  if (!mobileMq.matches || e.target.closest("input,label,a,button,select")) return;
+  amDrill(level, id);
+}
+// Phone back button: ads -> the campaign's ad sets -> all campaigns.
+function amBack() {
+  if (am.level === "ads" && am.sel.adsets.size) { am.sel.adsets.clear(); am.level = "adsets"; }
+  else { am.sel = { campaigns: new Set(), adsets: new Set() }; am.level = "campaigns"; }
+  amDraw(); window.scrollTo({ top: 0 });
+}
 function amSetFilter(f) { am.filter = f; amDraw(); }
 function amSetRange(r) { if (!r) return; am.range = r; am.at = 0; amFetch(); }
 function amToggleSel(level, id, on) {
