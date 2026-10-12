@@ -44,7 +44,7 @@ h1{font-size:clamp(40px,8.4vw,76px);line-height:1.02;letter-spacing:-.04em;font-
 .note{margin-top:14px;font-size:14px;color:var(--ink2)}
 .apps{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
 .app{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:600;font-size:14.5px}
-.app b{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:12px}
+.app img{width:26px;height:26px;border-radius:7px;object-fit:contain;display:block}
 /* chat mock */
 @media(min-width:960px){.hgrid{display:grid;grid-template-columns:1.1fr .9fr;gap:44px;align-items:center}.hgrid .chat{margin-top:0}}
 .chat{margin-top:44px;background:#fff;border:1px solid var(--line);border-radius:28px;box-shadow:0 40px 80px -40px rgba(11,42,91,.45);overflow:hidden;max-width:620px}
@@ -120,6 +120,7 @@ details p{color:var(--ink2);padding-bottom:18px}
 .how2{display:grid;gap:16px;margin-top:30px}
 @media(min-width:900px){.how2{grid-template-columns:1fr 1fr}}
 .how2 .card h3{display:flex;align-items:center;gap:10px}
+.how2 .lg{width:30px;height:30px;border-radius:8px;object-fit:contain}
 .how2 ol{margin:12px 0 0 22px;color:var(--ink2);font-size:16.5px}.how2 li{margin:9px 0}
 .how2 li b{color:var(--ink)}
 .callout{margin-top:22px;background:#fff8e6;border:1px solid #f3dca0;border-radius:18px;padding:14px 18px;font-size:16px;color:#6b4a00}
@@ -138,12 +139,12 @@ footer a{text-decoration:underline;margin:0 8px}
 
 <main>
 <section class="hero"><div class="wrap hgrid"><div class="hl">
-  <span class="pill"><i></i>Works inside ChatGPT and Claude</span>
+  <span class="pill"><img src="/images/brands/chatgpt-icon.png" alt="" width="18" height="18" style="border-radius:5px"><img src="/images/brands/claude-icon.png" alt="" width="18" height="18" style="border-radius:5px;margin-left:-4px">Works inside ChatGPT and Claude</span>
   <h1><span class="shine">Let ChatGPT or Claude run your ads.</span></h1>
   <p class="sub">Create campaigns, kill the ads that cost you, and scale what wins. From the chat app you already use.</p>
   <div class="cta"><a class="btn p" href="/login.html?mode=signup" data-cta="hero">Start free for 7 days</a><a class="btn g" href="#how">See how it works</a></div>
   <div class="note">No card needed · Nothing spends without your yes</div>
-  <div class="apps"><span class="app"><b style="background:#10a37f">G</b>ChatGPT</span><span class="app"><b style="background:#d97757">C</b>Claude</span><span class="app"><b style="background:#1877F2">M</b>Meta Ads</span></div></div>
+  <div class="apps"><span class="app"><img src="/images/brands/chatgpt-icon.png" alt="" width="26" height="26">ChatGPT</span><span class="app"><img src="/images/brands/claude-icon.png" alt="" width="26" height="26">Claude</span><span class="app"><img src="/images/brands/meta-icon.png" alt="" width="26" height="26">Meta Ads</span></div></div>
   <div class="chat" aria-label="Example conversation">
     <img class="real" src="/images/landing/ai-chat-ads.png" alt="Revora inside ChatGPT: planning and launching a campaign" onload="this.parentNode.classList.add('has')" onerror="this.remove()">
     <div class="hd"><i></i><i></i><i></i>Chat <span>Example</span></div>
@@ -222,7 +223,7 @@ footer a{text-decoration:underline;margin:0 8px}
   <p class="lead">You connect Revora to ChatGPT or Claude one time. After that, you just chat.</p>
   <div class="callout"><b>Use the website, not the phone app.</b> Open ChatGPT or Claude in your browser to connect. When Revora has its own app, you will be able to connect from the app too.</div>
   <div class="how2">
-    <div class="card"><h3><span style="color:#10a37f">●</span> ChatGPT</h3>
+    <div class="card"><h3><img class="lg" src="/images/brands/chatgpt-icon.png" alt="" width="30" height="30">ChatGPT</h3>
       <ol>
         <li>Create your free Revora account.</li>
         <li>Open <b>ChatGPT on the web</b> and log in.</li>
@@ -232,7 +233,7 @@ footer a{text-decoration:underline;margin:0 8px}
         <li>Log in with your Revora account and tap <b>Allow</b>.</li>
       </ol>
     </div>
-    <div class="card"><h3><span style="color:#d97757">●</span> Claude</h3>
+    <div class="card"><h3><img class="lg" src="/images/brands/claude-icon.png" alt="" width="30" height="30">Claude</h3>
       <ol>
         <li>Create your free Revora account.</li>
         <li>Open <b>Claude on the web</b> and log in.</li>
