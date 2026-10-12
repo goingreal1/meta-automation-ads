@@ -132,7 +132,7 @@ const PLAYBOOK = `HOW TO BE USEFUL FOR ANY BUSINESS (you already know this; nobo
 - Work out the kind of business from the profile and products above and adapt your language, proof and tone to it and to Nigerian buyers. Never ask the user to write you instructions or a "system prompt".
 - WRITING AD COPY (primary text, headlines, descriptions, hooks, CTAs): ALWAYS call write_ad_copy and show what it returns exactly as written, with at most one short line before it (which ad to test first and why). Do not write ad copy yourself, and do not shorten or rewrite its output. Pass the product name, the platform goal (WhatsApp or website) and any angle or language the person asked for.
 - PRODUCT FIRST: before any ad copy be completely sure which product it is for. If the person names a product, use exactly that one; if they do not and there is more than one, ask. If write_ad_copy replies that it needs info, ask the person that one question, save their answer with save_product_facts, then try again. Never write copy for a product from the business type alone.
-- RUNNING ADS FOR THEM (you are their personal senior media buyer): when they ask to launch ads, do it by conversation and cards. Order: (1) know the product (see PRODUCT FIRST); (2) ALWAYS ask, with ONE ask_questions card, anything the person has not already told you: where ads send people (their WEBSITE to buy, or WHATSAPP chat), daily budget per ad set, who should see it and where, how many ad sets and ads. Never assume a destination or budget, and never call plan_campaign until they have answered; (3) if they have not given copy, call write_ad_copy; (4) call show_creatives with the first ad's copy, then wait for their pick. Creatives are listed per product with every image and video (vault uploads AND the product photo); say how many of each exist and that none is a video if so. One creative can be reused in several ads, so 3 creatives can make 5 ads with different copy (use ads[]); (5) turn plain audience wishes into real targeting with search_audiences (interests, job types like business owners or students, cities) and Nigerian state names; (6) call plan_campaign. If they explicitly say to decide the structure, use: 3 ad sets (an interest audience, a broad audience, one more angle), 3 ads per ad set, the budget split by expected value. You can never launch: only their tap on Approve on the plan card launches, so never say anything is live until they tell you it is. Use check_pixel for any question about the pixel or tracking.
+- RUNNING ADS FOR THEM (you are their personal senior media buyer): when they ask to launch ads, do it by conversation and cards. Order: (1) know the product (see PRODUCT FIRST); (2) ALWAYS ask, with ONE ask_questions card, anything the person has not already told you: what the campaign is for (sales, leads, traffic, engagement or awareness; default sales), where ads send people (their WEBSITE, or a chat on WHATSAPP, MESSENGER or INSTAGRAM), whether each ad set has its own budget (ABO, default) or one shared campaign budget (CBO), daily budget, who should see it and where, how many ad sets and ads. If they want a test or a draft to show someone, create it with launch_paused true: it appears in Ads Manager PAUSED and spends nothing. Meta limits: a minimum age above 25 or a maximum below 65 is allowed (Revora turns Advantage+ audience off for it). Never assume a destination or budget, and never call plan_campaign until they have answered; (3) if they have not given copy, call write_ad_copy; (4) call show_creatives with the first ad's copy, then wait for their pick. Creatives are listed per product with every image and video (vault uploads AND the product photo); say how many of each exist and that none is a video if so. One creative can be reused in several ads, so 3 creatives can make 5 ads with different copy (use ads[]); (5) turn plain audience wishes into real targeting with search_audiences (interests, job types like business owners or students, cities) and Nigerian state names; (6) call plan_campaign. If they explicitly say to decide the structure, use: 3 ad sets (an interest audience, a broad audience, one more angle), 3 ads per ad set, the budget split by expected value. You can never launch: only their tap on Approve on the plan card launches, so never say anything is live until they tell you it is. Use check_pixel for any question about the pixel or tracking.
 - EXPLAINING RESULTS: never dump a list of metrics. Start with a one-sentence answer, then explain in plain words what the few numbers that matter mean (spend, results, cost per result against their target), then call review_ads_card for the Keep, Watch and Stop groups with real ids and tap buttons. Do not repeat the card's contents in text. Judge ads only after about 2 to 3 times the target cost per result in spend. To scale a winner: raise budget 20 percent, or duplicate it into the same campaign (the winner keeps running and the copy goes live; never kill a winner). A BAD ad is relaunched: offer duplicate (a fresh live copy) and the old one is switched off in the same tap. Only bad ads are ever stopped.
 - Use only facts from the product record or what the user told you. Never invent claims, testimonials, numbers, discounts or registration numbers.
 - META AD POLICY: no guaranteed results; no before-and-after claims for body, weight or skin; no implying you know a person's health, body, finances or identity; no medical cures; no shocking or misleading claims; no fake urgency. Health and wellness copy talks about support, comfort and experience, not cures.
@@ -427,6 +427,14 @@ function whereText(a: any) {
   const p = [...(a.states || []), ...(a.cities || []).map((c: any) => c.name)];
   return p.length ? p.join(", ") : "All Nigeria";
 }
+const OBJ_MAP: Record<string, string> = { sales: "OUTCOME_SALES", leads: "OUTCOME_LEADS", traffic: "OUTCOME_TRAFFIC", engagement: "OUTCOME_ENGAGEMENT", awareness: "OUTCOME_AWARENESS" };
+const objName = (plan: any) => String(plan.objective || "OUTCOME_SALES");
+function planKind(plan: any): string {
+  const o = objName(plan);
+  if (plan.destination === "website") return o === "OUTCOME_SALES" ? "Website orders" : o === "OUTCOME_LEADS" ? "Website leads" : o === "OUTCOME_TRAFFIC" ? "Website visits" : o === "OUTCOME_ENGAGEMENT" ? "Engagement" : "Awareness";
+  const ch = plan.destination === "whatsapp" ? "WhatsApp" : plan.destination === "messenger" ? "Messenger" : "Instagram";
+  return `${ch} messages${o === "OUTCOME_LEADS" ? " (leads)" : o === "OUTCOME_ENGAGEMENT" ? " (engagement)" : ""}`;
+}
 async function planCard(plan: any, planId: string, ctx: { authHeader: string; accountId: string; companyId: string; userId: string }, estimate = true) {
   const rows = await Promise.all((plan.adsets || []).map(async (a: any) => {
     let reach: string | null = null;
@@ -439,13 +447,15 @@ async function planCard(plan: any, planId: string, ctx: { authHeader: string; ac
   const total = rows.reduce((s: number, r: any) => s + r.budget, 0);
   const { data: kr } = await supabase.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend").eq("profile_id", ctx.userId).limit(5).then((x: any) => x, () => ({ data: [] }));
   const wantKind = plan.destination === "website" ? "purchase" : "messaging";
+  const ruleLabel = plan.destination === "website" ? "website purchase" : "message";
+  const cbo = plan.budget_type === "cbo";
   const rule = (kr ?? []).find((r: any) => r.enabled && r.kind === wantKind);
   const adsPerSet = Array.isArray(plan.ads) && plan.ads.length ? plan.ads.length : plan.asset_ids.length;
   return {
-    type: "plan", plan_id: planId, status: "draft", title: `${plan.product_name} · ${plan.destination === "website" ? "Website orders" : "WhatsApp messages"}`,
-    summary: `1 campaign · ${rows.length} ad set${rows.length > 1 ? "s" : ""} · ${rows.length * adsPerSet} ads · ${fmtNaira(total)} a day`,
+    type: "plan", plan_id: planId, status: "draft", title: `${plan.product_name} · ${planKind(plan)}`,
+    summary: `1 campaign · ${rows.length} ad set${rows.length > 1 ? "s" : ""} · ${rows.length * adsPerSet} ads · ${fmtNaira(total)} a day${cbo ? " (one campaign budget, Meta shares it between ad sets)" : ""}${plan.launch_paused ? " · created PAUSED, nothing spends until you turn it on" : ""}`,
     adsets: rows, creatives: `${adsPerSet} ad${adsPerSet > 1 ? "s" : ""} per ad set from ${plan.asset_ids.length} creative${plan.asset_ids.length > 1 ? "s" : ""} and ${plan.copies.length} copy version${plan.copies.length > 1 ? "s" : ""}`,
-    pixel: plan.pixel_ok === null ? null : plan.pixel_ok, rules: rule ? `Your ${plan.destination === "website" ? "website purchase" : "WhatsApp message"} kill rule: ${rule.auto_kill === false ? "flag" : "pause"} an ad when it passes ${fmtNaira(Number(rule.min_spend))} spend with cost per ${plan.destination === "website" ? "purchase" : "message"} above ${fmtNaira(Number(rule.max_cost_per_result))}.` : `No ${plan.destination === "website" ? "website purchase" : "WhatsApp message"} kill rule set yet, so nothing will be paused automatically for this campaign. Set one in Settings.`,
+    pixel: plan.pixel_ok === null ? null : plan.pixel_ok, rules: (plan.destination === "website" && objName(plan) !== "OUTCOME_SALES") ? "Automatic kill rules only cover purchase and message campaigns. Watch this one by its cost per result." : rule ? `Your ${ruleLabel} kill rule: ${rule.auto_kill === false ? "flag" : "pause"} an ad when it passes ${fmtNaira(Number(rule.min_spend))} spend with cost per ${plan.destination === "website" ? "purchase" : "message"} above ${fmtNaira(Number(rule.max_cost_per_result))}.` : `No ${ruleLabel} kill rule set yet, so nothing will be paused automatically for this campaign. Set one in Settings.`,
     warnings: plan.warnings || [], campaign_name: plan.campaign_name,
   };
 }
@@ -457,12 +467,18 @@ async function planCampaignTool(args: any, ctx: Ctx) {
   const { data: prods } = await supabase.from("products").select("id, product_name, whatsapp_number, landing_page_url").eq("company_id", ctx.companyId).ilike("product_name", `%${pname.replace(/[%_]/g, "")}%`).limit(5);
   const product = (prods ?? [])[0];
   if (!pname || !product) return { needs_info: true, message: "Which product is this campaign for? Ask, using their product names." };
-  const { data: acct } = await supabase.from("ad_accounts").select("id, whatsapp_number, meta_pixel_id, fb_page_id, balance_naira").eq("id", ctx.account.id).eq("company_id", ctx.companyId).maybeSingle();
+  const { data: acct } = await supabase.from("ad_accounts").select("id, whatsapp_number, meta_pixel_id, fb_page_id, ig_user_id, balance_naira").eq("id", ctx.account.id).eq("company_id", ctx.companyId).maybeSingle();
   if (!acct) return { error: "That ad account is not available." };
   if (!acct.fb_page_id) return { needs_info: true, message: "This ad account has no Facebook page saved, so ads cannot be created. Tell the person to connect the page in Settings, Ad accounts." };
-  if (args?.destination !== "website" && args?.destination !== "whatsapp") return { needs_info: true, message: "Ask whether people should land on their WEBSITE (to buy) or message them on WHATSAPP. Do not assume." };
+  if (!["website", "whatsapp", "messenger", "instagram"].includes(args?.destination)) return { needs_info: true, message: "Ask where people should go: their WEBSITE, or a message chat on WHATSAPP, MESSENGER or INSTAGRAM. Do not assume." };
   if (args?.person_confirmed !== true) return { needs_info: true, message: "The person has not confirmed the setup yet. Ask (one ask_questions card) for anything missing: destination, daily budget per ad set, who to reach and where, and which creatives; then call again with person_confirmed true only if they said it." };
-  const dest = args.destination as "website" | "whatsapp";
+  const dest = args.destination as "website" | "whatsapp" | "messenger" | "instagram";
+  const objective = OBJ_MAP[String(args?.objective ?? "sales").toLowerCase()] ?? null;
+  if (!objective) return { needs_info: true, message: "objective must be one of: sales, leads, traffic, engagement, awareness. Ask the person what the campaign is for if they have not said." };
+  if (dest === "whatsapp" && objective !== "OUTCOME_SALES") return { needs_info: true, message: "WhatsApp campaigns run as Sales (people who message). Use objective sales, or pick website, messenger or instagram for other goals." };
+  if (dest !== "website" && !["OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT"].includes(objective)) return { needs_info: true, message: "Message campaigns (Messenger, Instagram) can be sales, leads or engagement. For traffic or awareness use destination website." };
+  if (dest === "instagram" && !acct.ig_user_id) return { needs_info: true, message: "This ad account has no Instagram account linked, so Instagram message ads cannot run. Tell the person to link the Instagram account in Meta Business settings, or use messenger or whatsapp." };
+  const budgetType = args?.budget_type === "cbo" ? "cbo" : "abo";
   const wa = String(acct.whatsapp_number || product.whatsapp_number || "").replace(/[^\d]/g, "");
   const link = String(args?.landing_url || product.landing_page_url || "").trim();
   if (dest === "whatsapp" && !wa) return { needs_info: true, message: "No WhatsApp number is saved on this ad account or product. Ask which WhatsApp number people should message." };
@@ -515,11 +531,12 @@ async function planCampaignTool(args: any, ctx: Ctx) {
   const warnings: string[] = [];
   const total = adsets.reduce((s: number, a: any) => s + a.budget_naira, 0);
   if (acct.balance_naira != null && Number(acct.balance_naira) < total) warnings.push(`The account balance is about ${fmtNaira(Number(acct.balance_naira))}, less than one day of this plan (${fmtNaira(total)}). Top up before launching.`);
-  if (!acct.meta_pixel_id && dest === "website") warnings.push("No pixel is saved on this ad account, so a website campaign cannot track orders.");
+  if (!acct.meta_pixel_id && dest === "website" && ["OUTCOME_SALES", "OUTCOME_LEADS"].includes(objective)) warnings.push("No pixel is saved on this ad account, so this campaign cannot track results and Meta may refuse to launch it.");
+  if (budgetType === "cbo" && adsets.length < 2) warnings.push("Campaign budget (CBO) shares one budget between ad sets, which only helps with 2 or more ad sets.");
   const plan = {
-    product_id: product.id, product_name: product.product_name, ad_account_id: acct.id, destination: dest, whatsapp_number: dest === "whatsapp" ? wa : null, landing_url: dest === "website" ? link : null,
+    product_id: product.id, product_name: product.product_name, ad_account_id: acct.id, destination: dest, objective, budget_type: budgetType, launch_paused: args?.launch_paused === true, whatsapp_number: dest === "whatsapp" ? wa : null, landing_url: dest === "website" ? link : null,
     campaign_name: String(args?.campaign_name || `${product.product_name} ${new Date().toISOString().slice(0, 10)}`).slice(0, 100),
-    cta: String(args?.cta || (dest === "whatsapp" ? "WHATSAPP_MESSAGE" : "SHOP_NOW")).slice(0, 40), asset_ids: assetIds, ads, copies, adsets, warnings, pixel_ok: dest === "website" ? !!acct.meta_pixel_id : null,
+    cta: String(args?.cta || (dest === "whatsapp" ? "WHATSAPP_MESSAGE" : dest === "messenger" ? "MESSAGE_PAGE" : dest === "instagram" ? "INSTAGRAM_MESSAGE" : objective === "OUTCOME_LEADS" ? "SIGN_UP" : objective === "OUTCOME_SALES" ? "SHOP_NOW" : "LEARN_MORE")).slice(0, 40), asset_ids: assetIds, ads, copies, adsets, warnings, pixel_ok: dest === "website" && ["OUTCOME_SALES", "OUTCOME_LEADS"].includes(objective) ? !!acct.meta_pixel_id : null,
   };
   const { data: row, error } = await supabase.from("ai_plans").insert({ company_id: ctx.companyId, user_id: ctx.userId, ad_account_id: acct.id, plan }).select("id").single();
   if (error || !row) return { error: "Could not save the plan: " + (error?.message ?? "unknown") };
@@ -576,6 +593,8 @@ async function planAction(body: any, p: { companyId: string; role: string; media
   if (body.action === "update_plan") {
     const e = body.edits || {};
     if (typeof e.campaign_name === "string" && e.campaign_name.trim()) plan.campaign_name = e.campaign_name.trim().slice(0, 100);
+    if (e.budget_type === "cbo" || e.budget_type === "abo") plan.budget_type = e.budget_type;
+    if (typeof e.launch_paused === "boolean") plan.launch_paused = e.launch_paused;
     (Array.isArray(e.adsets) ? e.adsets : []).forEach((ea: any, i: number) => {
       const a = plan.adsets[i]; if (!a) return;
       if (ea.budget_naira != null) a.budget_naira = Math.min(Math.max(norm0(ea.budget_naira), 1000), 500000);
@@ -608,7 +627,7 @@ async function planAction(body: any, p: { companyId: string; role: string; media
           uploaded_by: "ai_chat", ad_account_id: acct.id, company_id: p.companyId, test_status: "untested", uploaded_at: new Date().toISOString(),
           ad_set_sort_order: i, ad_name: `${plan.product_name} · ${plan.adsets[i].label} · Ad ${j + 1}`.slice(0, 120),
           product_id: plan.product_id, destination_type: plan.destination, whatsapp_number: plan.whatsapp_number, landing_page_url: plan.landing_url,
-          campaign_name: plan.campaign_name, campaign_objective: "OUTCOME_SALES", budget_type: "abo", launch_batch_id: batch,
+          campaign_name: plan.campaign_name, campaign_objective: plan.objective || "OUTCOME_SALES", budget_type: plan.budget_type === "cbo" ? "cbo" : "abo", launch_paused: plan.launch_paused === true, launch_batch_id: batch,
         }).select("id").single();
         if (error || !ins) throw new Error("Could not stage an ad: " + (error?.message ?? "unknown"));
         ids.push(ins.id);
@@ -902,7 +921,7 @@ ${JSON.stringify(data)}`;
           properties: {
             product_name: { type: "string", description: "Which product (name or part of it). Omit only if the person gave the facts themselves." },
             facts: { type: "string", description: "Product or offer facts supplied by the person in chat, when there is no product record." },
-            goal: { type: "string", enum: ["whatsapp", "website"], description: "Where the ad sends people. Default whatsapp." },
+            goal: { type: "string", enum: ["whatsapp", "website", "messenger", "instagram"], description: "Where the ad sends people. Default whatsapp." },
             count: { type: "number", description: "How many ads (1-5). Default 3." },
             angle: { type: "string", description: "A specific angle the person asked for, if any." },
             language: { type: "string", enum: ["pidgin_mix", "english", "pidgin", "yoruba_mix", "igbo_mix", "hausa_mix"], description: "Only if the person asked for a language different from their default." },
@@ -956,7 +975,7 @@ ${JSON.stringify(data)}`;
         name: "plan_campaign",
         description: "Build the campaign plan and show it as a card with Approve, Edit and Cancel buttons. It does NOT launch anything: only the person's tap on Approve launches. Needs, all stated by the person: product, destination (website or WhatsApp), 1-6 ad sets (who, where, daily budget), the chosen creative ids, how many ads per ad set (use ads[] to reuse creatives), and the ad copy versions. Never call it before copy and creatives exist.",
         parameters: { type: "object", properties: {
-          product_name: { type: "string" }, destination: { type: "string", enum: ["whatsapp", "website"] }, landing_url: { type: "string" }, campaign_name: { type: "string" },
+          product_name: { type: "string" }, destination: { type: "string", enum: ["website", "whatsapp", "messenger", "instagram"], description: "Where people go: website (landing page), or a chat on whatsapp, messenger or instagram." }, objective: { type: "string", enum: ["sales", "leads", "traffic", "engagement", "awareness"], description: "What the campaign is for. Default sales. WhatsApp is always sales. Messenger/Instagram: sales, leads or engagement. Website: any." }, budget_type: { type: "string", enum: ["abo", "cbo"], description: "abo = each ad set has its own daily budget (default). cbo = one campaign budget (the sum of the ad set budgets) that Meta shares across ad sets." }, launch_paused: { type: "boolean", description: "true = create everything on Meta but leave it PAUSED, so it shows in Ads Manager and nothing spends (a draft/test). Only when the person asks." }, landing_url: { type: "string" }, campaign_name: { type: "string" },
           asset_ids: { type: "array", items: { type: "string" }, description: "Creative ids the person chose on the creative card (ids as shown on the card, including product:<uuid>:photo)." },
           ads: { type: "array", description: "The exact ads per ad set when the person wants more ads than creatives: one entry per ad. A creative can appear in several ads (reuse). Example for 3 creatives and 5 copies: [{asset_id:A,copy_index:0},{asset_id:B,copy_index:1},{asset_id:C,copy_index:2},{asset_id:A,copy_index:3},{asset_id:B,copy_index:4}]. Count the entries: that is the number of ads per ad set.", items: { type: "object", properties: { asset_id: { type: "string" }, copy_index: { type: "number" } }, required: ["asset_id", "copy_index"] } },
           person_confirmed: { type: "boolean", description: "true ONLY when the person themselves stated destination (website or WhatsApp), the daily budget per ad set, who/where, and the creatives. Never guess; ask first." },
