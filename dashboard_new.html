@@ -1656,6 +1656,17 @@ textarea.cat-in{min-height:78px;resize:vertical;}
   .am-toolbar .am-filter,.am-toolbar > .btn-g{order:4;}
   .am-toolbar .am-grow{display:none;}
 
+  /* Product screen: title lives in the top bar; Save is pinned above the tab bar. */
+  body.m-detail .chat-toggle{display:none;}
+  body.m-detail #catSave{
+    position:fixed;left:16px;right:16px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:330;width:auto;padding:14px;border-radius:14px;
+    font-size:15px;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  }
+  body.m-detail .content{padding-bottom:calc(150px + env(safe-area-inset-bottom));}
+  .cat-photo{min-height:0;height:150px;aspect-ratio:auto;}
+  /* An open chat takes the full screen: drop the notices above it. */
+  body:has(#convTabRoot.thread-open) #convTabRoot > .panel:not(.conv-thread){display:none;}
+
   /* Section titles on root screens: lighter, so content comes first. */
   .sh-title{font-size:23px;letter-spacing:-.02em;}
   .content{padding-top:12px;}
@@ -2012,13 +2023,17 @@ function bvUpdateAppBar() {
   document.body.classList.toggle("m-sub", sub);
   document.body.classList.toggle("m-more", mobileMq.matches && activeTab === "more");
   if (!sub) return;
+  const prodOpen = activeTab === "catalog" && !!window.bvCat?.pid;
+  document.body.classList.toggle("m-detail", prodOpen);
   const detail = activeTab === "settings" && bvSetOpen && !bvLimitedRole();
   const tabLbl = document.querySelector(`#tabsBar [data-tab="${activeTab}"] .tab-label`)?.textContent.trim() || "";
-  document.getElementById("mTitle").textContent = detail
+  const prodName = prodOpen ? (window.bvCatData?.prods?.find(x => x.id === window.bvCat.pid)?.product_name || "Product") : "";
+  document.getElementById("mTitle").textContent = prodOpen ? prodName : detail
     ? (document.querySelector(`#setNav .set-nav-btn[data-sec="${bvSettingsSec}"]`)?.lastChild?.textContent.trim() || "Settings") : tabLbl;
-  document.getElementById("mBackLbl").textContent = detail ? "Settings" : "More";
+  document.getElementById("mBackLbl").textContent = prodOpen ? "Catalog" : detail ? "Settings" : "More";
 }
 document.getElementById("mBack").addEventListener("click", () => {
+  if (activeTab === "catalog" && window.bvCat?.pid) { window.bvCat.pid = null; render(); window.scrollTo(0, 0); return; }
   if (activeTab === "settings" && bvSetOpen && !bvLimitedRole()) {
     bvSetOpen = false; const w = document.querySelector(".set-wrap[data-m]"); if (w) w.dataset.m = "list"; bvUpdateAppBar(); window.scrollTo(0, 0);
   } else bvGoMore();
@@ -7254,6 +7269,7 @@ async function bvCatProduct(el) {
   const p = prods.find(x => x.id === st.pid); if (!p) return bvCatList(el);
   const mine = assets.filter(a => a.product_id === p.id), pages = sites.filter(x => x.product_id === p.id);
   const nz = bvCatNiche(p);
+  bvUpdateAppBar();
   el.innerHTML = `
     <div class="sh"><div class="sh-title"><button type="button" class="btn btn-g" style="margin-right:10px;padding:5px 10px" onclick="bvCat.pid=null;render()">← Catalog</button>${escH(p.product_name)}</div>
       <div class="sh-actions"><button type="button" class="btn btn-g" onclick="bvCatAskAI('${escH(p.product_name).replace(/'/g, "\\'")}')">✨ Ask AI to launch ads</button><button type="button" class="btn btn-a" id="catSave">Save</button></div></div>
