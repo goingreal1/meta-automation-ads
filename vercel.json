@@ -112,7 +112,7 @@
       "has": [
         {
           "type": "host",
-          "value": "outreachhq.xyz"
+          "value": "go.outreachhq.xyz"
         }
       ],
       "destination": "/run-ads.html"
@@ -277,17 +277,6 @@
     }
   },
   "redirects": [
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "www.outreachhq.xyz"
-        }
-      ],
-      "destination": "https://outreachhq.xyz/:path*",
-      "permanent": true
-    },
     {
       "source": "/:path*",
       "has": [
