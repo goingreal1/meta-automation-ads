@@ -122,6 +122,16 @@
       "has": [
         {
           "type": "host",
+          "value": "outreachhq.xyz"
+        }
+      ],
+      "destination": "/run-ads.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "docs.revoracrm.app"
         }
       ],
@@ -277,6 +287,17 @@
     }
   },
   "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.outreachhq.xyz"
+        }
+      ],
+      "destination": "https://outreachhq.xyz/:path*",
+      "permanent": true
+    },
     {
       "source": "/:path*",
       "has": [
