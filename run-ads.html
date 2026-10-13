@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a1a3a">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>Run your ads from a chat | Revora</title>
+<meta name="description" content="Let ChatGPT or Claude help you run your ads. Get more sales and stop the ads that are costing you money today. Sign up free with Revora.">
+<meta property="og:title" content="Run your ads from a chat | Revora">
+<meta property="og:description" content="Let ChatGPT or Claude help you run your ads. Get more sales and stop the ads that are costing you money today.">
+<meta property="og:image" content="/images/landing/lp-hero-1.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0a1a3a;--navy2:#10285a;--blue:#1877F2;--blueDk:#0c5dc7;--sky:#5ac8fa;--bg:#f2f5fb;--ink:#0d1220;--mut:#55607a;--line:#e1e7f2}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:#fff;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}img{display:block;max-width:100%}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:56px;padding:0 30px;border-radius:99px;background:var(--blue);color:#fff;font-weight:700;font-size:17px;border:0;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--blueDk)}
+.btn.light{background:#fff;color:var(--navy)}
+.hdr{position:sticky;top:0;z-index:20;background:rgba(10,26,58,.96);backdrop-filter:blur(8px)}
+.hdr .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:#fff;font-weight:800;font-size:20px}
+.brand img{width:32px;height:32px;border-radius:9px}
+.hdr .btn{height:42px;padding:0 20px;font-size:15px}
+/* hero */
+.hero{background:var(--navy);color:#fff;overflow:hidden}
+.hero .wrap{display:grid;gap:0}
+.hero-img{position:relative;height:420px;margin:0 -20px}
+.hero-img img{width:100%;height:100%;object-fit:cover;object-position:50% 22%}
+.hero-img::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,26,58,0) 45%,var(--navy) 100%)}
+.hero-copy{padding:6px 0 56px}
+.tag{display:inline-block;background:#fff;color:var(--navy);font-weight:800;font-size:15px;padding:7px 14px;border-radius:10px;letter-spacing:.02em;margin-bottom:18px}
+h1{font-size:clamp(40px,10.5vw,76px);line-height:1.02;letter-spacing:-.035em;font-weight:800}
+.sub{font-size:19px;color:#c4d0ec;margin:18px 0 28px;max-width:560px}
+.facts{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font-size:14.5px;color:#9fb0d8;font-weight:500}
+.facts span::before{content:"✓ ";font-weight:800;color:var(--sky)}
+/* sections */
+section{padding:64px 0}
+.eyebrow{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);margin-bottom:10px}
+h2{font-size:clamp(30px,7vw,48px);line-height:1.06;letter-spacing:-.03em;font-weight:800;max-width:720px}
+.lead{font-size:18px;color:var(--mut);margin-top:14px;max-width:640px}
+.grey{background:var(--bg)}
+.dark{background:var(--navy);color:#fff}.dark .eyebrow{color:var(--sky)}.dark .lead{color:#b4c1e2}
+/* problem list */
+.problems{display:grid;gap:12px;margin-top:28px}
+.prob{display:flex;gap:16px;align-items:flex-start;background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:20px}
+.prob .x{flex:none;width:40px;height:40px;border-radius:12px;background:var(--navy);color:var(--sky);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px}
+.prob b{display:block;font-size:18px;letter-spacing:-.01em}.prob span{color:var(--mut);font-size:15.5px;display:block;margin-top:3px}
+/* steps */
+.steps{display:grid;gap:18px;margin-top:30px}
+.step{background:var(--bg);border-radius:26px;padding:22px}
+.step .n{display:inline-flex;width:42px;height:42px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;align-items:center;justify-content:center;margin-bottom:12px}
+.step h3{font-size:22px;letter-spacing:-.02em;text-transform:uppercase;font-weight:800}
+.step p{color:var(--mut);margin-top:6px;font-size:16px}
+.chat{margin-top:16px;background:#fff;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.m{max-width:90%;padding:12px 16px;border-radius:18px;font-size:15px;line-height:1.4}
+.u{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:5px}
+.a{align-self:flex-start;background:#eef2fa;border-bottom-left-radius:5px}
+.chip{display:inline-block;background:var(--navy);color:#fff;border-radius:99px;padding:5px 13px;font-size:13px;font-weight:700;margin:8px 6px 0 0}.chip.go{background:var(--blue)}
+.cons{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px;background:#fff;border-radius:20px;padding:18px 8px}
+.logo{width:76px;height:76px;border-radius:20px;background:#fff;box-shadow:0 8px 24px -10px rgba(10,26,58,.4);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700}
+.logo img{width:40px;height:40px;border-radius:10px;object-fit:contain}
+.dash{width:22px;height:4px;border-radius:4px;background:var(--blue)}
+/* kill / scale */
+.ks{display:grid;gap:14px;margin-top:28px}
+.ks .c{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:22px}
+.ks small{display:block;font-size:12.5px;font-weight:800;letter-spacing:.08em;color:var(--sky)}
+.ks b{display:block;font-size:21px;margin-top:6px;letter-spacing:-.01em}.ks span{display:block;color:#b4c1e2;margin-top:4px;font-size:15.5px}
+.phone{justify-self:center;width:min(280px,76vw);border-radius:38px;border:9px solid #1b2440;background:#000;overflow:hidden;margin-top:30px}
+.cap{text-align:center;font-size:12.5px;color:#8c97b6;margin-top:10px}
+/* faq */
+.faq{margin-top:26px;border-top:1px solid var(--line)}
+.q{border-bottom:1px solid var(--line)}
+.q button{width:100%;background:none;border:0;text-align:left;font:700 18px 'Inter';padding:20px 0;display:flex;justify-content:space-between;cursor:pointer;color:var(--ink)}
+.q button::after{content:"+";font-size:26px;font-weight:400;color:var(--mut)}.q.on button::after{content:"–"}
+.q div{display:none;padding:0 0 20px;color:var(--mut);font-size:16px}.q.on div{display:block}
+/* final cta */
+.cta{background:var(--navy);color:#fff;text-align:center;padding:84px 0}
+.cta img{width:84px;height:84px;border-radius:22px;margin:0 auto 26px}
+.cta h2{margin:0 auto;text-align:center}.cta p{color:#c4d0ec;font-size:20px;margin:16px auto 30px;max-width:520px}
+footer{background:#f3f1ec;padding:34px 0 30px;font-size:14px;color:var(--mut)}
+footer .links{display:flex;flex-wrap:wrap;gap:6px 22px;margin-bottom:16px}footer a{font-weight:600;color:var(--ink)}
+footer p{font-size:12.5px;line-height:1.6}
+@media(min-width:900px){
+  .hero .wrap{grid-template-columns:1.1fr 1fr;align-items:center;gap:40px}
+  .hero-img{height:640px;margin:0;border-radius:0}.hero-copy{padding:60px 0}.hero-img::after{background:linear-gradient(90deg,rgba(10,26,58,0) 60%,var(--navy) 100%)}
+  .problems{grid-template-columns:1fr 1fr}.steps{grid-template-columns:repeat(3,1fr)}.ks{grid-template-columns:1fr 1fr}
+  .tour{display:grid;grid-template-columns:1fr 320px;gap:60px;align-items:center}.phone{margin-top:0}
+}
+</style>
+</head>
+<body>
+<header class="hdr"><div class="wrap">
+  <a href="#top" class="brand"><img src="/images/brands/revora-logo-64.png" alt="" width="32" height="32">Revora</a>
+  <a class="btn" href="https://metaautomationads.vercel.app/login.html?mode=signup">Sign up free</a>
+</div></header>
+
+<main id="top">
+<div class="hero"><div class="wrap">
+  <div class="hero-img"><img src="/images/landing/lp-hero-1.jpg" alt="A shop owner checking her phone" fetchpriority="high"></div>
+  <div class="hero-copy">
+    <span class="tag">ADS FOR SELLERS</span>
+    <h1>Run your ads from a chat.</h1>
+    <p class="sub">Let ChatGPT or Claude help you run your ads. Get more sales, and stop the ads that are costing you money today.</p>
+    <a class="btn" href="https://metaautomationads.vercel.app/login.html?mode=signup">Sign up free</a>
+    <div class="facts"><span>7-day free trial</span><span>Priced in naira</span><span>Our team helps you set up</span></div>
+  </div>
+</div></div>
+
+<section class="grey"><div class="wrap">
+  <div class="eyebrow">The problem</div>
+  <h2>Running ads shouldn't eat your day or your money.</h2>
+  <div class="problems">
+    <div class="prob"><div class="x">₦</div><div><b>Money goes out, orders don't come in</b><span>Boosted posts and rushed ads spend your budget on people who never buy.</span></div></div>
+    <div class="prob"><div class="x">?</div><div><b>Ads Manager is confusing</b><span>So many menus, settings and options that most sellers just guess.</span></div></div>
+    <div class="prob"><div class="x">%</div><div><b>You can't tell what is working</b><span>Clicks look good, but which ads really bring orders and which are wasting cash?</span></div></div>
+    <div class="prob"><div class="x">⏱</div><div><b>It never stops needing attention</b><span>Checking, pausing and scaling ads by hand, every day, on top of running your business.</span></div></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">The solution</div>
+  <h2>Talk to your ads like you'd talk to an assistant.</h2>
+  <p class="lead">Connect Revora to ChatGPT or Claude. Then plan, launch, check and fix your ads just by asking, in plain words.</p>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><h3>Connect</h3><p>Copy your Revora link into ChatGPT or Claude. About a minute.</p>
+      <div class="cons"><div class="logo"><img src="/images/brands/chatgpt-icon.png" alt="">ChatGPT</div><div class="dash"></div><div class="logo"><img src="/images/brands/revora-logo-192.png" alt="">Revora</div><div class="dash"></div><div class="logo"><img src="/images/brands/claude-icon.png" alt="">Claude</div></div></div>
+    <div class="step"><div class="n">2</div><h3>Plan &amp; launch</h3><p>Say what you sell and your budget. Check the plan, then say go.</p>
+      <div class="chat"><div class="m u">Plan ads for my ankara dresses. ₦10,000 a day, orders on WhatsApp.</div><div class="m a"><b>Here's the plan:</b> 3 ads, 2 audiences, copy in your tone.<br><span class="chip go">Launch it</span></div></div></div>
+    <div class="step"><div class="n">3</div><h3>Watch &amp; fix</h3><p>Ask how it's going. Revora flags what wastes money and what to scale.</p>
+      <div class="chat"><div class="m u">How are my ads today?</div><div class="m a">12 orders so far. One ad spent ₦6,000 with no orders. Pause it?<br><span class="chip">Pause ad</span></div></div></div>
+  </div>
+  <p class="cap" style="margin-top:14px">Sample conversations</p>
+</div></section>
+
+<section class="dark"><div class="wrap">
+  <div class="tour">
+    <div>
+      <div class="eyebrow">Stop waste. Scale winners.</div>
+      <h2>Keep the ads that earn. Cut the ones that cost.</h2>
+      <p class="lead">Revora watches your ads against your real orders, not just clicks, and tells you what to do next.</p>
+      <div class="ks">
+        <div class="c"><small>STOP</small><b>Ad 3 · Red dress photo</b><span>Spent ₦6,000, got 0 orders. Pause it?</span></div>
+        <div class="c"><small>SCALE</small><b>Ad 1 · Blue ankara video</b><span>8 orders at ₦700 each. Raise budget by 20%?</span></div>
+      </div>
+      <p class="cap" style="text-align:left">Sample data</p>
+    </div>
+    <div><div class="phone"><img src="/images/landing/app/home.jpg" alt="Revora app" width="520" height="1125" loading="lazy"></div><p class="cap">Revora app, sample data</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">Questions</div>
+  <h2>Quick answers.</h2>
+  <div class="faq" id="faq">
+    <div class="q"><button type="button">Do I need to know how to run ads?</button><div>No. Tell your assistant what you sell and what you want. Revora plans and sets it up, and our team helps you through setup.</div></div>
+    <div class="q"><button type="button">Do I need my own ad account?</button><div>No. You can get a ready ad account from Revora, or link the one you already have.</div></div>
+    <div class="q"><button type="button">Will it spend my money without asking?</button><div>No. Nothing launches until you review the plan and say go. You can also save an ad as a paused draft first.</div></div>
+    <div class="q"><button type="button">Which assistants work?</button><div>ChatGPT and Claude. You connect Revora once, then just chat.</div></div>
+    <div class="q"><button type="button">How much does it cost?</button><div>Start with a 7-day free trial. Plans are priced in naira.</div></div>
+  </div>
+</div></section>
+
+<div class="cta"><div class="wrap">
+  <img src="/images/brands/revora-logo-192.png" alt="" width="84" height="84">
+  <h2>Sign up now.</h2>
+  <p>Our team will help you set it up.</p>
+  <a class="btn" href="https://metaautomationads.vercel.app/login.html?mode=signup">Sign up free</a>
+</div></div>
+</main>
+
+<footer><div class="wrap">
+  <div class="links"><a href="/terms.html">Terms</a><a href="/privacy.html">Privacy</a><a href="/refund.html">Refunds</a><a href="/contact.html">Contact</a></div>
+  <p>© <span id="yr"></span> Revora, a product of Pip install -AI Technologies (RC 8553896), Ibadan, Nigeria. Revora is not affiliated with or endorsed by Meta, OpenAI or Anthropic. Facebook, Instagram, Messenger and WhatsApp are trademarks of Meta Platforms, Inc. ChatGPT is a trademark of OpenAI. Claude is a trademark of Anthropic. Results vary; examples shown are sample data.</p>
+</div></footer>
+<script>
+document.getElementById('yr').textContent=new Date().getFullYear();
+document.querySelectorAll('.q button').forEach(function(b){b.addEventListener('click',function(){var q=b.parentElement,was=q.classList.contains('on');document.querySelectorAll('.q').forEach(function(x){x.classList.remove('on')});if(!was)q.classList.add('on');});});
+</script>
+</body>
+</html>
