@@ -1,0 +1,138 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Revora carousel</title>
+<style>
+:root{--navy:#0a1a3a;--navy2:#10285a;--blue:#1877F2;--sky:#5ac8fa;--bg:#f2f5fb;--ink:#0d1220;--mut:#55607a}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#888}
+.s{width:1080px;height:1350px;position:relative;overflow:hidden;margin:0 0 20px;background:var(--bg);color:var(--ink);display:flex;flex-direction:column}
+.dark{background:var(--navy);color:#fff}
+.pad{padding:90px 80px 0}
+.s:first-child .top{text-shadow:0 2px 12px rgba(0,0,0,.5)}.top{position:absolute;top:44px;left:60px;right:60px;display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:28px;z-index:5}
+.top .b{display:flex;align-items:center;gap:12px}.top img{width:44px;height:44px;border-radius:11px}
+.top .n{background:rgba(120,130,150,.18);padding:6px 18px;border-radius:99px;font-size:24px;font-weight:600}
+.dark .top .n{background:rgba(255,255,255,.14)}
+h1{font-size:84px;line-height:1.02;letter-spacing:-.03em;font-weight:800}
+h2{font-size:72px;line-height:1.05;letter-spacing:-.03em;font-weight:800;text-align:center}
+.step-n{display:inline-flex;width:84px;height:84px;border-radius:50%;background:var(--navy);color:#fff;font-size:46px;font-weight:800;align-items:center;justify-content:center;margin-right:22px;flex:none}
+.stepH{display:flex;align-items:center;justify-content:center;margin-top:120px;text-align:left}
+.stepH span.t{font-size:64px;font-weight:800;letter-spacing:-.025em;line-height:1.05;text-transform:uppercase;max-width:760px}
+p.sub{font-size:36px;line-height:1.4;color:var(--mut);text-align:center;margin:30px 90px 0}
+.frame{margin:46px 90px 0;flex:1;border-radius:36px;background:#fff;box-shadow:0 14px 50px -20px rgba(10,26,58,.35);position:relative;overflow:hidden;margin-bottom:110px;display:flex;align-items:center;justify-content:center;padding:34px}
+.foot{position:absolute;bottom:40px;left:0;right:0;text-align:center;font-size:24px;color:#8b94aa;font-weight:600}
+.dark .foot{color:#7f8db0}
+.tag{display:inline-block;background:#fff;color:var(--navy);font-weight:800;font-size:46px;padding:10px 26px;border-radius:12px;letter-spacing:-.01em;margin-top:26px}
+.swipe{position:absolute;right:50px;bottom:56px;background:#fff;color:var(--navy);font-weight:700;font-size:30px;padding:16px 34px;border-radius:99px}
+/* chat */
+.chat{width:100%;display:flex;flex-direction:column;gap:22px}
+.m{max-width:88%;padding:28px 34px;border-radius:32px;font-size:37px;line-height:1.38}
+.u{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:8px}
+.a{align-self:flex-start;background:#eef2fa;border-bottom-left-radius:8px}
+.a b{font-weight:700}
+.hd{display:flex;align-items:center;gap:16px;font-weight:700;font-size:30px;margin-bottom:6px;color:var(--mut)}
+.hd img{width:44px;height:44px;border-radius:12px}
+.chip{display:inline-block;background:var(--navy);color:#fff;border-radius:99px;padding:10px 26px;font-size:30px;font-weight:700;margin:16px 12px 0 0}
+.chip.go{background:var(--blue)}
+.row{display:flex;gap:18px}
+.card{background:#fff;border-radius:32px;padding:34px 34px 38px;flex:1}
+.proof{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin:50px 70px 0}
+.proof .card{border:2px solid #e3e8f3;min-height:330px}
+.proof .ic{width:84px;height:84px;border-radius:22px;background:var(--navy);display:flex;align-items:center;justify-content:center;margin-bottom:22px}
+.proof svg{width:46px;height:46px;stroke:var(--sky);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.proof b{font-size:38px;letter-spacing:-.02em;display:block}.proof span{font-size:29px;color:var(--mut);display:block;margin-top:8px;line-height:1.35}
+.phone{height:100%;aspect-ratio:520/1125;border-radius:48px;border:12px solid #1b2440;overflow:hidden;background:#000}.phone img{width:100%;height:100%;object-fit:cover}
+.cons{display:flex;align-items:center;justify-content:center;gap:10px}
+.logo{width:200px;height:200px;border-radius:44px;background:#fff;box-shadow:0 14px 40px -16px rgba(10,26,58,.4);display:flex;align-items:center;justify-content:center;flex-direction:column;font-weight:700;font-size:26px;gap:12px}
+.logo img{width:110px;height:110px;border-radius:26px;object-fit:contain}
+.link{display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:700;color:var(--blue);font-size:22px}
+.link i{display:block;width:34px;height:6px;background:var(--blue);border-radius:6px}
+.ok{background:#e4f4ea;color:#17803d;font-weight:700;font-size:30px;padding:12px 30px;border-radius:99px;margin-top:26px;display:inline-block}
+.kill{border-left:12px solid var(--navy)}.scale{border-left:12px solid var(--blue)}
+.k small{display:block;font-size:26px;font-weight:700;letter-spacing:.06em;color:var(--mut);margin-bottom:8px}
+.k b{font-size:40px;display:block;letter-spacing:-.02em}.k span.d{display:block;font-size:32px;color:var(--mut);margin-top:6px}.k .chip{display:inline-block;margin-top:18px}
+</style></head><body>
+
+<!-- 1 hook -->
+<div class="s dark" id="s1">
+  <div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div></div>
+  <div style="height:640px;position:relative;flex:none"><img src="../../images/landing/lp-hero-1.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 25%"><div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,26,58,0) 55%,var(--navy) 100%)"></div></div>
+  <div class="pad" style="padding-top:10px">
+    <h1>ONLINE SELLERS ARE GETTING MORE ORDERS WITH AI-RUN ADS</h1>
+    <span class="tag">SEE HOW IT WORKS</span>
+    <p style="font-size:36px;color:#b8c4e2;margin-top:26px;line-height:1.4">5 simple steps. No agency. No Ads Manager headaches.</p>
+  </div>
+  <div class="swipe">SWIPE →</div>
+</div>
+
+<!-- 2 why -->
+<div class="s" id="s2"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">2/8</div></div>
+  <div class="pad" style="padding-top:150px"><h2>WHY SELLERS ARE SWITCHING</h2><p class="sub" style="margin-top:22px">Busy business owners don't have time to babysit ads all day. So they let AI do the heavy work.</p></div>
+  <div class="proof">
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8z"/></svg></div><b>Launch by chat</b><span>Say what you sell. The plan and the ads follow.</span></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8"/></svg></div><b>See real orders</b><span>Not just clicks. What you actually earn.</span></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></div><b>Cut waste fast</b><span>Stop the ads that cost money and bring nothing.</span></div>
+    <div class="card"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg></div><b>Scale winners</b><span>Put more budget behind what is working.</span></div>
+  </div>
+  <div class="foot">@revora</div></div>
+
+<!-- 3 connect -->
+<div class="s" id="s3"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">3/8</div></div>
+  <div class="stepH"><span class="step-n">1</span><span class="t">Connect Revora to ChatGPT or Claude</span></div>
+  <p class="sub">Open your Revora settings, copy your link, and paste it into ChatGPT or Claude. Takes about a minute.</p>
+  <div class="frame"><div style="text-align:center"><div class="cons">
+    <div class="logo"><img src="../../images/brands/chatgpt-icon.png">ChatGPT</div>
+    <div class="link"><i></i>linked<i></i></div>
+    <div class="logo"><img src="../../images/brands/revora-logo-192.png">Revora</div>
+    <div class="link"><i></i>linked<i></i></div>
+    <div class="logo"><img src="../../images/brands/claude-icon.png">Claude</div></div>
+    <span class="ok">✓ Connected</span></div></div>
+  <div class="foot">@revora</div></div>
+
+<!-- 4 plan -->
+<div class="s" id="s4"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">4/8</div></div>
+  <div class="stepH"><span class="step-n">2</span><span class="t">Tell it what you sell</span></div>
+  <p class="sub">Say your product, your budget and where you want orders. It plans the whole campaign for you.</p>
+  <div class="frame"><div class="chat">
+    <div class="m u">Plan a campaign for my ankara dresses. ₦10,000 a day, orders on WhatsApp.</div>
+    <div class="m a"><div class="hd"><img src="../../images/brands/revora-logo-64.png">Revora</div><b>Here's the plan:</b><br>• Goal: WhatsApp orders<br>• Budget: ₦10,000 / day<br>• 3 ads, 2 audiences<br>• Copy written in your tone<br><span class="chip go">Looks good</span><span class="chip">Change budget</span></div>
+  </div></div>
+  <div class="foot">@revora</div></div>
+
+<!-- 5 launch -->
+<div class="s" id="s5"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">5/8</div></div>
+  <div class="stepH"><span class="step-n">3</span><span class="t">Say "launch it"</span></div>
+  <p class="sub">Check the plan, then say go. Your ads go live on Facebook and Instagram. Nothing runs without your yes.</p>
+  <div class="frame"><div class="chat">
+    <div class="m u">Launch it.</div>
+    <div class="m a"><div class="hd"><img src="../../images/brands/revora-logo-64.png">Revora</div><b>Done. 3 ads are live.</b><br>They are now collecting WhatsApp orders. I'll watch them and tell you what I see.<br><span class="chip go">● Live on Facebook &amp; Instagram</span></div>
+  </div></div>
+  <div class="foot">@revora</div></div>
+
+<!-- 6 monitor -->
+<div class="s" id="s6"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">6/8</div></div>
+  <div class="stepH"><span class="step-n">4</span><span class="t">Check results any time</span></div>
+  <p class="sub">Ask how your ads are doing. You get a plain answer: orders, cost per order and what to do next.</p>
+  <div class="frame"><div class="chat">
+    <div class="m u">How are my ads today?</div>
+    <div class="m a"><div class="hd"><img src="../../images/brands/revora-logo-64.png">Revora</div><b>12 orders so far today.</b><br>Each order costs about ₦830. Your blue ankara video is bringing the most. One ad is spending with no orders.</div>
+  </div></div>
+  <div class="foot">Sample conversation · @revora</div></div>
+
+<!-- 7 kill scale -->
+<div class="s" id="s7"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">7/8</div></div>
+  <div class="stepH"><span class="step-n">5</span><span class="t">Stop waste. Scale winners.</span></div>
+  <p class="sub">Revora flags the ads that cost money and bring nothing, and backs the ones that sell.</p>
+  <div class="frame" style="flex-direction:column;gap:26px;align-items:stretch;justify-content:center">
+    <div class="card kill k" style="background:#eef2fa"><small>STOP</small><b>Ad 3 · Red dress photo</b><span class="d">Spent ₦6,000, got 0 orders. Pause it?</span><span class="chip">Pause ad</span></div>
+    <div class="card scale k" style="background:#eef2fa"><small>SCALE</small><b>Ad 1 · Blue ankara video</b><span class="d">8 orders at ₦700 each. Raise budget by 20%?</span><span class="chip go">Scale up</span></div>
+  </div>
+  <div class="foot">Sample data · @revora</div></div>
+
+<!-- 8 cta -->
+<div class="s dark" id="s8"><div class="top"><div class="b"><img src="../../images/brands/revora-logo-64.png">Revora</div><div class="n">8/8</div></div>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 80px;text-align:center;align-items:center">
+    <img src="../../images/brands/revora-logo-192.png" style="width:170px;height:170px;border-radius:40px;margin-bottom:56px">
+    <h1 style="font-size:96px">SIGN UP NOW.</h1>
+    <p style="font-size:46px;line-height:1.35;color:#c9d4ee;margin-top:30px">Our team will help you set it up.</p>
+    <span class="tag" style="margin-top:56px;background:var(--blue);color:#fff;font-size:44px;padding:20px 48px;border-radius:99px">Link in bio</span>
+    <p style="font-size:30px;color:#7f8db0;margin-top:46px">7-day free trial · Priced in naira</p>
+  </div></div>
+</body></html>
