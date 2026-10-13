@@ -11,13 +11,13 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
 <title>Revora — Run ads that bring orders</title>
-<meta name="description" content="Launch Facebook and Instagram ads from your phone, track every order, and see what you really earn. Log in or create your Revora account.">
+<meta name="description" content="Run Meta and TikTok ads together from your phone, track every order, and see what you really earn. Log in or create your Revora account.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#fff;--panel:#fff;--panel2:#f5f5f2;--border:#e7e3da;--text:#14130f;--text2:#55524a;--muted:#8c887c;
-  --accent:#1877F2;--accentDk:#0c5dc7;--accentBg:#e7f0fe;--accentBdr:#c5dbfc;--dark:#0f0f0d;--dark2:#1b1b18;--pop:#ff3b5c;
+  --accent:#1877F2;--accentDk:#0c5dc7;--accentBg:#e7f0fe;--accentBdr:#c5dbfc;--dark:#0f0f0d;--dark2:#1b1b18;--pop:#1877F2;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -113,7 +113,8 @@ h2.big{font-size:clamp(28px,6.5vw,44px);line-height:1.08;letter-spacing:-.028em;
 /* learn */
 .cards{display:grid;gap:14px;margin-top:24px;}
 .card{border-radius:22px;overflow:hidden;background:var(--panel2);display:block;}
-.card img{width:100%;aspect-ratio:16/10;object-fit:cover;}
+.card .art{aspect-ratio:16/8;background:linear-gradient(135deg,#1877F2,#0c3f91);display:flex;align-items:center;justify-content:center;padding:0;}
+.card .art svg{width:64px;height:64px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
 .card div{padding:16px 18px 20px;}.card b{display:block;font-size:18px;letter-spacing:-.01em;line-height:1.25;}.card span{display:block;color:var(--text2);font-size:14.5px;margin-top:6px;}
 /* agencies */
 .pink{background:#f3c7ee;border-radius:26px;padding:28px 22px;color:var(--dark);}
@@ -159,7 +160,7 @@ body.invite .hero{padding-top:34px;}
       <img src="/images/landing/lp-hero-1.jpg" alt="A shop owner checking her phone" fetchpriority="high">
       <span class="hero-tag">Revora Ads</span>
       <h1 class="serif">Run ads that bring orders.</h1>
-      <p class="sub">Launch Facebook and Instagram ads from your phone, then see every order and what you really earn.</p>
+      <p class="sub">Run Meta and TikTok ads together from one place. Reach more people, win more sales, and see every order and what you really earn.</p>
       <div class="hero-facts"><span>7-day free trial</span><span>Priced in naira</span><span>Made for Nigerian sellers</span></div>
     </div>
 
@@ -205,9 +206,9 @@ body.invite .hero{padding-top:34px;}
   <div class="eyebrow">What you can do</div>
   <h2 class="big serif">Turn attention into orders.</h2>
   <p class="lead">Pick what you want from your ads. Revora sets it up the right way and shows you the results in plain words.</p>
-  <div class="goals" id="goalList"><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8z"/></svg></div><div><b>Get WhatsApp orders</b><span class="t">Ads that open a chat with you. Reply, confirm and deliver.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg></div><div><b>Grow website sales</b><span class="t">Send people to your sales page or online store and track every order.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="14" rx="3"/><path d="M8 21l4-4 4 4"/></svg></div><div><b>Chat on Messenger and Instagram</b><span class="t">Ads that open a message from customers on Messenger or Instagram.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></div><div><b>Collect leads</b><span class="t">Instant forms that people fill in without leaving Facebook or Instagram.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-6 1.5L10 20z"/></svg></div><div><b>Get more visitors</b><span class="t">Bring people to your page or link at a low cost per click.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg></div><div><b>Reach more people</b><span class="t">Put your brand in front of thousands of people near you.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 000-7.8z"/></svg></div><div><b>Build engagement</b><span class="t">Get likes, comments and shares on the posts that matter.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg></div><div><b>Run it from a chat</b><span class="t">Connect ChatGPT or Claude and launch, pause and scale ads by asking.</span></div></div></div>
+  <div class="goals" id="goalList"><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8z"/></svg></div><div><b>Get WhatsApp orders</b><span class="t">Ads that open a chat with you. Reply, confirm and deliver.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg></div><div><b>Run on Meta and TikTok together</b><span class="t">Launch once and reach people on both. Use a video for TikTok.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg></div><div><b>Grow website sales</b><span class="t">Send people to your sales page or online store and track every order.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="14" rx="3"/><path d="M8 21l4-4 4 4"/></svg></div><div><b>Chat on Messenger and Instagram</b><span class="t">Ads that open a message from customers on Messenger or Instagram.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></div><div><b>Collect leads</b><span class="t">Instant forms that people fill in without leaving the app they are scrolling.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-6 1.5L10 20z"/></svg></div><div><b>Get more visitors</b><span class="t">Bring people to your page or link at a low cost per click.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg></div><div><b>Reach more people</b><span class="t">Put your brand in front of thousands of people near you.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 000-7.8z"/></svg></div><div><b>Build engagement</b><span class="t">Get likes, comments and shares on the posts that matter.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg></div><div><b>Run it from a chat</b><span class="t">Connect ChatGPT or Claude and launch, pause and scale ads by asking.</span></div></div></div>
   <button class="showmore" id="showMore" type="button">Show more</button>
-  <div class="platforms"><span class="chip">Facebook</span><span class="chip">Instagram</span><span class="chip">Messenger</span><span class="chip">WhatsApp</span><span class="chip soon">TikTok · coming soon</span></div>
+  <div class="platforms"><span class="chip">Meta</span><span class="chip">Instagram</span><span class="chip">Messenger</span><span class="chip">WhatsApp</span><span class="chip">TikTok</span></div>
 </div></section>
 
 <section class="s" id="how" style="background:var(--panel2)"><div class="container">
@@ -215,8 +216,8 @@ body.invite .hero{padding-top:34px;}
   <h2 class="big serif">From sign-up to your first ad in one sitting.</h2>
   <div class="steps">
     <div class="step"><div class="n">1</div><div><b>Create your account</b><span class="t">Start your 7-day free trial and add your products.</span></div></div>
-    <div class="step"><div class="n">2</div><div><b>Get an ad account</b><span class="t">Buy a ready one from Revora, paid from your wallet, or link the one you already have.</span></div></div>
-    <div class="step"><div class="n">3</div><div><b>Launch and watch</b><span class="t">Choose your goal, add a photo or video, write the ad or let AI help. Your ads start paused until you approve them.</span></div></div>
+    <div class="step"><div class="n">2</div><div><b>Get your ad accounts</b><span class="t">Buy ready Meta and TikTok ad accounts from Revora, paid from your wallet, or link the ones you already have.</span></div></div>
+    <div class="step"><div class="n">3</div><div><b>Launch on Meta and TikTok</b><span class="t">Choose your goal, add a photo or video, write the ad or let AI help. One launch goes to both platforms. Your ads start paused until you approve them.</span></div></div>
   </div>
   <div class="offer"><h3 class="serif">Try it free for 7 days.</h3><p>Set everything up and see how it works before you pay. Plans are priced in naira.</p><a class="pill-btn" href="#auth" data-mode="signup">Start free trial</a></div>
 </div></section>
@@ -227,7 +228,7 @@ body.invite .hero{padding-top:34px;}
   <p class="lead">Built for a phone first, so you can run your ads from anywhere.</p>
   <div class="tour">
     <div class="acc" id="tourAcc">
-      <div class="acc-item on" data-img="launch"><button class="acc-q" type="button">Launch in minutes</button><div class="acc-a">One question per screen: where people should go, who should see it, your budget, your photo or video, and your words. Review, then launch.</div></div>
+      <div class="acc-item on" data-img="launch"><button class="acc-q" type="button">Launch in minutes</button><div class="acc-a">One question per screen: where people should go, who should see it, your budget, your photo or video, and your words. Pick Meta, TikTok or both, review, then launch.</div></div>
       <div class="acc-item" data-img="accounts"><button class="acc-q" type="button">Your ad accounts, clear</button><div class="acc-a">See every ad account with what it still needs, buy one or link your own, and set up your Page and dataset step by step.</div></div>
       <div class="acc-item" data-img="orders"><button class="acc-q" type="button">Every order in one list</button><div class="acc-a">Orders from your ads land here. Call or message the customer and update the status with one tap.</div></div>
       <div class="acc-item" data-img="home"><button class="acc-q" type="button">Know what you really earn</button><div class="acc-a">See orders, delivery and money next to what you spent, so you know which ads are worth keeping.</div></div>
@@ -241,10 +242,10 @@ body.invite .hero{padding-top:34px;}
   <h2 class="big serif">Learn to run ads that sell.</h2>
   <p class="lead">Short guides written for Nigerian sellers. Free to read.</p>
   <div class="cards">
-    <a class="card" href="blog/first-facebook-ad-nigeria.html"><img src="/images/landing/ac-l8.jpg" alt="" loading="lazy"><div><b>Run your first Facebook ad without wasting money</b><span>Start small and learn fast.</span></div></a>
-    <a class="card" href="blog/what-is-real-roas.html"><img src="/images/landing/lp-feature-1.jpg" alt="" loading="lazy"><div><b>What is real ROAS?</b><span>Why Ads Manager can mislead you.</span></div></a>
-    <a class="card" href="blog/whatsapp-or-website.html"><img src="/images/landing/ac-l3.jpg" alt="" loading="lazy"><div><b>WhatsApp or website?</b><span>Where should your ad send people?</span></div></a>
-    <a class="card" href="blog/why-ad-accounts-get-restricted.html"><img src="/images/landing/lp-feature-3.jpg" alt="" loading="lazy"><div><b>Why ad accounts get restricted</b><span>How to protect yours.</span></div></a>
+    <a class="card" href="blog/first-facebook-ad-nigeria.html"><div class="art"><svg viewBox="0 0 24 24"><path d="M12 2l3 7 7 .6-5.3 4.7 1.7 7.2L12 17.8 5.6 21.5l1.7-7.2L2 9.6 9 9z"/></svg></div><div><b>Run your first ad without wasting money</b><span>Start small and learn fast.</span></div></a>
+    <a class="card" href="blog/what-is-real-roas.html"><div class="art"><svg viewBox="0 0 24 24"><path d="M3 20h18M6 16v-5M11 16V7M16 16v-8M21 4l-5 5-4-3-5 5"/></svg></div><div><b>What is real ROAS?</b><span>Why Ads Manager can mislead you.</span></div></a>
+    <a class="card" href="blog/whatsapp-or-website.html"><div class="art"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8z"/></svg></div><div><b>WhatsApp or website?</b><span>Where should your ad send people?</span></div></a>
+    <a class="card" href="blog/why-ad-accounts-get-restricted.html"><div class="art"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></div><div><b>Why ad accounts get restricted</b><span>How to protect yours.</span></div></a>
   </div>
   <p style="margin-top:20px"><a class="pill-btn ghost" href="academy.html">Visit the Academy</a></p>
 </div></section>
@@ -257,8 +258,10 @@ body.invite .hero{padding-top:34px;}
   <div class="eyebrow">FAQ</div>
   <h2 class="big serif">Your questions, answered.</h2>
   <div class="faq acc" id="faqAcc">
-    <div class="acc-item"><button class="acc-q" type="button">Do I need my own ad account?</button><div class="acc-a">No. You can buy a ready ad account from Revora, or link one you already own.</div></div>
-    <div class="acc-item"><button class="acc-q" type="button">Which platforms can I run ads on?</button><div class="acc-a">Facebook, Instagram, Messenger and WhatsApp today. TikTok is coming soon.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Can one ad run on Meta and TikTok at the same time?</button><div class="acc-a">Yes. Choose both when you launch and Revora sets up the ad on each platform. You see the results together in one place.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">What do I need for TikTok?</button><div class="acc-a">A video. TikTok ads are video only. If you only have a photo, you can still run it on Meta.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Do I need my own ad account?</button><div class="acc-a">No. You can buy ready Meta and TikTok ad accounts from Revora, or link ones you already own.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Which platforms can I run ads on?</button><div class="acc-a">Meta (Facebook, Instagram, Messenger and WhatsApp) and TikTok. Launch once and Revora puts your ad on both, so you reach more people. TikTok ads use video.</div></div>
     <div class="acc-item"><button class="acc-q" type="button">Will my ads spend money without my approval?</button><div class="acc-a">New ads start paused until you approve them. Sending money needs your own PIN.</div></div>
     <div class="acc-item"><button class="acc-q" type="button">How do I pay?</button><div class="acc-a">Plans are priced in naira. You fund your ads from your wallet by bank transfer or card.</div></div>
     <div class="acc-item"><button class="acc-q" type="button">Can I use it from ChatGPT or Claude?</button><div class="acc-a">Yes. Connect Revora to ChatGPT or Claude and ask, for example, how your ads are doing today.</div></div>
