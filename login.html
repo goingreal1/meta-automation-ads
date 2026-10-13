@@ -10,208 +10,273 @@
 <meta name="apple-mobile-web-app-title" content="Revora">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
-<title>Log in · Revora</title>
+<title>Revora — Run ads that bring orders</title>
+<meta name="description" content="Launch Facebook and Instagram ads from your phone, track every order, and see what you really earn. Log in or create your Revora account.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ── THEME TOKENS (matches the Revora marketing site) ────────────────────────── */
-:root {
-  --bg:#ffffff; --panel:#ffffff; --panel2:#faf9f7;
-  --border:#e7e3da; --borderStrong:#d6d1c4;
-  --text:#14130f; --text2:#55524a; --muted:#8c887c;
-  --accent:#1877F2; --accentDk:#0c5dc7;
-  --accentBg:#e7f0fe; --accentBdr:#c5dbfc;
+:root{
+  --bg:#fff;--panel:#fff;--panel2:#f5f5f2;--border:#e7e3da;--text:#14130f;--text2:#55524a;--muted:#8c887c;
+  --accent:#1877F2;--accentDk:#0c5dc7;--accentBg:#e7f0fe;--accentBdr:#c5dbfc;--dark:#0f0f0d;--dark2:#1b1b18;--pop:#ff3b5c;
 }
-
-/* ── RESET ─────────────────────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;}
-body{
-  background:var(--bg);color:var(--text);
-  font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;
-  display:flex;justify-content:center;align-items:center;min-height:100vh;
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;}
+a{color:inherit;text-decoration:none;}
+img{display:block;max-width:100%;}
+.serif{font-family:'Fraunces',Georgia,serif;}
+.container{width:100%;max-width:1120px;margin:0 auto;padding:0 20px;}
+/* header */
+.hdr{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);}
+.hdr .container{display:flex;align-items:center;justify-content:space-between;height:62px;}
+.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:19px;letter-spacing:-.01em;}
+.brand img{width:30px;height:30px;border-radius:8px;}
+.hdr-nav{display:none;gap:26px;font-size:15px;font-weight:500;color:var(--text2);}
+.hdr-nav a:hover{color:var(--text);}
+.hdr-act{display:flex;align-items:center;gap:8px;}
+.pill-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 20px;height:44px;border-radius:99px;font:600 15px 'Inter',sans-serif;border:1.5px solid transparent;cursor:pointer;white-space:nowrap;}
+.pill-btn.red{background:var(--pop);color:#fff;}.pill-btn.red:hover{filter:brightness(.93);}
+.pill-btn.blue{background:var(--accent);color:#fff;}.pill-btn.blue:hover{background:var(--accentDk);}
+.pill-btn.ghost{background:transparent;border-color:var(--border);color:var(--text);}
+.pill-btn.dark{background:#fff;color:var(--dark);}
+.burger{width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.menu{display:none;position:absolute;left:0;right:0;top:62px;background:#fff;border-bottom:1px solid var(--border);padding:8px 20px 18px;}
+.menu.open{display:block;}.menu a{display:block;padding:14px 4px;font-weight:600;border-bottom:1px solid var(--border);}
+/* hero */
+.hero{padding:16px 0 8px;}
+.hero-grid{display:grid;gap:18px;}
+.hero-card{position:relative;border-radius:26px;overflow:hidden;min-height:470px;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:26px 22px;background:#222;isolation:isolate;}
+.hero-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;}
+.hero-card::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(0,0,0,.05) 25%,rgba(0,0,0,.72) 100%);}
+.hero-tag{display:inline-block;align-self:flex-start;background:rgba(255,255,255,.2);backdrop-filter:blur(6px);padding:5px 12px;border-radius:99px;font-size:13px;font-weight:600;margin-bottom:12px;}
+.hero h1{font-size:clamp(34px,9vw,54px);line-height:1.04;letter-spacing:-.03em;font-weight:700;}
+.hero p.sub{font-size:17px;margin-top:12px;color:rgba(255,255,255,.9);max-width:520px;}
+.hero-facts{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:16px;font-size:13.5px;font-weight:500;color:rgba(255,255,255,.88);}
+.hero-facts span::before{content:"✓ ";font-weight:700;}
+/* auth card */
+.auth{background:var(--panel);border:1px solid var(--border);border-radius:26px;padding:26px 22px;box-shadow:0 18px 50px -22px rgba(20,19,15,.25);}
+.auth h2{font-size:26px;letter-spacing:-.02em;line-height:1.15;}
+.auth .sub2{color:var(--text2);margin:6px 0 18px;font-size:15px;}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.field label{font-size:13px;color:var(--text2);font-weight:600;}
+input{background:var(--panel2);border:1.5px solid transparent;color:var(--text);border-radius:14px;padding:0 16px;height:52px;font-size:16px;font-family:inherit;width:100%;transition:border-color .14s,background .14s;}
+input:focus{outline:none;border-color:var(--accent);background:#fff;}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:54px;border-radius:99px;font-size:16px;font-weight:700;cursor:pointer;border:0;font-family:inherit;}
+.btn-a{background:var(--pop);color:#fff;}.btn-a:hover{filter:brightness(.93);}
+.btn:disabled{opacity:.55;cursor:not-allowed;}
+.switch{text-align:center;margin-top:16px;font-size:14.5px;color:var(--text2);}
+.switch a{color:var(--accent);font-weight:600;}
+.fine{font-size:12.5px;color:var(--muted);text-align:center;margin-top:12px;}
+.fine a{text-decoration:underline;}
+.msg{font-size:13px;padding:11px 12px;border-radius:12px;margin-bottom:14px;display:none;}
+.msg.err{display:block;background:rgba(224,85,85,.10);color:#c43d3d;border:1px solid rgba(224,85,85,.22);}
+.msg.ok{display:block;background:var(--accentBg);color:var(--accentDk);border:1px solid var(--accentBdr);}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:rot .65s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg);}}
+/* sections */
+section.s{padding:56px 0;}
+.eyebrow{font-size:13px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-bottom:10px;}
+h2.big{font-size:clamp(28px,6.5vw,44px);line-height:1.08;letter-spacing:-.028em;font-weight:700;}
+.lead{color:var(--text2);font-size:17px;margin-top:12px;max-width:640px;}
+.platforms{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;}
+.chip{padding:8px 14px;border-radius:99px;background:var(--panel2);font-size:14px;font-weight:600;}
+.chip.soon{background:transparent;border:1.5px dashed var(--borderStrong,#d6d1c4);color:var(--muted);}
+/* goal list */
+.goals{margin-top:24px;border-top:1px solid var(--border);}
+.goal{display:flex;gap:16px;align-items:center;padding:18px 0;border-bottom:1px solid var(--border);}
+.goal.more{display:none;}.goals.open .goal.more{display:flex;}
+.goal .ic{flex:none;width:76px;height:76px;border-radius:18px;background:var(--dark);display:flex;align-items:center;justify-content:center;}
+.goal .ic svg{width:38px;height:38px;stroke:#5ac8fa;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.goal b{display:block;font-size:18px;letter-spacing:-.01em;}
+.goal span.t{display:block;color:var(--text2);font-size:15px;margin-top:3px;line-height:1.4;}
+.showmore{width:100%;margin-top:18px;height:52px;border-radius:99px;border:0;background:var(--panel2);font:600 16px 'Inter';cursor:pointer;}
+/* steps / offer */
+.steps{display:grid;gap:12px;margin-top:24px;}
+.step{display:flex;gap:14px;padding:18px;border-radius:20px;background:var(--panel2);}
+.step .n{flex:none;width:34px;height:34px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;}
+.step b{display:block;font-size:17px;}.step span.t{color:var(--text2);font-size:15px;display:block;margin-top:3px;}
+.offer{margin-top:18px;border-radius:26px;background:#5ee3d6;color:var(--dark);padding:26px 22px;}
+.offer h3{font-size:34px;letter-spacing:-.03em;line-height:1.05;}.offer p{margin-top:10px;font-size:16px;max-width:430px;}
+.offer .pill-btn{margin-top:18px;background:var(--dark);color:#fff;}
+/* dark product tour */
+.dark{background:var(--dark);color:#fff;}
+.dark .eyebrow{color:#5ac8fa;}.dark .lead{color:#b9b6ac;}
+.tour{display:grid;gap:22px;margin-top:24px;}
+.acc{border-top:1px solid #2c2b27;}
+.acc-item{border-bottom:1px solid #2c2b27;}
+.acc-q{width:100%;background:none;border:0;color:#fff;font:600 19px 'Inter';text-align:left;padding:20px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+.acc-q::after{content:"+";font-size:26px;font-weight:400;color:#8c887c;}.acc-item.on .acc-q::after{content:"–";}
+.acc-a{display:none;padding:0 0 20px;color:#b9b6ac;font-size:15.5px;}.acc-item.on .acc-a{display:block;}
+.phone{justify-self:center;width:min(300px,78vw);border-radius:38px;border:9px solid #2a2a26;background:#000;overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.8);}
+.phone img{width:100%;height:auto;}
+.phone-cap{text-align:center;font-size:12.5px;color:#8c887c;margin-top:10px;}
+/* learn */
+.cards{display:grid;gap:14px;margin-top:24px;}
+.card{border-radius:22px;overflow:hidden;background:var(--panel2);display:block;}
+.card img{width:100%;aspect-ratio:16/10;object-fit:cover;}
+.card div{padding:16px 18px 20px;}.card b{display:block;font-size:18px;letter-spacing:-.01em;line-height:1.25;}.card span{display:block;color:var(--text2);font-size:14.5px;margin-top:6px;}
+/* agencies */
+.pink{background:#f3c7ee;border-radius:26px;padding:28px 22px;color:var(--dark);}
+.pink h3{font-size:30px;letter-spacing:-.025em;line-height:1.08;}.pink p{margin-top:10px;font-size:16px;max-width:520px;}.pink .pill-btn{margin-top:18px;background:var(--dark);color:#fff;}
+/* faq */
+.faq{margin-top:22px;border-top:1px solid #2c2b27;}
+/* footer */
+.foot{background:#f3f1ec;padding:44px 0 30px;font-size:14.5px;}
+.foot-grid{display:grid;gap:26px;grid-template-columns:1fr 1fr;}
+.foot h4{font-size:15px;margin-bottom:10px;}.foot a{display:block;padding:5px 0;color:var(--text2);}.foot a:hover{color:var(--text);}
+.foot .legal{margin-top:30px;padding-top:20px;border-top:1px solid #dcd8cc;color:var(--muted);font-size:12.5px;line-height:1.6;}
+/* invite mode: just the card */
+body.invite .market,body.invite .hero-card,body.invite .hdr-nav,body.invite .burger{display:none!important;}
+body.invite .hero{padding-top:34px;}
+@media(min-width:900px){
+  .hdr-nav{display:flex;}.burger{display:none;}
+  .hero-grid{grid-template-columns:1.25fr 1fr;align-items:stretch;gap:24px;}
+  .hero-card{min-height:620px;padding:44px;}
+  .auth{align-self:center;padding:34px 30px;}
+  .steps{grid-template-columns:repeat(3,1fr);}
+  .tour{grid-template-columns:1fr 340px;align-items:center;gap:60px;}
+  .cards{grid-template-columns:repeat(4,1fr);}
+  .foot-grid{grid-template-columns:repeat(4,1fr);}
+  .goals{display:grid;grid-template-columns:1fr 1fr;column-gap:40px;}
+  body.invite .hero-grid{grid-template-columns:minmax(0,440px);justify-content:center;}
 }
-a{color:var(--accent);text-decoration:none;font-weight:500;}
-a:hover{text-decoration:underline;}
-
-/* ── LAYOUT ────────────────────────────────────────────────────────────────── */
-.wrap {
-  width: 100%;
-  max-width: 400px;
-  padding: 20px;
-}
-.back-link {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text2);
-  font-weight: 500;
-  margin-bottom: 18px;
-}
-.back-link:hover { color: var(--text); text-decoration: none; }
-.box {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 32px 28px;
-  box-shadow: 0 16px 48px -16px rgba(20,19,15,.14);
-}
-.logo {
-  text-align: center;
-  margin-bottom: 24px;
-}
-.logo-title {
-  font-family: 'Fraunces', Georgia, serif;
-  font-size: 23px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.logo-sub {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 4px;
-}
-
-/* ── FORMS ─────────────────────────────────────────────────────────────────── */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-.field label {
-  font-size: 12px;
-  color: var(--text2);
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-input {
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
-  font-family: 'Inter', sans-serif;
-  width: 100%;
-  transition: border-color .14s;
-}
-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-/* ── BUTTONS ───────────────────────────────────────────────────────────────── */
-.btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .14s;
-  border: 1px solid transparent;
-  font-family: 'Inter', sans-serif;
-}
-.btn-a {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-.btn-a:hover {
-  background: var(--accentDk);
-  border-color: var(--accentDk);
-}
-.btn:disabled {
-  opacity: .5;
-  cursor: not-allowed;
-}
-
-/* ── UTILS ─────────────────────────────────────────────────────────────────── */
-.switch {
-  text-align: center;
-  margin-top: 20px;
-  font-size: 13px;
-  color: var(--text2);
-}
-.msg {
-  font-size: 12px;
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  display: none;
-}
-.msg.err {
-  display: block;
-  background: rgba(224,85,85,.10);
-  color: #e05555;
-  border: 1px solid rgba(224,85,85,.22);
-}
-.msg.ok {
-  display: block;
-  background: var(--accentBg);
-  color: var(--accent);
-  border: 1px solid var(--accentBdr);
-}
-
-.spin {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: rot .65s linear infinite;
-}
-@keyframes rot { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<div class="wrap">
-  <a href="index.html" class="back-link">← Revora</a>
-  <div class="box">
-    <div class="logo">
-      <img src="/images/brands/revora-logo-192.png" alt="" width="56" height="56" style="width:56px;height:56px;border-radius:14px;display:block;margin:0 auto 10px"><div class="logo-title">Revora</div>
-      <div class="logo-sub">Ads to revenue, in one place.</div>
+<header class="hdr">
+  <div class="container">
+    <a href="/login.html" class="brand"><img src="/images/brands/revora-logo-64.png" alt="" width="30" height="30">Revora</a>
+    <nav class="hdr-nav"><a href="#goals">What you can do</a><a href="#how">How it works</a><a href="#inside">Inside Revora</a><a href="#learn">Learn</a><a href="#faq">FAQ</a></nav>
+    <div class="hdr-act"><a href="#auth" class="pill-btn red" data-mode="signup" style="height:42px;padding:0 18px">Get started</a><button class="burger" id="burger" aria-label="Menu" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="17" x2="21" y2="17"/></svg></button></div>
+  </div>
+  <div class="menu" id="menu"><a href="#goals">What you can do</a><a href="#how">How it works</a><a href="#inside">Inside Revora</a><a href="#learn">Learn</a><a href="#faq">FAQ</a><a href="#auth" data-mode="login">Log in</a></div>
+</header>
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-card">
+      <img src="/images/landing/lp-hero-1.jpg" alt="A shop owner checking her phone" fetchpriority="high">
+      <span class="hero-tag">Revora Ads</span>
+      <h1 class="serif">Run ads that bring orders.</h1>
+      <p class="sub">Launch Facebook and Instagram ads from your phone, then see every order and what you really earn.</p>
+      <div class="hero-facts"><span>7-day free trial</span><span>Priced in naira</span><span>Made for Nigerian sellers</span></div>
     </div>
 
-    <div id="inviteBanner" style="display:none;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accent);border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:16px;">
-      You've been invited to join a team. Set a password below to create your account.
-    </div>
+    <div class="auth" id="auth">
+      <h2 id="authTitle">Log in to Revora</h2>
+      <p class="sub2" id="authSub">Welcome back. Pick up where you left off.</p>
 
-    <div id="statusMsg" class="msg"></div>
+      <div id="inviteBanner" style="display:none;background:var(--accentBg);border:1px solid var(--accentBdr);color:var(--accentDk);border-radius:14px;padding:12px 14px;font-size:14px;margin-bottom:16px;">
+        You've been invited to join a team. Set a password below to create your account.
+      </div>
 
-    <form id="authForm">
-      <div class="field">
-        <label>Email address</label>
-        <input type="email" id="f_email" required placeholder="you@company.com">
-      </div>
-      <div class="field">
-        <label>Password</label>
-        <input type="password" id="f_pass" required placeholder="••••••••">
-      </div>
-      <div class="field" id="confirmField" style="display:none;">
-        <label>Confirm password</label>
-        <input type="password" id="f_pass2" placeholder="••••••••">
-      </div>
-      <button type="submit" class="btn btn-a" id="authBtn">Log In</button>
-    </form>
+      <div id="statusMsg" class="msg"></div>
 
-    <div class="switch">
-      <span id="switchText">Don't have an account? <a href="#" id="switchMode">Sign up</a></span>
-    </div>
-    <div class="switch" id="forgotWrap" style="margin-top:8px;">
-      <a href="#" id="forgotLink">Forgot password?</a>
+      <form id="authForm">
+        <div class="field">
+          <label>Email address</label>
+          <input type="email" id="f_email" required placeholder="you@company.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="f_pass" required placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <div class="field" id="confirmField" style="display:none;">
+          <label>Confirm password</label>
+          <input type="password" id="f_pass2" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-a" id="authBtn">Log In</button>
+      </form>
+
+      <div class="switch">
+        <span id="switchText">Don't have an account? <a href="#" id="switchMode">Sign up</a></span>
+      </div>
+      <div class="switch" id="forgotWrap" style="margin-top:8px;">
+        <a href="#" id="forgotLink">Forgot password?</a>
+      </div>
+      <p class="fine">By continuing you agree to our <a href="terms.html">Terms</a> and <a href="privacy.html">Privacy Policy</a>.</p>
     </div>
   </div>
-</div>
+</section>
 
+<main class="market">
+<section class="s" id="goals"><div class="container">
+  <div class="eyebrow">What you can do</div>
+  <h2 class="big serif">Turn attention into orders.</h2>
+  <p class="lead">Pick what you want from your ads. Revora sets it up the right way and shows you the results in plain words.</p>
+  <div class="goals" id="goalList"><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.5 8.5 0 018 8z"/></svg></div><div><b>Get WhatsApp orders</b><span class="t">Ads that open a chat with you. Reply, confirm and deliver.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 002 1.6h9.7a2 2 0 002-1.6L23 6H6"/></svg></div><div><b>Grow website sales</b><span class="t">Send people to your sales page or online store and track every order.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="14" rx="3"/><path d="M8 21l4-4 4 4"/></svg></div><div><b>Chat on Messenger and Instagram</b><span class="t">Ads that open a message from customers on Messenger or Instagram.</span></div></div><div class="goal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></div><div><b>Collect leads</b><span class="t">Instant forms that people fill in without leaving Facebook or Instagram.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-6 1.5L10 20z"/></svg></div><div><b>Get more visitors</b><span class="t">Bring people to your page or link at a low cost per click.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg></div><div><b>Reach more people</b><span class="t">Put your brand in front of thousands of people near you.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 000-7.8z"/></svg></div><div><b>Build engagement</b><span class="t">Get likes, comments and shares on the posts that matter.</span></div></div><div class="goal more"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg></div><div><b>Run it from a chat</b><span class="t">Connect ChatGPT or Claude and launch, pause and scale ads by asking.</span></div></div></div>
+  <button class="showmore" id="showMore" type="button">Show more</button>
+  <div class="platforms"><span class="chip">Facebook</span><span class="chip">Instagram</span><span class="chip">Messenger</span><span class="chip">WhatsApp</span><span class="chip soon">TikTok · coming soon</span></div>
+</div></section>
+
+<section class="s" id="how" style="background:var(--panel2)"><div class="container">
+  <div class="eyebrow">How it works</div>
+  <h2 class="big serif">From sign-up to your first ad in one sitting.</h2>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div><b>Create your account</b><span class="t">Start your 7-day free trial and add your products.</span></div></div>
+    <div class="step"><div class="n">2</div><div><b>Get an ad account</b><span class="t">Buy a ready one from Revora, paid from your wallet, or link the one you already have.</span></div></div>
+    <div class="step"><div class="n">3</div><div><b>Launch and watch</b><span class="t">Choose your goal, add a photo or video, write the ad or let AI help. Your ads start paused until you approve them.</span></div></div>
+  </div>
+  <div class="offer"><h3 class="serif">Try it free for 7 days.</h3><p>Set everything up and see how it works before you pay. Plans are priced in naira.</p><a class="pill-btn" href="#auth" data-mode="signup">Start free trial</a></div>
+</div></section>
+
+<section class="s dark" id="inside"><div class="container">
+  <div class="eyebrow">Inside Revora</div>
+  <h2 class="big serif">Everything for your ads, in one app.</h2>
+  <p class="lead">Built for a phone first, so you can run your ads from anywhere.</p>
+  <div class="tour">
+    <div class="acc" id="tourAcc">
+      <div class="acc-item on" data-img="launch"><button class="acc-q" type="button">Launch in minutes</button><div class="acc-a">One question per screen: where people should go, who should see it, your budget, your photo or video, and your words. Review, then launch.</div></div>
+      <div class="acc-item" data-img="accounts"><button class="acc-q" type="button">Your ad accounts, clear</button><div class="acc-a">See every ad account with what it still needs, buy one or link your own, and set up your Page and dataset step by step.</div></div>
+      <div class="acc-item" data-img="orders"><button class="acc-q" type="button">Every order in one list</button><div class="acc-a">Orders from your ads land here. Call or message the customer and update the status with one tap.</div></div>
+      <div class="acc-item" data-img="home"><button class="acc-q" type="button">Know what you really earn</button><div class="acc-a">See orders, delivery and money next to what you spent, so you know which ads are worth keeping.</div></div>
+    </div>
+    <div><div class="phone"><img id="tourImg" src="/images/landing/app/launch.jpg" alt="Revora app screen" width="520" height="1125" loading="lazy"></div><p class="phone-cap">Sample data shown</p></div>
+  </div>
+</div></section>
+
+<section class="s" id="learn"><div class="container">
+  <div class="eyebrow">Learn</div>
+  <h2 class="big serif">Learn to run ads that sell.</h2>
+  <p class="lead">Short guides written for Nigerian sellers. Free to read.</p>
+  <div class="cards">
+    <a class="card" href="blog/first-facebook-ad-nigeria.html"><img src="/images/landing/ac-l8.jpg" alt="" loading="lazy"><div><b>Run your first Facebook ad without wasting money</b><span>Start small and learn fast.</span></div></a>
+    <a class="card" href="blog/what-is-real-roas.html"><img src="/images/landing/lp-feature-1.jpg" alt="" loading="lazy"><div><b>What is real ROAS?</b><span>Why Ads Manager can mislead you.</span></div></a>
+    <a class="card" href="blog/whatsapp-or-website.html"><img src="/images/landing/ac-l3.jpg" alt="" loading="lazy"><div><b>WhatsApp or website?</b><span>Where should your ad send people?</span></div></a>
+    <a class="card" href="blog/why-ad-accounts-get-restricted.html"><img src="/images/landing/lp-feature-3.jpg" alt="" loading="lazy"><div><b>Why ad accounts get restricted</b><span>How to protect yours.</span></div></a>
+  </div>
+  <p style="margin-top:20px"><a class="pill-btn ghost" href="academy.html">Visit the Academy</a></p>
+</div></section>
+
+<section class="s" style="padding-top:0"><div class="container">
+  <div class="pink"><h3 class="serif">Run ads for clients or a team?</h3><p>Invite your media buyers. Each sees their own ads and results, you see the whole picture, and money requests need your approval.</p><a class="pill-btn" href="#auth" data-mode="signup">Get started</a></div>
+</div></section>
+
+<section class="s dark" id="faq"><div class="container">
+  <div class="eyebrow">FAQ</div>
+  <h2 class="big serif">Your questions, answered.</h2>
+  <div class="faq acc" id="faqAcc">
+    <div class="acc-item"><button class="acc-q" type="button">Do I need my own ad account?</button><div class="acc-a">No. You can buy a ready ad account from Revora, or link one you already own.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Which platforms can I run ads on?</button><div class="acc-a">Facebook, Instagram, Messenger and WhatsApp today. TikTok is coming soon.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Will my ads spend money without my approval?</button><div class="acc-a">New ads start paused until you approve them. Sending money needs your own PIN.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">How do I pay?</button><div class="acc-a">Plans are priced in naira. You fund your ads from your wallet by bank transfer or card.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Can I use it from ChatGPT or Claude?</button><div class="acc-a">Yes. Connect Revora to ChatGPT or Claude and ask, for example, how your ads are doing today.</div></div>
+    <div class="acc-item"><button class="acc-q" type="button">Is there a free trial?</button><div class="acc-a">Yes, 7 days. You can set everything up and see how it works before you pay.</div></div>
+  </div>
+  <p style="margin-top:22px"><a class="pill-btn dark" href="help.html">Visit the Help Center</a></p>
+</div></section>
+</main>
+
+<footer class="foot"><div class="container">
+  <div class="foot-grid">
+    <div><h4>Learn</h4><a href="academy.html">Academy</a><a href="blog.html">Blog</a><a href="ad-creation.html">Ad creation</a><a href="ad-improvement.html">Ad improvement</a></div>
+    <div><h4>Support</h4><a href="help.html">Help Center</a><a href="contact.html">Contact us</a><a href="security.html">Security</a><a href="data-deletion.html">Delete your data</a></div>
+    <div><h4>Company</h4><a href="about.html">About</a><a href="pricing.html">Pricing</a><a href="index.html">Revora overview</a></div>
+    <div><h4>Legal</h4><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a href="refund.html">Refunds</a></div>
+  </div>
+  <p class="legal">© <span id="yr"></span> Revora, a product of Pip install -AI Technologies (RC 8553896), Ibadan, Nigeria. Revora is not affiliated with or endorsed by Meta or TikTok. Facebook, Instagram, Messenger and WhatsApp are trademarks of Meta Platforms, Inc. TikTok is a trademark of TikTok Ltd.</p>
+</div></footer>
 <!-- SUPABASE CLIENT JS SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -253,6 +318,13 @@ input:focus {
   // -> Redirect URLs, or Supabase silently ignores it.
   const absoluteSetupUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + setupUrl;
 
+  const authTitle = document.getElementById('authTitle'), authSub = document.getElementById('authSub');
+  function paintMode() {
+    if (inviteToken) { authTitle.textContent = 'Join your team'; authSub.textContent = 'Create your account to continue.'; return; }
+    authTitle.textContent = isLogin ? 'Log in to Revora' : 'Create your free account';
+    authSub.textContent = isLogin ? 'Welcome back. Pick up where you left off.' : 'Start your 7-day free trial. It takes a minute.';
+  }
+  if (inviteToken) document.body.classList.add('invite');
   if (inviteToken) {
     document.getElementById('inviteBanner').style.display = 'block';
     document.querySelector('.switch').style.display = 'none';
@@ -266,6 +338,7 @@ input:focus {
     document.getElementById('switchMode').addEventListener('click', toggleMode);
   }
 
+  paintMode();
   const absoluteResetUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'reset-password.html';
   document.getElementById('forgotLink').addEventListener('click', async (e) => {
     e.preventDefault();
@@ -305,7 +378,27 @@ input:focus {
     // re-bind because we replaced the HTML
     document.getElementById('switchMode').addEventListener('click', toggleMode);
     statusMsg.className = "msg";
+    paintMode();
   }
+  // "Get started" / "Log in" buttons around the page pick the mode, then scroll to the card.
+  document.querySelectorAll('[data-mode]').forEach(a => a.addEventListener('click', () => {
+    const wantLogin = a.dataset.mode === 'login';
+    if (wantLogin !== isLogin) toggleMode();
+    document.getElementById('menu').classList.remove('open');
+  }));
+  document.getElementById('burger').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
+  document.querySelectorAll('#menu a').forEach(a => a.addEventListener('click', () => document.getElementById('menu').classList.remove('open')));
+  document.getElementById('showMore').addEventListener('click', e => {
+    const open = document.getElementById('goalList').classList.toggle('open');
+    e.currentTarget.textContent = open ? 'Show less' : 'Show more';
+  });
+  document.querySelectorAll('.acc-q').forEach(q => q.addEventListener('click', () => {
+    const item = q.parentElement, acc = item.parentElement, was = item.classList.contains('on');
+    acc.querySelectorAll('.acc-item').forEach(i => i.classList.remove('on'));
+    if (!was) item.classList.add('on');
+    if (item.dataset.img && !was) document.getElementById('tourImg').src = '/images/landing/app/' + item.dataset.img + '.jpg';
+  }));
+  document.getElementById('yr').textContent = new Date().getFullYear();
   switchMode.addEventListener('click', toggleMode);
 
   // Handle Form Submit
