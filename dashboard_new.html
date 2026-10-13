@@ -2337,7 +2337,7 @@ const BV_MS = [
   ["media", "Add your photo or video", "This is what people see in their feed."],
   ["copy", "Write your ad", "A few short lines. Say what you sell and why they should tap."],
   ["adv", "More options", "Optional. The defaults work well, so you can skip this."],
-  ["review", "Check and launch", "Your ads are created paused until you approve them."],
+  ["review", "Check and launch", "Check everything, then tap Launch. Your ad goes live right away, or tick the draft option to keep it paused."],
 ];
 const BV_MS_FROM_WZ = { goal: "dest", product: "name", audience: "who", creative: "media", budget: "budget", review: "review" };
 const BV_MS_TAB = { dest: "campaign", name: "campaign", who: "adset", budget: "adset", media: "ad", copy: "ad", adv: "ad", review: "ad" };
@@ -4109,7 +4109,7 @@ function bvOpenCampaignBuilder(presetObjective) {
 
         <div class="bv-builder-head">
           <div class="ph-title" style="margin-bottom:4px;">New campaign</div>
-          <div class="wz-sub">Set it up in a few steps. Your ads start paused until you approve them.</div>
+          <div class="wz-sub">Set it up in a few steps. Check everything, then tap Launch to go live, or save it as a paused draft.</div>
           <div class="wz-steps" id="bvWzSteps">${BV_WZ.map((w, i) => `<button type="button" class="wz-step" data-wz="${w[0]}" onclick="bvWzGo('${w[0]}')"><span class="wz-n">${i + 1}</span>${w[1]}</button>`).join("")}</div>
           <div class="field" data-wzs="goal" data-ms="dest"><label>Where do you want customers to go? *</label>
             <div style="display:flex;gap:18px;margin-top:4px;flex-wrap:wrap;">
