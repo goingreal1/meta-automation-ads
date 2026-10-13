@@ -83,6 +83,20 @@ async function provisionAccounts(opts: { companyId?: string; mediaBuyerId?: stri
   await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, 12000))]);
 }
 
+// Welcome WhatsApp (Meta-approved template) for a new owner. Never blocks or fails sign-up: short timeout, errors only logged.
+async function sendWelcome(phone: string, name: string | null) {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 6000);
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/send-welcome-whatsapp`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+      body: JSON.stringify({ phone, name: name ?? undefined }), signal: ctl.signal,
+    });
+    clearTimeout(t);
+    if (!r.ok) console.error("send-welcome-whatsapp failed:", r.status, (await r.text()).slice(0, 200));
+  } catch (e) { console.error("send-welcome-whatsapp error:", e); }
+}
+
 // ── business profile (whitelisted, never trust the browser) ─────────────────
 const PICK = {
   account_type: ["company", "personal"],
@@ -170,6 +184,7 @@ Deno.serve(async (req: Request) => {
       if (profileErr) throw new Error(`Could not create owner profile: ${profileErr.message}`);
 
       await provisionAccounts({ companyId: company.id, mediaBuyerId, email: user.email, phone });
+      if (phone) await sendWelcome(phone, displayName);
 
       return json({ company_id: company.id, role: "owner", account_type: personal ? "personal" : "company" });
     }
