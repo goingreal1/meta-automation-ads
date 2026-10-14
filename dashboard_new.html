@@ -13559,7 +13559,7 @@ async function bvHqProbe() {
   } catch {}
 }
 async function renderHq(el) {
-  const secs = [["overview", "Overview"], ["companies", "Companies & people"], ["accounts", "Ad accounts"], ["pixels", "Pixels"], ["money", "Money"], ["support", "Support"]];
+  const secs = [["overview", "Overview"], ["companies", "Companies & people"], ["accounts", "Ad accounts"], ["pixels", "Pixels"], ["money", "Money"], ["social", "Social"], ["support", "Support"]];
   el.innerHTML = `<div class="sh"><div class="sh-title">Revora HQ</div></div>
     <div class="set-wrap"><nav class="set-nav" id="hqNav">${secs.map(([id, l]) => `<button type="button" class="set-nav-btn ${id === bvHqSec ? "active" : ""}" data-s="${id}">${l}</button>`).join("")}</nav>
     <div class="set-body" style="display:block" id="hqBody"></div></div>`;
@@ -13627,6 +13627,8 @@ async function renderHq(el) {
         <div class="set-lbl" style="margin-top:14px;">Card top-ups</div>${tbl(["When", "Company", "Buyer", "Amount", "Status"], r.topups.map(x => [d(x.created_at), escH(x.company), escH(x.buyer || "Company"), fN(x.amount_naira), escH(x.status)]))}
         <div class="set-lbl" style="margin-top:14px;">Wallet movements</div>${tbl(["When", "Company", "Buyer", "Amount", "Reason"], r.adjustments.map(x => [d(x.created_at), escH(x.company), escH(x.buyer || "Company"), fN(x.amount_naira), escH(x.reason || "")]))}
         <div class="set-lbl" style="margin-top:14px;">Withdrawals</div>${tbl(["When", "Company", "Amount", "Status"], r.withdrawals.map(x => [d(x.created_at), escH(x.company), fN(x.amount_naira), escH(x.status)]))}`;
+    } else if (bvHqSec === "social") {
+      await bvHqSocial(body);
     } else {
       const r = await sbFn("support-chat", { action: "threads" }); if (r.error) throw new Error(r.error);
       const t = r.threads || [];
@@ -13634,6 +13636,114 @@ async function renderHq(el) {
       body.querySelectorAll(".set-item[data-c]").forEach(n => n.onclick = () => bvSupportChat(n.dataset.c, n.dataset.n));
     }
   } catch (e) { body.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(e.message)}</div>`; }
+}
+
+// ── HQ → Social: post to Revora's own Facebook Page and Instagram (social-admin). Captions are always written by a person. ──
+const SO_WHEN = iso => iso ? new Date(iso).toLocaleString("en-NG", { timeZone: "Africa/Lagos", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "no time set";
+async function bvHqSocial(body) {
+  let files = []; // { file, url (preview) } in the order they will appear
+  const stPill = s => `<span class="pill ${s === "posted" ? "active" : s === "failed" ? "paused" : s === "approved" ? "pending" : ""}">${escH(s === "approved" ? "scheduled" : s)}</span>`;
+  async function load() {
+    const r = await sbFn("social-admin", { action: "list", limit: 40 });
+    const box = document.getElementById("soList"); if (!box) return;
+    if (r.error) { box.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(r.error)}</div>`; return; }
+    const posts = r.posts || [];
+    box.innerHTML = posts.length ? posts.map(p => {
+      const first = (p.media_urls || [])[0] || "", isVid = p.kind === "video";
+      const thumb = isVid ? `<div style="width:56px;height:56px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;font-size:22px;flex:none;">🎬</div>` : `<img src="${escH(first)}" alt="" loading="lazy" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;">`;
+      const links = [p.ig_link ? `<a href="${escH(p.ig_link)}" target="_blank" rel="noopener">Instagram</a>` : "", p.fb_link ? `<a href="${escH(p.fb_link)}" target="_blank" rel="noopener">Facebook</a>` : ""].filter(Boolean).join(" · ");
+      const hook = escH(String(p.caption_ig || "").split("\n")[0].slice(0, 110));
+      const canAct = p.status !== "posted";
+      return `<div class="set-item" style="align-items:flex-start;gap:12px;flex-wrap:wrap;">${thumb}
+        <div class="set-tx" style="min-width:180px;flex:1;"><b>${hook || "(no caption)"}</b>
+          <span>${escH(p.kind === "carousel" ? (p.media_urls || []).length + " pictures" : p.kind === "video" ? "Reel" : "1 picture")} · ${p.status === "posted" ? "posted " + SO_WHEN(p.posted_at) : SO_WHEN(p.scheduled_for)} ${stPill(p.status)}</span>
+          ${links ? `<span>${links}</span>` : ""}${p.error ? `<span style="color:var(--danger);">${escH(p.error)}</span>` : ""}</div>
+        ${canAct ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${p.status === "draft" || p.status === "failed" || p.status === "skipped" ? `<button type="button" class="btn btn-g soAct" data-id="${p.id}" data-a="approve">Approve</button>` : ""}
+          <button type="button" class="btn btn-a soAct" style="width:auto;padding:8px 14px;" data-id="${p.id}" data-a="now">Post now</button>
+          ${p.status !== "skipped" ? `<button type="button" class="btn btn-g soAct" data-id="${p.id}" data-a="skip">Skip</button>` : ""}
+          <button type="button" class="btn btn-g soAct" data-id="${p.id}" data-a="del">Delete</button></div>` : ""}
+      </div>`;
+    }).join("") : `<div style="color:var(--muted);padding:10px 2px;">No posts yet.</div>`;
+    box.querySelectorAll(".soAct").forEach(b => b.onclick = async () => {
+      const a = b.dataset.a, id = b.dataset.id;
+      if (a === "del" && !confirm("Delete this post?")) return;
+      if (a === "now" && !confirm("Post this to Instagram and Facebook right now?")) return;
+      b.disabled = true; const old = b.textContent; b.textContent = a === "now" ? "Posting… (up to a minute)" : "…";
+      const x = a === "approve" ? await sbFn("social-admin", { action: "set_status", id, status: "approved" })
+        : a === "skip" ? await sbFn("social-admin", { action: "set_status", id, status: "skipped" })
+        : a === "del" ? await sbFn("social-admin", { action: "delete", id })
+        : await sbFn("social-admin", { action: "post_now", id });
+      if (x.error) { bvToast(x.error, "err"); b.disabled = false; b.textContent = old; return; }
+      if (a === "now") bvToast(x.post && x.post.status === "posted" ? "Posted to Instagram and Facebook" : (x.post && x.post.error) || "Sent. Check the list in a minute.", x.post && x.post.status === "posted" ? "ok" : "err");
+      else bvToast(a === "approve" ? "Approved. It posts at its time." : a === "skip" ? "Skipped" : "Deleted");
+      load();
+    });
+  }
+  body.innerHTML = `<div class="set-lbl">New post · Instagram @revora.ads + Facebook Page “Revora”</div>
+    <div class="set-card" style="padding:14px 16px;">
+      <div class="field"><label>Pictures or one video (the first picture is the cover)</label>
+        <input type="file" id="soFiles" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime">
+        <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">1 picture, 2 to 10 pictures (a swipeable carousel), or 1 video (posts as a Reel). The order below is the order people swipe.</div></div>
+      <div id="soThumbs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+      <div class="field"><label>Instagram caption</label><textarea id="soIg" rows="6" maxlength="2200" placeholder="Hook line first. Then a few short lines. Hashtags at the end."></textarea><div id="soCnt" style="font-size:11px;color:var(--muted);text-align:right;">0 / 2200</div></div>
+      <div class="field"><label>Facebook caption <span style="font-weight:500;color:var(--muted);">(optional: the Instagram caption is used if empty)</span></label><textarea id="soFb" rows="3"></textarea></div>
+      <div class="field"><label>When</label>
+        <select id="soMode"><option value="draft">Save as draft (I get a WhatsApp to approve it)</option><option value="schedule">Schedule it</option><option value="post_now">Post now</option></select>
+        <input type="datetime-local" id="soWhen" style="display:none;margin-top:8px;"></div>
+      <button type="button" class="btn btn-a" id="soGo" style="width:auto;padding:10px 22px;">Save draft</button><div id="soMsg" style="margin-top:8px;"></div>
+    </div>
+    <div class="set-lbl" style="margin-top:16px;">Posts</div><div class="set-card" id="soList"><div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div></div>`;
+  const $ = id => document.getElementById(id);
+  const drawThumbs = () => {
+    $("soThumbs").innerHTML = files.map((f, i) => `<div style="position:relative;width:84px;">${f.file.type.startsWith("video") ? `<div style="width:84px;height:84px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;font-size:26px;">🎬</div>` : `<img src="${f.url}" alt="" style="width:84px;height:84px;border-radius:10px;object-fit:cover;">`}
+      <div style="font-size:11px;text-align:center;margin-top:3px;"><b>${i + 1}</b> <a data-m="${i}:-1" style="cursor:pointer;">◀</a> <a data-m="${i}:1" style="cursor:pointer;">▶</a> <a data-m="${i}:0" style="cursor:pointer;color:var(--danger);">✕</a></div></div>`).join("");
+    $("soThumbs").querySelectorAll("[data-m]").forEach(a => a.onclick = () => {
+      const [i, d] = a.dataset.m.split(":").map(Number);
+      if (d === 0) files.splice(i, 1); else { const j = i + d; if (j >= 0 && j < files.length) [files[i], files[j]] = [files[j], files[i]]; }
+      drawThumbs();
+    });
+  };
+  $("soFiles").onchange = e => {
+    const picked = [...e.target.files];
+    for (const f of picked) {
+      if (f.type.startsWith("video") && (files.length || picked.length > 1)) { bvToast("A video goes on its own", "err"); continue; }
+      if (files.some(x => x.file.type.startsWith("video"))) { bvToast("Remove the video first to add pictures", "err"); continue; }
+      if (f.size > (f.type.startsWith("video") ? 100 : 10) * 1024 * 1024) { bvToast(`${f.name} is too big (pictures 10 MB, video 100 MB)`, "err"); continue; }
+      if (files.length < 10) files.push({ file: f, url: URL.createObjectURL(f) });
+    }
+    e.target.value = ""; drawThumbs();
+  };
+  $("soIg").oninput = () => { $("soCnt").textContent = `${$("soIg").value.length} / 2200`; };
+  $("soMode").onchange = () => { const m = $("soMode").value; $("soWhen").style.display = m === "schedule" ? "block" : "none"; $("soGo").textContent = m === "draft" ? "Save draft" : m === "schedule" ? "Schedule post" : "Post now"; };
+  $("soGo").onclick = async () => {
+    const msg = $("soMsg"), mode = $("soMode").value, ig = $("soIg").value.trim();
+    msg.innerHTML = "";
+    if (!files.length) { msg.innerHTML = `<div class="msg err" style="display:block;">Add at least one picture or a video.</div>`; return; }
+    if (!ig) { msg.innerHTML = `<div class="msg err" style="display:block;">Write the Instagram caption first.</div>`; return; }
+    let when = null;
+    if (mode === "schedule") { const t = new Date($("soWhen").value); if (isNaN(t.getTime()) || t.getTime() < Date.now() + 60000) { msg.innerHTML = `<div class="msg err" style="display:block;">Pick a time in the future.</div>`; return; } when = t.toISOString(); }
+    if (mode === "post_now" && !confirm("Post this to Instagram and Facebook right now?")) return;
+    const btn = $("soGo"); btn.disabled = true;
+    try {
+      const urls = [];
+      for (let i = 0; i < files.length; i++) {
+        btn.textContent = `Uploading ${i + 1} of ${files.length}…`;
+        const u = await sbFn("social-admin", { action: "upload_url", filename: files[i].file.name }); if (u.error) throw new Error(u.error);
+        const up = await supabaseClient.storage.from("social-media").uploadToSignedUrl(u.path, u.token, files[i].file, { contentType: files[i].file.type });
+        if (up.error) throw new Error(up.error.message);
+        urls.push(u.public_url);
+      }
+      btn.textContent = mode === "post_now" ? "Posting… (up to a minute)" : "Saving…";
+      const r = await sbFn("social-admin", { action: "create", media_urls: urls, caption_ig: ig, caption_fb: $("soFb").value.trim() || undefined, mode, scheduled_for: when, source: "hq" });
+      if (r.error) throw new Error(r.error);
+      bvToast(mode === "draft" ? "Draft saved. Check WhatsApp to approve." : mode === "schedule" ? "Scheduled" : (r.post && r.post.status === "posted" ? "Posted to Instagram and Facebook" : (r.post && r.post.error) || "Sent. Check the list in a minute."), mode === "post_now" && !(r.post && r.post.status === "posted") ? "err" : "ok");
+      files = []; $("soIg").value = ""; $("soFb").value = ""; $("soCnt").textContent = "0 / 2200"; drawThumbs();
+    } catch (e) { msg.innerHTML = `<div class="msg err" style="display:block;">❌ ${escH(e.message)}</div>`; }
+    btn.disabled = false; btn.textContent = mode === "draft" ? "Save draft" : mode === "schedule" ? "Schedule post" : "Post now";
+    load();
+  };
+  load();
 }
 
 async function bvRenderWaPanel() {
