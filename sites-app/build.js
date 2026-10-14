@@ -19,6 +19,11 @@ copy("rv", "static/rv");
 copy("icons", "static/icons");
 copy("zumifa-preview.html", "static/zumifa-preview.html");
 
+// The Revora ads landing page, shown at the root of outreachhq.xyz (see the host route below)
+for (const f of ["run-ads.html", "terms.html", "privacy.html", "refund.html", "contact.html",
+  "images/landing/lp-hero-1.jpg", "images/landing/app/home.jpg",
+  "images/brands/revora-logo-64.png", "images/brands/revora-logo-192.png", "images/brands/chatgpt-icon.png", "images/brands/claude-icon.png"]) copy(f, "static/" + f);
+
 // the renderer + the files it reads at runtime
 const fn = "functions/api/site.func";
 copy("api/site.js", fn + "/api/site.js");
@@ -36,6 +41,8 @@ fs.writeFileSync(path.join(OUT, "config.json"), JSON.stringify({
     { src: "/rv/(.*)", headers: { "cache-control": "public, max-age=300, stale-while-revalidate=86400" }, continue: true },
     { src: "/icons/(.*)", headers: { "cache-control": "public, max-age=86400" }, continue: true },
     { src: "/zumifa-preview\\.html", headers: { "cache-control": "no-cache, no-store, must-revalidate" }, continue: true },
+    // outreachhq.xyz: the root is the ads landing page (rewrite, then fall through to the static file below)
+    { src: "^/$", has: [{ type: "host", value: "outreachhq.xyz" }], dest: "/run-ads.html", continue: true },
     { handle: "filesystem" },
     // everything else (/s/<slug>/<page>, and "/<page>" on custom domains) is a site page
     { src: "/(.*)", dest: "/api/site?__p=$1" },
