@@ -6,8 +6,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // and every tool runs as THEM, with the same role rules as the dashboard.
 //
 // This function only does what rarely changes: sign-in, the JSON-RPC protocol, the inline PIN form, receipts, the transfer-PIN
-// endpoints, and the audit log and daily limits. The tools themselves live in three small functions it calls internally:
-//   mcp-ads (ads, products, kill rules, playbook), mcp-money (funding and transfers), mcp-studio (pictures and sales pages).
+// endpoints, and the audit log and daily limits. The tools themselves live in small functions it calls internally:
+//   mcp-ads (ads, products, kill rules, playbook), mcp-money (funding and transfers), mcp-studio (pictures and sales pages),
+//   mcp-social (Revora's own Facebook and Instagram posts, HQ admins only).
 // To change a tool, redeploy only the function that holds it. Each group answers { action: "list" } and { action: "call", tool, args, ctx }.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -303,7 +304,7 @@ const LIMITS = { write_per_day: 80, launch_per_day: 5 };
 function clip(args: any) { try { const s = JSON.stringify(args ?? {}); return s.length > 1500 ? { truncated: s.slice(0, 1500) } : args; } catch { return {}; } }
 
 // ── tool groups ──────────────────────────────────────────────────────────────────────────────
-const GROUPS = ["mcp-ads", "mcp-money", "mcp-studio"];
+const GROUPS = ["mcp-ads", "mcp-money", "mcp-studio", "mcp-social"];
 type Def = { name: string; title: string; description: string; inputSchema: any; annotations: any; meta?: Record<string, unknown>; write?: boolean; heavy?: boolean; group: string };
 const known = new Map<string, { at: number; defs: Def[] }>();
 async function groupCall(group: string, payload: unknown): Promise<any> {
