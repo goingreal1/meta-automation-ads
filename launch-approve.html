@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Approve launch · Revora</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--fg:#111;--mut:#666;--line:#e3e5e8;--brand:#2563eb;--err:#b42318;--ok:#067647}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1013;--card:#171a1f;--fg:#f2f3f5;--mut:#9aa0a8;--line:#2a2e35;--brand:#5b8cff;--err:#ff8a80;--ok:#4ade80}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif;display:flex;justify-content:center;padding:24px 16px}
+#card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:460px;width:100%}
+.brand{font-weight:700;letter-spacing:.12em;font-size:12px;color:var(--mut);margin-bottom:10px}
+h1{font-size:20px;margin:0 0 6px}.sub{color:var(--mut);font-size:14px;margin-bottom:14px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}.row span{color:var(--mut)}.row b{text-align:right}
+button{width:100%;margin-top:16px;padding:13px;border:0;border-radius:10px;background:var(--brand);color:#fff;font-size:16px;font-weight:600;cursor:pointer}
+button.alt{background:transparent;color:var(--mut);border:1px solid var(--line);margin-top:8px}button:disabled{opacity:.6}
+.msg{margin-top:12px;font-size:14px}.err{color:var(--err)}.ok{color:var(--ok)}
+</style></head><body><div id="card"><div class="brand">REVORA</div><div>Loading…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script>
+(function(){
+var SUPA_URL="https://rrkhkhgdxhmogxxtbvyt.supabase.co";
+var ANON="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+var card=document.getElementById("card");
+var id=new URLSearchParams(location.search).get("p")||"";
+var esc=function(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]})};
+var sb=window.supabase.createClient(SUPA_URL,ANON);
+function show(h){card.innerHTML='<div class="brand">REVORA</div>'+h}
+function row(k,v){return v==null||v===""?"":'<div class="row"><span>'+esc(k)+'</span><b>'+esc(v)+'</b></div>'}
+function pick(o,keys){for(var i=0;i<keys.length;i++){if(o&&o[keys[i]]!=null&&o[keys[i]]!=="")return o[keys[i]]}return null}
+async function init(){
+  if(!/^[0-9a-f-]{36}$/i.test(id))return show('<h1>Invalid link</h1>');
+  var s=(await sb.auth.getSession()).data.session;
+  if(!s){location.replace("login.html?next="+encodeURIComponent("launch-approve.html?p="+id));return}
+  var r=await sb.from("ai_plans").select("id,status,plan,result").eq("id",id).maybeSingle();
+  if(!r.data)return show('<h1>Plan not found</h1><div class="sub">It may belong to another account.</div>');
+  var p=r.data,pl=p.plan||{};
+  if(p.status==="launched")return show('<h1>Already launched ✅</h1>');
+  if(p.status!=="draft")return show('<h1>Cannot launch</h1><div class="sub">This plan is '+esc(p.status)+'.</div>');
+  var sets=pl.ad_sets||pl.adsets||[],ads=pl.ads||pl.creatives||[];
+  show('<h1>Launch this campaign?</h1><div class="sub">Check the summary. Only you can press Launch. Your AI assistant cannot.</div>'+
+    row("Campaign",pick(pl,["campaign_name","name","title"]))+
+    row("Objective",pick(pl,["objective"]))+
+    row("Budget",pick(pl,["daily_budget","budget","total_daily_budget"]))+
+    row("Budget type",pick(pl,["budget_type"]))+
+    row("Ad sets",sets.length||null)+row("Ads",ads.length||null)+
+    row("Starts",pick(pl,["start_time","scheduled_for"]))+
+    row("Starts paused",pl.launch_paused===true?"Yes":pl.launch_paused===false?"No, live":null)+
+    '<button id="go">Launch</button><button class="alt" id="no">Cancel plan</button><div id="m"></div>');
+  document.getElementById("go").onclick=async function(){
+    var b=this;b.disabled=true;b.textContent="Launching…";
+    var x=await sb.functions.invoke("ai-chat",{body:{action:"approve_plan",plan_id:id}});
+    var e=x.error?x.error.message:(x.data&&x.data.error);
+    if(e){b.disabled=false;b.textContent="Launch";document.getElementById("m").innerHTML='<div class="msg err">'+esc(e)+'</div>';return}
+    show('<h1>Launching ✅</h1><div class="sub">Go back to your chat and say <b>done</b>. Your assistant can confirm it in Ads Manager.</div>');
+  };
+  document.getElementById("no").onclick=async function(){await sb.functions.invoke("ai-chat",{body:{action:"cancel_plan",plan_id:id}});show('<h1>Plan cancelled</h1>')};
+}
+init().catch(function(e){show('<h1>Something went wrong</h1><div class="msg err">'+esc(e&&e.message)+'</div>')});
+})();
+</script></body></html>
