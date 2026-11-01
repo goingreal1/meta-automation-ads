@@ -340,6 +340,18 @@ async function callTool(name: string, args: any, c: Ctx, client: string) {
   const t = defs.find((d) => d.name === name);
   if (!t) return { isError: true, content: [{ type: "text", text: `Unknown tool ${name}.` }] };
   if (!c.companyId && name !== "get_playbook" && name !== "whoami") return { isError: true, content: [{ type: "text", text: SETUP_NEEDED }] };
+  // Launching needs a real human click. The assistant can never approve its own launch, whatever it passes in `person_approved`.
+  if (name === "launch_plan") {
+    const planId = String(args?.plan_id ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(planId)) return { isError: true, content: [{ type: "text", text: "launch_plan needs the plan_id from plan_campaign." }] };
+    const { data: pl } = await admin.from("ai_plans").select("id, status, company_id").eq("id", planId).maybeSingle();
+    if (!pl || pl.company_id !== c.companyId) return { isError: true, content: [{ type: "text", text: "That plan was not found on this account." }] };
+    if (pl.status === "launched") return { content: [{ type: "text", text: "This campaign is already launched." }] };
+    if (pl.status !== "draft") return { isError: true, content: [{ type: "text", text: `This plan is ${pl.status} and cannot be launched.` }] };
+    const link = `${SITE}/launch-approve.html?p=${planId}`;
+    await admin.from("mcp_audit").insert({ company_id: c.companyId, user_id: c.userId, tool: "launch_plan_request", args: clip(args), ok: true, client }).then(() => {}, () => {});
+    return { content: [{ type: "text", text: `NOT launched yet. Launching needs the owner's own click, which an assistant cannot give. Tell the person to open this link, check the summary and press Launch: ${link}\nThen wait for them to say they are done and confirm with get_live_ads. Do not call launch_plan again.` }], structuredContent: { status: "awaiting_human_approval", approval_url: link, plan_id: planId } };
+  }
   const lim = await overLimit(t, defs, c);
   if (lim) return { isError: true, content: [{ type: "text", text: lim }] };
   let out: any, ok = true;
