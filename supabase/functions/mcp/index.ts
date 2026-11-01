@@ -102,6 +102,41 @@ async function widgetApprove(req: Request): Promise<Response> {
   await admin.from("transfer_approvals").update({ secret_hash: null }).eq("id", id);
   return jres({ ok: true, approved: true, sent: true, widget: ex.result.widget, ...info });
 }
+async function launchWidgetApprove(req: Request): Promise<Response> {
+  if (req.method !== "POST") return jres({ error: "method_not_allowed" }, 405);
+  let b: any = {}; try { b = await req.json(); } catch { /* empty body */ }
+  const id = String(b?.approval_id ?? ""), secret = String(b?.secret ?? "");
+  const bad = () => jres({ error: "This approval is not valid. Ask your assistant to prepare the launch again." }, 403);
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !/^[0-9a-f]{32}$/.test(secret)) return bad();
+  const { data: ap } = await admin.from("launch_approvals").select("*").eq("id", id).maybeSingle();
+  if (!ap || !ap.secret_hash || !safeEq(await sha256hex(secret), ap.secret_hash)) return bad();
+  if (ap.used_at) return jres({ error: "This launch was already started." }, 410);
+  if (new Date(ap.expires_at).getTime() < Date.now()) return jres({ error: "This approval expired. Ask your assistant to prepare the launch again." }, 410);
+  const { data: pl } = await admin.from("ai_plans").select("status").eq("id", ap.plan_id).maybeSingle();
+  if (pl?.status === "launched") return jres({ ok: true, launched: true, already: true });
+  if (pl?.status !== "draft") return jres({ error: `This plan is ${pl?.status ?? "missing"} and cannot be launched.` }, 410);
+  // Take the approval once, so a double tap cannot launch twice.
+  const { data: took } = await admin.from("launch_approvals").update({ used_at: new Date().toISOString() }).eq("id", id).is("used_at", null).select("id");
+  if (!took?.length) return jres({ error: "This launch was already started." }, 410);
+  // Act as the person: a short-lived sign-in made on the server (no email is sent).
+  try {
+    const { data: u } = await admin.auth.admin.getUserById(ap.user_id);
+    const { data: lk } = await admin.auth.admin.generateLink({ type: "magiclink", email: u?.user?.email ?? "" });
+    const th = (lk as any)?.properties?.hashed_token;
+    const vr = await fetch(`${SUPABASE_URL}/auth/v1/verify`, { method: "POST", headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? SERVICE_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ type: "magiclink", token_hash: th }) });
+    const vj: any = await vr.json().catch(() => null);
+    if (!vj?.access_token) throw new Error("sign-in failed");
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, { method: "POST", headers: { Authorization: `Bearer ${vj.access_token}`, "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve_plan", plan_id: ap.plan_id }) });
+    const j: any = await r.json().catch(() => ({ error: `Unexpected reply (${r.status})` }));
+    await admin.from("mcp_audit").insert({ company_id: ap.company_id, user_id: ap.user_id, tool: "launch_plan", args: { plan_id: ap.plan_id, via: "card" }, ok: !j?.error, client: "launch-card" }).then(() => {}, () => {});
+    if (j?.error) { await admin.from("launch_approvals").update({ used_at: null }).eq("id", id); return jres({ error: String(j.error).slice(0, 300), retry: true }, 502); }
+    await admin.from("launch_approvals").update({ secret_hash: null }).eq("id", id);
+    return jres({ ok: true, launched: true, message: String(j?.message ?? j?.summary ?? "").slice(0, 300) });
+  } catch (e) {
+    await admin.from("launch_approvals").update({ used_at: null }).eq("id", id);
+    return jres({ error: "Could not start the launch. Try again in a moment.", retry: true }, 502);
+  }
+}
 async function handlePin(path: string, req: Request, c: Ctx): Promise<Response> {
   if (req.method !== "POST") return jres({ error: "method_not_allowed" }, 405);
   let b: any = {}; try { b = await req.json(); } catch { /* empty body */ }
@@ -195,14 +230,14 @@ a{color:var(--accent)}
   function resize() { try { var h = Math.ceil(document.documentElement.getBoundingClientRect().height); note("ui/notifications/size-changed", { height: h }); if (window.openai && window.openai.notifyIntrinsicHeight) window.openai.notifyIntrinsicHeight(h); } catch (e) { /* ignore */ } }
   function take(structured, meta) {
     if (SENT) return; // once the transfer is sent, host re-renders must not bring the PIN form back
-    var w = structured && structured.pin_widget;
+    var w = (structured && structured.pin_widget) || (structured && structured.launch_widget);
     W = w || null;
-    SECRET = (meta && meta.pin_secret) || "";
+    SECRET = (meta && (meta.pin_secret || meta.launch_secret)) || "";
     draw();
   }
   function fromChatGPT() {
     var o = window.openai; if (!o) return;
-    var out = o.toolOutput || null, id = out && out.pin_widget && out.pin_widget.approval_id, ws = o.widgetState;
+    var out = o.toolOutput || null, pw = out && (out.pin_widget || out.launch_widget), id = pw && pw.approval_id, ws = o.widgetState;
     if (SENT) return;
     if (ws && ws.sent && (!id || ws.sent.approval_id === id)) { W = ws.sent; SENT = true; SECRET = ""; draw(); return; }
     take(out, o.toolResponseMetadata || null);
@@ -256,6 +291,7 @@ a{color:var(--accent)}
   function draw() {
     if (!W) { root.innerHTML = ""; document.body.style.padding = "0"; resize(); return; }
     document.body.style.padding = "12px";
+    if (W.kind === "launch") { drawLaunch(); return; }
     if (W.state === "sent") { root.innerHTML = receiptCard(W); resize(); startPoll(); return; }
     if (W.state === "approved") { root.innerHTML = details(W) + '<div class="msg ok">✅ Approved with your PIN. Tell your assistant “done”.</div>'; resize(); return; }
     var canInline = !!SECRET;
@@ -270,6 +306,27 @@ a{color:var(--accent)}
       pin.addEventListener("input", function () { pin.value = pin.value.replace(/\D/g, "").slice(0, 6); });
       f.addEventListener("submit", submit);
     }
+    resize();
+  }
+  function lrow(k, v) { return v == null || v === "" ? "" : '<div class="row"><span>' + esc(k) + '</span><b>' + esc(v) + '</b></div>'; }
+  function drawLaunch() {
+    if (W.state === "launched") { root.innerHTML = '<div class="brand">REVORA</div><div class="amt">Launched \u2705</div><div class="note">' + esc(W.campaign) + ' is going live' + (W.paused ? ' (starts paused)' : '') + '. Check it in Ads Manager.</div>'; resize(); return; }
+    root.innerHTML = '<div class="brand">REVORA \u00b7 LAUNCH</div><div class="amt" style="font-size:20px">' + esc(W.campaign) + '</div>' +
+      lrow("Objective", W.objective) + lrow("Budget type", W.budget_type) + lrow("Daily budget", W.daily_budget) + lrow("Ad sets", W.ad_sets) + lrow("Ads", W.ads) + lrow("Starts", W.start) + lrow("Status", W.paused ? "Starts paused" : "Goes live now") +
+      (SECRET ? '<button id="go">Launch</button><div id="m"></div><div class="note">Tapping Launch is your approval. Your assistant cannot do this for you.</div>' : '<div class="note">This card cannot launch here. Ask your assistant to prepare the launch again.</div>');
+    var go = document.getElementById("go");
+    if (go) go.onclick = function () {
+      if (busy) return; busy = true; go.disabled = true; go.textContent = "Launching\u2026";
+      fetch(API + "/launch/widget-approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval_id: W.approval_id, secret: SECRET }) })
+        .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+        .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your connection." } }; })
+        .then(function (r) {
+          busy = false;
+          if (r.ok && r.j.launched) { W.state = "launched"; SECRET = ""; SENT = true; try { if (window.openai && window.openai.setWidgetState) window.openai.setWidgetState({ sent: W }); } catch (e) { /* ignore */ } draw(); tellChat("I tapped Launch on the card and the campaign " + (W.campaign || "") + " is launching. Confirm in one short line and offer to check it in Ads Manager."); return; }
+          go.disabled = false; go.textContent = "Launch";
+          document.getElementById("m").innerHTML = '<div class="msg err">' + esc(r.j.error || "Could not launch.") + '</div>'; resize();
+        });
+    };
     resize();
   }
   function submit(e) {
@@ -295,7 +352,8 @@ a{color:var(--accent)}
 </body>
 </html>
 `.replace("__API__", DIRECT).replace("__STATUS__", `${SUPABASE_URL}/functions/v1/receipt-status`);
-const UI_OPENAI = "ui://widget/revora-pin-v2.html", UI_APPS = "ui://revora/pin.html";
+const UI_OPENAI = "ui://widget/revora-pin-v3.html", UI_APPS = "ui://revora/pin.html";
+const LAUNCH_UI_META = { ui: { resourceUri: UI_APPS }, "openai/outputTemplate": UI_OPENAI, "openai/widgetAccessible": false, "openai/toolInvocation/invoking": "Preparing your launch...", "openai/toolInvocation/invoked": "Ready for your approval" };
 const RES_META_OPENAI = { "openai/widgetCSP": { connect_domains: [SUPABASE_URL], resource_domains: [] }, "openai/widgetPrefersBorder": true, "openai/widgetDescription": "Approve a money transfer with your private transfer PIN." };
 const RES_META_APPS = { ui: { csp: { connectDomains: [SUPABASE_URL] }, prefersBorder: true } };
 
@@ -349,8 +407,16 @@ async function callTool(name: string, args: any, c: Ctx, client: string) {
     if (pl.status === "launched") return { content: [{ type: "text", text: "This campaign is already launched." }] };
     if (pl.status !== "draft") return { isError: true, content: [{ type: "text", text: `This plan is ${pl.status} and cannot be launched.` }] };
     const link = `${SITE}/launch-approve.html?p=${planId}`;
-    await admin.from("mcp_audit").insert({ company_id: c.companyId, user_id: c.userId, tool: "launch_plan_request", args: clip(args), ok: true, client }).then(() => {}, () => {});
-    return { content: [{ type: "text", text: `NOT launched yet. Launching needs the owner's own click, which an assistant cannot give. Tell the person to open this link, check the summary and press Launch: ${link}\nThen wait for them to say they are done and confirm with get_live_ads. Do not call launch_plan again.` }], structuredContent: { status: "awaiting_human_approval", approval_url: link, plan_id: planId } };
+    const { data: full } = await admin.from("ai_plans").select("plan").eq("id", planId).maybeSingle();
+    const pl2: any = full?.plan ?? {};
+    const sets: any[] = Array.isArray(pl2.adsets) ? pl2.adsets : [];
+    const budget = sets.reduce((n, a) => n + (Number(a?.budget_naira) || 0), 0) || Number(pl2.daily_budget) || 0;
+    const secret = hexRand(16);
+    const { data: ap, error: apErr } = await admin.from("launch_approvals").insert({ plan_id: planId, user_id: c.userId, company_id: c.companyId, secret_hash: await sha256hex(secret), expires_at: new Date(Date.now() + 30 * 60_000).toISOString() }).select("id").single();
+    await admin.from("mcp_audit").insert({ company_id: c.companyId, user_id: c.userId, tool: "launch_plan_request", args: clip(args), ok: !apErr, client }).then(() => {}, () => {});
+    if (apErr || !ap) return { isError: true, content: [{ type: "text", text: `Could not prepare the launch approval. The person can launch from the dashboard under Campaigns, Drafts, or use this page: ${link}` }] };
+    const widget = { kind: "launch", approval_id: ap.id, plan_id: planId, campaign: pl2.campaign_name ?? "Campaign", objective: pl2.objective ?? null, budget_type: String(pl2.budget_type ?? "abo").toUpperCase(), daily_budget: budget ? naira(budget) : null, ad_sets: sets.length, ads: Array.isArray(pl2.ads) ? pl2.ads.length : null, paused: pl2.launch_paused === true, start: pl2.start_time ?? null };
+    return { content: [{ type: "text", text: `NOT launched yet. A Launch card is now showing under your reply with the campaign summary. The person taps Launch on that card, which is their approval. Say in one short line to review the card and tap Launch. Do NOT call launch_plan again, do not ask for a PIN, and do not claim it is launched until the person says so or get_live_ads shows it. If no card appeared, the person can open ${link}.` }], structuredContent: { launch_widget: widget }, _meta: { launch_secret: secret } };
   }
   const lim = await overLimit(t, defs, c);
   if (lim) return { isError: true, content: [{ type: "text", text: lim }] };
@@ -380,7 +446,7 @@ async function handleRpc(msg: any, c: Ctx, client: string): Promise<any | null> 
       return reply({ protocolVersion: SUPPORTED.includes(want) ? want : SUPPORTED[0], capabilities: { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { listChanged: false } }, serverInfo: { name: "revora", title: "Revora", version: VERSION, websiteUrl: SITE, icons: [{ src: `${SITE}/icons/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }, { src: `${SITE}/icons/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] }, instructions: INSTRUCTIONS });
     }
     case "ping": return reply({});
-    case "tools/list": return reply({ tools: (await manifest()).map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: { ...t.annotations, title: t.title }, ...(t.meta ? { _meta: t.meta["openai/outputTemplate"] ? { ...t.meta, "openai/outputTemplate": UI_OPENAI } : t.meta } : {}) })) });
+    case "tools/list": return reply({ tools: (await manifest()).map((t0) => { const t = t0.name === "launch_plan" ? { ...t0, meta: LAUNCH_UI_META } : t0; return t; }).map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: { ...t.annotations, title: t.title }, ...(t.meta ? { _meta: t.meta["openai/outputTemplate"] ? { ...t.meta, "openai/outputTemplate": UI_OPENAI } : t.meta } : {}) })) });
     case "tools/call": return reply(await callTool(String(msg?.params?.name ?? ""), msg?.params?.arguments, c, client));
     case "prompts/list": return reply({ prompts: [{ name: "run_my_ads", title: "Run my ads", description: "Review how the ads are doing and recommend what to do, like a senior media buyer." }, { name: "launch_ads", title: "Launch ads for a product", description: "Plan and launch a campaign for one product, step by step.", arguments: [{ name: "product", description: "Which product", required: true }] }] });
     case "prompts/get": {
@@ -423,6 +489,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (path === "/pin/widget-approve") return widgetApprove(req);
+  if (path === "/launch/widget-approve") return launchWidgetApprove(req);
   if (path === "/receipt/get" && req.method === "GET") return receiptGet(req, url);
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
