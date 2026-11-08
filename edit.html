@@ -37,20 +37,36 @@ select.btn{max-width:150px}
 #modal .box{background:var(--card);border-radius:14px;padding:16px;max-width:420px;width:100%;display:grid;gap:10px}
 #modal input[type=text]{width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
 #fatal{padding:24px;max-width:520px;margin:40px auto;background:var(--card);border:1px solid var(--border);border-radius:14px;color:var(--err)}
+#bars{flex:none}
+#bars.hide{display:none}
+#pill{display:none;position:fixed;top:8px;right:8px;z-index:8;border:0;border-radius:20px;background:var(--accent);color:#fff;padding:8px 14px;font-weight:700;box-shadow:0 2px 10px #0005;cursor:pointer}
+#dbadge{display:none;font-size:11px;font-weight:700;background:#f59e0b;color:#fff;border-radius:6px;padding:2px 7px}
+#addModal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+#addModal.on{display:flex}
+#addModal .box{background:var(--card);border-radius:14px;padding:16px;max-width:560px;width:100%;display:grid;gap:10px;max-height:92dvh;overflow:auto}
+#addModal textarea{width:100%;min-height:200px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:12.5px/1.4 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+#addModal select{padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+#aErr{color:var(--err);font-size:13px;min-height:0}
+.tabs{display:flex;gap:6px}.tabs .on{background:var(--accent);color:#fff;border-color:var(--accent)}
 </style>
 </head>
 <body>
+<div id="bars">
 <div id="top">
-  <span class="brand">REVORA</span><span id="sname">Loading…</span>
+  <span class="brand">REVORA</span><span id="sname">Loading…</span><span id="dbadge">Draft · not live</span>
   <select id="pages" class="btn" title="Page" style="display:none"></select>
   <span class="sp"></span>
   <button id="dev" class="btn" type="button" title="Phone view">📱</button>
-  <button id="undo" class="btn" type="button" disabled>Undo last save</button>
-  <button id="save" class="btn pri" type="button" disabled>Save</button>
+  <button id="add" class="btn" type="button">➕ Add section</button>
+  <button id="undo" class="btn" type="button" disabled>Undo last publish</button>
+  <button id="discard" class="btn" type="button" style="display:none">Discard draft</button>
+  <button id="draft" class="btn" type="button" disabled>Save draft</button>
+  <button id="save" class="btn pri" type="button" disabled>Publish live</button>
 </div>
 <div id="tools">
   <span id="sel"></span>
   <button id="bEdit" class="btn" type="button">Edit text</button>
+  <button id="bAdd" class="btn" type="button">➕ Add</button>
   <span class="col" id="cText">Text <input type="color" id="iText"></span>
   <span class="col" id="cBg">Background <input type="color" id="iBg"></span>
   <button id="bMinus" class="btn" type="button" title="Smaller text">A−</button>
@@ -61,6 +77,8 @@ select.btn{max-width:150px}
   <button id="bReset" class="btn" type="button" title="Undo style changes on this item">Reset style</button>
   <button id="bParent" class="btn" type="button">Select parent</button>
 </div>
+</div>
+<button id="pill" type="button">☰ Tools</button>
 <div id="stage"><iframe id="fr" title="Your website"></iframe></div>
 <div id="toast"></div>
 <div id="modal"><div class="box">
@@ -70,13 +88,23 @@ select.btn{max-width:150px}
   <input type="text" id="mUrl" placeholder="https://">
   <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="mCancel" type="button">Cancel</button><button class="btn pri" id="mOk" type="button">Use picture</button></div>
 </div></div>
+<div id="addModal"><div class="box">
+  <b>Add a section</b>
+  <div class="tabs"><button class="btn on" type="button">HTML</button><button class="btn" type="button" disabled title="Coming soon">Widget (soon)</button></div>
+  <label style="font-size:12px;color:var(--muted)">Where should it go?</label>
+  <select id="aPos"></select>
+  <textarea id="aHtml" spellcheck="false" placeholder="Paste or write your HTML here: a header, some text, a picture…"></textarea>
+  <div id="aErr"></div>
+  <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap"><button class="btn" id="aEx" type="button">Use an example</button><span><button class="btn" id="aCancel" type="button">Cancel</button> <button class="btn pri" id="aOk" type="button">Add to page</button></span></div>
+  <span style="font-size:12px;color:var(--muted)">Scripts and code are not allowed. After adding, press Save draft or Publish live.</span>
+</div></div>
 <script>
 (function () {
   var FN = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp-social";
   var token = new URLSearchParams(location.search).get("t") || "";
   var $ = function (id) { return document.getElementById(id); };
   var fr = $("fr"), D = null, model = null, idoc = null, sel = null, editing = null;
-  var dirtyText = {}, dirtyAttr = {}, changed = false, warned = false, baseTs = null, curSlug = "", canUndo = false;
+  var eidN = 0, hasDraft = false, barsShown = true, lockUntil = 0, dirtyText = {}, dirtyAttr = {}, changed = false, warned = false, baseTs = null, curSlug = "", canUndo = false;
   var LOCK = "[data-rv-form],[data-rv-bank],[data-rv-ref],[data-rv-year],[data-rv-date]";
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
 
@@ -89,7 +117,17 @@ select.btn{max-width:150px}
   var tt;
   function toast(msg, bad) { var t = $("toast"); t.textContent = msg; t.className = bad ? "err" : ""; t.style.display = "block"; clearTimeout(tt); tt = setTimeout(function () { t.style.display = "none"; }, bad ? 5000 : 2800); }
   function fatal(msg) { document.body.innerHTML = '<div id="fatal">' + esc(msg) + '</div>'; }
-  function setChanged(v) { changed = v; $("save").disabled = !v; }
+  function refreshBtns() {
+    $("save").disabled = !(changed || hasDraft); $("draft").disabled = !changed;
+    $("dbadge").style.display = hasDraft ? "inline-block" : "none"; $("discard").style.display = hasDraft ? "" : "none";
+  }
+  function setChanged(v) { changed = v; refreshBtns(); }
+  function setBars(show, el) {
+    if (show === barsShown) return;
+    barsShown = show; $("bars").classList.toggle("hide", !show); $("pill").style.display = show ? "none" : "block"; lockUntil = Date.now() + 600;
+    if (show && el) setTimeout(function () { try { el.scrollIntoView({ block: "center" }); } catch (e) { /* ignore */ } }, 60);
+  }
+  $("pill").onclick = function () { setBars(true); };
   function mime(f) { if (f.type) return f.type; var m = /\.(png|jpe?g|webp)$/i.exec(f.name || ""); return m ? ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" })[m[1].toLowerCase()] : ""; }
 
   // ---------- load a page into the preview ----------
@@ -97,7 +135,7 @@ select.btn{max-width:150px}
     return call({ action: "edit_load", page: slug }).then(function (r) {
       if (!r.ok || !r.j.page) { fatal((r.j && r.j.error) || "This edit link is not valid. Ask your assistant for a new one."); return; }
       D = r.j; curSlug = D.page.slug; baseTs = D.page.updated_at; canUndo = !!D.page.can_undo;
-      dirtyText = {}; dirtyAttr = {}; sel = null; editing = null; setChanged(false);
+      dirtyText = {}; dirtyAttr = {}; sel = null; editing = null; hasDraft = !!D.page.has_draft; setChanged(false);
       $("sname").textContent = D.site.name; $("undo").disabled = !canUndo; $("tools").classList.remove("on");
       var ps = $("pages"); ps.innerHTML = D.pages.map(function (p) { return '<option value="' + esc(p.slug) + '"' + (p.slug === curSlug ? " selected" : "") + ">" + esc(p.title || p.slug || "Home") + "</option>"; }).join("");
       ps.style.display = D.pages.length > 1 ? "" : "none";
@@ -110,7 +148,7 @@ select.btn{max-width:150px}
     t.innerHTML = D.page.html;
     var n = 0;
     t.content.querySelectorAll("*").forEach(function (e) { e.setAttribute("data-eid", String(++n)); });
-    model = t;
+    eidN = n; model = t;
     var view = t.content.cloneNode(true);
     view.querySelectorAll("script,meta,base,object,embed").forEach(function (s) { s.remove(); });
     view.querySelectorAll("*").forEach(function (e) {
@@ -174,6 +212,16 @@ select.btn{max-width:150px}
       idoc.execCommand("insertText", false, tx);
     });
     idoc.addEventListener("keydown", function (e) { if (e.key === "Escape") endEdit(); });
+    var lastY = 0, anchor = 0, pdir = 0;
+    idoc.addEventListener("scroll", function () {
+      var y = idoc.documentElement.scrollTop || (idoc.body && idoc.body.scrollTop) || 0;
+      if (Date.now() < lockUntil) { lastY = y; anchor = y; return; }
+      var dir = y > lastY ? 1 : y < lastY ? -1 : pdir;
+      if (dir !== pdir) { anchor = lastY; pdir = dir; }
+      if (dir === 1 && barsShown && y > 100 && y - anchor > 60) setBars(false);
+      else if (dir === -1 && !barsShown && anchor - y > 60) setBars(true);
+      lastY = y;
+    }, { passive: true });
     idoc.addEventListener("submit", function (e) { e.preventDefault(); }, true);
   }
 
@@ -204,7 +252,7 @@ select.btn{max-width:150px}
     $("bEdit").style.display = isImg ? "none" : "";
     $("bImg").style.display = isImg ? "" : "none";
     $("bLink").style.display = isA ? "" : "none";
-    bar.classList.add("on");
+    bar.classList.add("on"); setBars(true, el);
   }
   function touch(el) { dirtyAttr[eidOf(el)] = 1; setChanged(true); }
 
@@ -291,22 +339,62 @@ select.btn{max-width:150px}
     if (sel) sel.classList.add("rv-sel");
     return model.innerHTML.replace(/ data-eid="\d+"/g, "");
   }
-  $("save").onclick = async function () {
-    if (!changed) return;
+  async function doSave(isDraft) {
     if (D.page.from_builder && !warned) {
       if (!confirm("This page was made in the visual builder. Saving turns it into a normal editable page (the builder will not open it any more). A backup is kept and you can undo. Continue?")) return;
       warned = true;
     }
-    var btn = this; btn.disabled = true; btn.textContent = "Saving…";
-    var r = await call({ action: "edit_save", page: curSlug, html: collect(), base_updated_at: baseTs });
-    btn.textContent = "Save";
-    if (!r.ok || !r.j.ok) { btn.disabled = false; toast(r.j.error || "Could not save.", true); return; }
-    baseTs = r.j.updated_at; dirtyText = {}; dirtyAttr = {}; setChanged(false); D.page.from_builder = false; canUndo = true; $("undo").disabled = false;
-    toast("Saved ✓ Your page is live.");
+    var btn = $(isDraft ? "draft" : "save"), label = btn.textContent; btn.disabled = true; btn.textContent = "Saving…";
+    var r = await call({ action: "edit_save", page: curSlug, html: collect(), base_updated_at: baseTs, draft: isDraft });
+    btn.textContent = label;
+    if (!r.ok || !r.j.ok) { refreshBtns(); toast(r.j.error || "Could not save.", true); return; }
+    dirtyText = {}; dirtyAttr = {};
+    if (isDraft) { hasDraft = true; setChanged(false); toast("Draft saved ✓ It is not live yet. Press Publish live when ready."); }
+    else { baseTs = r.j.updated_at; hasDraft = false; D.page.from_builder = false; canUndo = true; $("undo").disabled = false; setChanged(false); toast("Published ✓ Your page is live."); }
+  }
+  $("save").onclick = function () { if (changed || hasDraft) doSave(false); };
+  $("draft").onclick = function () { if (changed) doSave(true); };
+  $("discard").onclick = async function () {
+    if (!confirm("Throw away the saved draft? Your live page stays as it is.")) return;
+    var r = await call({ action: "edit_discard_draft", page: curSlug });
+    if (!r.ok || !r.j.ok) { toast(r.j.error || "Could not discard.", true); return; }
+    await load(curSlug); toast("Draft discarded.");
   };
+
+  // ---------- add a section (HTML) ----------
+  var EXAMPLE = '<section style="padding:48px 20px;text-align:center;background:#f6f5f1">\n  <h2 style="font-size:30px;margin-bottom:12px">Your header here</h2>\n  <p style="max-width:560px;margin:0 auto 20px">Write your text here.</p>\n  <img src="https://placehold.co/600x300" alt="" style="max-width:100%;border-radius:12px">\n</section>';
+  function openAdd() {
+    var o = []; if (sel) { o.push(["after", "After the selected item"], ["before", "Before the selected item"], ["inside", "Inside the selected item (at the end)"]); }
+    o.push(["end", "At the end of the page"]);
+    $("aPos").innerHTML = o.map(function (x) { return '<option value="' + x[0] + '">' + x[1] + "</option>"; }).join("");
+    $("aErr").textContent = ""; $("addModal").classList.add("on"); $("aHtml").focus();
+  }
+  function insertHtml(html, pos) {
+    html = String(html || "").trim();
+    if (!html) throw new Error("Paste or write some HTML first.");
+    if (/<script/i.test(html) || /\son[a-z]+\s*=/i.test(html) || /javascript:/i.test(html)) throw new Error("Scripts and code (script tags, onclick, javascript:) are not allowed.");
+    var tm = document.createElement("template"); tm.innerHTML = html;
+    tm.content.querySelectorAll("*").forEach(function (e) { e.setAttribute("data-eid", String(++eidN)); });
+    var vm = tm.content.cloneNode(true), first = vm.firstElementChild;
+    var root = idoc.getElementById("rv-root"), vEl = sel, mEl = sel ? model.content.querySelector('[data-eid="' + eidOf(sel) + '"]') : null;
+    if (!vEl || !mEl || pos === "end") { model.content.appendChild(tm.content); root.appendChild(vm); }
+    else if (pos === "before") { mEl.before(tm.content); vEl.before(vm); }
+    else if (pos === "inside") { mEl.appendChild(tm.content); vEl.appendChild(vm); }
+    else { mEl.after(tm.content); vEl.after(vm); }
+    setChanged(true);
+    if (first) { select(first); try { first.scrollIntoView({ block: "center" }); } catch (e) { /* ignore */ } }
+  }
+  $("add").onclick = openAdd; $("bAdd").onclick = openAdd;
+  $("aEx").onclick = function () { $("aHtml").value = EXAMPLE; };
+  $("aCancel").onclick = function () { $("addModal").classList.remove("on"); };
+  $("aOk").onclick = function () {
+    try { insertHtml($("aHtml").value, $("aPos").value); $("addModal").classList.remove("on"); $("aHtml").value = ""; toast("Section added. Press Save draft or Publish live."); }
+    catch (e) { $("aErr").textContent = e.message; }
+  };
+
   $("undo").onclick = async function () {
     if (!canUndo) return;
-    if (!confirm("Go back to the version before your last save? This goes live at once.")) return;
+    if (!confirm("Go back to the version before your last publish? This goes live at once.")) return;
     var r = await call({ action: "edit_undo", page: curSlug });
     if (!r.ok || !r.j.ok) { toast(r.j.error || "Could not go back.", true); return; }
     await load(curSlug); toast("Went back to the earlier version ✓");
