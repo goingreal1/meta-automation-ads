@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Upload to Revora</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f5f1;--card:#fff;--text:#14130f;--text2:#55524a;--muted:#8c887c;--border:#e1ddd2;--accent:#1877F2;--accent-soft:rgba(24,119,242,.1);--ok:#16a34a;--err:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#121211;--card:#1b1b19;--text:#f2f0ea;--text2:#b9b5a8;--muted:#8c887c;--border:#34332f;--accent-soft:rgba(24,119,242,.18)}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:16px}
+.wrap{max-width:520px;margin:0 auto}
+.brand{font-weight:800;font-size:12px;letter-spacing:.08em;color:var(--accent);margin:8px 0 14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px}
+h1{font-size:21px;line-height:1.25;letter-spacing:-.01em}
+.sub{color:var(--text2);margin-top:4px;font-size:14px}
+.rules{margin-top:12px;font-size:12.5px;color:var(--muted);display:grid;gap:2px}
+.pick{margin-top:16px;display:block;width:100%;border:2px dashed var(--border);border-radius:14px;padding:26px 14px;text-align:center;background:transparent;color:var(--text);font:inherit;cursor:pointer}
+.pick:hover,.pick.drag{border-color:var(--accent);background:var(--accent-soft)}
+.pick b{display:block;font-size:16px}
+.pick span{font-size:13px;color:var(--muted)}
+.pick[disabled]{opacity:.5;cursor:default}
+ul{list-style:none;margin-top:14px;display:grid;gap:10px}
+li{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:8px}
+.th{width:48px;height:48px;border-radius:8px;background:var(--accent-soft);display:grid;place-items:center;overflow:hidden;font-size:20px}
+.th img{width:100%;height:100%;object-fit:cover}
+.nm{font-size:13.5px;font-weight:600;word-break:break-all;line-height:1.3}
+.st{font-size:12px;color:var(--muted);margin-top:2px}
+.bar{height:5px;border-radius:5px;background:var(--border);margin-top:6px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .15s}
+.ok .st{color:var(--ok)}.bad .st{color:var(--err)}
+.mark{font-size:20px;width:28px;text-align:center}
+.retry{border:0;background:var(--accent);color:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.done{margin-top:14px;border-radius:12px;padding:12px 14px;background:rgba(22,163,74,.12);color:var(--ok);font-weight:600;font-size:14px;display:none}
+.err{border-radius:12px;padding:12px 14px;background:rgba(220,38,38,.1);color:var(--err);font-size:14px}
+.foot{margin-top:14px;text-align:center;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">REVORA</div>
+  <div class="card" id="card"><p class="sub">Checking your link…</p></div>
+  <p class="foot">Private link. Files go straight to your Revora account.</p>
+</div>
+<script>
+(function () {
+  var FN = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp-social";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var card = document.getElementById("card");
+  var info = null, queue = [], running = false, left = 0;
+  var IMG = /^image\/(png|jpeg|webp)$/, VID = /^video\/(mp4|quicktime|webm)$/;
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+
+  function call(body) {
+    body.token = token;
+    return fetch(FN, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong. Try again." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your internet connection." } }; });
+  }
+  function fail(msg) { card.innerHTML = '<div class="err">' + esc(msg) + '</div>'; }
+
+  function mime(file) {
+    if (file.type) return file.type;
+    var m = /\.(png|jpe?g|webp|mp4|mov|webm)$/i.exec(file.name || "");
+    if (!m) return "";
+    var e = m[1].toLowerCase();
+    return { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" }[e];
+  }
+
+  function draw() {
+    var website = info.purpose === "website";
+    card.innerHTML =
+      '<h1>Upload to ' + esc(info.product) + '</h1>' +
+      '<p class="sub">' + (website ? "Pictures for the sales page" : "Ad pictures and videos") + '</p>' +
+      '<div class="rules"><span>Accepts: ' + esc(info.accepts) + '</span>' +
+      '<span>Images up to ' + info.image_max_mb + ' MB' + (website ? '' : ', videos up to ' + info.video_max_mb + ' MB') + '</span>' +
+      '<span id="left"></span></div>' +
+      '<button class="pick" id="pick" type="button"><b>Choose files</b><span>or drop them here</span></button>' +
+      '<input id="file" type="file" multiple hidden accept="' + (website ? "image/png,image/jpeg,image/webp" : "image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm") + '">' +
+      '<ul id="list"></ul>' +
+      '<div class="done" id="done">All saved ✓ Go back to your chat and tell your assistant you are done.</div>';
+    var pick = document.getElementById("pick"), file = document.getElementById("file");
+    pick.addEventListener("click", function () { file.click(); });
+    file.addEventListener("change", function () { add(file.files); file.value = ""; });
+    ["dragenter", "dragover"].forEach(function (ev) { pick.addEventListener(ev, function (e) { e.preventDefault(); pick.classList.add("drag"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { pick.addEventListener(ev, function (e) { e.preventDefault(); pick.classList.remove("drag"); }); });
+    pick.addEventListener("drop", function (e) { add(e.dataTransfer.files); });
+    left = info.remaining; showLeft();
+  }
+  function showLeft() {
+    var el = document.getElementById("left");
+    if (el) el.textContent = left + (left === 1 ? " file" : " files") + " left on this link";
+    var p = document.getElementById("pick"); if (p) p.disabled = left < 1;
+  }
+
+  function add(files) {
+    var list = document.getElementById("list");
+    Array.prototype.forEach.call(files, function (f) {
+      var li = document.createElement("li");
+      var isImg = IMG.test(mime(f)), isVid = VID.test(mime(f));
+      li.innerHTML = '<div class="th">' + (isVid ? "🎬" : "🖼️") + '</div><div><div class="nm">' + esc(f.name) + '</div><div class="st">Waiting…</div><div class="bar"><i></i></div></div><div class="mark"></div>';
+      list.appendChild(li);
+      if (isImg) { try { var im = document.createElement("img"); im.src = URL.createObjectURL(f); li.querySelector(".th").innerHTML = ""; li.querySelector(".th").appendChild(im); } catch (e) { /* keep icon */ } }
+      var job = { file: f, li: li, st: li.querySelector(".st"), bar: li.querySelector(".bar i"), mark: li.querySelector(".mark"), isVid: isVid };
+      var m = mime(f);
+      if (!m || (!isImg && !isVid)) return setErr(job, "This file type is not allowed.");
+      if (isVid && info.purpose === "website") return setErr(job, "Website pictures must be images.");
+      var cap = (isVid ? info.video_max_mb : info.image_max_mb) * 1048576;
+      if (f.size > cap) return setErr(job, "Too big. The limit is " + (cap / 1048576) + " MB.");
+      queue.push(job);
+    });
+    pump();
+  }
+  function setErr(job, msg) {
+    job.li.className = "bad"; job.st.textContent = msg; job.bar.parentNode.style.display = "none";
+    job.mark.innerHTML = '<button class="retry" type="button">Retry</button>';
+    job.mark.firstChild.style.display = job.retryable ? "" : "none";
+    var b = job.mark.firstChild; b.onclick = function () { job.retryable = false; job.li.className = ""; job.bar.parentNode.style.display = ""; job.bar.style.width = "0"; job.mark.innerHTML = ""; job.st.textContent = "Waiting…"; queue.push(job); pump(); };
+  }
+  function setOk(job) { job.li.className = "ok"; job.st.textContent = "Saved ✓"; job.bar.style.width = "100%"; job.mark.textContent = "✅"; }
+
+  function pump() {
+    if (running) return;
+    var job = queue.shift();
+    if (!job) { finishCheck(); return; }
+    running = true;
+    send(job).then(function () { running = false; pump(); });
+  }
+  function finishCheck() {
+    var d = document.getElementById("done"); if (!d) return;
+    var oks = document.querySelectorAll("li.ok").length, pending = document.querySelectorAll("li:not(.ok):not(.bad)").length;
+    d.style.display = oks && !pending ? "block" : "none";
+  }
+
+  function put(url, key, f, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var x = new XMLHttpRequest(), fd = new FormData();
+      fd.append("cacheControl", "3600"); fd.append("", f);
+      x.open("PUT", url); x.setRequestHeader("apikey", key); x.setRequestHeader("x-upsert", "false");
+      x.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      x.onload = function () { x.status >= 200 && x.status < 300 ? resolve() : reject(new Error("Upload failed (" + x.status + ")")); };
+      x.onerror = function () { reject(new Error("Network problem during upload.")); };
+      x.send(fd);
+    });
+  }
+
+  async function send(job) {
+    var f = job.file;
+    job.retryable = true;
+    job.st.textContent = "Preparing…";
+    var s = await call({ action: "upload_sign", name: f.name, content_type: mime(f), size: f.size });
+    if (!s.ok || !s.j.upload_url) { if (s.j && /limit|expired|valid/i.test(s.j.error || "")) job.retryable = false; return setErr(job, s.j.error || "Could not start the upload."); }
+    job.st.textContent = "Uploading…";
+    try { await put(s.j.upload_url, s.j.key, f, function (p) { job.bar.style.width = Math.round(p * 92) + "%"; job.st.textContent = "Uploading… " + Math.round(p * 100) + "%"; }); }
+    catch (e) { return setErr(job, e.message); }
+    job.st.textContent = "Saving…"; job.bar.style.width = "96%";
+    var r = await call({ action: "upload_finish", path: s.j.path, name: f.name });
+    if (!r.ok || !r.j.ok) return setErr(job, r.j.error || "Could not save the file.");
+    left = r.j.remaining != null ? r.j.remaining : Math.max(left - 1, 0); showLeft();
+    setOk(job);
+  }
+
+  if (!/^[0-9a-f]{32}$/.test(token)) { fail("This upload link is not complete. Ask your assistant for a new one."); return; }
+  call({ action: "upload_info" }).then(function (r) {
+    if (!r.ok || !r.j.product) { fail((r.j && r.j.error) || "This upload link is not valid. Ask your assistant for a new one."); return; }
+    info = r.j; draw();
+  });
+})();
+</script>
+</body>
+</html>
