@@ -61,7 +61,7 @@ select.btn{max-width:150px}
   <button id="bReset" class="btn" type="button" title="Undo style changes on this item">Reset style</button>
   <button id="bParent" class="btn" type="button">Select parent</button>
 </div>
-<div id="stage"><iframe id="fr" sandbox="allow-same-origin" title="Your website"></iframe></div>
+<div id="stage"><iframe id="fr" title="Your website"></iframe></div>
 <div id="toast"></div>
 <div id="modal"><div class="box">
   <b id="mTitle">Choose a picture</b>
@@ -112,7 +112,12 @@ select.btn{max-width:150px}
     t.content.querySelectorAll("*").forEach(function (e) { e.setAttribute("data-eid", String(++n)); });
     model = t;
     var view = t.content.cloneNode(true);
-    view.querySelectorAll("script").forEach(function (s) { s.remove(); });
+    view.querySelectorAll("script,meta,base,object,embed").forEach(function (s) { s.remove(); });
+    view.querySelectorAll("*").forEach(function (e) {
+      Array.prototype.slice.call(e.attributes).forEach(function (a) {
+        if (/^on/i.test(a.name)) { e.setAttribute("data-rvx-" + a.name, a.value); e.removeAttribute(a.name); }
+      });
+    });
     var holder = document.createElement("div"); holder.appendChild(view);
     var seo = D.page.seo || {};
     var head = "";
@@ -264,6 +269,9 @@ select.btn{max-width:150px}
       e.classList.remove("rv-hover"); e.classList.remove("rv-sel");
       if (!e.getAttribute("class")) e.removeAttribute("class");
       e.removeAttribute("contenteditable"); e.removeAttribute("spellcheck");
+      Array.prototype.slice.call(e.attributes).forEach(function (a) {
+        if (a.name.indexOf("data-rvx-on") === 0) { e.setAttribute(a.name.slice(9), a.value); e.removeAttribute(a.name); }
+      });
     });
     return t.innerHTML;
   }
