@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Edit your website</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f5f1;--card:#fff;--text:#14130f;--muted:#8c887c;--border:#e1ddd2;--accent:#1877F2;--ok:#16a34a;--err:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#121211;--card:#1b1b19;--text:#f2f0ea;--border:#34332f}}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100dvh}
+button,select,input{font:inherit;color:inherit}
+#top{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.brand{font-weight:800;font-size:11px;letter-spacing:.08em;color:var(--accent)}
+#sname{font-weight:700;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp{flex:1}
+.btn{border:1px solid var(--border);background:var(--card);border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn[disabled]{opacity:.45;cursor:default}
+select.btn{max-width:150px}
+#tools{display:none;align-items:center;gap:8px;padding:8px 10px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap}
+#tools.on{display:flex}
+#sel{font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col{display:inline-flex;align-items:center;gap:4px;font-size:12px}
+.col input{width:30px;height:28px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer}
+#stage{flex:1;min-height:0;display:flex;justify-content:center;background:#8883}
+#fr{width:100%;height:100%;border:0;background:#fff}
+#stage.mobile #fr{width:390px;max-width:100%;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#14130f;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;max-width:90vw;display:none;z-index:9}
+#toast.err{background:var(--err)}
+#modal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+#modal.on{display:flex}
+#modal .box{background:var(--card);border-radius:14px;padding:16px;max-width:420px;width:100%;display:grid;gap:10px}
+#modal input[type=text]{width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+#fatal{padding:24px;max-width:520px;margin:40px auto;background:var(--card);border:1px solid var(--border);border-radius:14px;color:var(--err)}
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="brand">REVORA</span><span id="sname">Loading…</span>
+  <select id="pages" class="btn" title="Page" style="display:none"></select>
+  <span class="sp"></span>
+  <button id="dev" class="btn" type="button" title="Phone view">📱</button>
+  <button id="undo" class="btn" type="button" disabled>Undo last save</button>
+  <button id="save" class="btn pri" type="button" disabled>Save</button>
+</div>
+<div id="tools">
+  <span id="sel"></span>
+  <button id="bEdit" class="btn" type="button">Edit text</button>
+  <span class="col" id="cText">Text <input type="color" id="iText"></span>
+  <span class="col" id="cBg">Background <input type="color" id="iBg"></span>
+  <button id="bMinus" class="btn" type="button" title="Smaller text">A−</button>
+  <button id="bPlus" class="btn" type="button" title="Bigger text">A+</button>
+  <button id="bLink" class="btn" type="button">Link</button>
+  <button id="bImg" class="btn" type="button">Change picture</button>
+  <button id="bBgImg" class="btn" type="button">Background picture</button>
+  <button id="bReset" class="btn" type="button" title="Undo style changes on this item">Reset style</button>
+  <button id="bParent" class="btn" type="button">Select parent</button>
+</div>
+<div id="stage"><iframe id="fr" sandbox="allow-same-origin" title="Your website"></iframe></div>
+<div id="toast"></div>
+<div id="modal"><div class="box">
+  <b id="mTitle">Choose a picture</b>
+  <input type="file" id="mFile" accept="image/png,image/jpeg,image/webp">
+  <span style="font-size:12px;color:var(--muted)">or paste a picture link (https://…)</span>
+  <input type="text" id="mUrl" placeholder="https://">
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="mCancel" type="button">Cancel</button><button class="btn pri" id="mOk" type="button">Use picture</button></div>
+</div></div>
+<script>
+(function () {
+  var FN = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp-social";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var $ = function (id) { return document.getElementById(id); };
+  var fr = $("fr"), D = null, model = null, idoc = null, sel = null, editing = null;
+  var dirtyText = {}, dirtyAttr = {}, changed = false, warned = false, baseTs = null, curSlug = "", canUndo = false;
+  var LOCK = "[data-rv-form],[data-rv-bank],[data-rv-ref],[data-rv-year],[data-rv-date]";
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+
+  function call(body) {
+    body.token = token;
+    return fetch(FN, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong. Try again." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your internet connection." } }; });
+  }
+  var tt;
+  function toast(msg, bad) { var t = $("toast"); t.textContent = msg; t.className = bad ? "err" : ""; t.style.display = "block"; clearTimeout(tt); tt = setTimeout(function () { t.style.display = "none"; }, bad ? 5000 : 2800); }
+  function fatal(msg) { document.body.innerHTML = '<div id="fatal">' + esc(msg) + '</div>'; }
+  function setChanged(v) { changed = v; $("save").disabled = !v; }
+  function mime(f) { if (f.type) return f.type; var m = /\.(png|jpe?g|webp)$/i.exec(f.name || ""); return m ? ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" })[m[1].toLowerCase()] : ""; }
+
+  // ---------- load a page into the preview ----------
+  function load(slug) {
+    return call({ action: "edit_load", page: slug }).then(function (r) {
+      if (!r.ok || !r.j.page) { fatal((r.j && r.j.error) || "This edit link is not valid. Ask your assistant for a new one."); return; }
+      D = r.j; curSlug = D.page.slug; baseTs = D.page.updated_at; canUndo = !!D.page.can_undo;
+      dirtyText = {}; dirtyAttr = {}; sel = null; editing = null; setChanged(false);
+      $("sname").textContent = D.site.name; $("undo").disabled = !canUndo; $("tools").classList.remove("on");
+      var ps = $("pages"); ps.innerHTML = D.pages.map(function (p) { return '<option value="' + esc(p.slug) + '"' + (p.slug === curSlug ? " selected" : "") + ">" + esc(p.title || p.slug || "Home") + "</option>"; }).join("");
+      ps.style.display = D.pages.length > 1 ? "" : "none";
+      build();
+    });
+  }
+
+  function build() {
+    var t = document.createElement("template");
+    t.innerHTML = D.page.html;
+    var n = 0;
+    t.content.querySelectorAll("*").forEach(function (e) { e.setAttribute("data-eid", String(++n)); });
+    model = t;
+    var view = t.content.cloneNode(true);
+    view.querySelectorAll("script").forEach(function (s) { s.remove(); });
+    var holder = document.createElement("div"); holder.appendChild(view);
+    var seo = D.page.seo || {};
+    var head = "";
+    if (seo.fonts_url && /^https:\/\//.test(seo.fonts_url)) head += '<link rel="stylesheet" href="' + esc(seo.fonts_url) + '">';
+    if (seo.head_html) {
+      var ht = document.createElement("template"); ht.innerHTML = seo.head_html;
+      ht.content.querySelectorAll("link[rel=stylesheet],link[rel=preconnect],style").forEach(function (e) { head += e.outerHTML; });
+    }
+    var ED = ".rv-hover{outline:2px dashed #1877F2!important;outline-offset:-2px;cursor:pointer}.rv-sel{outline:2px solid #1877F2!important;outline-offset:-2px}[contenteditable=true]{outline:2px solid #16a34a!important;outline-offset:-2px;cursor:text}" +
+      "[data-rv-form]:empty::before,[data-rv-bank]:empty::before,[data-rv-ref]:empty::before{content:'Revora fills this part in on the live page';display:block;padding:18px;text-align:center;border:2px dashed #aaa;color:#777;font:14px system-ui;background:#f4f4f4}";
+    var css = String(D.page.css || "").replace(/<\/style/gi, "<\\/style");
+    var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/rv/form.css">' + head +
+      '<style id="rv-page-css">' + css + "</style><style>" + ED + '</style></head><body class="' + esc(seo.body_class || "") + '" style="' + esc(seo.body_style || "") + '"><div id="rv-root">' + holder.innerHTML + "</div></body></html>";
+    fr.onload = function () { idoc = fr.contentDocument; attach(); };
+    fr.srcdoc = doc;
+  }
+
+  // ---------- inside the preview ----------
+  function pick(t) {
+    if (t && t.nodeType !== 1) t = t.parentElement;
+    while (t && !t.hasAttribute("data-eid")) t = t.parentElement;
+    return t || null;
+  }
+  function eidOf(el) { return el.getAttribute("data-eid"); }
+  function attach() {
+    var hov = null;
+    function unhover() { if (hov) { hov.classList.remove("rv-hover"); hov = null; } }
+    idoc.addEventListener("mouseover", function (e) {
+      if (editing) return;
+      var t = pick(e.target); unhover();
+      if (t && !t.closest(LOCK) && t !== sel) { hov = t; t.classList.add("rv-hover"); }
+    });
+    idoc.addEventListener("mouseout", unhover);
+    idoc.addEventListener("click", function (e) {
+      if (editing && editing.contains(e.target)) return;
+      e.preventDefault(); e.stopPropagation(); unhover();
+      var t = pick(e.target);
+      if (!t) { select(null); return; }
+      if (t.closest(LOCK)) { toast("Revora fills this part in (form, bank details). It can't be edited here."); select(null); return; }
+      select(t);
+    }, true);
+    idoc.addEventListener("dblclick", function (e) {
+      var t = pick(e.target);
+      if (!t || t.closest(LOCK)) return;
+      e.preventDefault(); select(t);
+      if (/^(img|video|svg|picture|iframe)$/i.test(t.tagName)) { if (t.tagName.toLowerCase() === "img") openPicture("img"); return; }
+      startEdit(t);
+    }, true);
+    idoc.addEventListener("input", function () { if (editing) { dirtyText[eidOf(editing)] = 1; setChanged(true); } });
+    idoc.addEventListener("paste", function (e) {
+      if (!editing) return;
+      e.preventDefault();
+      var tx = (e.clipboardData || window.clipboardData).getData("text/plain");
+      idoc.execCommand("insertText", false, tx);
+    });
+    idoc.addEventListener("keydown", function (e) { if (e.key === "Escape") endEdit(); });
+    idoc.addEventListener("submit", function (e) { e.preventDefault(); }, true);
+  }
+
+  function startEdit(el) {
+    endEdit(); editing = el;
+    el.setAttribute("contenteditable", "true"); el.focus();
+  }
+  function endEdit() { if (editing) { editing.removeAttribute("contenteditable"); editing.removeAttribute("spellcheck"); editing = null; } }
+
+  function hex(c) {
+    var m = String(c).match(/[\d.]+/g);
+    if (!m || m.length < 3 || (m.length === 4 && +m[3] === 0)) return "#ffffff";
+    return "#" + [0, 1, 2].map(function (i) { return Math.round(+m[i]).toString(16).padStart(2, "0"); }).join("");
+  }
+  function select(el) {
+    if (editing && el && editing.contains(el)) return;
+    endEdit();
+    if (sel) sel.classList.remove("rv-sel");
+    sel = el;
+    var bar = $("tools");
+    if (!el) { bar.classList.remove("on"); return; }
+    el.classList.add("rv-sel");
+    var cs = fr.contentWindow.getComputedStyle(el), tag = el.tagName.toLowerCase();
+    var snip = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 24);
+    $("sel").textContent = "<" + tag + ">" + (snip ? " “" + snip + "”" : "");
+    $("iText").value = hex(cs.color); $("iBg").value = hex(cs.backgroundColor);
+    var isImg = tag === "img", isA = tag === "a" || !!el.closest("a");
+    $("bEdit").style.display = isImg ? "none" : "";
+    $("bImg").style.display = isImg ? "" : "none";
+    $("bLink").style.display = isA ? "" : "none";
+    bar.classList.add("on");
+  }
+  function touch(el) { dirtyAttr[eidOf(el)] = 1; setChanged(true); }
+
+  $("bEdit").onclick = function () { if (sel) startEdit(sel); };
+  $("iText").oninput = function () { if (sel) { sel.style.color = this.value; touch(sel); } };
+  $("iBg").oninput = function () { if (sel) { sel.style.backgroundColor = this.value; touch(sel); } };
+  function bump(d) { if (!sel) return; var px = parseFloat(fr.contentWindow.getComputedStyle(sel).fontSize) || 16; sel.style.fontSize = Math.max(8, Math.round(px + d)) + "px"; touch(sel); }
+  $("bMinus").onclick = function () { bump(-2); };
+  $("bPlus").onclick = function () { bump(2); };
+  $("bLink").onclick = function () {
+    if (!sel) return; var a = sel.tagName.toLowerCase() === "a" ? sel : sel.closest("a"); if (!a) return;
+    var v = prompt("Where should this link go? (https://… or tel:… or #section)", a.getAttribute("href") || "");
+    if (v === null) return; v = v.trim();
+    if (/^\s*javascript:/i.test(v)) { toast("That kind of link is not allowed.", true); return; }
+    a.setAttribute("href", v); touch(a);
+  };
+  $("bReset").onclick = function () {
+    if (!sel) return; var m = model.content.querySelector('[data-eid="' + eidOf(sel) + '"]'); var s = m ? m.getAttribute("style") : null;
+    if (s === null) sel.removeAttribute("style"); else sel.setAttribute("style", s);
+    touch(sel); select(sel);
+  };
+  $("bParent").onclick = function () { if (!sel) return; var p = pick(sel.parentElement); if (p) select(p); };
+
+  // ---------- pictures ----------
+  var picMode = "img";
+  function openPicture(mode) {
+    if (!sel) return; picMode = mode;
+    $("mTitle").textContent = mode === "img" ? "Change this picture" : "Background picture";
+    $("mFile").value = ""; $("mUrl").value = ""; $("modal").classList.add("on");
+  }
+  $("bImg").onclick = function () { openPicture("img"); };
+  $("bBgImg").onclick = function () { openPicture("bg"); };
+  $("mCancel").onclick = function () { $("modal").classList.remove("on"); };
+  async function upload(file) {
+    var s = await call({ action: "edit_upload_sign", name: file.name, content_type: mime(file), size: file.size });
+    if (!s.ok || !s.j.upload_url) throw new Error(s.j.error || "Could not start the upload.");
+    var fd = new FormData(); fd.append("cacheControl", "3600"); fd.append("", file);
+    var r = await fetch(s.j.upload_url, { method: "PUT", headers: { apikey: s.j.key, "x-upsert": "false" }, body: fd });
+    if (!r.ok) throw new Error("Upload failed (" + r.status + ")");
+    var f = await call({ action: "edit_upload_finish", path: s.j.path, name: file.name });
+    if (!f.ok || !f.j.url) throw new Error(f.j.error || "Could not save the picture.");
+    return f.j.url;
+  }
+  $("mOk").onclick = async function () {
+    var btn = this, file = $("mFile").files[0], url = $("mUrl").value.trim();
+    if (!sel) return;
+    try {
+      btn.disabled = true; btn.textContent = "Working…";
+      if (file) { if (!/^image\/(png|jpeg|webp)$/.test(mime(file))) throw new Error("Use a png, jpg or webp picture."); url = await upload(file); }
+      else if (!/^https:\/\/[^\s"'()<>]+$/.test(url)) throw new Error("Choose a picture or paste a link that starts with https://");
+      if (picMode === "img") { sel.setAttribute("src", url); sel.removeAttribute("srcset"); sel.removeAttribute("sizes"); }
+      else { sel.style.backgroundImage = 'url("' + url + '")'; if (!sel.style.backgroundSize) sel.style.backgroundSize = "cover"; if (!sel.style.backgroundPosition) sel.style.backgroundPosition = "center"; }
+      touch(sel); $("modal").classList.remove("on");
+    } catch (e) { toast(e.message, true); }
+    btn.disabled = false; btn.textContent = "Use picture";
+  };
+
+  // ---------- save / undo ----------
+  function cleanHtml(h) {
+    var t = document.createElement("template"); t.innerHTML = h;
+    t.content.querySelectorAll("*").forEach(function (e) {
+      e.classList.remove("rv-hover"); e.classList.remove("rv-sel");
+      if (!e.getAttribute("class")) e.removeAttribute("class");
+      e.removeAttribute("contenteditable"); e.removeAttribute("spellcheck");
+    });
+    return t.innerHTML;
+  }
+  function collect() {
+    endEdit(); if (sel) sel.classList.remove("rv-sel");
+    var q = function (root, id) { return root.querySelector('[data-eid="' + id + '"]'); };
+    Object.keys(dirtyText).map(Number).sort(function (a, b) { return a - b; }).forEach(function (id) {
+      var v = q(idoc, id), m = q(model.content, id); if (v && m) m.innerHTML = cleanHtml(v.innerHTML);
+    });
+    Object.keys(dirtyAttr).forEach(function (id) {
+      var v = q(idoc, id), m = q(model.content, id); if (!v || !m) return;
+      ["style", "src", "srcset", "sizes", "href", "alt"].forEach(function (a) {
+        var val = v.getAttribute(a);
+        if (val === null || (a === "style" && !val.trim())) m.removeAttribute(a); else m.setAttribute(a, val);
+      });
+    });
+    if (sel) sel.classList.add("rv-sel");
+    return model.innerHTML.replace(/ data-eid="\d+"/g, "");
+  }
+  $("save").onclick = async function () {
+    if (!changed) return;
+    if (D.page.from_builder && !warned) {
+      if (!confirm("This page was made in the visual builder. Saving turns it into a normal editable page (the builder will not open it any more). A backup is kept and you can undo. Continue?")) return;
+      warned = true;
+    }
+    var btn = this; btn.disabled = true; btn.textContent = "Saving…";
+    var r = await call({ action: "edit_save", page: curSlug, html: collect(), base_updated_at: baseTs });
+    btn.textContent = "Save";
+    if (!r.ok || !r.j.ok) { btn.disabled = false; toast(r.j.error || "Could not save.", true); return; }
+    baseTs = r.j.updated_at; dirtyText = {}; dirtyAttr = {}; setChanged(false); D.page.from_builder = false; canUndo = true; $("undo").disabled = false;
+    toast("Saved ✓ Your page is live.");
+  };
+  $("undo").onclick = async function () {
+    if (!canUndo) return;
+    if (!confirm("Go back to the version before your last save? This goes live at once.")) return;
+    var r = await call({ action: "edit_undo", page: curSlug });
+    if (!r.ok || !r.j.ok) { toast(r.j.error || "Could not go back.", true); return; }
+    await load(curSlug); toast("Went back to the earlier version ✓");
+  };
+  $("pages").onchange = function () {
+    var v = this.value;
+    if (changed && !confirm("You have changes that are not saved. Leave this page without saving?")) { this.value = curSlug; return; }
+    load(v);
+  };
+  $("dev").onclick = function () { $("stage").classList.toggle("mobile"); };
+  window.addEventListener("beforeunload", function (e) { if (changed) { e.preventDefault(); e.returnValue = ""; } });
+
+  if (!/^[0-9a-f]{32}$/.test(token)) { fatal("This edit link is not complete. Ask your assistant for a new one."); return; }
+  load("");
+})();
+</script>
+</body>
+</html>
