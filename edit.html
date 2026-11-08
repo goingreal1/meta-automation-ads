@@ -121,12 +121,12 @@ select.btn{max-width:150px}
       var ht = document.createElement("template"); ht.innerHTML = seo.head_html;
       ht.content.querySelectorAll("link[rel=stylesheet],link[rel=preconnect],style").forEach(function (e) { head += e.outerHTML; });
     }
-    var ED = ".rv-hover{outline:2px dashed #1877F2!important;outline-offset:-2px;cursor:pointer}.rv-sel{outline:2px solid #1877F2!important;outline-offset:-2px}[contenteditable=true]{outline:2px solid #16a34a!important;outline-offset:-2px;cursor:text}" +
+    var ED = "#rv-root *{cursor:pointer;-webkit-tap-highlight-color:rgba(24,119,242,.25)}.rv-hover{outline:2px dashed #1877F2!important;outline-offset:-2px;cursor:pointer}.rv-sel{outline:2px solid #1877F2!important;outline-offset:-2px}[contenteditable=true]{outline:2px solid #16a34a!important;outline-offset:-2px;cursor:text}" +
       "[data-rv-form]:empty::before,[data-rv-bank]:empty::before,[data-rv-ref]:empty::before{content:'Revora fills this part in on the live page';display:block;padding:18px;text-align:center;border:2px dashed #aaa;color:#777;font:14px system-ui;background:#f4f4f4}";
     var css = String(D.page.css || "").replace(/<\/style/gi, "<\\/style");
     var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/rv/form.css">' + head +
       '<style id="rv-page-css">' + css + "</style><style>" + ED + '</style></head><body class="' + esc(seo.body_class || "") + '" style="' + esc(seo.body_style || "") + '"><div id="rv-root">' + holder.innerHTML + "</div></body></html>";
-    fr.onload = function () { idoc = fr.contentDocument; attach(); };
+    fr.onload = function () { idoc = fr.contentDocument; attach(); toast("Tap any text or picture to select it, then use the bar above."); };
     fr.srcdoc = doc;
   }
 
