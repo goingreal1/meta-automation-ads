@@ -104,7 +104,7 @@ select.btn{max-width:150px}
   var token = new URLSearchParams(location.search).get("t") || "";
   var $ = function (id) { return document.getElementById(id); };
   var fr = $("fr"), D = null, model = null, idoc = null, sel = null, editing = null;
-  var eidN = 0, hasDraft = false, barsShown = true, lockUntil = 0, dirtyText = {}, dirtyAttr = {}, changed = false, warned = false, baseTs = null, curSlug = "", canUndo = false;
+  var baseVer = null, eidN = 0, hasDraft = false, barsShown = true, lockUntil = 0, dirtyText = {}, dirtyAttr = {}, changed = false, warned = false, baseTs = null, curSlug = "", canUndo = false;
   var LOCK = "[data-rv-form],[data-rv-bank],[data-rv-ref],[data-rv-year],[data-rv-date]";
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
 
@@ -134,7 +134,7 @@ select.btn{max-width:150px}
   function load(slug) {
     return call({ action: "edit_load", page: slug }).then(function (r) {
       if (!r.ok || !r.j.page) { fatal((r.j && r.j.error) || "This edit link is not valid. Ask your assistant for a new one."); return; }
-      D = r.j; curSlug = D.page.slug; baseTs = D.page.updated_at; canUndo = !!D.page.can_undo;
+      D = r.j; curSlug = D.page.slug; baseTs = D.page.updated_at; baseVer = D.page.base_version == null ? null : D.page.base_version; canUndo = !!D.page.can_undo;
       dirtyText = {}; dirtyAttr = {}; sel = null; editing = null; hasDraft = !!D.page.has_draft; setChanged(false);
       $("sname").textContent = D.site.name; $("undo").disabled = !canUndo; $("tools").classList.remove("on");
       var ps = $("pages"); ps.innerHTML = D.pages.map(function (p) { return '<option value="' + esc(p.slug) + '"' + (p.slug === curSlug ? " selected" : "") + ">" + esc(p.title || p.slug || "Home") + "</option>"; }).join("");
@@ -345,12 +345,12 @@ select.btn{max-width:150px}
       warned = true;
     }
     var btn = $(isDraft ? "draft" : "save"), label = btn.textContent; btn.disabled = true; btn.textContent = "Saving…";
-    var r = await call({ action: "edit_save", page: curSlug, html: collect(), base_updated_at: baseTs, draft: isDraft });
+    var r = await call({ action: "edit_save", page: curSlug, html: collect(), base_updated_at: baseTs, base_version: baseVer, draft: isDraft });
     btn.textContent = label;
-    if (!r.ok || !r.j.ok) { refreshBtns(); toast(r.j.error || "Could not save.", true); return; }
+    if (!r.ok || !r.j.ok) { refreshBtns(); toast(r.j.conflict && hasDraft ? "Your assistant changed this page after this draft was saved. Press Discard draft, then make your change again on the latest version." : (r.j.error || "Could not save."), true); return; }
     dirtyText = {}; dirtyAttr = {};
     if (isDraft) { hasDraft = true; setChanged(false); toast("Draft saved ✓ It is not live yet. Press Publish live when ready."); }
-    else { baseTs = r.j.updated_at; hasDraft = false; D.page.from_builder = false; canUndo = true; $("undo").disabled = false; setChanged(false); toast("Published ✓ Your page is live."); }
+    else { baseTs = r.j.updated_at; if (r.j.version != null) baseVer = r.j.version; hasDraft = false; D.page.from_builder = false; canUndo = true; $("undo").disabled = false; setChanged(false); toast("Published ✓ Your page is live."); }
   }
   $("save").onclick = function () { if (changed || hasDraft) doSave(false); };
   $("draft").onclick = function () { if (changed) doSave(true); };
