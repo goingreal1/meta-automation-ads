@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Edit your campaign</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f5f1;--card:#fff;--text:#14130f;--muted:#8c887c;--border:#e1ddd2;--accent:#1877F2;--ok:#16a34a;--err:#dc2626;--soft:#eef4fe}
+@media (prefers-color-scheme:dark){:root{--bg:#121211;--card:#1b1b19;--text:#f2f0ea;--border:#34332f;--soft:#1c2636}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:96px}
+button,select,input,textarea{font:inherit;color:inherit}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 0;position:sticky;top:0;z-index:5}
+header .wrap{display:flex;align-items:center;gap:10px}
+.brand{font-weight:800;font-size:11px;letter-spacing:.08em;color:var(--accent)}
+#cname{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--soft);color:var(--accent)}
+.chip.off{background:#fde8e8;color:var(--err)}
+h2{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;font-size:14px}
+.kv span:nth-child(odd){color:var(--muted)}
+label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+input[type=text],input[type=number],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}
+textarea{min-height:110px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:0 0 auto}
+.grow{flex:1 1 90px!important;min-width:90px}
+.btn{border:1px solid var(--border);background:var(--card);border-radius:9px;padding:8px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn.bad{color:var(--err)}
+.btn[disabled]{opacity:.45;cursor:default}
+.small{font-size:12px;color:var(--muted)}
+.copy .hd,.set .hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.copy .hd b,.set .hd b{font-size:15px}
+.ad{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
+.thumb{width:72px;height:72px;border-radius:10px;background:var(--bg);border:1px solid var(--border);flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center}
+.thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
+.adbody{flex:1;min-width:0;display:grid;gap:6px}
+.adname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl{display:flex;flex-wrap:wrap;gap:6px}
+.pl label{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--border);border-radius:99px;padding:5px 10px;font-size:13px;cursor:pointer;background:var(--bg)}
+.pl label.on{border-color:var(--accent);background:var(--soft)}
+.pl input{width:auto}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.tags span{font-size:12px;background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:3px 9px}
+.settings{display:none;margin:8px 0 6px;padding:10px;border:1px dashed var(--border);border-radius:10px}
+.settings.on{display:block}
+#bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:10px 0;z-index:6}
+#bar .wrap{display:flex;align-items:center;gap:10px}
+#msg{flex:1;font-size:13px;color:var(--muted);min-width:0}
+#msg.err{color:var(--err)}
+#msg.ok{color:var(--ok)}
+.modal{position:fixed;inset:0;background:#0007;display:none;align-items:flex-end;justify-content:center;z-index:10}
+.modal.on{display:flex}
+.modal .box{background:var(--card);width:100%;max-width:720px;max-height:86vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px;display:grid;gap:10px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid button{border:2px solid var(--border);border-radius:10px;background:var(--bg);padding:0;aspect-ratio:1;overflow:hidden;cursor:pointer;position:relative;font-size:11px;color:var(--muted)}
+.grid button.sel{border-color:var(--accent)}
+.grid img,.grid video{width:100%;height:100%;object-fit:cover}
+.chk{display:flex;gap:8px;align-items:center;padding:6px 0;font-size:14px}
+.chk input{width:auto}
+#fatal{padding:24px;max-width:520px;margin:40px auto;background:var(--card);border:1px solid var(--border);border-radius:14px;color:var(--err)}
+#banner{display:none;background:#fff4d6;color:#6b4e00;border:1px solid #f0d88a;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:14px}
+</style>
+</head>
+<body>
+<header><div class="wrap"><span class="brand">REVORA</span><span id="cname">Loading…</span><span class="chip" id="stat"></span></div></header>
+<main class="wrap" id="main">
+  <div id="banner"></div>
+  <h2>Campaign</h2>
+  <div class="card" id="camp"></div>
+  <h2>Ad copy</h2>
+  <div id="copies"></div>
+  <div class="row" style="margin-bottom:8px"><button class="btn" id="addCopy" type="button">+ Add another copy</button></div>
+  <h2>Ad sets and ads</h2>
+  <div id="sets"></div>
+  <p class="small" style="margin-top:14px">Saving here only changes your draft. Nothing goes to Meta until you launch: tap Launch in the WhatsApp message or on the approval card in your AI app.</p>
+</main>
+<div id="bar"><div class="wrap"><span id="msg">No changes yet.</span><button class="btn pri" id="save" type="button" disabled>Save</button></div></div>
+
+<div class="modal" id="pick"><div class="box">
+  <b>Choose a picture or video</b>
+  <div class="grid" id="pgrid"></div>
+  <div class="row"><label class="btn" style="cursor:pointer">Upload new<input id="pfile" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" hidden></label><span class="small" id="pst"></span><span class="grow"></span><button class="btn" id="pcancel" type="button">Close</button></div>
+</div></div>
+
+<div class="modal" id="use"><div class="box">
+  <b id="useT">Use this copy on…</b>
+  <div id="usel"></div>
+  <div class="row"><button class="btn" id="ucancel" type="button">Cancel</button><span class="grow"></span><button class="btn pri" id="uok" type="button">Apply</button></div>
+</div></div>
+
+<script>
+(function () {
+  var FN = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp-social";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+  var PLACE = { automatic: "Automatic", fb_feed: "Facebook Feed", fb_reels: "Facebook Reels", fb_stories: "Facebook Stories", fb_marketplace: "Marketplace", fb_search: "Facebook Search", fb_profile: "Facebook Profile", ig_feed: "Instagram Feed", ig_reels: "Instagram Reels", ig_stories: "Instagram Stories", ig_explore: "Instagram Explore", ig_profile: "Instagram Profile", threads: "Threads", wa_status: "WhatsApp Status", an: "Audience Network" };
+  var D = null, S = null, assets = {}, dirty = false, saving = false, pickTarget = null, useCopy = null;
+
+  function call(body) {
+    body.token = token;
+    return fetch(FN, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong. Try again." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your internet connection." } }; });
+  }
+  function fatal(msg) { document.body.innerHTML = '<div id="fatal">' + esc(msg) + '</div>'; }
+  function say(t, cls) { var m = $("msg"); m.textContent = t; m.className = cls || ""; }
+  function setDirty(v) { dirty = v; $("save").disabled = !v || saving || !D.editable; if (v) say("Unsaved changes."); }
+  function naira(n) { return "₦" + Math.round(Number(n) || 0).toLocaleString("en-NG"); }
+  function asset(id) { return assets[id] || null; }
+  function copyTitle(i) { var c = S.copies[i]; var first = String((c && (c.headline || c.primary_text)) || "").replace(/\s+/g, " ").trim().slice(0, 34); return "Copy " + (i + 1) + (first ? " – " + first : ""); }
+  function usedBy(i) { var n = 0; S.sets.forEach(function (s) { s.ads.forEach(function (a) { if (a.copy_index === i) n++; }); }); return n; }
+  function ro() { return D.editable ? "" : " disabled"; }
+
+  function thumb(a) {
+    var f = asset(a.asset_id);
+    if (!f) return a.asset_id ? '<div class="thumb">Product picture</div>' : '<div class="thumb">No picture</div>';
+    if (f.type === "video") return '<div class="thumb"><video src="' + esc(f.url) + '#t=0.1" preload="metadata" muted playsinline></video></div>';
+    return '<div class="thumb"><img src="' + esc(f.url) + '" alt="" loading="lazy"></div>';
+  }
+
+  function renderCamp() {
+    var c = D.campaign, total = S.sets.reduce(function (n, s) { return n + (Number(s.settings.budget_naira) || 0); }, 0);
+    $("cname").textContent = S.name || c.name;
+    $("stat").textContent = D.editable ? "Draft" : (c.status === "launched" ? "Launched" : c.status);
+    $("stat").className = "chip" + (D.editable ? "" : " off");
+    $("camp").innerHTML =
+      '<label class="f" style="margin-top:0">Campaign name</label><input type="text" id="nameIn" maxlength="80" value="' + esc(S.name) + '"' + ro() + '>' +
+      '<div class="kv" style="margin-top:12px"><span>Product</span><span>' + esc(c.product || "–") + '</span><span>Objective</span><span>' + esc(c.objective || "–") + '</span><span>Budget type</span><span>' + esc(String(c.budget_type || "").toUpperCase() || "–") + '</span><span>Daily budget</span><span id="tot">' + naira(total) + ' across ' + S.sets.length + ' ad set' + (S.sets.length === 1 ? "" : "s") + '</span><span>Button</span><span>' + esc(c.cta || "–") + '</span><span>Starts</span><span>' + esc(c.starts || "As soon as you launch") + '</span></div>';
+    $("nameIn").oninput = function () { S.name = this.value; $("cname").textContent = this.value || c.name; setDirty(true); };
+  }
+
+  function renderCopies() {
+    var h = "";
+    S.copies.forEach(function (c, i) {
+      h += '<div class="card copy" data-i="' + i + '"><div class="hd"><b>Copy ' + (i + 1) + '</b><span class="small" data-used="' + i + '">Used by ' + usedBy(i) + ' ad' + (usedBy(i) === 1 ? "" : "s") + '</span></div>' +
+        '<label class="f">Main text</label><textarea data-f="primary_text" maxlength="2200"' + ro() + '>' + esc(c.primary_text) + '</textarea>' +
+        '<label class="f">Headline</label><input type="text" data-f="headline" maxlength="255" value="' + esc(c.headline) + '"' + ro() + '>' +
+        '<label class="f">Description (optional)</label><input type="text" data-f="description" maxlength="255" value="' + esc(c.description) + '"' + ro() + '>' +
+        '<div class="row" style="margin-top:10px"><button class="btn" data-act="use" data-i="' + i + '" type="button"' + ro() + '>Use on ads…</button>' + (S.copies.length > 1 ? '<button class="btn bad" data-act="rmcopy" data-i="' + i + '" type="button"' + ro() + '>Remove</button>' : "") + '</div></div>';
+    });
+    $("copies").innerHTML = h;
+    $("addCopy").disabled = !D.editable || S.copies.length >= D.limits.copies;
+  }
+
+  function renderSets() {
+    var h = "";
+    S.sets.forEach(function (s, si) {
+      var st = s.settings, pls = st.placements && st.placements.length ? st.placements : ["automatic"];
+      h += '<div class="card set" data-s="' + si + '"><div class="hd"><b>' + esc(st.label || "Ad set " + (si + 1)) + '</b><button class="btn" data-act="tog" data-s="' + si + '" type="button">Edit settings</button></div>' +
+        '<div class="small">' + naira(st.budget_naira) + '/day · ages ' + esc(st.age_min) + '–' + esc(st.age_max) + ' · ' + esc(st.gender === "all" ? "everyone" : st.gender) + ' · ' + (st.states && st.states.length ? esc(st.states.join(", ")) : "all of Nigeria") + ' · ' + s.ads.length + ' ad' + (s.ads.length === 1 ? "" : "s") + '</div>' +
+        '<div class="settings" id="set' + si + '">' +
+          '<label class="f" style="margin-top:0">Ad set name</label><input type="text" data-sf="label" maxlength="40" value="' + esc(st.label) + '"' + ro() + '>' +
+          '<div class="row"><div class="grow"><label class="f">Daily budget (₦)</label><input type="number" inputmode="numeric" min="1500" max="500000" data-sf="budget_naira" value="' + esc(st.budget_naira) + '"' + ro() + '></div>' +
+          '<div class="grow"><label class="f">Gender</label><select data-sf="gender"' + ro() + '><option value="all"' + (st.gender === "all" ? " selected" : "") + '>Everyone</option><option value="male"' + (st.gender === "male" ? " selected" : "") + '>Men</option><option value="female"' + (st.gender === "female" ? " selected" : "") + '>Women</option></select></div></div>' +
+          '<div class="row"><div class="grow"><label class="f">Age from</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_min" value="' + esc(st.age_min) + '"' + ro() + '></div><div class="grow"><label class="f">Age to</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_max" value="' + esc(st.age_max) + '"' + ro() + '></div></div>' +
+          '<label class="f">States (separate with commas, empty = all of Nigeria)</label><input type="text" data-sf="states" value="' + esc((st.states || []).join(", ")) + '"' + ro() + '>' +
+          '<label class="f">Where the ads show</label><div class="pl" data-pl="' + si + '">' + ["automatic"].concat(D.placement_keys).map(function (k) { var on = pls.indexOf(k) >= 0; return '<label class="' + (on ? "on" : "") + '"><input type="checkbox" data-pk="' + k + '"' + (on ? " checked" : "") + ro() + '>' + esc(PLACE[k] || k) + '</label>'; }).join("") + '</div>' +
+          ((st.interests && st.interests.length) || (st.cities && st.cities.length) ? '<label class="f">Set by your assistant (ask it to change these)</label><div class="tags">' + (st.cities || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + (st.interests || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + '</div>' : "") +
+        '</div>';
+      s.ads.forEach(function (a, ai) {
+        var f = asset(a.asset_id);
+        h += '<div class="ad" data-s="' + si + '" data-a="' + ai + '">' + thumb(a) + '<div class="adbody"><div class="adname">Ad ' + (ai + 1) + (f ? " · " + esc(f.name) : "") + '</div>' +
+          '<select data-act="copysel"' + ro() + '>' + S.copies.map(function (c, i) { return '<option value="' + i + '"' + (a.copy_index === i ? " selected" : "") + '>' + esc(copyTitle(i)) + '</option>'; }).join("") + '</select>' +
+          '<div class="row"><button class="btn" data-act="pic" type="button"' + ro() + '>Change picture</button>' + (s.ads.length > 1 ? '<button class="btn bad" data-act="rmad" type="button"' + ro() + '>Remove ad</button>' : "") + '</div></div></div>';
+      });
+      h += '<div class="row" style="margin-top:8px"><button class="btn" data-act="addad" data-s="' + si + '" type="button"' + (D.editable && s.ads.length < D.limits.ads_per_set ? "" : " disabled") + '>+ Add an ad</button></div></div>';
+    });
+    $("sets").innerHTML = h;
+  }
+  function renderAll() { renderCamp(); renderCopies(); renderSets(); }
+
+  function refreshLabels() {
+    S.copies.forEach(function (c, i) {
+      var u = document.querySelector('[data-used="' + i + '"]'); if (u) u.textContent = "Used by " + usedBy(i) + " ad" + (usedBy(i) === 1 ? "" : "s");
+    });
+    document.querySelectorAll('select[data-act="copysel"]').forEach(function (sel) {
+      Array.prototype.forEach.call(sel.options, function (o, i) { o.textContent = copyTitle(i); });
+    });
+  }
+
+  // ---- events ----
+  document.addEventListener("input", function (e) {
+    var t = e.target;
+    var cp = t.closest && t.closest(".copy");
+    if (cp && t.dataset.f) { S.copies[+cp.dataset.i][t.dataset.f] = t.value; setDirty(true); refreshLabels(); return; }
+    var st = t.closest && t.closest(".set");
+    if (st && t.dataset.sf) {
+      var set = S.sets[+st.dataset.s], f = t.dataset.sf;
+      if (f === "states") set.settings.states = t.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+      else if (f === "label" || f === "gender") set.settings[f] = t.value;
+      else set.settings[f] = t.value === "" ? "" : Number(t.value);
+      setDirty(true);
+      if (f === "budget_naira") { var tot = S.sets.reduce(function (n, s) { return n + (Number(s.settings.budget_naira) || 0); }, 0); var el = $("tot"); if (el) el.textContent = naira(tot) + " across " + S.sets.length + " ad set" + (S.sets.length === 1 ? "" : "s"); }
+    }
+  });
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.dataset && t.dataset.act === "copysel") {
+      var ad = t.closest(".ad"); S.sets[+ad.dataset.s].ads[+ad.dataset.a].copy_index = +t.value; setDirty(true); refreshLabels(); return;
+    }
+    if (t.dataset && t.dataset.pk) {
+      var box = t.closest("[data-pl]"), set = S.sets[+box.dataset.pl], k = t.dataset.pk, cur = (set.settings.placements || []).filter(function (x) { return x !== "automatic"; });
+      var wasAuto = !(set.settings.placements || []).length || set.settings.placements[0] === "automatic";
+      if (k === "automatic") cur = t.checked ? ["automatic"] : [];
+      else { if (wasAuto) cur = []; cur = cur.filter(function (x) { return x !== k; }); if (t.checked) cur.push(k); }
+      if (!cur.length) cur = ["automatic"];
+      set.settings.placements = cur;
+      var pls = cur;
+      box.querySelectorAll("label").forEach(function (l) { var i = l.querySelector("input"); var on = pls.indexOf(i.dataset.pk) >= 0; i.checked = on; l.className = on ? "on" : ""; });
+      setDirty(true);
+    }
+  });
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest("[data-act]"); if (!b || b.tagName === "SELECT") return;
+    var act = b.dataset.act;
+    if (act === "tog") { var p = $("set" + b.dataset.s); p.classList.toggle("on"); b.textContent = p.classList.contains("on") ? "Hide settings" : "Edit settings"; return; }
+    if (!D.editable) return;
+    var ad = b.closest(".ad");
+    if (act === "pic") { pickTarget = { s: +ad.dataset.s, a: +ad.dataset.a }; openPick(); }
+    else if (act === "rmad") { S.sets[+ad.dataset.s].ads.splice(+ad.dataset.a, 1); setDirty(true); keepOpen(renderSets); refreshLabels(); }
+    else if (act === "addad") {
+      var si = +b.dataset.s, s = S.sets[si], last = s.ads[s.ads.length - 1];
+      s.ads.push({ asset_id: "", copy_index: last ? last.copy_index : 0 }); pickTarget = { s: si, a: s.ads.length - 1, fresh: true }; keepOpen(renderSets); openPick();
+    }
+    else if (act === "rmcopy") {
+      var i = +b.dataset.i;
+      if (!confirm("Remove copy " + (i + 1) + "? Ads using it will switch to copy 1.")) return;
+      S.copies.splice(i, 1);
+      S.sets.forEach(function (s) { s.ads.forEach(function (a) { if (a.copy_index === i) a.copy_index = 0; else if (a.copy_index > i) a.copy_index--; }); });
+      setDirty(true); keepOpen(function () { renderCopies(); renderSets(); });
+    }
+    else if (act === "use") { openUse(+b.dataset.i); }
+  });
+  function keepOpen(fn) {
+    var open = [];
+    document.querySelectorAll(".settings.on").forEach(function (x) { open.push(x.id); });
+    fn();
+    open.forEach(function (id) { var x = $(id); if (x) { x.classList.add("on"); var btn = x.parentNode.querySelector('[data-act="tog"]'); if (btn) btn.textContent = "Hide settings"; } });
+  }
+  $("addCopy").onclick = function () {
+    if (S.copies.length >= D.limits.copies) return;
+    S.copies.push({ primary_text: "", headline: "", description: "" }); setDirty(true); keepOpen(function () { renderCopies(); renderSets(); });
+    var t = document.querySelectorAll(".copy textarea"); if (t.length) t[t.length - 1].focus();
+  };
+
+  // ---- picture picker ----
+  function openPick() {
+    var h = "";
+    Object.keys(assets).forEach(function (id) {
+      var f = assets[id], cur = pickTarget && S.sets[pickTarget.s].ads[pickTarget.a] && S.sets[pickTarget.s].ads[pickTarget.a].asset_id === id;
+      h += '<button type="button" data-id="' + id + '" class="' + (cur ? "sel" : "") + '">' + (f.type === "video" ? '<video src="' + esc(f.url) + '#t=0.1" preload="metadata" muted playsinline></video>' : '<img src="' + esc(f.url) + '" alt="" loading="lazy">') + '</button>';
+    });
+    $("pgrid").innerHTML = h || '<span class="small">No pictures yet. Upload one.</span>'; $("pst").textContent = ""; $("pick").classList.add("on");
+  }
+  function closePick(cancel) {
+    $("pick").classList.remove("on");
+    if (cancel && pickTarget && pickTarget.fresh) { var s = S.sets[pickTarget.s], a = s.ads[pickTarget.a]; if (a && !a.asset_id) { s.ads.splice(pickTarget.a, 1); keepOpen(renderSets); } }
+    pickTarget = null;
+  }
+  $("pcancel").onclick = function () { closePick(true); };
+  $("pgrid").onclick = function (e) {
+    var b = e.target.closest("button[data-id]"); if (!b || !pickTarget) return;
+    var a = S.sets[pickTarget.s].ads[pickTarget.a]; a.asset_id = b.dataset.id; setDirty(true); pickTarget = null; $("pick").classList.remove("on"); keepOpen(renderSets); refreshLabels();
+  };
+  function mime(f) { if (f.type) return f.type; var m = /\.(png|jpe?g|webp|mp4|mov|webm)$/i.exec(f.name || ""); return m ? ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" })[m[1].toLowerCase()] : ""; }
+  $("pfile").onchange = async function () {
+    var file = this.files[0]; this.value = ""; if (!file || !pickTarget) return;
+    try {
+      $("pst").textContent = "Uploading…";
+      var s = await call({ action: "plan_upload_sign", name: file.name, content_type: mime(file), size: file.size });
+      if (!s.ok || !s.j.upload_url) throw new Error(s.j.error || "Could not start the upload.");
+      var fd = new FormData(); fd.append("cacheControl", "3600"); fd.append("", file);
+      var r = await fetch(s.j.upload_url, { method: "PUT", headers: { apikey: s.j.key, "x-upsert": "false" }, body: fd });
+      if (!r.ok) throw new Error("Upload failed (" + r.status + ")");
+      var f = await call({ action: "plan_upload_finish", path: s.j.path, name: file.name });
+      if (!f.ok || !f.j.asset) throw new Error(f.j.error || "Could not save the file.");
+      assets[f.j.asset.id] = f.j.asset;
+      var a = S.sets[pickTarget.s].ads[pickTarget.a]; a.asset_id = f.j.asset.id; setDirty(true);
+      pickTarget = null; $("pick").classList.remove("on"); keepOpen(renderSets); refreshLabels();
+    } catch (err) { $("pst").textContent = err.message; }
+  };
+
+  // ---- use a copy on several ads ----
+  function openUse(i) {
+    useCopy = i; $("useT").textContent = "Use copy " + (i + 1) + " on…";
+    var h = "";
+    S.sets.forEach(function (s, si) {
+      h += '<div class="small" style="margin-top:8px">' + esc(s.settings.label || "Ad set " + (si + 1)) + "</div>";
+      s.ads.forEach(function (a, ai) { var f = asset(a.asset_id); h += '<label class="chk"><input type="checkbox" data-s="' + si + '" data-a="' + ai + '"' + (a.copy_index === i ? " checked" : "") + '> Ad ' + (ai + 1) + (f ? " · " + esc(f.name) : "") + "</label>"; });
+    });
+    $("usel").innerHTML = h; $("use").classList.add("on");
+  }
+  $("ucancel").onclick = function () { $("use").classList.remove("on"); };
+  $("uok").onclick = function () {
+    document.querySelectorAll("#usel input").forEach(function (c) { if (c.checked) S.sets[+c.dataset.s].ads[+c.dataset.a].copy_index = useCopy; });
+    $("use").classList.remove("on"); setDirty(true); keepOpen(renderSets); refreshLabels();
+  };
+
+  // ---- save ----
+  function check() {
+    for (var i = 0; i < S.copies.length; i++) if (!String(S.copies[i].primary_text).trim()) return "Copy " + (i + 1) + " has no main text. Fill it in or remove it.";
+    for (var si = 0; si < S.sets.length; si++) {
+      var st = S.sets[si].settings, n = "Ad set " + (si + 1) + ": ";
+      if (!String(st.label).trim()) return n + "give it a name.";
+      if (!(Number(st.budget_naira) >= 1500)) return n + "the daily budget must be at least ₦1,500.";
+      if (!(Number(st.age_min) >= 18 && Number(st.age_max) <= 65 && Number(st.age_min) <= Number(st.age_max))) return n + "ages must be between 18 and 65, and the first number cannot be above the second.";
+      for (var ai = 0; ai < S.sets[si].ads.length; ai++) if (!S.sets[si].ads[ai].asset_id) return n + "ad " + (ai + 1) + " has no picture.";
+    }
+    return "";
+  }
+  $("save").onclick = async function () {
+    if (saving || !dirty) return;
+    var bad = check(); if (bad) { say(bad, "err"); return; }
+    saving = true; $("save").disabled = true; say("Saving…");
+    var r = await call({ action: "plan_save", base_hash: D.base_hash, campaign_name: S.name, copies: S.copies, ad_sets: S.sets.map(function (s) { return { ads: s.ads, settings: s.settings }; }) });
+    saving = false;
+    if (r.ok && r.j.ok) { D.base_hash = r.j.base_hash; dirty = false; $("save").disabled = true; say("Saved to your draft. Nothing has gone to Meta.", "ok"); }
+    else if (r.j && r.j.conflict) { say((r.j.error || "The plan changed.") + " ", "err"); var a = document.createElement("a"); a.href = location.href; a.textContent = "Reload"; a.style.color = "inherit"; $("msg").appendChild(a); $("save").disabled = false; }
+    else { say((r.j && r.j.error) || "Could not save. Try again.", "err"); $("save").disabled = false; }
+  };
+  window.addEventListener("beforeunload", function (e) { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+  // ---- start ----
+  async function start() {
+    if (!/^[0-9a-f]{32}$/.test(token)) return fatal("This link is not valid. Ask your assistant for a new one.");
+    var r = await call({ action: "plan_load" });
+    if (!r.ok || !r.j.campaign) return fatal((r.j && r.j.error) || "Could not open this campaign.");
+    D = r.j; assets = {}; (D.assets || []).forEach(function (a) { assets[a.id] = a; });
+    S = { name: D.campaign.name, copies: D.copies.length ? D.copies : [{ primary_text: "", headline: "", description: "" }], sets: D.ad_sets.map(function (s) { return { settings: JSON.parse(JSON.stringify(s.settings)), ads: s.ads.map(function (a) { return { asset_id: a.asset_id, copy_index: a.copy_index }; }) }; }) };
+    S.sets.forEach(function (s, i) { s.settings.label = s.settings.label || "Ad set " + (i + 1); });
+    if (!D.editable) { var b = $("banner"); b.style.display = "block"; b.textContent = D.campaign.status === "launched" ? "This campaign is already launched, so it can no longer be edited here." : "This plan can no longer be changed."; $("save").style.display = "none"; $("msg").textContent = "Read only."; }
+    renderAll(); setDirty(false);
+    if (D.editable) say("No changes yet.");
+  }
+  start();
+})();
+</script>
+</body>
+</html>
