@@ -42,6 +42,8 @@ textarea{min-height:110px;resize:vertical}
 .thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
 .adbody{flex:1;min-width:0;display:grid;gap:6px}
 .adname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adcopy{display:grid;gap:4px;margin-top:6px}
+.adcopy textarea{min-height:84px}
 .pl{display:flex;flex-wrap:wrap;gap:6px}
 .pl label{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--border);border-radius:99px;padding:5px 10px;font-size:13px;cursor:pointer;background:var(--bg)}
 .pl label.on{border-color:var(--accent);background:var(--soft)}
@@ -74,9 +76,6 @@ textarea{min-height:110px;resize:vertical}
   <div id="banner"></div>
   <h2>Campaign</h2>
   <div class="card" id="camp"></div>
-  <h2>Ad copy</h2>
-  <div id="copies"></div>
-  <div class="row" style="margin-bottom:8px"><button class="btn" id="addCopy" type="button">+ Add another copy</button></div>
   <h2>Ad sets and ads</h2>
   <div id="sets"></div>
   <p class="small" style="margin-top:14px">Saving here only changes your draft. Nothing goes to Meta until you launch: tap Launch in the WhatsApp message or on the approval card in your AI app.</p>
@@ -87,12 +86,6 @@ textarea{min-height:110px;resize:vertical}
   <b>Choose a picture or video</b>
   <div class="grid" id="pgrid"></div>
   <div class="row"><label class="btn" style="cursor:pointer">Upload new<input id="pfile" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" hidden></label><span class="small" id="pst"></span><span class="grow"></span><button class="btn" id="pcancel" type="button">Close</button></div>
-</div></div>
-
-<div class="modal" id="use"><div class="box">
-  <b id="useT">Use this copy on…</b>
-  <div id="usel"></div>
-  <div class="row"><button class="btn" id="ucancel" type="button">Cancel</button><span class="grow"></span><button class="btn pri" id="uok" type="button">Apply</button></div>
 </div></div>
 
 <script>
@@ -115,8 +108,6 @@ textarea{min-height:110px;resize:vertical}
   function setDirty(v) { dirty = v; $("save").disabled = !v || saving || !D.editable; if (v) say("Unsaved changes."); }
   function naira(n) { return "₦" + Math.round(Number(n) || 0).toLocaleString("en-NG"); }
   function asset(id) { return assets[id] || null; }
-  function copyTitle(i) { var c = S.copies[i]; var first = String((c && (c.headline || c.primary_text)) || "").replace(/\s+/g, " ").trim().slice(0, 34); return "Copy " + (i + 1) + (first ? " – " + first : ""); }
-  function usedBy(i) { var n = 0; S.sets.forEach(function (s) { s.ads.forEach(function (a) { if (a.copy_index === i) n++; }); }); return n; }
   function ro() { return D.editable ? "" : " disabled"; }
 
   function thumb(a) {
@@ -137,19 +128,6 @@ textarea{min-height:110px;resize:vertical}
     $("nameIn").oninput = function () { S.name = this.value; $("cname").textContent = this.value || c.name; setDirty(true); };
   }
 
-  function renderCopies() {
-    var h = "";
-    S.copies.forEach(function (c, i) {
-      h += '<div class="card copy" data-i="' + i + '"><div class="hd"><b>Copy ' + (i + 1) + '</b><span class="small" data-used="' + i + '">Used by ' + usedBy(i) + ' ad' + (usedBy(i) === 1 ? "" : "s") + '</span></div>' +
-        '<label class="f">Main text</label><textarea data-f="primary_text" maxlength="2200"' + ro() + '>' + esc(c.primary_text) + '</textarea>' +
-        '<label class="f">Headline</label><input type="text" data-f="headline" maxlength="255" value="' + esc(c.headline) + '"' + ro() + '>' +
-        '<label class="f">Description (optional)</label><input type="text" data-f="description" maxlength="255" value="' + esc(c.description) + '"' + ro() + '>' +
-        '<div class="row" style="margin-top:10px"><button class="btn" data-act="use" data-i="' + i + '" type="button"' + ro() + '>Use on ads…</button>' + (S.copies.length > 1 ? '<button class="btn bad" data-act="rmcopy" data-i="' + i + '" type="button"' + ro() + '>Remove</button>' : "") + '</div></div>';
-    });
-    $("copies").innerHTML = h;
-    $("addCopy").disabled = !D.editable || S.copies.length >= D.limits.copies;
-  }
-
   function renderSets() {
     var h = "";
     S.sets.forEach(function (s, si) {
@@ -167,30 +145,24 @@ textarea{min-height:110px;resize:vertical}
         '</div>';
       s.ads.forEach(function (a, ai) {
         var f = asset(a.asset_id);
-        h += '<div class="ad" data-s="' + si + '" data-a="' + ai + '">' + thumb(a) + '<div class="adbody"><div class="adname">Ad ' + (ai + 1) + (f ? " · " + esc(f.name) : "") + '</div>' +
-          '<select data-act="copysel"' + ro() + '>' + S.copies.map(function (c, i) { return '<option value="' + i + '"' + (a.copy_index === i ? " selected" : "") + '>' + esc(copyTitle(i)) + '</option>'; }).join("") + '</select>' +
-          '<div class="row"><button class="btn" data-act="pic" type="button"' + ro() + '>Change picture</button>' + (s.ads.length > 1 ? '<button class="btn bad" data-act="rmad" type="button"' + ro() + '>Remove ad</button>' : "") + '</div></div></div>';
+        h += '<div class="ad" data-s="' + si + '" data-a="' + ai + '">' + thumb(a) + '<div class="adbody"><div class="adname">Ad ' + (ai + 1) + (f ? " \u00b7 " + esc(f.name) : "") + '</div>' +
+          '<div class="row"><button class="btn" data-act="pic" type="button"' + ro() + '>Change picture</button>' + (s.ads.length > 1 ? '<button class="btn bad" data-act="rmad" type="button"' + ro() + '>Remove ad</button>' : "") + '</div></div></div>' +
+          '<div class="adcopy" data-s="' + si + '" data-a="' + ai + '"><label class="f" style="margin-top:0">Main text for this ad</label><textarea data-af="primary_text" maxlength="2200"' + ro() + '>' + esc(a.primary_text) + '</textarea>' +
+          '<label class="f">Headline</label><input type="text" data-af="headline" maxlength="255" value="' + esc(a.headline) + '"' + ro() + '>' +
+          '<label class="f">Description (optional)</label><input type="text" data-af="description" maxlength="255" value="' + esc(a.description) + '"' + ro() + '>' +
+          '<select data-act="clone"' + ro() + '><option value="">Copy the text from another ad\u2026</option>' + S.sets.map(function (s2, sj) { return s2.ads.map(function (b2, aj) { return (sj === si && aj === ai) ? "" : '<option value="' + sj + ':' + aj + '">Ad ' + (aj + 1) + " \u00b7 " + esc(s2.settings.label || "Ad set " + (sj + 1)) + '</option>'; }).join(""); }).join("") + '</select></div>';
       });
       h += '<div class="row" style="margin-top:8px"><button class="btn" data-act="addad" data-s="' + si + '" type="button"' + (D.editable && s.ads.length < D.limits.ads_per_set ? "" : " disabled") + '>+ Add an ad</button></div></div>';
     });
     $("sets").innerHTML = h;
   }
-  function renderAll() { renderCamp(); renderCopies(); renderSets(); }
-
-  function refreshLabels() {
-    S.copies.forEach(function (c, i) {
-      var u = document.querySelector('[data-used="' + i + '"]'); if (u) u.textContent = "Used by " + usedBy(i) + " ad" + (usedBy(i) === 1 ? "" : "s");
-    });
-    document.querySelectorAll('select[data-act="copysel"]').forEach(function (sel) {
-      Array.prototype.forEach.call(sel.options, function (o, i) { o.textContent = copyTitle(i); });
-    });
-  }
+  function renderAll() { renderCamp(); renderSets(); }
 
   // ---- events ----
   document.addEventListener("input", function (e) {
     var t = e.target;
-    var cp = t.closest && t.closest(".copy");
-    if (cp && t.dataset.f) { S.copies[+cp.dataset.i][t.dataset.f] = t.value; setDirty(true); refreshLabels(); return; }
+    var ac = t.closest && t.closest(".adcopy");
+    if (ac && t.dataset.af) { S.sets[+ac.dataset.s].ads[+ac.dataset.a][t.dataset.af] = t.value; setDirty(true); return; }
     var st = t.closest && t.closest(".set");
     if (st && t.dataset.sf) {
       var set = S.sets[+st.dataset.s], f = t.dataset.sf;
@@ -203,8 +175,10 @@ textarea{min-height:110px;resize:vertical}
   });
   document.addEventListener("change", function (e) {
     var t = e.target;
-    if (t.dataset && t.dataset.act === "copysel") {
-      var ad = t.closest(".ad"); S.sets[+ad.dataset.s].ads[+ad.dataset.a].copy_index = +t.value; setDirty(true); refreshLabels(); return;
+    if (t.dataset && t.dataset.act === "clone") {
+      if (!t.value) return;
+      var box2 = t.closest(".adcopy"), src = t.value.split(":"), from = S.sets[+src[0]].ads[+src[1]], to = S.sets[+box2.dataset.s].ads[+box2.dataset.a];
+      to.primary_text = from.primary_text; to.headline = from.headline; to.description = from.description; setDirty(true); keepOpen(renderSets); return;
     }
     if (t.dataset && t.dataset.pk) {
       var box = t.closest("[data-pl]"), set = S.sets[+box.dataset.pl], k = t.dataset.pk, cur = (set.settings.placements || []).filter(function (x) { return x !== "automatic"; });
@@ -225,19 +199,11 @@ textarea{min-height:110px;resize:vertical}
     if (!D.editable) return;
     var ad = b.closest(".ad");
     if (act === "pic") { pickTarget = { s: +ad.dataset.s, a: +ad.dataset.a }; openPick(); }
-    else if (act === "rmad") { S.sets[+ad.dataset.s].ads.splice(+ad.dataset.a, 1); setDirty(true); keepOpen(renderSets); refreshLabels(); }
+    else if (act === "rmad") { S.sets[+ad.dataset.s].ads.splice(+ad.dataset.a, 1); setDirty(true); keepOpen(renderSets); }
     else if (act === "addad") {
       var si = +b.dataset.s, s = S.sets[si], last = s.ads[s.ads.length - 1];
-      s.ads.push({ asset_id: "", copy_index: last ? last.copy_index : 0 }); pickTarget = { s: si, a: s.ads.length - 1, fresh: true }; keepOpen(renderSets); openPick();
+      s.ads.push({ asset_id: "", primary_text: last ? last.primary_text : "", headline: last ? last.headline : "", description: last ? last.description : "" }); pickTarget = { s: si, a: s.ads.length - 1, fresh: true }; keepOpen(renderSets); openPick();
     }
-    else if (act === "rmcopy") {
-      var i = +b.dataset.i;
-      if (!confirm("Remove copy " + (i + 1) + "? Ads using it will switch to copy 1.")) return;
-      S.copies.splice(i, 1);
-      S.sets.forEach(function (s) { s.ads.forEach(function (a) { if (a.copy_index === i) a.copy_index = 0; else if (a.copy_index > i) a.copy_index--; }); });
-      setDirty(true); keepOpen(function () { renderCopies(); renderSets(); });
-    }
-    else if (act === "use") { openUse(+b.dataset.i); }
   });
   function keepOpen(fn) {
     var open = [];
@@ -245,11 +211,6 @@ textarea{min-height:110px;resize:vertical}
     fn();
     open.forEach(function (id) { var x = $(id); if (x) { x.classList.add("on"); var btn = x.parentNode.querySelector('[data-act="tog"]'); if (btn) btn.textContent = "Hide settings"; } });
   }
-  $("addCopy").onclick = function () {
-    if (S.copies.length >= D.limits.copies) return;
-    S.copies.push({ primary_text: "", headline: "", description: "" }); setDirty(true); keepOpen(function () { renderCopies(); renderSets(); });
-    var t = document.querySelectorAll(".copy textarea"); if (t.length) t[t.length - 1].focus();
-  };
 
   // ---- picture picker ----
   function openPick() {
@@ -268,7 +229,7 @@ textarea{min-height:110px;resize:vertical}
   $("pcancel").onclick = function () { closePick(true); };
   $("pgrid").onclick = function (e) {
     var b = e.target.closest("button[data-id]"); if (!b || !pickTarget) return;
-    var a = S.sets[pickTarget.s].ads[pickTarget.a]; a.asset_id = b.dataset.id; setDirty(true); pickTarget = null; $("pick").classList.remove("on"); keepOpen(renderSets); refreshLabels();
+    var a = S.sets[pickTarget.s].ads[pickTarget.a]; a.asset_id = b.dataset.id; setDirty(true); pickTarget = null; $("pick").classList.remove("on"); keepOpen(renderSets);
   };
   function mime(f) { if (f.type) return f.type; var m = /\.(png|jpe?g|webp|mp4|mov|webm)$/i.exec(f.name || ""); return m ? ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" })[m[1].toLowerCase()] : ""; }
   $("pfile").onchange = async function () {
@@ -284,35 +245,18 @@ textarea{min-height:110px;resize:vertical}
       if (!f.ok || !f.j.asset) throw new Error(f.j.error || "Could not save the file.");
       assets[f.j.asset.id] = f.j.asset;
       var a = S.sets[pickTarget.s].ads[pickTarget.a]; a.asset_id = f.j.asset.id; setDirty(true);
-      pickTarget = null; $("pick").classList.remove("on"); keepOpen(renderSets); refreshLabels();
+      pickTarget = null; $("pick").classList.remove("on"); keepOpen(renderSets);
     } catch (err) { $("pst").textContent = err.message; }
-  };
-
-  // ---- use a copy on several ads ----
-  function openUse(i) {
-    useCopy = i; $("useT").textContent = "Use copy " + (i + 1) + " on…";
-    var h = "";
-    S.sets.forEach(function (s, si) {
-      h += '<div class="small" style="margin-top:8px">' + esc(s.settings.label || "Ad set " + (si + 1)) + "</div>";
-      s.ads.forEach(function (a, ai) { var f = asset(a.asset_id); h += '<label class="chk"><input type="checkbox" data-s="' + si + '" data-a="' + ai + '"' + (a.copy_index === i ? " checked" : "") + '> Ad ' + (ai + 1) + (f ? " · " + esc(f.name) : "") + "</label>"; });
-    });
-    $("usel").innerHTML = h; $("use").classList.add("on");
-  }
-  $("ucancel").onclick = function () { $("use").classList.remove("on"); };
-  $("uok").onclick = function () {
-    document.querySelectorAll("#usel input").forEach(function (c) { if (c.checked) S.sets[+c.dataset.s].ads[+c.dataset.a].copy_index = useCopy; });
-    $("use").classList.remove("on"); setDirty(true); keepOpen(renderSets); refreshLabels();
   };
 
   // ---- save ----
   function check() {
-    for (var i = 0; i < S.copies.length; i++) if (!String(S.copies[i].primary_text).trim()) return "Copy " + (i + 1) + " has no main text. Fill it in or remove it.";
     for (var si = 0; si < S.sets.length; si++) {
       var st = S.sets[si].settings, n = "Ad set " + (si + 1) + ": ";
       if (!String(st.label).trim()) return n + "give it a name.";
       if (!(Number(st.budget_naira) >= 1500)) return n + "the daily budget must be at least ₦1,500.";
       if (!(Number(st.age_min) >= 18 && Number(st.age_max) <= 65 && Number(st.age_min) <= Number(st.age_max))) return n + "ages must be between 18 and 65, and the first number cannot be above the second.";
-      for (var ai = 0; ai < S.sets[si].ads.length; ai++) if (!S.sets[si].ads[ai].asset_id) return n + "ad " + (ai + 1) + " has no picture.";
+      for (var ai = 0; ai < S.sets[si].ads.length; ai++) { var ad = S.sets[si].ads[ai]; if (!ad.asset_id) return n + "ad " + (ai + 1) + " has no picture."; if (!String(ad.primary_text).trim()) return n + "ad " + (ai + 1) + " has no main text."; }
     }
     return "";
   }
@@ -320,7 +264,15 @@ textarea{min-height:110px;resize:vertical}
     if (saving || !dirty) return;
     var bad = check(); if (bad) { say(bad, "err"); return; }
     saving = true; $("save").disabled = true; say("Saving…");
-    var r = await call({ action: "plan_save", base_hash: D.base_hash, campaign_name: S.name, copies: S.copies, ad_sets: S.sets.map(function (s) { return { ads: s.ads, settings: s.settings }; }) });
+    // Each ad has its own text. Ads with identical text share one copy in the plan.
+    var copies = [], keyIdx = {};
+    var sets = S.sets.map(function (s) { return { settings: s.settings, ads: s.ads.map(function (a) {
+      var t = [String(a.primary_text).trim(), String(a.headline).trim(), String(a.description).trim()], k = JSON.stringify(t);
+      if (!(k in keyIdx)) { keyIdx[k] = copies.length; copies.push({ primary_text: t[0], headline: t[1], description: t[2] }); }
+      return { asset_id: a.asset_id, copy_index: keyIdx[k] };
+    }) }; });
+    if (copies.length > D.limits.copies) { saving = false; $("save").disabled = false; say("A campaign can hold at most " + D.limits.copies + " different texts. Some ads need to share the same text.", "err"); return; }
+    var r = await call({ action: "plan_save", base_hash: D.base_hash, campaign_name: S.name, copies: copies, ad_sets: sets });
     saving = false;
     if (r.ok && r.j.ok) { D.base_hash = r.j.base_hash; dirty = false; $("save").disabled = true; say("Saved to your draft. Nothing has gone to Meta.", "ok"); }
     else if (r.j && r.j.conflict) { say((r.j.error || "The plan changed.") + " ", "err"); var a = document.createElement("a"); a.href = location.href; a.textContent = "Reload"; a.style.color = "inherit"; $("msg").appendChild(a); $("save").disabled = false; }
@@ -334,7 +286,7 @@ textarea{min-height:110px;resize:vertical}
     var r = await call({ action: "plan_load" });
     if (!r.ok || !r.j.campaign) return fatal((r.j && r.j.error) || "Could not open this campaign.");
     D = r.j; assets = {}; (D.assets || []).forEach(function (a) { assets[a.id] = a; });
-    S = { name: D.campaign.name, copies: D.copies.length ? D.copies : [{ primary_text: "", headline: "", description: "" }], sets: D.ad_sets.map(function (s) { return { settings: JSON.parse(JSON.stringify(s.settings)), ads: s.ads.map(function (a) { return { asset_id: a.asset_id, copy_index: a.copy_index }; }) }; }) };
+    S = { name: D.campaign.name, sets: D.ad_sets.map(function (s) { return { settings: JSON.parse(JSON.stringify(s.settings)), ads: s.ads.map(function (a) { var c = D.copies[a.copy_index] || {}; return { asset_id: a.asset_id, primary_text: c.primary_text || "", headline: c.headline || "", description: c.description || "" }; }) }; }) };
     S.sets.forEach(function (s, i) { s.settings.label = s.settings.label || "Ad set " + (i + 1); });
     if (!D.editable) { var b = $("banner"); b.style.display = "block"; b.textContent = D.campaign.status === "launched" ? "This campaign is already launched, so it can no longer be edited here." : "This plan can no longer be changed."; $("save").style.display = "none"; $("msg").textContent = "Read only."; }
     renderAll(); setDirty(false);
