@@ -139,6 +139,7 @@ textarea{min-height:110px;resize:vertical}
           '<div class="row"><div class="grow"><label class="f">Daily budget (₦)</label><input type="number" inputmode="numeric" min="1500" max="500000" data-sf="budget_naira" value="' + esc(st.budget_naira) + '"' + ro() + '></div>' +
           '<div class="grow"><label class="f">Gender</label><select data-sf="gender"' + ro() + '><option value="all"' + (st.gender === "all" ? " selected" : "") + '>Everyone</option><option value="male"' + (st.gender === "male" ? " selected" : "") + '>Men</option><option value="female"' + (st.gender === "female" ? " selected" : "") + '>Women</option></select></div></div>' +
           '<div class="row"><div class="grow"><label class="f">Age from</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_min" value="' + esc(st.age_min) + '"' + ro() + '></div><div class="grow"><label class="f">Age to</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_max" value="' + esc(st.age_max) + '"' + ro() + '></div></div>' +
+          (/sales/i.test(D.campaign.objective || "sales") ? '<label class="f">Customer life cycle strategy</label><select data-sf="lifecycle"' + ro() + '><option value="broad"' + (st.lifecycle !== "none" ? " selected" : "") + '>Get conversions from all audiences</option><option value="none"' + (st.lifecycle === "none" ? " selected" : "") + '>Leave blank (decide in Ads Manager)</option></select><div class="small">Other choices, like new customers only, need a list of your existing customers on Meta.</div>' : "") +
           '<label class="f">States (separate with commas, empty = all of Nigeria)</label><input type="text" data-sf="states" value="' + esc((st.states || []).join(", ")) + '"' + ro() + '>' +
           '<label class="f">Where the ads show</label><div class="pl" data-pl="' + si + '">' + ["automatic"].concat(D.placement_keys).map(function (k) { var on = pls.indexOf(k) >= 0; return '<label class="' + (on ? "on" : "") + '"><input type="checkbox" data-pk="' + k + '"' + (on ? " checked" : "") + ro() + '>' + esc(PLACE[k] || k) + '</label>'; }).join("") + '</div>' +
           ((st.interests && st.interests.length) || (st.cities && st.cities.length) ? '<label class="f">Set by your assistant (ask it to change these)</label><div class="tags">' + (st.cities || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + (st.interests || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + '</div>' : "") +
@@ -167,7 +168,7 @@ textarea{min-height:110px;resize:vertical}
     if (st && t.dataset.sf) {
       var set = S.sets[+st.dataset.s], f = t.dataset.sf;
       if (f === "states") set.settings.states = t.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
-      else if (f === "label" || f === "gender") set.settings[f] = t.value;
+      else if (f === "label" || f === "gender" || f === "lifecycle") set.settings[f] = t.value;
       else set.settings[f] = t.value === "" ? "" : Number(t.value);
       setDirty(true);
       if (f === "budget_naira") { var tot = S.sets.reduce(function (n, s) { return n + (Number(s.settings.budget_naira) || 0); }, 0); var el = $("tot"); if (el) el.textContent = naira(tot) + " across " + S.sets.length + " ad set" + (S.sets.length === 1 ? "" : "s"); }
