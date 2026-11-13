@@ -427,6 +427,22 @@ function whereText(a: any) {
   const p = [...(a.states || []), ...(a.cities || []).map((c: any) => c.name)];
   return p.length ? p.join(", ") : "All Nigeria";
 }
+// Meta treats housing ads as a special ad category: age is fixed at 18-65+, gender at all, no interest targeting,
+// and city radius is at least 25 km. The plan carries special_ad_category ("HOUSING" | "NONE") and the person can switch it off.
+function applySpecialCategory(plan: any) {
+  const housing = plan.special_ad_category === "HOUSING";
+  plan.warnings = (Array.isArray(plan.warnings) ? plan.warnings : []).filter((w: any) => !String(w).startsWith("Housing ads:") && !String(w).startsWith("Housing category is off"));
+  if (housing) {
+    for (const a of plan.adsets ?? []) {
+      a.age_min = 18; a.age_max = 65; a.gender = "all"; a.interests = [];
+      a.cities = (a.cities ?? []).map((c: any) => ({ ...c, radius: Math.max(Number(c.radius) || 0, 25) }));
+    }
+    plan.warnings.push("Housing ads: Meta treats these as a special ad category, so age is fixed at 18-65+, gender is all, interest targeting is off and city radius is at least 25 km. If these are not housing ads, ask to remove the housing category.");
+  } else if (plan.real_estate) {
+    plan.warnings.push("Housing category is off for a real-estate business. If these ads are about renting or selling homes, Meta can reject them or restrict the ad account. Turn it back on unless you are sure they are not housing ads.");
+  }
+}
+
 const OBJ_MAP: Record<string, string> = { sales: "OUTCOME_SALES", leads: "OUTCOME_LEADS", traffic: "OUTCOME_TRAFFIC", engagement: "OUTCOME_ENGAGEMENT", awareness: "OUTCOME_AWARENESS" };
 const objName = (plan: any) => String(plan.objective || "OUTCOME_SALES");
 function planKind(plan: any): string {
@@ -530,18 +546,23 @@ async function planCampaignTool(args: any, ctx: Ctx) {
   });
   if (!adsets.length || (Array.isArray(args.adsets) ? args.adsets : []).some((a: any) => !(Number(a?.budget_naira) >= 1500))) return { needs_info: true, message: "Every ad set needs a daily budget the person stated (at least ₦1,500; Meta needs about ₦1,300 to ₦1,400 a day per ad set). Ask for it; never pick one yourself." };
   const warnings: string[] = [];
+  const { data: coRow } = await supabase.from("companies").select("business_types").eq("id", ctx.companyId).maybeSingle();
+  const isRealEstate = Array.isArray(coRow?.business_types) && coRow.business_types.includes("real_estate");
+  const askedCat = String(args?.special_ad_category ?? "").toLowerCase();
+  const housing = askedCat === "housing" ? true : askedCat === "none" ? false : isRealEstate;
   const total = adsets.reduce((s: number, a: any) => s + a.budget_naira, 0);
   if (acct.balance_naira != null && Number(acct.balance_naira) < total) warnings.push(`The account balance is about ${fmtNaira(Number(acct.balance_naira))}, less than one day of this plan (${fmtNaira(total)}). Top up before launching.`);
   if (!acct.meta_pixel_id && dest === "website" && ["OUTCOME_SALES", "OUTCOME_LEADS"].includes(objective)) warnings.push("No pixel is saved on this ad account, so this campaign cannot track results and Meta may refuse to launch it.");
   if (budgetType === "cbo" && adsets.length < 2) warnings.push("Campaign budget (CBO) shares one budget between ad sets, which only helps with 2 or more ad sets.");
   const plan = {
-    product_id: product.id, product_name: product.product_name, ad_account_id: acct.id, destination: dest, objective, budget_type: budgetType, launch_paused: args?.launch_paused === true,
+    product_id: product.id, product_name: product.product_name, ad_account_id: acct.id, destination: dest, objective, budget_type: budgetType, launch_paused: args?.launch_paused === true, special_ad_category: housing ? "HOUSING" : "NONE", special_ad_auto: askedCat === "" && isRealEstate, real_estate: isRealEstate,
     lead_form_id: dest === "form" ? (String(args?.lead_form_id ?? "").match(/\d+/)?.[0] ?? null) : null,
     lead_form_name: dest === "form" ? String(args?.lead_form_name || "Revora Instant Form").slice(0, 100) : null,
     lead_form_fields: dest === "form" && Array.isArray(args?.lead_form_fields) ? args.lead_form_fields.slice(0, 6) : null, whatsapp_number: dest === "whatsapp" ? wa : null, landing_url: dest === "website" ? link : null,
     campaign_name: String(args?.campaign_name || `${product.product_name} ${new Date().toISOString().slice(0, 10)}`).slice(0, 100),
     cta: String(args?.cta || (dest === "whatsapp" ? "WHATSAPP_MESSAGE" : dest === "messenger" ? "MESSAGE_PAGE" : dest === "instagram" ? "INSTAGRAM_MESSAGE" : dest === "form" || objective === "OUTCOME_LEADS" ? "SIGN_UP" : objective === "OUTCOME_SALES" ? "SHOP_NOW" : "LEARN_MORE")).slice(0, 40), asset_ids: assetIds, ads, copies, adsets, warnings, pixel_ok: dest === "website" && ["OUTCOME_SALES", "OUTCOME_LEADS"].includes(objective) ? !!acct.meta_pixel_id : null,
   };
+  applySpecialCategory(plan);
   const { data: row, error } = await supabase.from("ai_plans").insert({ company_id: ctx.companyId, user_id: ctx.userId, ad_account_id: acct.id, plan }).select("id").single();
   if (error || !row) return { error: "Could not save the plan: " + (error?.message ?? "unknown") };
   ctx.cards.push(await planCard(plan, row.id, { authHeader: ctx.authHeader, accountId: acct.id, companyId: ctx.companyId, userId: ctx.userId }));
@@ -599,6 +620,7 @@ async function planAction(body: any, p: { companyId: string; role: string; media
     if (typeof e.campaign_name === "string" && e.campaign_name.trim()) plan.campaign_name = e.campaign_name.trim().slice(0, 100);
     if (e.budget_type === "cbo" || e.budget_type === "abo") plan.budget_type = e.budget_type;
     if (typeof e.launch_paused === "boolean") plan.launch_paused = e.launch_paused;
+    if (e.special_ad_category === "housing" || e.special_ad_category === "none") { plan.special_ad_category = e.special_ad_category === "housing" ? "HOUSING" : "NONE"; plan.special_ad_auto = false; }
     (Array.isArray(e.adsets) ? e.adsets : []).forEach((ea: any, i: number) => {
       const a = plan.adsets[i]; if (!a) return;
       if (ea.budget_naira != null) a.budget_naira = Math.min(Math.max(norm0(ea.budget_naira), 1500), 500000);
@@ -608,6 +630,7 @@ async function planAction(body: any, p: { companyId: string; role: string; media
       if (ea.remove === true && plan.adsets.length > 1) a.__remove = true;
     });
     plan.adsets = plan.adsets.filter((a: any) => !a.__remove);
+    applySpecialCategory(plan);
     await supabase.from("ai_plans").update({ plan }).eq("id", row.id);
     return { ok: true, card: await planCard(plan, row.id, { authHeader: p.authHeader, accountId: acct.id, companyId: p.companyId, userId: p.userId }) };
   }
@@ -638,7 +661,7 @@ async function planAction(body: any, p: { companyId: string; role: string; media
           uploaded_by: "ai_chat", ad_account_id: acct.id, company_id: p.companyId, test_status: "untested", uploaded_at: new Date().toISOString(),
           ad_set_sort_order: i, ad_name: `${plan.product_name} · ${plan.adsets[i].label} · Ad ${j + 1}`.slice(0, 120),
           product_id: plan.product_id, destination_type: plan.destination, whatsapp_number: plan.whatsapp_number, landing_page_url: plan.landing_url,
-          campaign_name: plan.campaign_name, campaign_objective: plan.objective || "OUTCOME_SALES", budget_type: plan.budget_type === "cbo" ? "cbo" : "abo", launch_paused: plan.launch_paused === true, lead_form_id: plan.destination === "form" ? plan.lead_form_id : null, launch_batch_id: batch,
+          campaign_name: plan.campaign_name, campaign_objective: plan.objective || "OUTCOME_SALES", budget_type: plan.budget_type === "cbo" ? "cbo" : "abo", launch_paused: plan.launch_paused === true, lead_form_id: plan.destination === "form" ? plan.lead_form_id : null, launch_batch_id: batch, special_ad_category: plan.special_ad_category === "HOUSING" ? "HOUSING" : "NONE",
         }).select("id").single();
         if (error || !ins) throw new Error("Could not stage an ad: " + (error?.message ?? "unknown"));
         ids.push(ins.id);
@@ -988,7 +1011,7 @@ ${JSON.stringify(data)}`;
         parameters: { type: "object", properties: {
           product_name: { type: "string" }, destination: { type: "string", enum: ["website", "whatsapp", "messenger", "instagram", "form"], description: "Where people go: website (landing page), a chat on whatsapp, messenger or instagram, or form (an Instant lead form inside Facebook/Instagram; always the Leads objective)." },
           lead_form_id: { type: "string", description: "For destination form: an existing Instant form id on the Page. Omit to create a default form (name, phone, city) when the plan is approved." },
-          lead_form_name: { type: "string", description: "For destination form: name for the new form." }, objective: { type: "string", enum: ["sales", "leads", "traffic", "engagement", "awareness"], description: "What the campaign is for. Default sales. WhatsApp is always sales. Messenger/Instagram: sales, leads or engagement. Website: any." }, budget_type: { type: "string", enum: ["abo", "cbo"], description: "abo = each ad set has its own daily budget (default). cbo = one campaign budget (the sum of the ad set budgets) that Meta shares across ad sets." }, launch_paused: { type: "boolean", description: "true = create everything on Meta but leave it PAUSED, so it shows in Ads Manager and nothing spends (a draft/test). Only when the person asks." }, landing_url: { type: "string" }, campaign_name: { type: "string" },
+          lead_form_name: { type: "string", description: "For destination form: name for the new form." }, objective: { type: "string", enum: ["sales", "leads", "traffic", "engagement", "awareness"], description: "What the campaign is for. Default sales. WhatsApp is always sales. Messenger/Instagram: sales, leads or engagement. Website: any." }, budget_type: { type: "string", enum: ["abo", "cbo"], description: "abo = each ad set has its own daily budget (default). cbo = one campaign budget (the sum of the ad set budgets) that Meta shares across ad sets." }, launch_paused: { type: "boolean", description: "true = create everything on Meta but leave it PAUSED, so it shows in Ads Manager and nothing spends (a draft/test). Only when the person asks." }, landing_url: { type: "string" }, campaign_name: { type: "string" }, special_ad_category: { type: "string", enum: ["housing", "none"], description: "Meta special ad category. Leave it out: it turns on automatically (housing) for real-estate businesses. Send none ONLY if the person asks to remove it, and tell them the risk first." },
           asset_ids: { type: "array", items: { type: "string" }, description: "Creative ids the person chose on the creative card (ids as shown on the card, including product:<uuid>:photo)." },
           ads: { type: "array", description: "The exact ads per ad set when the person wants more ads than creatives: one entry per ad. A creative can appear in several ads (reuse). Example for 3 creatives and 5 copies: [{asset_id:A,copy_index:0},{asset_id:B,copy_index:1},{asset_id:C,copy_index:2},{asset_id:A,copy_index:3},{asset_id:B,copy_index:4}]. Count the entries: that is the number of ads per ad set.", items: { type: "object", properties: { asset_id: { type: "string" }, copy_index: { type: "number" } }, required: ["asset_id", "copy_index"] } },
           person_confirmed: { type: "boolean", description: "true ONLY when the person themselves stated destination (website or WhatsApp), the daily budget per ad set, who/where, and the creatives. Never guess; ask first." },

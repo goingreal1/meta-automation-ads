@@ -848,6 +848,13 @@ async function launchAdSetGroup(
     // User-editable campaign name (dashboard's ad-set builder) -- falls back to
     // an auto-generated one only if left blank, so it's always recognizable in
     // Ads Manager instead of the old always-auto-generated product+filename+timestamp.
+    // Housing ads: Meta forbids age/gender/interest targeting and small location radii, so enforce it here whatever the ad set rows say.
+    if (creative.special_ad_category === "HOUSING") {
+      adSetConfigs = adSetConfigs.map((c: any) => ({
+        ...c, age_min: 18, age_max: 65, gender: "all", interests: null, behaviors: null, advantage_audience: false,
+        cities: Array.isArray(c.cities) ? c.cities.map((x: any) => ({ ...x, radius: Math.max(Number(x?.radius) || 0, 25) })) : c.cities,
+      }));
+    }
     const campaignName = creative.campaign_name?.trim() || `${productName} - ${new Date().toLocaleDateString("en-NG")}`;
     const totalBudgetNaira = adSetConfigs.reduce((sum: number, c: any) => sum + Number(c.budget_naira || 5000), 0);
     const campaignPayload: Record<string, any> = {
@@ -857,13 +864,14 @@ async function launchAdSetGroup(
       // compliance rollout (housing/employment/credit/social issues) --
       // "NONE" for an ordinary product. Missing this hard-fails campaign
       // creation with error #100, unrelated to anything else in this payload.
-      special_ad_categories: ["NONE"],
+      special_ad_categories: creative.special_ad_category === "HOUSING" ? ["HOUSING"] : ["NONE"],
       // Goes live immediately -- no approval gate. A scheduled launch is
       // still created ACTIVE now; its ad set's start_time (native Meta
       // scheduling) is what holds real delivery until that time.
       status: liveStatus,
       access_token: META_ACCESS_TOKEN,
     };
+    if (creative.special_ad_category === "HOUSING") campaignPayload.special_ad_category_country = ["NG"];
     if (budgetType === "cbo") {
       campaignPayload.daily_budget = Math.round(totalBudgetNaira * 100);
       // CBO's bid strategy lives on the campaign, shared by every ad set under
