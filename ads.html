@@ -7,85 +7,117 @@
 <meta name="referrer" content="no-referrer">
 <title>Edit your campaign</title>
 <style>
-:root{color-scheme:light dark;--bg:#f6f5f1;--card:#fff;--text:#14130f;--muted:#8c887c;--border:#e1ddd2;--accent:#1877F2;--ok:#16a34a;--err:#dc2626;--soft:#eef4fe}
-@media (prefers-color-scheme:dark){:root{--bg:#121211;--card:#1b1b19;--text:#f2f0ea;--border:#34332f;--soft:#1c2636}}
+:root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--text:#101828;--muted:#667085;--line:#e4e7ec;--field:#f9fafb;--accent:#1763e0;--accent-ink:#fff;--soft:#eaf1fd;--ok:#067647;--err:#b42318;--warn:#b54708;--r:14px}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--text:#f2f4f7;--muted:#98a2b3;--line:#2a303a;--field:#1d222b;--accent:#5b9bff;--accent-ink:#06142e;--soft:#18263d;--ok:#47cd89;--err:#f97066;--warn:#fdb022}}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:96px}
+html{-webkit-text-size-adjust:100%}
+body{font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);padding-bottom:calc(104px + env(safe-area-inset-bottom));-webkit-font-smoothing:antialiased}
 button,select,input,textarea{font:inherit;color:inherit}
-.wrap{max-width:720px;margin:0 auto;padding:0 16px}
-header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 0;position:sticky;top:0;z-index:5}
-header .wrap{display:flex;align-items:center;gap:10px}
-.brand{font-weight:800;font-size:11px;letter-spacing:.08em;color:var(--accent)}
-#cname{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--soft);color:var(--accent)}
-.chip.off{background:#fde8e8;color:var(--err)}
-h2{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
-.kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;font-size:14px}
-.kv span:nth-child(odd){color:var(--muted)}
-label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-input[type=text],input[type=number],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--bg)}
-textarea{min-height:110px;resize:vertical}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.row>*{flex:0 0 auto}
-.grow{flex:1 1 90px!important;min-width:90px}
-.btn{border:1px solid var(--border);background:var(--card);border-radius:9px;padding:8px 12px;cursor:pointer;white-space:nowrap}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding:0 20px}
+header{padding:14px 0 0}
+header .wrap{display:flex;align-items:center;justify-content:space-between}
+.brand{font-weight:800;font-size:17px;letter-spacing:-.02em}
+.chip{font-size:13px;font-weight:600;padding:4px 11px;border-radius:99px;background:var(--soft);color:var(--accent)}
+.chip.off{background:#fee4e2;color:var(--err)}
+@media (prefers-color-scheme:dark){.chip.off{background:#3b1714}}
+.title{padding:22px 0 6px}
+h1{font-size:26px;line-height:1.2;font-weight:750;letter-spacing:-.02em;overflow-wrap:anywhere}
+.sum{margin-top:6px;color:var(--muted);font-size:15px}
+h2{font-size:19px;font-weight:700;letter-spacing:-.01em;margin:34px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
+label.f,.lbl label{display:block;font-size:15px;font-weight:600;margin:18px 0 7px}
+.card>label.f:first-child,.grp>label.f:first-child{margin-top:0}
+.lbl{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.lbl label{margin:18px 0 7px}
+.cnt{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cnt.warn{color:var(--warn)}
+input[type=text],input[type=number],select,textarea{width:100%;padding:13px 14px;min-height:50px;border:1px solid var(--line);border-radius:12px;background:var(--field);transition:border-color .15s,box-shadow .15s}
+input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);background:var(--card)}
+textarea{min-height:148px;resize:vertical;line-height:1.5}
+select{appearance:none;-webkit-appearance:none;padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+input:disabled,select:disabled,textarea:disabled{opacity:.6}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:0 14px;min-height:40px;cursor:pointer;white-space:nowrap;font-weight:600;font-size:15px}
 .btn:hover{border-color:var(--accent)}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);min-height:48px;padding:0 26px;font-size:16px;font-weight:700;border-radius:12px}
+.btn.txt{border-color:transparent;background:none;color:var(--accent);padding:0 6px}
 .btn.bad{color:var(--err)}
-.btn[disabled]{opacity:.45;cursor:default}
-.small{font-size:12px;color:var(--muted)}
-.copy .hd,.set .hd{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
-.copy .hd b,.set .hd b{font-size:15px}
-.ad{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
-.thumb{width:72px;height:72px;border-radius:10px;background:var(--bg);border:1px solid var(--border);flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center}
-.thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
-.adbody{flex:1;min-width:0;display:grid;gap:6px}
-.adname{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.adcopy{display:grid;gap:4px;margin-top:6px}
-.adcopy textarea{min-height:84px}
-.pl{display:flex;flex-wrap:wrap;gap:6px}
-.pl label{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--border);border-radius:99px;padding:5px 10px;font-size:13px;cursor:pointer;background:var(--bg)}
-.pl label.on{border-color:var(--accent);background:var(--soft)}
-.pl input{width:auto}
-.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
-.tags span{font-size:12px;background:var(--bg);border:1px solid var(--border);border-radius:99px;padding:3px 9px}
-.settings{display:none;margin:8px 0 6px;padding:10px;border:1px dashed var(--border);border-radius:10px}
+.btn[disabled]{opacity:.4;cursor:default}
+.small{font-size:14px;color:var(--muted);margin-top:8px}
+dl.facts{display:grid;grid-template-columns:auto 1fr;margin-top:20px;border-top:1px solid var(--line)}
+dl.facts dt,dl.facts dd{padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+dl.facts dt{color:var(--muted);padding-right:16px}
+dl.facts dd{text-align:right;font-weight:550;overflow-wrap:anywhere}
+.set{margin-bottom:26px}
+.set h3{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.set .meta{font-size:14px;color:var(--muted);margin:3px 0 12px}
+.tog{display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border:1px solid var(--line);border-radius:var(--r);background:var(--card);cursor:pointer;font-weight:600;text-align:left;min-height:54px}
+.tog svg{flex:none;transition:transform .2s;color:var(--muted)}
+.tog.open{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.tog.open svg{transform:rotate(180deg)}
+.settings{display:none;padding:6px 18px 20px;border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r) var(--r);background:var(--card);margin-bottom:14px}
 .settings.on{display:block}
-#bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--border);padding:10px 0;z-index:6}
-#bar .wrap{display:flex;align-items:center;gap:10px}
-#msg{flex:1;font-size:13px;color:var(--muted);min-width:0}
+.settings h4{font-size:13px;font-weight:700;color:var(--muted);margin:22px 0 -4px}
+.settings h4:first-child{margin-top:12px}
+.pl{display:flex;flex-wrap:wrap;gap:8px}
+.pl label{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:99px;padding:9px 14px;font-size:15px;cursor:pointer;background:var(--field);min-height:42px}
+.pl label.on{border-color:var(--accent);background:var(--soft);color:var(--accent);font-weight:600}
+.pl input{position:absolute;opacity:0;width:1px;height:1px}
+.pl label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.tags span{font-size:14px;background:var(--field);border:1px solid var(--line);border-radius:99px;padding:5px 12px}
+.adcard{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.ad{display:flex;gap:14px;align-items:center}
+.thumb{width:88px;height:88px;border-radius:12px;background:var(--field);border:1px solid var(--line);flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted);text-align:center;padding:4px}
+.thumb img,.thumb video{width:100%;height:100%;object-fit:cover;margin:-4px}
+.adbody{flex:1;min-width:0}
+.adname{font-weight:700;font-size:17px}
+.adfile{font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.adbody .row{gap:8px}
+.adcopy{margin-top:4px;padding-top:2px}
+.adcopy select[data-act=clone]{margin-top:16px;min-height:44px;font-size:15px;color:var(--muted);background-color:transparent}
+.addad{width:100%;min-height:52px;border:1.5px dashed var(--line);border-radius:var(--r);background:none;color:var(--accent);font-weight:650;cursor:pointer}
+.addad:hover{border-color:var(--accent)}
+.addad[disabled]{opacity:.4;cursor:default}
+#bar{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:12px 0 calc(12px + env(safe-area-inset-bottom));z-index:6}
+#bar .wrap{display:flex;align-items:center;gap:14px}
+#msg{flex:1;font-size:15px;color:var(--muted);min-width:0}
 #msg.err{color:var(--err)}
-#msg.ok{color:var(--ok)}
-.modal{position:fixed;inset:0;background:#0007;display:none;align-items:flex-end;justify-content:center;z-index:10}
+#msg.ok{color:var(--ok);font-weight:600}
+.modal{position:fixed;inset:0;background:#0008;display:none;align-items:flex-end;justify-content:center;z-index:10}
 .modal.on{display:flex}
-.modal .box{background:var(--card);width:100%;max-width:720px;max-height:86vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px;display:grid;gap:10px}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.grid button{border:2px solid var(--border);border-radius:10px;background:var(--bg);padding:0;aspect-ratio:1;overflow:hidden;cursor:pointer;position:relative;font-size:11px;color:var(--muted)}
+.modal .box{background:var(--card);width:100%;max-width:640px;max-height:88vh;overflow:auto;border-radius:20px 20px 0 0;padding:12px 20px calc(20px + env(safe-area-inset-bottom));display:grid;gap:14px}
+.modal .box:before{content:"";width:40px;height:4px;border-radius:4px;background:var(--line);justify-self:center}
+.modal .box>b{font-size:19px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.grid button{border:2px solid var(--line);border-radius:12px;background:var(--field);padding:0;aspect-ratio:1;overflow:hidden;cursor:pointer;position:relative}
 .grid button.sel{border-color:var(--accent)}
 .grid img,.grid video{width:100%;height:100%;object-fit:cover}
-.chk{display:flex;gap:8px;align-items:center;padding:6px 0;font-size:14px}
-.chk input{width:auto}
-#fatal{padding:24px;max-width:520px;margin:40px auto;background:var(--card);border:1px solid var(--border);border-radius:14px;color:var(--err)}
-#banner{display:none;background:#fff4d6;color:#6b4e00;border:1px solid #f0d88a;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:14px}
+#fatal{padding:28px;max-width:520px;margin:48px 20px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);color:var(--err);font-size:17px}
+#banner{display:none;background:#fffaeb;color:#93370d;border:1px solid #fedf89;border-radius:12px;padding:12px 14px;margin-top:16px;font-size:15px}
+@media (prefers-color-scheme:dark){#banner{background:#2a2108;color:#fedf89;border-color:#54420f}}
+@media (min-width:560px){h1{font-size:30px}}
 </style>
 </head>
 <body>
-<header><div class="wrap"><span class="brand">REVORA</span><span id="cname">Loading…</span><span class="chip" id="stat"></span></div></header>
+<header><div class="wrap"><span class="brand">Revora</span><span class="chip" id="stat"></span></div></header>
 <main class="wrap" id="main">
+  <div class="title"><h1 id="cname">Loading…</h1><p class="sum" id="sum"></p></div>
   <div id="banner"></div>
   <h2>Campaign</h2>
   <div class="card" id="camp"></div>
   <h2>Ad sets and ads</h2>
   <div id="sets"></div>
-  <p class="small" style="margin-top:14px">Saving here only changes your draft. Nothing goes to Meta until you launch: tap Launch in the WhatsApp message or on the approval card in your AI app.</p>
+  <p class="small" style="margin-top:6px">Saving only changes your draft. Nothing goes to Meta until you launch, from the WhatsApp message or the approval card in your AI app.</p>
 </main>
-<div id="bar"><div class="wrap"><span id="msg">No changes yet.</span><button class="btn pri" id="save" type="button" disabled>Save</button></div></div>
+<div id="bar"><div class="wrap"><span id="msg">No changes yet.</span><button class="btn pri" id="save" type="button" disabled>Save changes</button></div></div>
 
 <div class="modal" id="pick"><div class="box">
   <b>Choose a picture or video</b>
   <div class="grid" id="pgrid"></div>
-  <div class="row"><label class="btn" style="cursor:pointer">Upload new<input id="pfile" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" hidden></label><span class="small" id="pst"></span><span class="grow"></span><button class="btn" id="pcancel" type="button">Close</button></div>
+  <div class="row"><label class="btn" style="cursor:pointer;display:inline-flex;align-items:center">Upload new<input id="pfile" type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" hidden></label><span class="small" id="pst"></span><span class="grow"></span><button class="btn" id="pcancel" type="button">Close</button></div>
 </div></div>
 
 <script>
@@ -117,45 +149,60 @@ textarea{min-height:110px;resize:vertical}
     return '<div class="thumb"><img src="' + esc(f.url) + '" alt="" loading="lazy"></div>';
   }
 
+  var CHEV = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+  var LIM = { headline: 40, description: 30 };
+  function nice(v) { var t = String(v || "").replace(/^OUTCOME_/, "").replace(/_/g, " ").toLowerCase(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : ""; }
+  function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
+  function totalBudget() { return S.sets.reduce(function (n, s) { return n + (Number(s.settings.budget_naira) || 0); }, 0); }
+  function adCount() { return S.sets.reduce(function (n, s) { return n + s.ads.length; }, 0); }
+  function renderSum() { $("sum").textContent = naira(totalBudget()) + " a day · " + plural(S.sets.length, "ad set") + " · " + plural(adCount(), "ad"); }
+  function counter(k, v) { var n = String(v || "").length, lim = LIM[k]; return '<span class="cnt' + (lim && n > lim ? " warn" : "") + '" data-cnt="' + k + '">' + n + (lim ? " / " + lim : " characters") + '</span>'; }
+  function opt(v, label, cur) { return '<option value="' + v + '"' + (cur === v ? " selected" : "") + '>' + label + '</option>'; }
+
   function renderCamp() {
-    var c = D.campaign, total = S.sets.reduce(function (n, s) { return n + (Number(s.settings.budget_naira) || 0); }, 0);
+    var c = D.campaign;
     $("cname").textContent = S.name || c.name;
     $("stat").textContent = D.editable ? "Draft" : (c.status === "launched" ? "Launched" : c.status);
     $("stat").className = "chip" + (D.editable ? "" : " off");
+    renderSum();
+    function fact(k, v) { return "<dt>" + k + "</dt><dd>" + esc(v) + "</dd>"; }
     $("camp").innerHTML =
-      '<label class="f" style="margin-top:0">Campaign name</label><input type="text" id="nameIn" maxlength="80" value="' + esc(S.name) + '"' + ro() + '>' +
-      '<div class="kv" style="margin-top:12px"><span>Product</span><span>' + esc(c.product || "–") + '</span><span>Objective</span><span>' + esc(c.objective || "–") + '</span><span>Budget type</span><span>' + esc(String(c.budget_type || "").toUpperCase() || "–") + '</span><span>Daily budget</span><span id="tot">' + naira(total) + ' across ' + S.sets.length + ' ad set' + (S.sets.length === 1 ? "" : "s") + '</span><span>Button</span><span>' + esc(c.cta || "–") + '</span><span>Starts</span><span>' + esc(c.starts || "As soon as you launch") + '</span></div>';
+      '<label class="f" for="nameIn">Campaign name</label><input type="text" id="nameIn" maxlength="80" value="' + esc(S.name) + '"' + ro() + '>' +
+      '<dl class="facts">' + fact("Product", c.product || "–") + fact("Objective", nice(c.objective) || "–") + fact("Budget type", ({ cbo: "Campaign budget", abo: "Ad set budget" })[String(c.budget_type).toLowerCase()] || "–") + fact("Button", nice(c.cta) || "–") + fact("Starts", c.starts || "As soon as you launch") + '</dl>';
     $("nameIn").oninput = function () { S.name = this.value; $("cname").textContent = this.value || c.name; setDirty(true); };
   }
+
+  function setMeta(st, n) { return naira(st.budget_naira) + " a day · ages " + esc(st.age_min) + "–" + esc(st.age_max) + " · " + esc(st.gender === "all" ? "everyone" : st.gender === "male" ? "men" : "women") + " · " + (st.states && st.states.length ? esc(st.states.join(", ")) : "all of Nigeria"); }
 
   function renderSets() {
     var h = "";
     S.sets.forEach(function (s, si) {
       var st = s.settings, pls = st.placements && st.placements.length ? st.placements : ["automatic"];
-      h += '<div class="card set" data-s="' + si + '"><div class="hd"><b>' + esc(st.label || "Ad set " + (si + 1)) + '</b><button class="btn" data-act="tog" data-s="' + si + '" type="button">Edit settings</button></div>' +
-        '<div class="small">' + naira(st.budget_naira) + '/day · ages ' + esc(st.age_min) + '–' + esc(st.age_max) + ' · ' + esc(st.gender === "all" ? "everyone" : st.gender) + ' · ' + (st.states && st.states.length ? esc(st.states.join(", ")) : "all of Nigeria") + ' · ' + s.ads.length + ' ad' + (s.ads.length === 1 ? "" : "s") + '</div>' +
+      h += '<section class="set" data-s="' + si + '"><h3>' + esc(st.label || "Ad set " + (si + 1)) + '</h3><p class="meta">' + setMeta(st) + '</p>' +
+        '<button class="tog" data-act="tog" data-s="' + si + '" type="button" aria-expanded="false"><span>Budget, audience and placements</span>' + CHEV + '</button>' +
         '<div class="settings" id="set' + si + '">' +
-          '<label class="f" style="margin-top:0">Ad set name</label><input type="text" data-sf="label" maxlength="40" value="' + esc(st.label) + '"' + ro() + '>' +
-          '<div class="row"><div class="grow"><label class="f">Daily budget (₦)</label><input type="number" inputmode="numeric" min="1500" max="500000" data-sf="budget_naira" value="' + esc(st.budget_naira) + '"' + ro() + '></div>' +
-          '<div class="grow"><label class="f">Gender</label><select data-sf="gender"' + ro() + '><option value="all"' + (st.gender === "all" ? " selected" : "") + '>Everyone</option><option value="male"' + (st.gender === "male" ? " selected" : "") + '>Men</option><option value="female"' + (st.gender === "female" ? " selected" : "") + '>Women</option></select></div></div>' +
-          '<div class="row"><div class="grow"><label class="f">Age from</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_min" value="' + esc(st.age_min) + '"' + ro() + '></div><div class="grow"><label class="f">Age to</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_max" value="' + esc(st.age_max) + '"' + ro() + '></div></div>' +
-          (/sales/i.test(D.campaign.objective || "sales") ? '<label class="f">Customer life cycle strategy</label><select data-sf="lifecycle"' + ro() + '><option value="broad"' + (st.lifecycle !== "none" ? " selected" : "") + '>Get conversions from all audiences</option><option value="none"' + (st.lifecycle === "none" ? " selected" : "") + '>Leave blank (decide in Ads Manager)</option></select><div class="small">Other choices, like new customers only, need a list of your existing customers on Meta.</div>' : "") +
-          '<label class="f">States (separate with commas, empty = all of Nigeria)</label><input type="text" data-sf="states" value="' + esc((st.states || []).join(", ")) + '"' + ro() + '>' +
-          '<label class="f">Where the ads show</label><div class="pl" data-pl="' + si + '">' + ["automatic"].concat(D.placement_keys).map(function (k) { var on = pls.indexOf(k) >= 0; return '<label class="' + (on ? "on" : "") + '"><input type="checkbox" data-pk="' + k + '"' + (on ? " checked" : "") + ro() + '>' + esc(PLACE[k] || k) + '</label>'; }).join("") + '</div>' +
-          ((st.interests && st.interests.length) || (st.cities && st.cities.length) ? '<label class="f">Set by your assistant (ask it to change these)</label><div class="tags">' + (st.cities || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + (st.interests || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + '</div>' : "") +
+          '<h4>Ad set</h4><label class="f" style="margin-top:10px">Name</label><input type="text" data-sf="label" maxlength="40" value="' + esc(st.label) + '"' + ro() + '>' +
+          '<h4>Budget</h4><label class="f" style="margin-top:10px">Daily budget (₦)</label><input type="number" inputmode="numeric" min="1500" max="500000" data-sf="budget_naira" value="' + esc(st.budget_naira) + '"' + ro() + '><p class="small">At least ₦1,500 a day.</p>' +
+          '<h4>Audience</h4><label class="f" style="margin-top:10px">Gender</label><select data-sf="gender"' + ro() + '>' + opt("all", "Everyone", st.gender) + opt("male", "Men", st.gender) + opt("female", "Women", st.gender) + '</select>' +
+          '<div class="cols"><div><label class="f">Age from</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_min" value="' + esc(st.age_min) + '"' + ro() + '></div><div><label class="f">Age to</label><input type="number" inputmode="numeric" min="18" max="65" data-sf="age_max" value="' + esc(st.age_max) + '"' + ro() + '></div></div>' +
+          '<label class="f">States</label><input type="text" data-sf="states" placeholder="All of Nigeria" value="' + esc((st.states || []).join(", ")) + '"' + ro() + '><p class="small">Separate states with commas. Leave empty for all of Nigeria.</p>' +
+          (/sales/i.test(D.campaign.objective || "sales") ? '<label class="f">Customer life cycle strategy</label><select data-sf="lifecycle"' + ro() + '>' + opt("broad", "Get conversions from all audiences", st.lifecycle === "none" ? "none" : "broad") + opt("none", "Leave blank (decide in Ads Manager)", st.lifecycle === "none" ? "none" : "broad") + '</select><p class="small">Other choices, like new customers only, need a list of your existing customers on Meta.</p>' : "") +
+          '<h4>Placements</h4><div class="pl" style="margin-top:12px" data-pl="' + si + '">' + ["automatic"].concat(D.placement_keys).map(function (k) { var on = pls.indexOf(k) >= 0; return '<label class="' + (on ? "on" : "") + '"><input type="checkbox" data-pk="' + k + '"' + (on ? " checked" : "") + ro() + '>' + esc(PLACE[k] || k) + '</label>'; }).join("") + '</div>' +
+          ((st.interests && st.interests.length) || (st.cities && st.cities.length) ? '<h4>Set by your assistant</h4><div class="tags">' + (st.cities || []).concat(st.interests || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + '</div><p class="small">Ask your assistant to change these.</p>' : "") +
         '</div>';
       s.ads.forEach(function (a, ai) {
         var f = asset(a.asset_id);
-        h += '<div class="ad" data-s="' + si + '" data-a="' + ai + '">' + thumb(a) + '<div class="adbody"><div class="adname">Ad ' + (ai + 1) + (f ? " \u00b7 " + esc(f.name) : "") + '</div>' +
-          '<div class="row"><button class="btn" data-act="pic" type="button"' + ro() + '>Change picture</button>' + (s.ads.length > 1 ? '<button class="btn bad" data-act="rmad" type="button"' + ro() + '>Remove ad</button>' : "") + '</div></div></div>' +
-          '<div class="adcopy" data-s="' + si + '" data-a="' + ai + '"><label class="f" style="margin-top:0">Main text for this ad</label><textarea data-af="primary_text" maxlength="2200"' + ro() + '>' + esc(a.primary_text) + '</textarea>' +
-          '<label class="f">Headline</label><input type="text" data-af="headline" maxlength="255" value="' + esc(a.headline) + '"' + ro() + '>' +
-          '<label class="f">Description (optional)</label><input type="text" data-af="description" maxlength="255" value="' + esc(a.description) + '"' + ro() + '>' +
-          '<select data-act="clone"' + ro() + '><option value="">Copy the text from another ad\u2026</option>' + S.sets.map(function (s2, sj) { return s2.ads.map(function (b2, aj) { return (sj === si && aj === ai) ? "" : '<option value="' + sj + ':' + aj + '">Ad ' + (aj + 1) + " \u00b7 " + esc(s2.settings.label || "Ad set " + (sj + 1)) + '</option>'; }).join(""); }).join("") + '</select></div>';
+        h += '<div class="adcard"><div class="ad" data-s="' + si + '" data-a="' + ai + '">' + thumb(a) + '<div class="adbody"><div class="adname">Ad ' + (ai + 1) + '</div><div class="adfile">' + (f ? esc(f.name) : "No picture yet") + '</div>' +
+          '<div class="row"><button class="btn" data-act="pic" type="button"' + ro() + '>Change</button>' + (s.ads.length > 1 ? '<button class="btn txt bad" data-act="rmad" type="button"' + ro() + '>Remove</button>' : "") + '</div></div></div>' +
+          '<div class="adcopy" data-s="' + si + '" data-a="' + ai + '">' +
+          '<div class="lbl"><label>Main text</label>' + counter("primary_text", a.primary_text) + '</div><textarea data-af="primary_text" maxlength="2200" placeholder="What do you want people to read above the picture?"' + ro() + '>' + esc(a.primary_text) + '</textarea>' +
+          '<div class="lbl"><label>Headline</label>' + counter("headline", a.headline) + '</div><input type="text" data-af="headline" maxlength="255" placeholder="Short and clear"' + ro() + ' value="' + esc(a.headline) + '">' +
+          '<div class="lbl"><label>Description <span class="cnt">(optional)</span></label>' + counter("description", a.description) + '</div><input type="text" data-af="description" maxlength="255"' + ro() + ' value="' + esc(a.description) + '">' +
+          '<select data-act="clone" aria-label="Reuse text from another ad"' + ro() + '><option value="">Reuse the text from another ad…</option>' + S.sets.map(function (s2, sj) { return s2.ads.map(function (b2, aj) { return (sj === si && aj === ai) ? "" : '<option value="' + sj + ':' + aj + '">Ad ' + (aj + 1) + " in " + esc(s2.settings.label || "Ad set " + (sj + 1)) + '</option>'; }).join(""); }).join("") + '</select></div></div>';
       });
-      h += '<div class="row" style="margin-top:8px"><button class="btn" data-act="addad" data-s="' + si + '" type="button"' + (D.editable && s.ads.length < D.limits.ads_per_set ? "" : " disabled") + '>+ Add an ad</button></div></div>';
+      h += '<button class="addad" data-act="addad" data-s="' + si + '" type="button"' + (D.editable && s.ads.length < D.limits.ads_per_set ? "" : " disabled") + '>Add an ad</button></section>';
     });
-    $("sets").innerHTML = h;
+    $("sets").innerHTML = h; renderSum();
   }
   function renderAll() { renderCamp(); renderSets(); }
 
@@ -163,7 +210,7 @@ textarea{min-height:110px;resize:vertical}
   document.addEventListener("input", function (e) {
     var t = e.target;
     var ac = t.closest && t.closest(".adcopy");
-    if (ac && t.dataset.af) { S.sets[+ac.dataset.s].ads[+ac.dataset.a][t.dataset.af] = t.value; setDirty(true); return; }
+    if (ac && t.dataset.af) { S.sets[+ac.dataset.s].ads[+ac.dataset.a][t.dataset.af] = t.value; var cn = ac.querySelector('[data-cnt="' + t.dataset.af + '"]'); if (cn) { var lim = LIM[t.dataset.af], n = t.value.length; cn.textContent = n + (lim ? " / " + lim : " characters"); cn.classList.toggle("warn", !!lim && n > lim); } setDirty(true); return; }
     var st = t.closest && t.closest(".set");
     if (st && t.dataset.sf) {
       var set = S.sets[+st.dataset.s], f = t.dataset.sf;
@@ -171,7 +218,8 @@ textarea{min-height:110px;resize:vertical}
       else if (f === "label" || f === "gender" || f === "lifecycle") set.settings[f] = t.value;
       else set.settings[f] = t.value === "" ? "" : Number(t.value);
       setDirty(true);
-      if (f === "budget_naira") { var tot = S.sets.reduce(function (n, s) { return n + (Number(s.settings.budget_naira) || 0); }, 0); var el = $("tot"); if (el) el.textContent = naira(tot) + " across " + S.sets.length + " ad set" + (S.sets.length === 1 ? "" : "s"); }
+      if (f === "budget_naira" || f === "age_min" || f === "age_max" || f === "gender" || f === "states") { renderSum(); var mt = st.querySelector(".meta"); if (mt) mt.innerHTML = setMeta(set.settings); }
+      if (f === "label") { var h3 = st.querySelector("h3"); if (h3) h3.textContent = t.value || "Ad set " + (+st.dataset.s + 1); }
     }
   });
   document.addEventListener("change", function (e) {
@@ -196,7 +244,7 @@ textarea{min-height:110px;resize:vertical}
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest("[data-act]"); if (!b || b.tagName === "SELECT") return;
     var act = b.dataset.act;
-    if (act === "tog") { var p = $("set" + b.dataset.s); p.classList.toggle("on"); b.textContent = p.classList.contains("on") ? "Hide settings" : "Edit settings"; return; }
+    if (act === "tog") { var p = $("set" + b.dataset.s), on = p.classList.toggle("on"); b.classList.toggle("open", on); b.setAttribute("aria-expanded", on ? "true" : "false"); return; }
     if (!D.editable) return;
     var ad = b.closest(".ad");
     if (act === "pic") { pickTarget = { s: +ad.dataset.s, a: +ad.dataset.a }; openPick(); }
@@ -210,7 +258,7 @@ textarea{min-height:110px;resize:vertical}
     var open = [];
     document.querySelectorAll(".settings.on").forEach(function (x) { open.push(x.id); });
     fn();
-    open.forEach(function (id) { var x = $(id); if (x) { x.classList.add("on"); var btn = x.parentNode.querySelector('[data-act="tog"]'); if (btn) btn.textContent = "Hide settings"; } });
+    open.forEach(function (id) { var x = $(id); if (x) { x.classList.add("on"); var btn = x.parentNode.querySelector('[data-act="tog"]'); if (btn) { btn.classList.add("open"); btn.setAttribute("aria-expanded", "true"); } } });
   }
 
   // ---- picture picker ----

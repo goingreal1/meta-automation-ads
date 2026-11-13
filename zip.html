@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Import your website</title>
+<style>
+
+:root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--text:#101828;--muted:#667085;--line:#e4e7ec;--field:#f9fafb;--accent:#1763e0;--accent-ink:#fff;--soft:#eaf1fd;--ok:#067647;--err:#b42318;--warn:#b54708;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font:16px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);padding-bottom:40px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:560px;margin:0 auto;padding:0 20px}
+header{padding:14px 0 0}
+.brand{font-weight:800;font-size:17px;letter-spacing:-.02em}
+.title{padding:22px 0 14px}
+h1{font-size:26px;line-height:1.2;font-weight:750;letter-spacing:-.02em;overflow-wrap:anywhere}
+.sub{margin-top:6px;color:var(--muted);font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
+.pick{display:block;width:100%;text-align:center;padding:34px 16px;border:2px dashed var(--line);border-radius:var(--r);background:var(--field);cursor:pointer}
+.pick:hover,.pick.drag{border-color:var(--accent);background:var(--soft)}
+.pick b{display:block;font-size:18px}
+.pick span{display:block;margin-top:4px;color:var(--muted);font-size:15px}
+.pick[disabled]{opacity:.5;cursor:default}
+.rules{margin-top:12px;font-size:14px;color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:0 18px;min-height:48px;cursor:pointer;font-weight:650;font-size:16px}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn.sm{min-height:40px;padding:0 14px;font-size:15px;border-radius:10px}
+.btn.full{width:100%}
+.btn[disabled]{opacity:.45;cursor:default}
+.file{display:flex;justify-content:space-between;gap:12px;font-weight:600;overflow-wrap:anywhere}
+.file small{color:var(--muted);font-weight:500;white-space:nowrap}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:14px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.bar.spin i{width:40%;animation:sl 1.1s ease-in-out infinite}
+@keyframes sl{0%{margin-left:-40%}100%{margin-left:100%}}
+@media (prefers-reduced-motion:reduce){.bar.spin i{animation:none;width:100%;opacity:.5}}
+.status{margin-top:10px;font-size:15px;color:var(--muted)}
+.err{padding:14px 16px;border-radius:12px;background:color-mix(in srgb,var(--err) 12%,transparent);color:var(--err);font-weight:600;margin-top:14px}
+.ok{color:var(--ok);font-weight:700}
+h2{font-size:19px;font-weight:700;letter-spacing:-.01em;margin-bottom:4px}
+.link{padding:14px 0;border-top:1px solid var(--line)}
+.link:first-of-type{border-top:0}
+.link .k{font-size:15px;font-weight:650}
+.link .u{margin:4px 0 10px;font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.link .row{display:flex;gap:10px}
+.opt{display:block;width:100%;text-align:left;padding:16px;margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--field);cursor:pointer}
+.opt:hover{border-color:var(--accent)}
+.opt b{display:block;font-size:16px}
+.opt span{display:block;margin-top:3px;font-size:15px;color:var(--muted)}
+.note{margin-top:12px;font-size:14px;color:var(--warn)}
+.pill{display:inline-block;font-size:13px;font-weight:650;padding:3px 10px;border-radius:99px;background:var(--soft);color:var(--accent)}
+.pill.live{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+dialog{border:1px solid var(--line);border-radius:var(--r);padding:20px;max-width:360px;width:calc(100% - 40px);background:var(--card);color:var(--text)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog p{margin:8px 0 18px}
+dialog .row{display:flex;gap:10px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<header><div class="wrap"><span class="brand">Revora</span></div></header>
+<main class="wrap">
+  <div class="title"><h1 id="h">Import your website</h1><p class="sub" id="sub">Checking your link…</p></div>
+  <div id="main"></div>
+</main>
+<dialog id="dlg"><h2>Publish this website?</h2><p>Anyone with the page link will be able to open it.</p><div class="row"><button class="btn sm" id="no">Not yet</button><button class="btn sm pri" id="yes">Publish</button></div></dialog>
+<script>
+(function () {
+  var FN = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp-social";
+  var token = new URLSearchParams(location.search).get("t") || "";
+  var $ = function (id) { return document.getElementById(id); };
+  var main = $("main"), info = null, zipFile = null, upPath = null, site = null;
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function mb(n) { return (n / 1048576).toFixed(n > 10485760 ? 0 : 1) + " MB"; }
+  function call(body) {
+    body.token = token;
+    return fetch(FN, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return { error: "Something went wrong. Try again." }; }).then(function (j) { return { ok: r.ok, j: j }; }); })
+      .catch(function () { return { ok: false, j: { error: "Could not reach Revora. Check your internet connection." } }; });
+  }
+  function put(url, key, f, onp) {
+    return new Promise(function (res, rej) {
+      var x = new XMLHttpRequest(), fd = new FormData();
+      fd.append("cacheControl", "3600"); fd.append("", f);
+      x.open("PUT", url); x.setRequestHeader("apikey", key); x.setRequestHeader("x-upsert", "false");
+      x.upload.onprogress = function (e) { if (e.lengthComputable) onp(e.loaded / e.total); };
+      x.onload = function () { x.status >= 200 && x.status < 300 ? res() : rej(new Error("The upload failed (" + x.status + "). Try again.")); };
+      x.onerror = function () { rej(new Error("Network problem during the upload. Try again.")); };
+      x.send(fd);
+    });
+  }
+  function showErr(msg, retry) {
+    main.querySelectorAll(".err").forEach(function (e) { e.remove(); });
+    var d = document.createElement("div"); d.className = "err"; d.textContent = msg;
+    var card = main.querySelector(".card"); (card || main).appendChild(d);
+    if (retry) { var b = document.createElement("button"); b.className = "btn full"; b.style.marginTop = "12px"; b.textContent = retry.label; b.onclick = retry.fn; (card || main).appendChild(b); }
+  }
+
+  function drawPick() {
+    $("h").textContent = "Import your website";
+    $("sub").textContent = "For " + info.product + ". Choose the .zip of your finished website.";
+    main.innerHTML = '<div class="card"><button class="pick" id="pick" type="button"><b>Choose a .zip file</b><span>or drop it here</span></button>' +
+      '<input id="file" type="file" hidden accept=".zip,application/zip,application/x-zip-compressed">' +
+      '<p class="rules">One zip, up to ' + info.zip_max_mb + ' MB. It becomes a draft; nothing goes live until you publish it.</p></div>';
+    var pick = $("pick"), file = $("file");
+    if (info.remaining < 1) { pick.disabled = true; showErr("This link was already used. Ask your assistant for a new one."); return; }
+    pick.onclick = function () { file.click(); };
+    file.onchange = function () { if (file.files[0]) start(file.files[0]); };
+    ["dragenter", "dragover"].forEach(function (ev) { pick.addEventListener(ev, function (e) { e.preventDefault(); pick.classList.add("drag"); }); });
+    ["dragleave", "drop"].forEach(function (ev) { pick.addEventListener(ev, function (e) { e.preventDefault(); pick.classList.remove("drag"); }); });
+    pick.addEventListener("drop", function (e) { if (e.dataTransfer.files[0]) start(e.dataTransfer.files[0]); });
+  }
+
+  function progressCard(f) {
+    main.innerHTML = '<div class="card"><div class="file"><span>' + esc(f.name) + '</span><small>' + mb(f.size) + '</small></div>' +
+      '<div class="bar" id="bar"><i id="fill"></i></div><p class="status" id="st">Uploading… 0%</p></div>';
+  }
+  function setProg(p) { var f = $("fill"); if (f) f.style.width = Math.round(p * 100) + "%"; var s = $("st"); if (s) s.textContent = "Uploading… " + Math.round(p * 100) + "%"; }
+  function setBusy(t) { var b = $("bar"); if (b) b.classList.add("spin"); var s = $("st"); if (s) s.textContent = t; }
+
+  function start(f) {
+    zipFile = f; upPath = null;
+    if (!/\.zip$/i.test(f.name)) { drawPick(); showErr("That is not a .zip file. Choose your website zip."); return; }
+    if (f.size > info.zip_max_mb * 1048576) { drawPick(); showErr("That zip is " + mb(f.size) + ". The limit is " + info.zip_max_mb + " MB."); return; }
+    progressCard(f);
+    call({ action: "upload_sign", name: f.name, size: f.size, content_type: "application/zip" }).then(function (r) {
+      if (!r.ok || !r.j.upload_url) { showErr(r.j.error || "Could not start the upload.", { label: "Try again", fn: function () { start(f); } }); return; }
+      return put(r.j.upload_url, r.j.key, f, setProg).then(function () { upPath = r.j.path; runImport(null); });
+    }).catch(function (e) { showErr(e.message, { label: "Try again", fn: function () { start(f); } }); });
+  }
+
+  function runImport(mode) {
+    if (!$("bar")) progressCard(zipFile);
+    var f = $("fill"); if (f) f.style.width = "100%";
+    setBusy("Building your website. This can take up to a minute…");
+    var body = { action: "upload_import", path: upPath }; if (mode) body.pixel_mode = mode;
+    call(body).then(function (r) {
+      if (r.j.needs_decision) return drawDecision(r.j);
+      if (!r.ok || r.j.error) { showErr(r.j.error || "The import failed.", { label: "Try again", fn: function () { runImport(mode); } }); return; }
+      site = r.j; drawDone();
+    });
+  }
+
+  function drawDecision(j) {
+    $("h").textContent = "One question";
+    $("sub").textContent = "Your page already has a Meta pixel.";
+    var found = (j.found_pixels || []).join(", ");
+    main.innerHTML = '<div class="card"><h2>Which pixel should it use?</h2>' +
+      '<p class="sub">Your page has pixel ' + esc(found) + '. This product\'s ad account uses ' + esc(j.revora_pixel) + '.</p>' +
+      '<button class="opt" data-m="keep"><b>Keep my pixel</b><span>Leave your pixel as it is. Nothing is counted twice.</span></button>' +
+      '<button class="opt" data-m="swap"><b>Use the ad account pixel</b><span>Replace your pixel with ' + esc(j.revora_pixel) + ' so sales go to this ad account.</span></button></div>';
+    main.querySelectorAll(".opt").forEach(function (b) { b.onclick = function () { runImport(b.getAttribute("data-m")); }; });
+  }
+
+  function urlOf(x) { return !x ? null : typeof x === "string" ? x : (x.live || x.test || null); }
+  function pageUrls() {
+    var pu = site.page_url || {}, tu = site.thank_you_url || {};
+    return {
+      page: urlOf({ live: pu.live || site.live_link, test: pu.test || site.test_link }),
+      thanks: urlOf(tu),
+      live: !!site.live
+    };
+  }
+  function linkRow(k, u) {
+    if (!u) return "";
+    return '<div class="link"><div class="k">' + k + '</div><div class="u">' + esc(u) + '</div><div class="row"><button class="btn sm" data-copy="' + esc(u) + '">Copy</button><a class="btn sm" style="display:inline-flex;align-items:center;text-decoration:none;color:inherit" target="_blank" rel="noopener" href="' + esc(u) + '">Open</a></div></div>';
+  }
+  function drawDone() {
+    var u = pageUrls();
+    $("h").textContent = "Your website is ready";
+    $("sub").innerHTML = (u.live ? '<span class="pill live">Live</span> ' : '<span class="pill">Draft</span> ') + esc(site.name || info.product);
+    var warn = (site.warnings || []).map(function (w) { return '<p class="note">' + esc(w) + '</p>'; }).join("");
+    main.innerHTML = '<div class="card"><h2>Your links</h2>' + linkRow("Page", u.page) + linkRow("Thank-you page", u.thanks) + warn + '</div>' +
+      '<button class="btn pri full" id="pub">' + (u.live ? "Unpublish" : "Publish") + '</button>' +
+      '<p class="status" id="pubst">' + (u.live ? "Visitors can open the page now." : "These are test links. Visitors cannot find the page until you publish.") + '</p>' +
+      '<p class="status">You can close this page. Tell your assistant it is done and it can edit the site with you.</p>';
+    main.querySelectorAll("[data-copy]").forEach(function (b) {
+      b.onclick = function () {
+        var t = b.getAttribute("data-copy");
+        (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).catch(function () { var a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); try { document.execCommand("copy"); } catch (e) {} a.remove(); });
+        b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy"; }, 1500);
+      };
+    });
+    $("pub").onclick = function () { if (site.live) setLive(false); else $("dlg").showModal(); };
+  }
+  $("no").onclick = function () { $("dlg").close(); };
+  $("yes").onclick = function () { $("dlg").close(); setLive(true); };
+  function setLive(live) {
+    var b = $("pub"); b.disabled = true; $("pubst").textContent = live ? "Publishing…" : "Unpublishing…";
+    call({ action: "upload_publish", site_id: site.site_id, live: live }).then(function (r) {
+      if (!r.ok || r.j.error) { b.disabled = false; $("pubst").textContent = r.j.error || "Could not change that. Try again."; return; }
+      site.live = live;
+      site.page_url = { test: r.j.test_link || (site.page_url || {}).test, live: r.j.live_link || null };
+      site.thank_you_url = r.j.thank_you_url || site.thank_you_url;
+      drawDone();
+    });
+  }
+
+  if (!/^[0-9a-f]{32}$/.test(token)) { $("sub").textContent = ""; main.innerHTML = '<div class="err">This link is not valid. Ask your assistant for a new one.</div>'; return; }
+  call({ action: "upload_info" }).then(function (r) {
+    if (!r.ok || r.j.error) { $("sub").textContent = ""; main.innerHTML = '<div class="err">' + esc(r.j.error || "Could not open this link.") + '</div>'; return; }
+    if (r.j.purpose !== "zip") { $("sub").textContent = ""; main.innerHTML = '<div class="err">This link is for pictures, not a website zip. Use the upload page link instead.</div>'; return; }
+    info = r.j; drawPick();
+  });
+})();
+</script>
+</body>
+</html>
