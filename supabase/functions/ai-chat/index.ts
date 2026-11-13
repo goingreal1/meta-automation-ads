@@ -383,14 +383,14 @@ async function showCreativesTool(args: any, ctx: Ctx) {
 
 async function searchAudiencesTool(args: any, ctx: Ctx) {
   if (!ctx.account) return { error: "No ad account is selected." };
-  const r = await AM(ctx.authHeader, { action: "targeting_search", ad_account_id: ctx.account.id, q: String(args?.query || ""), kind: args?.kind === "city" ? "city" : "interest" });
+  const r = await AM(ctx.authHeader, { action: "targeting_search", ad_account_id: ctx.account.id, country: normCountry(args?.country), q: String(args?.query || ""), kind: args?.kind === "city" ? "city" : "interest" });
   if (!r?.ok) return { error: r?.error || "Search failed." };
   return { results: (r.results || []).slice(0, 10), note: "Use the id and name exactly as returned when planning." };
 }
 
 async function estimateReachTool(args: any, ctx: Ctx) {
   if (!ctx.account) return { error: "No ad account is selected." };
-  const r = await AM(ctx.authHeader, { action: "reach_estimate", ad_account_id: ctx.account.id, states: args?.states, cities: args?.cities, interests: args?.interests, age_min: args?.age_min, age_max: args?.age_max, gender: args?.gender });
+  const r = await AM(ctx.authHeader, { action: "reach_estimate", ad_account_id: ctx.account.id, country: normCountry(args?.country), states: args?.states, cities: args?.cities, interests: args?.interests, age_min: args?.age_min, age_max: args?.age_max, gender: args?.gender });
   if (!r?.ok) return { error: r?.error || "Meta could not estimate that." };
   return { people_lower: r.lower, people_upper: r.upper, ready: r.ready };
 }
@@ -423,21 +423,23 @@ function whoText(a: any) {
   const ints = (a.interests || []).map((i: any) => i.name).slice(0, 3).join(", ");
   return `${g} ${a.age_min} to ${a.age_max}${ints ? `, ${ints}` : ""}`;
 }
+const normCountry = (c: unknown) => (/^[A-Za-z]{2}$/.test(String(c ?? "").trim()) ? String(c).trim().toUpperCase() : "NG");
+const countryName = (cc: string) => { try { return new Intl.DisplayNames(["en"], { type: "region" }).of(cc) || cc; } catch { return cc; } };
 function whereText(a: any) {
+  const cc = normCountry(a.country), nm = countryName(cc);
   const p = [...(a.states || []), ...(a.cities || []).map((c: any) => c.name)];
-  return p.length ? p.join(", ") : "All Nigeria";
+  return p.length ? p.join(", ") + (cc === "NG" ? "" : ` (${nm})`) : `All ${nm}`;
 }
 // Meta treats housing ads as a special ad category: age is fixed at 18-65+, gender at all, no interest targeting,
-// and city radius is at least 25 km. The plan carries special_ad_category ("HOUSING" | "NONE") and the person can switch it off.
+// (Meta enforces these itself). The plan carries special_ad_category ("HOUSING" | "NONE") and the person can switch it off.
 function applySpecialCategory(plan: any) {
   const housing = plan.special_ad_category === "HOUSING";
   plan.warnings = (Array.isArray(plan.warnings) ? plan.warnings : []).filter((w: any) => !String(w).startsWith("Housing ads:") && !String(w).startsWith("Housing category is off"));
   if (housing) {
     for (const a of plan.adsets ?? []) {
       a.age_min = 18; a.age_max = 65; a.gender = "all"; a.interests = [];
-      a.cities = (a.cities ?? []).map((c: any) => ({ ...c, radius: Math.max(Number(c.radius) || 0, 25) }));
     }
-    plan.warnings.push("Housing ads: Meta treats these as a special ad category, so age is fixed at 18-65+, gender is all, interest targeting is off and city radius is at least 25 km. If these are not housing ads, ask to remove the housing category.");
+    plan.warnings.push("Housing ads: Meta treats these as a special ad category, so age is fixed at 18-65+, gender is all and interest targeting is off. If these are not housing ads, ask to remove the housing category.");
   } else if (plan.real_estate) {
     plan.warnings.push("Housing category is off for a real-estate business. If these ads are about renting or selling homes, Meta can reject them or restrict the ad account. Turn it back on unless you are sure they are not housing ads.");
   }
@@ -456,7 +458,7 @@ async function planCard(plan: any, planId: string, ctx: { authHeader: string; ac
   const rows = await Promise.all((plan.adsets || []).map(async (a: any) => {
     let reach: string | null = null;
     if (estimate) {
-      const r = await AM(ctx.authHeader, { action: "reach_estimate", ad_account_id: ctx.accountId, states: a.states, cities: a.cities, interests: a.interests, age_min: a.age_min, age_max: a.age_max, gender: a.gender, optimization_goal: plan.destination === "website" ? "LINK_CLICKS" : "CONVERSATIONS" });
+      const r = await AM(ctx.authHeader, { action: "reach_estimate", ad_account_id: ctx.accountId, country: normCountry(a.country), states: a.states, cities: a.cities, interests: a.interests, age_min: a.age_min, age_max: a.age_max, gender: a.gender, optimization_goal: plan.destination === "website" ? "LINK_CLICKS" : "CONVERSATIONS" });
       if (r?.ok && r.upper) reach = `${r.lower ? (r.lower / 1e6).toFixed(1) : "0"}M to ${(r.upper / 1e6).toFixed(1)}M`;
     }
     return { label: a.label, who: whoText(a), where: whereText(a), budget: a.budget_naira, reach, states: a.states || [], age_min: a.age_min, age_max: a.age_max };
@@ -538,9 +540,10 @@ async function planCampaignTool(args: any, ctx: Ctx) {
     const amax = Math.min(Math.max(Math.round(Number(a?.age_max) || 55), amin), 65);
     return {
       label: String(a?.label || `Ad set ${i + 1}`).slice(0, 60), budget_naira: Math.min(Math.max(norm0(a?.budget_naira), 1500), 500000),
+      country: normCountry(a?.country ?? args?.country),
       age_min: amin, age_max: amax, gender: ["all", "male", "female"].includes(a?.gender) ? a.gender : "all",
       states: (Array.isArray(a?.states) ? a.states : []).map((s: any) => String(s).replace(/ state$/i, "").trim()).filter(Boolean).slice(0, 12),
-      cities: (Array.isArray(a?.cities) ? a.cities : []).filter((c: any) => /^\d+$/.test(String(c?.key))).map((c: any) => ({ key: String(c.key), name: String(c.name || ""), region: String(c.region || ""), radius: 17 })).slice(0, 10),
+      cities: (Array.isArray(a?.cities) ? a.cities : []).filter((c: any) => /^\d+$/.test(String(c?.key))).map((c: any) => ({ key: String(c.key), name: String(c.name || ""), region: String(c.region || "") })).slice(0, 10),
       interests: (Array.isArray(a?.interests) ? a.interests : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name || "") })).slice(0, 8),
     };
   });
@@ -627,6 +630,8 @@ async function planAction(body: any, p: { companyId: string; role: string; media
       if (ea.age_min != null) a.age_min = Math.min(Math.max(norm0(ea.age_min), 18), 65);
       if (ea.age_max != null) a.age_max = Math.min(Math.max(norm0(ea.age_max), a.age_min), 65);
       if (Array.isArray(ea.states)) a.states = ea.states.map((s: any) => String(s).replace(/ state$/i, "").trim()).filter(Boolean).slice(0, 12);
+      if (ea.country != null) { const nc = normCountry(ea.country); if (nc !== normCountry(a.country) && !Array.isArray(ea.states)) { a.states = []; a.cities = []; } a.country = nc; }
+      if (ea.nationwide === true) { a.states = []; a.cities = []; }
       if (ea.remove === true && plan.adsets.length > 1) a.__remove = true;
     });
     plan.adsets = plan.adsets.filter((a: any) => !a.__remove);
@@ -668,7 +673,7 @@ async function planAction(body: any, p: { companyId: string; role: string; media
       }
     }
     const cfgs = plan.adsets.map((a: any, i: number) => ({
-      creative_id: ids[0], company_id: p.companyId, label: a.label, budget_naira: a.budget_naira, age_min: a.age_min, age_max: a.age_max, gender: a.gender,
+      creative_id: ids[0], company_id: p.companyId, label: a.label, country: normCountry(a.country), budget_naira: a.budget_naira, age_min: a.age_min, age_max: a.age_max, gender: a.gender,
       geo_type: a.states.length || a.cities.length ? "states" : "nationwide", states: a.states.length ? a.states : null, cities: a.cities.length ? a.cities : null,
       interests: a.interests.length ? a.interests : null, sort_order: i, advantage_audience: !a.interests.length,
     }));
@@ -986,15 +991,15 @@ ${JSON.stringify(data)}`;
     {
       type: "function", function: {
         name: "search_audiences",
-        description: "Find real Meta targeting options. kind 'interest' returns interests and job-type audiences (id + name + size) for plain descriptions like business owners, students, new mums, gut health. kind 'city' returns Nigerian cities (key, name, region). Use the exact id and name when planning.",
-        parameters: { type: "object", properties: { query: { type: "string" }, kind: { type: "string", enum: ["interest", "city"] } }, required: ["query"] },
+        description: "Find real Meta targeting options. kind 'interest' returns interests and job-type audiences (id + name + size) for plain descriptions like business owners, students, new mums, gut health. kind 'city' returns cities in the chosen country (key, name, region). Use the exact id and name when planning.",
+        parameters: { type: "object", properties: { query: { type: "string" }, kind: { type: "string", enum: ["interest", "city"] }, country: { type: "string", description: "ISO 2-letter country code for city search (default NG)." } }, required: ["query"] },
       },
     },
     {
       type: "function", function: {
         name: "estimate_reach",
         description: "Ask Meta how many people an audience reaches (states, cities, interests, ages, gender).",
-        parameters: { type: "object", properties: { states: { type: "array", items: { type: "string" } }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, radius: { type: "number" } } } }, interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } }, age_min: { type: "number" }, age_max: { type: "number" }, gender: { type: "string", enum: ["all", "male", "female"] } }, required: [] },
+        parameters: { type: "object", properties: { country: { type: "string", description: "ISO 2-letter country code (default NG). Empty states = the whole country." }, states: { type: "array", items: { type: "string" } }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" } } } }, interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } }, age_min: { type: "number" }, age_max: { type: "number" }, gender: { type: "string", enum: ["all", "male", "female"] } }, required: [] },
       },
     },
     {
@@ -1018,7 +1023,7 @@ ${JSON.stringify(data)}`;
           copies: { type: "array", items: { type: "object", properties: { primary_text: { type: "string" }, headline: { type: "string" }, description: { type: "string" } }, required: ["primary_text"] } },
           adsets: { type: "array", items: { type: "object", properties: {
             label: { type: "string" }, budget_naira: { type: "number" }, age_min: { type: "number" }, age_max: { type: "number" }, gender: { type: "string", enum: ["all", "male", "female"] },
-            states: { type: "array", items: { type: "string" } }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, name: { type: "string" }, region: { type: "string" } } } },
+            country: { type: "string", description: "ISO 2-letter country code for this ad set (NG, US, KE, GH, GB...). Default NG. Any country works." }, states: { type: "array", items: { type: "string" }, description: "States or regions inside that country. Leave empty for the whole country (nationwide)." }, cities: { type: "array", items: { type: "object", properties: { key: { type: "string" }, name: { type: "string" }, region: { type: "string" } } } },
             interests: { type: "array", items: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } } } },
           }, required: ["label", "budget_naira"] } },
         }, required: ["product_name", "destination", "adsets", "asset_ids", "copies", "person_confirmed"] },

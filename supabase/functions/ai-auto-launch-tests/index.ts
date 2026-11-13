@@ -574,14 +574,14 @@ const VALID_OBJECTIVES = Object.keys(OBJECTIVE_CONFIG);
 // e.g. "Lagos") to Meta's actual region keys via the geolocation Targeting
 // Search API -- sending human-readable names directly is not a valid Meta
 // targeting value.
-async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: string; name: string }[]> {
+async function resolveStateRegionKeys(stateNames: string[], country = "NG"): Promise<{ key: string; name: string }[]> {
   const resolved: { key: string; name: string }[] = [];
   for (const name of stateNames) {
     try {
       const res = await fetch(
         `${META_GRAPH_BASE}/search?type=adgeolocation&location_types=${encodeURIComponent(
           JSON.stringify(["region"])
-        )}&country_code=NG&q=${encodeURIComponent(name)}&limit=1&access_token=${META_ACCESS_TOKEN}`
+        )}&country_code=${country}&q=${encodeURIComponent(name)}&limit=1&access_token=${META_ACCESS_TOKEN}`
       );
       const data = await res.json();
       const match = data?.data?.[0];
@@ -640,20 +640,21 @@ async function buildTargetingFromConfig(config: any, destinationType: Dest): Pro
   }
 
   // Where: states (Meta regions) and/or cities (with a radius). Nothing resolvable -> nationwide.
+  const countryCode = /^[A-Za-z]{2}$/.test(String(config.country ?? "")) ? String(config.country).toUpperCase() : "NG";
   const geo: Record<string, any> = { location_types: ["frequently_in", "home", "recent"] };
   if (config.geo_type === "states" && config.states?.length) {
-    const resolvedStates = await resolveStateRegionKeys(config.states);
+    const resolvedStates = await resolveStateRegionKeys(config.states, countryCode);
     if (resolvedStates.length) geo.regions = resolvedStates.map((s) => ({ key: s.key }));
   }
   if (config.geo_type === "states" && Array.isArray(config.cities) && config.cities.length) {
     const cities = config.cities
       .filter((c: any) => /^\d+$/.test(String(c?.key)))
-      .map((c: any) => ({ key: String(c.key), radius: Math.min(Math.max(Number(c.radius) || 17, 10), 80), distance_unit: "kilometer" }));
+      .map((c: any) => ({ key: String(c.key) }));
     if (cities.length) geo.cities = cities;
   }
   if (!geo.regions && !geo.cities) {
-    if (config.geo_type === "states") console.warn(`Ad set "${config.label}" specified places but none resolved -- falling back to nationwide (NG).`);
-    geo.countries = ["NG"];
+    if (config.geo_type === "states") console.warn(`Ad set "${config.label}" specified places but none resolved -- falling back to nationwide (${countryCode}).`);
+    geo.countries = [countryCode];
   }
   targeting.geo_locations = geo;
 
@@ -848,11 +849,10 @@ async function launchAdSetGroup(
     // User-editable campaign name (dashboard's ad-set builder) -- falls back to
     // an auto-generated one only if left blank, so it's always recognizable in
     // Ads Manager instead of the old always-auto-generated product+filename+timestamp.
-    // Housing ads: Meta forbids age/gender/interest targeting and small location radii, so enforce it here whatever the ad set rows say.
+    // Housing ads: Meta forbids age/gender/interest targeting, so enforce it here whatever the ad set rows say.
     if (creative.special_ad_category === "HOUSING") {
       adSetConfigs = adSetConfigs.map((c: any) => ({
         ...c, age_min: 18, age_max: 65, gender: "all", interests: null, behaviors: null, advantage_audience: false,
-        cities: Array.isArray(c.cities) ? c.cities.map((x: any) => ({ ...x, radius: Math.max(Number(x?.radius) || 0, 25) })) : c.cities,
       }));
     }
     const campaignName = creative.campaign_name?.trim() || `${productName} - ${new Date().toLocaleDateString("en-NG")}`;
@@ -871,7 +871,7 @@ async function launchAdSetGroup(
       status: liveStatus,
       access_token: META_ACCESS_TOKEN,
     };
-    if (creative.special_ad_category === "HOUSING") campaignPayload.special_ad_category_country = ["NG"];
+    if (creative.special_ad_category === "HOUSING") campaignPayload.special_ad_category_country = [...new Set(adSetConfigs.map((c: any) => (/^[A-Za-z]{2}$/.test(String(c?.country ?? "")) ? String(c.country).toUpperCase() : "NG")))];
     if (budgetType === "cbo") {
       campaignPayload.daily_budget = Math.round(totalBudgetNaira * 100);
       // CBO's bid strategy lives on the campaign, shared by every ad set under
@@ -1087,7 +1087,7 @@ async function launchAdSetGroup(
           age_max: config.age_max,
           genders: targeting.genders,
           states: config.states,
-          countries: ["NG"],
+          countries: [/^[A-Za-z]{2}$/.test(String(config.country ?? "")) ? String(config.country).toUpperCase() : "NG"],
           optimization_goal: optimizationGoal,
           bid_strategy: bidStrategy,
           company_id: creative.company_id,

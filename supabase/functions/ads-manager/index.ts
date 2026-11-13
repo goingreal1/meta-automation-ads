@@ -582,10 +582,10 @@ async function handleSetAdImage(userClient: any, body: any) {
 
 // -- targeting helpers (builder search box + live potential reach) --
 // Same targeting shape ai-auto-launch-tests sends, so the estimate matches what will really launch.
-async function resolveRegionKeys(names: string[], token: string): Promise<string[]> {
+async function resolveRegionKeys(names: string[], token: string, country = "NG"): Promise<string[]> {
   const keys = await Promise.all(names.slice(0, 40).map(async (name) => {
     try {
-      const d = await graphGet("search", { type: "adgeolocation", location_types: JSON.stringify(["region"]), country_code: "NG", q: name, limit: "1" }, token);
+      const d = await graphGet("search", { type: "adgeolocation", location_types: JSON.stringify(["region"]), country_code: country, q: name, limit: "1" }, token);
       return d?.data?.[0]?.key ? String(d.data[0].key) : null;
     } catch { return null; }
   }));
@@ -598,7 +598,7 @@ async function handleTargetingSearch(userClient: any, body: any) {
   const { account } = await getAccount(userClient, body.ad_account_id);
   const token = await resolveToken(createClient(SUPABASE_URL, SERVICE_KEY), account);
   if (body.kind === "city") {
-    const d = await graphGet("search", { type: "adgeolocation", location_types: JSON.stringify(["city"]), country_code: "NG", q, limit: "8" }, token);
+    const d = await graphGet("search", { type: "adgeolocation", location_types: JSON.stringify(["city"]), country_code: /^[A-Za-z]{2}$/.test(String(body.country ?? "")) ? String(body.country).toUpperCase() : "NG", q, limit: "8" }, token);
     return { ok: true, results: (d.data ?? []).filter((x: any) => x.type === "city").map((x: any) => ({ key: String(x.key ?? x.id), name: x.name, region: x.region ?? "" })) };
   }
   const d = await graphGet("search", { type: "adinterest", q, limit: "10", locale: "en_US" }, token);
@@ -648,12 +648,13 @@ async function handleReachEstimate(userClient: any, body: any) {
   const token = await resolveToken(createClient(SUPABASE_URL, SERVICE_KEY), account);
   const states: string[] = Array.isArray(body.states) ? body.states.map(String) : [];
   const cities: any[] = Array.isArray(body.cities) ? body.cities : [];
+  const country = /^[A-Za-z]{2}$/.test(String(body.country ?? "")) ? String(body.country).toUpperCase() : "NG";
   const geo: Record<string, any> = { location_types: ["frequently_in", "home", "recent"] };
-  const regionKeys = states.length ? await resolveRegionKeys(states, token) : [];
+  const regionKeys = states.length ? await resolveRegionKeys(states, token, country) : [];
   if (regionKeys.length) geo.regions = regionKeys.map((key) => ({ key }));
-  const cityList = cities.filter((c) => /^\d+$/.test(String(c?.key))).slice(0, 30).map((c) => ({ key: String(c.key), radius: Math.min(Math.max(Number(c.radius) || 17, 10), 80), distance_unit: "kilometer" }));
+  const cityList = cities.filter((c) => /^\d+$/.test(String(c?.key))).slice(0, 30).map((c) => ({ key: String(c.key) }));
   if (cityList.length) geo.cities = cityList;
-  if (!geo.regions && !geo.cities) geo.countries = ["NG"];
+  if (!geo.regions && !geo.cities) geo.countries = [country];
   const ints = (Array.isArray(body.interests) ? body.interests : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name ?? "") }));
   const behs = (Array.isArray(body.behaviors) ? body.behaviors : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name ?? "") }));
   const spec: Record<string, any> = {
