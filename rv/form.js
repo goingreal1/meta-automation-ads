@@ -22,7 +22,7 @@
   }
   function cookie(n) { var m = document.cookie.match(new RegExp("(?:^|; )" + n + "=([^;]*)")); return m ? decodeURIComponent(m[1]) : undefined; }
 
-  function mountForm(el, d, opts) {
+  function mountOrderForm(el, d, opts) {
     opts = opts || {};
     var site = d.site, product = d.product;
     var ds = el.dataset;
@@ -169,6 +169,170 @@
         })
         .catch(function (err) { msg.textContent = "Something went wrong, please try again. (" + err.message + ")"; msg.classList.add("on"); btn.disabled = false; btn.textContent = old; });
     });
+  }
+
+  /* ---------- Housing: rental application ----------
+     A housing project is saved as a service, so only service products are checked against mcp-housing.
+     Not housing (or the lookup can't be reached) -> the normal order form runs exactly as before. */
+  var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function hCall(body) {
+    return fetch(SUPABASE_URL + "/functions/v1/mcp-housing", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + ANON, apikey: ANON }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok || j.error) throw new Error(j.error || "request_failed"); return j; }); });
+  }
+  function hMoney(n, cur) {
+    n = Number(n) || 0; var whole = Math.abs(n - Math.round(n)) < 0.005;
+    try { return new Intl.NumberFormat(undefined, { style: "currency", currency: cur || "USD", minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 }).format(n); } catch (e) { return (cur || "") + " " + n.toFixed(whole ? 0 : 2); }
+  }
+  function hHttps(u) { u = String(u || ""); return /^https?:\/\//i.test(u) ? u : ""; }
+  function hPhone(p) { var s = String(p || "").trim(); return (s.charAt(0) === "+" ? "+" : "") + s.replace(/\D/g, ""); }
+  function hOnce(k) { if (sget(k)) return false; sset(k, "1"); return true; }
+  function hPx(name, data, o) { try { if (typeof global.fbq === "function") global.fbq("track", name, data || {}, o || {}); } catch (e) {} }
+  function hTrack(event, productId, p) {
+    if (!hOnce("rh_" + event + "_" + (p ? p.id : productId))) return;
+    hCall({ action: "public_track", event: event, product_id: productId, property_id: p ? p.id : undefined }).catch(function () {});
+  }
+  // Resolves to { project, properties, property, notice } for a housing project, or null for anything else.
+  function hDetect(productId, ref) {
+    function attempt() { return hCall({ action: "public_list", product_id: productId }); }
+    return attempt().catch(function (e) {
+      if (e.message === "not_found" || e.message === "bad_product") throw e;
+      return new Promise(function (r) { setTimeout(r, 600); }).then(attempt);
+    }).then(function (list) {
+      var h = { project: list.project, properties: list.properties || [], property: null, notice: "" };
+      if (!ref) return h;
+      var q = { action: "public_property", product_id: productId };
+      if (UUID_RE.test(ref)) q.property_id = ref; else q.slug = ref;
+      return hCall(q).then(function (r) {
+        h.project = Object.assign({}, h.project, r.project);
+        if (r.property.availability === "available") h.property = r.property;
+        else h.notice = "Sorry, “" + r.property.title + "” is no longer available. Here are the others.";
+        return h;
+      }).catch(function () { h.notice = "We couldn’t find that property. Here is what’s available."; return h; });
+    }).catch(function () { return null; });
+  }
+  function hStyle() {
+    if (document.getElementById("rv-housing-css")) return;
+    var s = document.createElement("style"); s.id = "rv-housing-css";
+    s.textContent =
+      ".rv-form .rv-pick{display:block;width:100%;text-align:left;margin:0 0 10px;padding:14px;border:1.5px solid var(--rv-border);border-radius:var(--rv-radius);background:#fff;cursor:pointer;font:inherit;color:inherit}.rv-form .rv-pick:hover{border-color:var(--rv-accent)}" +
+      ".rv-form .rv-pick b{display:block;font-size:15px}.rv-form .rv-pick span{font-size:13px;color:var(--rv-muted)}" +
+      ".rv-form .rv-prop{display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:12px 14px;margin-bottom:14px;border-radius:var(--rv-radius);background:var(--rv-accent-bg)}.rv-form .rv-prop b{font-size:15px}.rv-form .rv-prop strong{white-space:nowrap}" +
+      ".rv-form .rv-fine{margin:10px 0 0;padding:10px 12px;border-radius:8px;background:#f6f5f1;font-size:12.5px;color:#6a675d}" +
+      ".rv-form .rv-back{background:none;border:0;padding:0;margin:0 0 10px;color:var(--rv-accent-dk);font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}" +
+      ".rv-thanks a.rv-lbtn{display:block;max-width:380px;margin:10px auto 0;padding:12px;border-radius:12px;background:var(--rv-accent);color:#fff;font-weight:600;text-align:center;text-decoration:none}.rv-thanks a.rv-lbtn.ghost{background:#fff;color:var(--rv-accent-dk);border:1.5px solid var(--rv-accent)}";
+    document.head.appendChild(s);
+  }
+  function mountHousing(el, d, h, opts) {
+    var site = d.site, product = d.product, ds = el.dataset;
+    hStyle();
+    el.classList.add("rv-form");
+    if (ds.rvAccent) { el.style.setProperty("--rv-accent", ds.rvAccent); el.style.setProperty("--rv-accent-dk", ds.rvAccent); el.style.setProperty("--rv-accent-bg", ds.rvAccent + "1a"); }
+    if (ds.rvRadius) el.style.setProperty("--rv-radius", ds.rvRadius + "px");
+    var title = ds.rvTitle != null ? ds.rvTitle : "Apply for this rental";
+    var btnText = ds.rvButton || "Submit application";
+    var preview = !!opts.preview;
+
+    function place(p) { return esc([p.city, p.state].filter(Boolean).join(", ")); }
+    function showList(notice) {
+      el.innerHTML = '<div class="rv-card">' + (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") +
+        (notice ? '<div class="rv-fine" style="margin:0 0 12px">' + esc(notice) + "</div>" : "") +
+        (h.properties.length ? '<p class="rv-sub">Choose a property to apply for.</p>' : '<p class="rv-sub">No properties are open for applications right now. Please check back soon.</p>') +
+        h.properties.map(function (p, i) { return '<button type="button" class="rv-pick" data-i="' + i + '"><b>' + esc(p.title) + "</b><span>" + hMoney(p.monthly_rent, p.currency) + " / month &middot; " + place(p) + "</span></button>"; }).join("") + "</div>";
+      el.querySelectorAll(".rv-pick").forEach(function (b) { b.addEventListener("click", function () { showProperty(h.properties[Number(b.getAttribute("data-i"))], true); }); });
+    }
+    function showProperty(p, fromList) {
+      var fee = Number(p.application_fee) || 0, today = new Date().toISOString().slice(0, 10);
+      if (!preview) {
+        hTrack("property_view", product.id, p);
+        hPx("ViewContent", { content_ids: [p.id], content_name: p.title, content_type: "home_listing", value: Number(p.monthly_rent) || 0, currency: p.currency });
+      }
+      el.innerHTML = '<form class="rv-card" novalidate>' +
+        (fromList && h.properties.length > 1 ? '<button type="button" class="rv-back">&larr; All properties</button>' : "") +
+        (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") +
+        '<div class="rv-prop"><div><b>' + esc(p.title) + '</b><div style="font-size:12.5px;color:var(--rv-muted)">' + place(p) + "</div></div><strong>" + hMoney(p.monthly_rent, p.currency) + "/mo</strong></div>" +
+        '<div class="rv-field"><label>Full name</label><input name="name" autocomplete="name" required></div>' +
+        '<div class="rv-row"><div class="rv-field"><label>Phone</label><input name="phone" type="tel" autocomplete="tel" inputmode="tel"></div>' +
+        '<div class="rv-field"><label>Email <span style="font-weight:400;color:#8c887c">(optional)</span></label><input name="email" type="email" autocomplete="email"></div></div>' +
+        '<div class="rv-row"><div class="rv-field"><label>Desired move-in <span style="font-weight:400;color:#8c887c">(optional)</span></label><input name="move" type="date" min="' + today + '"></div>' +
+        '<div class="rv-field"><label>People moving in <span style="font-weight:400;color:#8c887c">(optional)</span></label><input name="occ" type="number" min="1" max="30" inputmode="numeric"></div></div>' +
+        '<div class="rv-total"><span>Application fee</span><strong>' + (fee > 0 ? hMoney(fee, p.currency) : "No fee") + "</strong></div>" +
+        (p.fee_disclosure ? '<div class="rv-fine">' + esc(p.fee_disclosure) + "</div>" : "") +
+        '<button type="submit" class="rv-btn">' + esc(btnText) + "</button>" +
+        '<div class="rv-msg"></div>' +
+        '<div class="rv-note">🔒 Please don’t enter SSNs or ID numbers here' + (fee > 0 ? " &middot; payment details show right after you submit" : "") + "</div></form>";
+      var form = el.querySelector("form"), eventId = uuid(), started = false, busy = false;
+      var back = el.querySelector(".rv-back"); if (back) back.addEventListener("click", function () { showList(""); });
+      form.addEventListener("focusin", function () {
+        if (started || preview) return; started = true;
+        hTrack("application_start", product.id, p);
+        hPx("InitiateCheckout", { content_ids: [p.id], content_name: p.title, value: fee, currency: p.currency });
+      });
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (busy) return; // double taps
+        var f = form.elements, msg = el.querySelector(".rv-msg"), btn = el.querySelector(".rv-btn");
+        function fail(t) { msg.textContent = t; msg.classList.add("on"); }
+        msg.classList.remove("on");
+        var name = f.name.value.trim(), phone = f.phone.value.trim(), email = f.email.value.trim();
+        if (!name) return fail("Please enter your full name.");
+        if (!phone && !email) return fail("Please enter a phone number or an email address.");
+        if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("That email address doesn’t look right.");
+        if (preview) return fail("Preview mode — applications are not sent.");
+        busy = true; btn.disabled = true; var old = btn.textContent; btn.textContent = "Submitting…";
+        hCall({
+          action: "public_submit", product_id: product.id, property_id: p.id, site_id: site && site.id, site_page_id: d.page && d.page.id,
+          applicant_name: name, applicant_phone: phone || undefined, applicant_email: email || undefined,
+          desired_move_in: f.move.value || undefined, occupants: f.occ.value ? Number(f.occ.value) : undefined, answers: {}, event_id: eventId, fbclid: attr("fbclid")
+        }).then(function (r) {
+          hPx("Lead", { content_ids: [p.id], content_name: p.title, value: fee, currency: p.currency }, { eventID: eventId });
+          hThanks(el, r);
+        }).catch(function (err) {
+          busy = false; btn.disabled = false; btn.textContent = old;
+          fail(/^(request_failed|bad_|not_found)/.test(err.message) ? "Something went wrong, please try again." : err.message);
+        });
+      });
+    }
+    if (h.property) showProperty(h.property, false);
+    else if (h.properties.length === 1 && !h.notice) showProperty(h.properties[0], false);
+    else showList(h.notice);
+  }
+  // Inline thank-you / payment screen for a rental application
+  function hThanks(el, r) {
+    var fee = (r.fee && Number(r.fee.amount)) || 0, cur = (r.fee && r.fee.currency) || (r.property && r.property.currency), pay = r.pay || null, phone = hPhone(r.contact_phone);
+    var ptitle = (r.property && r.property.title) || "the property", rows = "", btns = "";
+    var text = "Thank you. Your application for " + ptitle + " has been submitted." + (fee > 0 ? " Pay the application fee below, then " + (phone ? "call or text your receipt to the property manager." : "send your receipt to the property manager.") : " No application fee is due. The property manager will be in touch.");
+    rows += '<div class="r"><span>Property</span><b>' + esc(ptitle) + "</b></div>";
+    rows += '<div class="r"><span>Application fee</span><b>' + (fee > 0 ? hMoney(fee, cur) : "No fee due") + "</b></div>";
+    if (fee > 0 && pay) {
+      if (pay.bank_name) rows += '<div class="r"><span>Bank</span><b>' + esc(pay.bank_name) + "</b></div>";
+      if (pay.account_number) rows += '<div class="r"><span>Account number</span><b class="acct">' + esc(pay.account_number) + "</b></div>";
+      if (pay.account_name) rows += '<div class="r"><span>Account name</span><b>' + esc(pay.account_name) + "</b></div>";
+      rows += '<div class="r"><span>Reference</span><b>' + esc(pay.reference_to_use || r.ref) + "</b></div>";
+      if (pay.instructions) rows += '<div style="font-size:13px;color:#6a675d;margin-top:6px;white-space:pre-wrap">' + esc(pay.instructions) + "</div>";
+      if (pay.account_number) rows += '<button type="button" data-copy="' + esc(pay.account_number) + '">Copy account number</button>';
+      if (hHttps(pay.payment_link_url)) btns += '<a class="rv-lbtn" target="_blank" rel="noopener" href="' + esc(hHttps(pay.payment_link_url)) + '">Pay online</a>';
+    } else if (fee > 0) {
+      rows += '<div style="font-size:13px;color:#6a675d;margin-top:6px">The property manager will contact you with payment details.</div>';
+    }
+    if (r.fee && r.fee.disclosure) rows += '<div style="font-size:12.5px;color:#8c887c;margin-top:10px">' + esc(r.fee.disclosure) + "</div>";
+    if (phone) {
+      btns += '<a class="rv-lbtn" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>";
+      if (fee > 0) btns += '<a class="rv-lbtn ghost" href="sms:' + esc(phone) + "?&body=" + encodeURIComponent("Hi, I applied for " + ptitle + " and have paid the application fee. Reference " + r.ref) + '">Text receipt</a>';
+    }
+    el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Application received</h2><p>' + esc(text) + '</p><div class="rv-bank">' + rows + "</div>" + btns + '<div class="rv-ref">Reference: ' + esc(r.ref) + "</div></div>";
+    wireCopy(el);
+    try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+  }
+  // Entry point used by mountAll: housing projects get the rental application, everything else the order form.
+  function mountForm(el, d, opts) {
+    var p = d && d.product;
+    if (p && p.is_service) {
+      hDetect(p.id, el.dataset.rvProperty || params.get("property")).then(function (h) {
+        if (h) mountHousing(el, d, h, opts || {}); else mountOrderForm(el, d, opts);
+      });
+      return;
+    }
+    mountOrderForm(el, d, opts);
   }
 
   // Tell every pixel the customer installed about the purchase. The value is the price of the package they picked.
