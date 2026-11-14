@@ -110,6 +110,7 @@ button[type=submit]:disabled{opacity:.6;cursor:default;}
   <div class="ref" id="orderRef"></div>
 </div>
 
+<script src="housing-order.js"></script>
 <script>
 // ── Config: same pattern as every other CRM-connected page in this repo ──────
 const SUPABASE_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
@@ -160,6 +161,17 @@ async function loadProduct() {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     product = data;
+    // Housing projects are saved as services, so only those pay for the extra lookup.
+    // detect() returns null for anything that isn't housing (or if it can't be reached),
+    // and then the normal order form below runs exactly as before.
+    if (product.is_service && window.RevoraHousing) {
+      const housing = await RevoraHousing.detect({ supabaseUrl: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY, productId, propertyRef: qp("property") });
+      if (housing) {
+        if (product.meta_pixel_id) initPixel(product.meta_pixel_id);
+        RevoraHousing.render(housing, { page: document.getElementById("page"), thankyou: document.getElementById("thankyou") }, { fbclid });
+        return;
+      }
+    }
     renderForm();
     if (product.meta_pixel_id) initPixel(product.meta_pixel_id);
   } catch (err) {
