@@ -52,7 +52,7 @@ $$);
 ```
 
 **Replace:**
-- `YOUR_PROJECT` = Your Supabase URL (e.g., `rrkhkhgdxhmogxxtbvyt.supabase.co`)
+- `YOUR_PROJECT` = Your Supabase URL (e.g., `oicqtpjjwmgsiluvkmpu.supabase.co`)
 - `Bearer eyJhbGc...` = Your Service Role Key (from Settings → API)
 
 ## 3️⃣ Add Supabase Credentials to Dashboard
@@ -65,7 +65,7 @@ const SUPABASE_ANON_KEY = '...';
 
 Update with YOUR credentials:
 ```javascript
-const SUPABASE_URL = 'https://rrkhkhgdxhmogxxtbvyt.supabase.co';
+const SUPABASE_URL = 'https://oicqtpjjwmgsiluvkmpu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIs...';
 ```
 

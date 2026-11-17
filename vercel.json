@@ -189,19 +189,19 @@
     },
     {
       "source": "/.well-known/oauth-protected-resource",
-      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
+      "destination": "https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
     },
     {
       "source": "/.well-known/oauth-protected-resource/mcp",
-      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
+      "destination": "https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/mcp/_site/.well-known/oauth-protected-resource"
     },
     {
       "source": "/mcp",
-      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site"
+      "destination": "https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/mcp/_site"
     },
     {
       "source": "/mcp/:path*",
-      "destination": "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp/_site/:path*"
+      "destination": "https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/mcp/_site/:path*"
     },
     {
       "source": "/favicon.ico",

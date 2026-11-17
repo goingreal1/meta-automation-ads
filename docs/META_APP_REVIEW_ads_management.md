@@ -8,7 +8,7 @@ Use this text in **App Dashboard → App Review → Permissions and Features →
 - [ ] Business verification is complete (Settings → Business info → Verification).
 - [ ] App is **Live**, has an icon, a privacy policy URL and a **data deletion** URL (a page that explains how users delete their data, or a callback).
 - [ ] App domain, and the dashboard URL, are listed under Settings → Basic → App domains.
-- [ ] `https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/meta-oauth-callback` is listed as a **Valid OAuth Redirect URI** (Facebook Login for Business → Settings).
+- [ ] `https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/meta-oauth-callback` is listed as a **Valid OAuth Redirect URI** (Facebook Login for Business → Settings).
 - [ ] The Login configuration used for ad accounts includes `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, `pages_manage_ads`/`pages_manage_engagement` if you use them (App Dashboard → Facebook Login for Business → Configurations).
 - [ ] A test user (not your real one) with a dummy ad account and page, and its login shared in the "Reviewer instructions" box on the submission form (never in this repo).
 - [ ] A screen recording (2-4 min, English captions) following the script below.
