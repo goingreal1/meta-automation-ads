@@ -8010,7 +8010,7 @@ async function bvCatProduct(el) {
     };
   } else if (st.tab === "page") {
     body.innerHTML = `<div class="cat-panel"><div class="ph" style="margin-bottom:6px"><div class="ph-title">Sales pages for ${escH(p.product_name)}</div><button type="button" class="btn btn-a" onclick="bvGoToTab('websites')">+ Create a sales page</button></div>
-      ${pages.length ? pages.map(x => `<div class="cat-copy" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><b>${escH(x.name)}</b><p style="-webkit-line-clamp:1">${escH(x.status || "")}${x.slug ? " · /" + escH(x.slug) : ""}</p></div><button type="button" class="btn btn-g" onclick="bvWebEdit('${x.id}')">Edit</button></div>`).join("") : `<div style="color:var(--muted);padding:10px 0">No sales page yet.</div>`}
+      ${pages.length ? pages.map(x => `<div class="cat-copy" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><b>${escH(x.name)}</b><p style="-webkit-line-clamp:1">${escH(x.status || "")}${x.slug ? " · /" + escH(x.slug) : ""}</p></div><button type="button" class="btn btn-g" onclick="bvWebEdit('${x.id}')">Edit</button> <button type="button" class="btn btn-g" onclick="location.href='/ide.html?site=${x.id}'" title="Open the file editor">IDE</button></div>`).join("") : `<div style="color:var(--muted);padding:10px 0">No sales page yet.</div>`}
       <div style="margin-top:14px"><button type="button" class="btn btn-g" onclick="bvOrderLinkModal('${p.id}','${escH(p.product_name).replace(/'/g, "\\'")}')">🔗 Get the order form link</button></div></div>`;
   } else {
     const orders = await sbQuery("orders", `select=order_status,order_value_naira,ordered_at&product_id=eq.${p.id}&order=ordered_at.desc&limit=1000`, { allAccounts: true }).catch(() => []);
@@ -9952,6 +9952,7 @@ function bvWebSitesHtml() {
       <div class="ws-meta"><span>${prod ? "Sells: <b>" + escH(prod.product_name) + "</b>" : "⚠️ No product selected yet"}</span></div>
       <div class="ws-act">
         <button class="btn btn-a" onclick="bvWebEdit('${s.id}')">Edit</button>
+        <button class="btn btn-g" onclick="location.href='/ide.html?site=${s.id}'" title="Open the file editor">IDE</button>
         ${s.status === "published" ? `<a class="btn btn-g" href="${escH(url)}" target="_blank" rel="noopener" style="text-decoration:none;">View</a>` : ""}
         <button class="btn btn-g" onclick="bvWebLinks('${s.id}')" title="Links to every page, on your domain or ours">🔗 Links</button>
         <button class="btn btn-g" onclick="bvWebAdvertise('${s.id}')" title="Run Meta ads that send people to this site">📣 Advertise</button>

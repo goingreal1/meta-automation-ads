@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Site IDE</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f5f7;--panel:#fff;--text:#14161a;--muted:#6b7280;--border:#dfe2e8;--accent:#1877F2;--ok:#16a34a;--err:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#16181d;--panel:#1e2128;--text:#e8eaee;--muted:#8b93a1;--border:#2f343d}}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}body{font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+button,select{font:inherit;color:inherit}
+.bar{display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.bar .sp{flex:1}
+.btn{border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:6px 12px;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--panel);padding:6px 12px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+select{border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:6px 8px;max-width:220px}
+.main{flex:1;display:flex;min-height:0}
+.tree{width:230px;border-right:1px solid var(--border);background:var(--panel);overflow:auto;padding:8px 0;flex:none}
+.tree .head{display:flex;justify-content:space-between;align-items:center;padding:4px 12px 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.f{display:flex;justify-content:space-between;gap:6px;padding:5px 12px;cursor:pointer;font-size:13px}
+.f:hover{background:var(--bg)}.f.on{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.f .x{color:var(--muted);visibility:hidden}.f:hover .x{visibility:visible}
+.f .dot{color:var(--accent)}
+.center{flex:1;display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;overflow:auto;background:var(--panel);border-bottom:1px solid var(--border)}
+.tab{padding:7px 12px;border-right:1px solid var(--border);cursor:pointer;white-space:nowrap;font-size:13px;color:var(--muted)}
+.tab.on{color:var(--text);background:var(--bg)}
+#ed{flex:1;min-height:0}
+.side{width:42%;max-width:640px;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--panel);flex:none}
+.side .t{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+iframe{flex:1;border:0;background:#fff}
+.status{padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);background:var(--panel);display:flex;gap:12px}
+.status .err{color:var(--err)}.status .ok{color:var(--ok)}
+.empty{margin:auto;color:var(--muted);text-align:center;padding:24px}
+@media (max-width:900px){.main{flex-direction:column}.tree{width:auto;max-height:28%;border-right:0;border-bottom:1px solid var(--border)}.side{width:auto;max-width:none;height:40%;border-left:0;border-top:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>Site IDE</b>
+  <select id="site"></select>
+  <div class="seg" id="mode"><button data-m="widget">Widget</button><button data-m="ai">AI chat</button><button data-m="ide" class="on">IDE</button></div>
+  <span class="sp"></span>
+  <button class="btn" id="hist">History</button>
+  <button class="btn" id="prev">Refresh preview</button>
+  <button class="btn" id="test">Open test page</button>
+  <button class="btn pri" id="save" disabled>Save (Ctrl+S)</button>
+  <button class="btn" id="live" disabled>Publish</button>
+</div>
+<div class="main">
+  <div class="tree"><div class="head"><span>Files</span><button class="btn" id="newf" style="padding:2px 8px">+ New</button></div><div id="files"></div></div>
+  <div class="center"><div class="tabs" id="tabs"></div><div id="ed"><div class="empty">Pick a site, then a file.</div></div></div>
+  <div class="side"><div class="t"><b>Live preview</b><span style="color:var(--muted);font-size:12px" id="pvnote"></span></div><iframe id="pv" sandbox="allow-scripts allow-forms allow-popups"></iframe></div>
+</div>
+<div class="status"><span id="st">Loading…</span><span class="sp" style="flex:1"></span><span id="pos"></span></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+<script>
+var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
+var sb = window.supabase.createClient(SUPA_URL, ANON);
+var $ = function (id) { return document.getElementById(id); };
+var S = { site: null, sites: [], files: [], open: {}, current: null, editor: null, monaco: null };
+function status(t, cls) { $("st").className = cls || ""; $("st").textContent = t; }
+async function call(body) {
+  var s = (await sb.auth.getSession()).data.session;
+  if (!s) { location.href = "/login.html?next=" + encodeURIComponent(location.pathname + location.search); throw new Error("login"); }
+  var r = await fetch(SUPA_URL + "/functions/v1/site-ide", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token, apikey: ANON }, body: JSON.stringify(body) });
+  var j = await r.json().catch(function () { return {}; });
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+function tool(name, args) { return call({ action: "tool", tool: name, args: args }); }
+function langOf(p) { var e = (p.split(".").pop() || "").toLowerCase(); return { html: "html", htm: "html", css: "css", js: "javascript", json: "json", md: "markdown", svg: "xml", txt: "plaintext" }[e] || "plaintext"; }
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+async function loadSites() {
+  var r = await tool("site_list_files", {});
+  S.sites = r.sites || r.items || [];
+  $("site").innerHTML = S.sites.length ? S.sites.map(function (s) { return '<option value="' + s.site_id + '">' + esc(s.name || s.title || s.slug || s.site_id) + (s.status ? " · " + esc(s.status) : "") + "</option>"; }).join("") : '<option value="">No file-based sites yet</option>';
+  var want = new URLSearchParams(location.search).get("site");
+  if (want && S.sites.some(function (s) { return s.site_id === want; })) $("site").value = want;
+  if (S.sites.length) await openSite($("site").value); else status("No file-based sites yet. Ask your AI assistant to create one with site_new, or import a .zip.");
+}
+async function openSite(id) {
+  S.site = id; S.open = {}; S.current = null; renderTabs();
+  var r = await tool("site_list_files", { site_id: id });
+  S.files = r.files || r.tree || [];
+  S.meta = r; renderFiles();
+  var first = S.files.find(function (f) { return f.path === "index.html"; }) || S.files[0];
+  if (first) await openFile(first.path); else { S.editor && S.editor.setValue(""); }
+  status("Opened " + (r.name || "site") + " · " + S.files.length + " files", "ok");
+  $("live").disabled = false; refreshPreview();
+}
+function renderFiles() {
+  $("files").innerHTML = S.files.map(function (f) { var o = S.open[f.path]; return '<div class="f ' + (S.current === f.path ? "on" : "") + '" data-p="' + esc(f.path) + '"><span>' + esc(f.path) + (o && o.dirty ? ' <span class="dot">●</span>' : "") + '</span><span class="x" data-del="' + esc(f.path) + '" title="Delete">✕</span></div>'; }).join("");
+}
+function renderTabs() {
+  $("tabs").innerHTML = Object.keys(S.open).map(function (p) { return '<div class="tab ' + (S.current === p ? "on" : "") + '" data-p="' + esc(p) + '">' + esc(p.split("/").pop()) + (S.open[p].dirty ? " ●" : "") + "</div>"; }).join("");
+}
+async function openFile(path) {
+  if (!S.open[path]) {
+    var g = await call({ action: "get", site_id: S.site, path: path });
+    S.open[path] = { version: g.version, saved: g.content, model: S.monaco.editor.createModel(g.content, langOf(path)), dirty: false };
+    (function (p) { S.open[p].model.onDidChangeContent(function () { var o = S.open[p]; o.dirty = o.model.getValue() !== o.saved; renderTabs(); renderFiles(); $("save").disabled = !S.open[S.current] || !S.open[S.current].dirty; }); })(path);
+  }
+  S.current = path; S.editor.setModel(S.open[path].model); renderTabs(); renderFiles(); $("save").disabled = !S.open[path].dirty;
+}
+async function save() {
+  var o = S.open[S.current]; if (!o || !o.dirty) return;
+  var content = o.model.getValue(); status("Saving…");
+  try {
+    var r = await tool("site_write_file", { site_id: S.site, path: S.current, content: content, if_version: o.version });
+    if (r.error) throw new Error(r.error);
+    o.version = r.version || (o.version + 1); o.saved = content; o.dirty = false;
+    renderTabs(); renderFiles(); $("save").disabled = true; status("Saved " + S.current + " (version " + o.version + ")", "ok"); refreshPreview();
+  } catch (e) { status(e.message, "err"); }
+}
+function inline(html, files) {
+  var m = {}; files.forEach(function (f) { m[f.path] = f.content; });
+  function find(h) { h = h.replace(/^\.?\//, ""); return m[h]; }
+  html = html.replace(/<link[^>]*href=["']([^"']+\.css)["'][^>]*>/gi, function (all, h) { var c = find(h); return c != null ? "<style>" + c + "</style>" : all; });
+  html = html.replace(/<script([^>]*)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi, function (all, a, h, b) { var c = find(h); return c != null ? "<script" + a + b + ">" + c.replace(/<\/script/gi, "<\\/script") + "<\/script>" : all; });
+  return html;
+}
+async function refreshPreview() {
+  if (!S.site) return;
+  try {
+    var page = S.current && /\.html?$/i.test(S.current) ? S.current : "index.html";
+    var paths = S.files.map(function (f) { return f.path; });
+    var r = await call({ action: "get_many", site_id: S.site, paths: paths });
+    var files = r.files || [], pageF = files.find(function (f) { return f.path === page; });
+    // Unsaved edits show in the preview too.
+    files.forEach(function (f) { var o = S.open[f.path]; if (o) f.content = o.model.getValue(); });
+    pageF = files.find(function (f) { return f.path === page; });
+    $("pv").srcdoc = pageF ? inline(pageF.content, files) : "<p style='font:14px sans-serif;padding:20px'>No " + esc(page) + " in this site.</p>";
+    $("pvnote").textContent = page;
+  } catch (e) { $("pvnote").textContent = e.message; }
+}
+$("files").onclick = async function (e) {
+  var d = e.target.getAttribute("data-del");
+  if (d) { if (!confirm("Delete " + d + "? You can bring it back from History.")) return;
+    try { var r = await tool("site_delete_file", { site_id: S.site, path: d }); if (r.error) throw new Error(r.error); if (S.open[d]) { S.open[d].model.dispose(); delete S.open[d]; } await openSite(S.site); } catch (x) { status(x.message, "err"); } return; }
+  var f = e.target.closest(".f"); if (f) openFile(f.getAttribute("data-p"));
+};
+$("tabs").onclick = function (e) { var t = e.target.closest(".tab"); if (t) openFile(t.getAttribute("data-p")); };
+$("site").onchange = function () { openSite(this.value); };
+$("test").onclick = function () { if (S.meta && S.meta.test_link) window.open(S.meta.test_link, "_blank"); };
+$("save").onclick = save; $("prev").onclick = refreshPreview;
+$("newf").onclick = async function () {
+  var p = prompt("New file path (e.g. about.html, styles/extra.css, assets/js/app.js)"); if (!p) return;
+  try { var r = await tool("site_write_file", { site_id: S.site, path: p.trim(), content: /\.html?$/i.test(p) ? "<!doctype html>\n<html>\n<head><meta charset=\"utf-8\"><title>New page</title></head>\n<body>\n\n</body>\n</html>\n" : "\n" }); if (r.error) throw new Error(r.error); await openSite(S.site); await openFile(p.trim()); } catch (x) { status(x.message, "err"); }
+};
+$("hist").onclick = async function () {
+  if (!S.current) return;
+  try { var r = await tool("site_history", { site_id: S.site, path: S.current }); var v = r.versions || r.history || [];
+    var pick = prompt("Saved versions of " + S.current + " (newest first):\n" + v.map(function (x) { return "v" + x.version + " · " + (x.action || "") + " · " + (x.saved_at || x.when || ""); }).join("\n") + "\n\nType a version number to restore it, or Cancel."); if (!pick) return;
+    var rr = await tool("site_rollback", { site_id: S.site, path: S.current, version: Number(pick.replace(/\D/g, "")) }); if (rr.error) throw new Error(rr.error);
+    delete S.open[S.current]; var cur = S.current; await openSite(S.site); await openFile(cur); status("Restored " + cur, "ok");
+  } catch (x) { status(x.message, "err"); }
+};
+$("live").onclick = async function () {
+  if (!confirm("Publish this site so customers see it? Every save after this shows to customers at once. (History can undo a change.)")) return;
+  try { var r = await tool("site_set_live", { site_id: S.site, live: true }); if (r.error) throw new Error(r.error); status(r.next || "The site is live.", "ok"); } catch (x) { status(x.message, "err"); }
+};
+$("mode").onclick = function (e) {
+  var m = e.target.getAttribute("data-m"); if (!m) return;
+  if (m === "widget") { location.href = "/builder.html" + (S.site ? "?site=" + S.site : ""); return; }
+  if (m === "ai") { alert("AI chat mode is the next step. For now, ask ChatGPT or Claude (connected to Revora) to edit this site, then press Refresh preview."); return; }
+};
+window.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); save(); } });
+window.addEventListener("beforeunload", function (e) { if (Object.keys(S.open).some(function (p) { return S.open[p].dirty; })) { e.preventDefault(); e.returnValue = ""; } });
+require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs" } });
+require(["vs/editor/editor.main"], function () {
+  S.monaco = monaco;
+  S.editor = monaco.editor.create($("ed"), { automaticLayout: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "vs-dark" : "vs", minimap: { enabled: false }, fontSize: 14, wordWrap: "on", scrollBeyondLastLine: false });
+  S.editor.onDidChangeCursorPosition(function (e) { $("pos").textContent = "Ln " + e.position.lineNumber + ", Col " + e.position.column; });
+  S.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
+  loadSites().catch(function (e) { if (e.message !== "login") status(e.message, "err"); });
+});
+</script>
+</body>
+</html>
