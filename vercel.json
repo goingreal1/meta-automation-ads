@@ -287,8 +287,8 @@
     },
     "api/transcode.js": {
       "includeFiles": "node_modules/ffmpeg-static/**",
-      "maxDuration": 60,
-      "memory": 1024
+      "maxDuration": 300,
+      "memory": 3008
     }
   },
   "redirects": [
