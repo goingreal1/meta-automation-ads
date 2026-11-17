@@ -2162,7 +2162,7 @@ const BN_MORE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 // plain list on the More tab, with a back arrow in a top bar (like a native app).
 const MORE_META = {
   calllogs: ["#34c759", "Calls your AI answered"], support: ["#ff9500", "Chats waiting for a human"],
-  riders: ["#5856d6", "Riders and deliveries"], caredesk: ["#af52de", "Your customer care team"],
+  riders: ["#5856d6", "Shipbubble deliveries and tracking"], caredesk: ["#af52de", "Your customer care team"],
   forms: ["#007aff", "Your order form links"], performance: ["#ff2d55", "What you spent and earned"],
   assistant: ["#af52de", "Ask your AI anything"], leaderboard: ["#ffcc00", "Best media buyers"],
   wallet: ["#34c759", "Balance, add funds, send money"], catalog: ["#ff9500", "Products, photos and prices"],
@@ -9410,8 +9410,85 @@ async function renderCareDesk(el) {
   });
 }
 
+
+// ── Delivery (Shipbubble) ───────────────────────────────────────────────────────────────
+// Shipbubble picks the courier, collects the parcel and reports every step by webhook, so this view only shows
+// what is happening and lets the team fix a failed booking. No riders to assign.
+const BV_SHIP_STAGES = [["booked", "Booked"], ["picked_up", "Picked up"], ["in_transit", "On the way"], ["delivered", "Delivered"]];
+function bvShipStage(o) {
+  if (o.order_status === "delivered") return "delivered";
+  if (o.order_status === "cancelled") return "cancelled";
+  if (!o.shipbubble_order_id) return o.shipbubble_error ? "failed" : "waiting";
+  const st = String(o.shipbubble_status || "").toLowerCase();
+  if (/deliver/.test(st)) return "delivered";
+  if (/transit|out_for|on_the_way|dispatch/.test(st) || o.delivery_stage === "on_the_way") return "in_transit";
+  if (/pick/.test(st)) return "picked_up";
+  return "booked";
+}
+async function renderShipDelivery(el) {
+  const orders = await sbQuery("orders", "select=id,customer_name,customer_phone,customer_city,customer_state,customer_address,order_value_naira,order_status,delivery_stage,payment_method,ordered_at,delivered_at,shipbubble_order_id,shipbubble_status,shipbubble_courier,shipbubble_tracking_code,shipbubble_tracking_url,shipbubble_error,shipbubble_attempts,shipbubble_mode,shipping_fee_naira,cod_amount_naira,cod_remitted_at&order_status=in.(valid,delivered)&order=ordered_at.desc&limit=200") || [];
+  const rows = orders.map(o => ({ o, st: bvShipStage(o) }));
+  const n = (st) => rows.filter(r => r.st === st).length;
+  const active = rows.filter(r => !["delivered", "cancelled"].includes(r.st));
+  const tab = window.bvShipFilter || "active";
+  const shown = tab === "all" ? rows : tab === "delivered" ? rows.filter(r => r.st === "delivered") : tab === "problem" ? rows.filter(r => r.st === "failed") : active;
+  const pill = (st) => {
+    const m = { waiting: ["Booking…", "#8e8e93"], failed: ["Needs attention", "#ff3b30"], booked: ["Booked", "#0a84ff"], picked_up: ["Picked up", "#5856d6"], in_transit: ["On the way", "#ff9f0a"], delivered: ["Delivered", "#34c759"], cancelled: ["Cancelled", "#8e8e93"] }[st] || [st, "#8e8e93"];
+    return `<span style="display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:600;color:#fff;background:${m[1]};">${m[0]}</span>`;
+  };
+  const steps = (st) => {
+    const idx = BV_SHIP_STAGES.findIndex(x => x[0] === st);
+    return `<div style="display:flex;gap:4px;margin-top:6px;">${BV_SHIP_STAGES.map((x, i) => `<div title="${x[1]}" style="flex:1;height:4px;border-radius:2px;background:${idx >= i ? "var(--accent)" : "var(--border)"};"></div>`).join("")}</div>`;
+  };
+  const card = ({ o, st }) => {
+    const cod = /pay on delivery|cash on delivery|\bcod\b/i.test(o.payment_method || "");
+    const test = o.shipbubble_order_id && o.shipbubble_mode && o.shipbubble_mode !== "live";
+    return `<div class="set-card" style="padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+        <div style="min-width:0;"><b>${escH(o.customer_name || "Customer")}</b>
+          <div style="font-size:12px;color:var(--text2);">${escH([o.customer_city, o.customer_state].filter(Boolean).join(", ") || "No address")} · ${fN(o.order_value_naira)}${cod ? " · Pay on delivery" : ""}</div></div>
+        <div style="text-align:right;">${pill(st)}${test ? `<div style="font-size:10px;color:var(--text2);margin-top:3px;">test shipment</div>` : ""}</div>
+      </div>
+      ${["booked", "picked_up", "in_transit", "delivered"].includes(st) ? steps(st) : ""}
+      ${o.shipbubble_courier ? `<div style="font-size:12px;color:var(--text2);margin-top:8px;">🚚 ${escH(o.shipbubble_courier)}${o.shipping_fee_naira ? ` · delivery fee ${fN(o.shipping_fee_naira)}` : ""}${o.shipbubble_tracking_code ? ` · #${escH(o.shipbubble_tracking_code)}` : ""}</div>` : ""}
+      ${st === "failed" || (st === "waiting" && o.shipbubble_error) ? `<div style="font-size:12px;color:var(--danger);margin-top:8px;">${escH(o.shipbubble_error || "Booking failed")}</div>` : ""}
+      ${cod && st === "delivered" ? `<div style="font-size:12px;color:var(--text2);margin-top:6px;">${o.cod_remitted_at ? "💰 Cash remitted by Shipbubble" : "⏳ Cash not yet remitted by Shipbubble"}</div>` : ""}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+        ${o.shipbubble_tracking_url ? `<a class="btn btn-g" style="padding:4px 10px;font-size:12px;" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
+        ${o.customer_phone ? `<a class="btn btn-g" style="padding:4px 10px;font-size:12px;" href="https://wa.me/${escH(String(o.customer_phone).replace(/\D/g, "").replace(/^0/, "234"))}" target="_blank" rel="noopener">WhatsApp customer</a>` : ""}
+        ${["failed", "waiting"].includes(st) && o.order_status === "valid" ? `<button class="btn btn-a" style="padding:4px 10px;font-size:12px;" onclick="bvShipAct('${o.id}','retry',this)">Book delivery now</button><button class="btn btn-g" style="padding:4px 10px;font-size:12px;" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}
+      </div></div>`;
+  };
+  const chip = (id, label, count) => `<button class="bv-preset ${tab === id ? "on" : ""}" onclick="window.bvShipFilter='${id}';renderRiders(document.getElementById('mainContent'))">${label}${count != null ? ` (${count})` : ""}</button>`;
+  el.innerHTML = `
+    <div class="panel"><div class="ph"><div class="ph-title">Deliveries</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px;">
+        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:var(--text2);">On the way</div><b style="font-size:20px;">${n("in_transit") + n("picked_up")}</b></div>
+        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:var(--text2);">Booked</div><b style="font-size:20px;">${n("booked")}</b></div>
+        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:var(--text2);">Delivered</div><b style="font-size:20px;">${n("delivered")}</b></div>
+        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:${n("failed") ? "var(--danger)" : "var(--text2)"};">Need attention</div><b style="font-size:20px;">${n("failed")}</b></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${chip("active", "In progress", active.length)}${chip("problem", "Needs attention", n("failed"))}${chip("delivered", "Delivered", n("delivered"))}${chip("all", "All", rows.length)}</div>
+      ${shown.length ? shown.map(card).join("") : `<div style="padding:24px;text-align:center;color:var(--text2);">Nothing here yet. When an order is confirmed, Shipbubble books the courier automatically and the steps show up here.</div>`}
+    </div>`;
+}
+async function bvShipAct(orderId, action, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const out = await sbFn("delivery-admin", { action, order_id: orderId });
+    if (out?.error) throw new Error(out.error);
+    if (action === "rates") {
+      const r = out?.rates || out?.couriers || out?.quotes || out;
+      alert("Courier prices:\n\n" + (Array.isArray(r) ? r.map(x => `${x.courier_name || x.name || "Courier"}: ₦${Number(x.total || x.amount || x.fee || 0).toLocaleString()}`).join("\n") : JSON.stringify(r, null, 2).slice(0, 700)));
+    } else bvToast(out?.skipped || out?.error || "Delivery booked.");
+  } catch (e) { bvToast(e.message || "That didn't work.", "err"); }
+  if (btn) btn.disabled = false;
+  document.querySelector('[data-tab="riders"]')?.click();
+}
+
 async function renderRiders(el) {
   const isDeliveryAgent = window.myProfile?.role === "delivery_agent";
+  if (!isDeliveryAgent) return renderShipDelivery(el);
   const [agents, orders] = await Promise.all([
     sbQuery("delivery_agents", "select=*&order=name.asc"),
     sbQuery("orders", `select=id,delivery_agent_id,delivery_stage,order_status,assignment_status,assignment_offered_at,order_value_naira,customer_name,customer_phone,customer_city,customer_state,ordered_at,delivered_at,payments(status,paid_at)&delivery_agent_id=not.is.null&order=ordered_at.desc`),
