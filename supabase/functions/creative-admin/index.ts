@@ -63,6 +63,24 @@ Deno.serve(async (req) => {
     }).select("*").single();
     return error ? json({ error: error.message }, 500) : json({ success: true, asset });
   }
+  // replace_file: swap the stored file of a creative for a converted one (used by the video converter).
+  if (b.action === "replace_file") {
+    const rid = String(b?.id ?? ""), key = String(b?.key ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(rid) || !key.startsWith(`creative-vault/${ud.user.id}/`) || key.includes("..")) return json({ error: "Not allowed." }, 403);
+    const { data: cur } = await db.from("creative_assets").select("id, public_url, storage_path, storage_provider").eq("id", rid).eq("company_id", me.company_id).maybeSingle();
+    if (!cur) return json({ error: "Creative not found." }, 404);
+    const acc = Deno.env.get("R2_ACCOUNT_ID"), bucket = Deno.env.get("R2_BUCKET");
+    let pub = (Deno.env.get("R2_PUBLIC_URL") ?? "").trim().replace(/\/+$/, ""); if (pub && !/^https?:\/\//.test(pub)) pub = "https://" + pub;
+    const r2 = new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!, secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!, service: "s3", region: "auto" });
+    const enc = (k: string) => k.split("/").map(encodeURIComponent).join("/");
+    const head = await r2.fetch(`https://${acc}.r2.cloudflarestorage.com/${bucket}/${enc(key)}`, { method: "HEAD" });
+    if (!head.ok) return json({ error: "The converted file isn't in storage." }, 409);
+    const newUrl = `${pub}/${enc(key)}`;
+    const { data: upd, error } = await db.from("creative_assets").update({ public_url: newUrl, storage_path: key, storage_provider: "r2" }).eq("company_id", me.company_id).eq("public_url", cur.public_url).select("*");
+    if (error) return json({ error: error.message }, 500);
+    if (cur.storage_provider === "r2" && cur.storage_path && cur.storage_path !== key) await r2.fetch(`https://${acc}.r2.cloudflarestorage.com/${bucket}/${enc(cur.storage_path)}`, { method: "DELETE" }).catch(() => {});
+    return json({ ok: true, asset: (upd ?? []).find((x: any) => x.id === rid) ?? upd?.[0] });
+  }
   const id = String(b?.id ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Missing creative id." }, 400);
   const { data: src } = await db.from("creative_assets").select("id, public_url, company_id").eq("id", id).eq("company_id", me.company_id).maybeSingle();
