@@ -117,7 +117,7 @@ const TOOLS: Tool[] = [
   { name: "list_creatives", title: "List creatives", description: "Clear table of the ad CREATIVES (images and videos) the person has for a product, with format, upload date and whether each was used in ads. The product photo is NOT a creative and is never listed. Show table_markdown exactly as given, say how many images and videos exist, ask image or video, and let them pick by number. Pass the chosen ids to plan_campaign.", inputSchema: OBJ({ ...accountProp, product_name: str("Product these creatives are for"), type: { type: "string", enum: ["image", "video", "any"], description: "Filter. Default any." }, include_unassigned: { type: "boolean", description: "Also list creatives that have no product yet, so the person can say which product they belong to (then call assign_creative)." } }), annotations: { readOnlyHint: true },
     run: async (a, c) => {
       const key = String(a?.product_name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-      const { data } = await admin.from("creative_library").select("library_id, source, product_key, kind, url, name, times_used, first_uploaded").eq("company_id", c.companyId).limit(500);
+      const { data } = await admin.from("creative_library").select("library_id, source, product_key, kind, url, name, times_used, first_uploaded, primary_text, headline, description, cta_type").eq("company_id", c.companyId).limit(500);
       const seen = new Set<string>();
       const all = (data ?? []).filter((r: any) => /^https:\/\//.test(r.url) && !seen.has(r.url) && seen.add(r.url));
       const unassigned = all.filter((r: any) => !r.product_key);
@@ -126,8 +126,8 @@ const TOOLS: Tool[] = [
       const rows = (want === "any" ? mine : mine.filter((r: any) => r.kind === want)).sort((x: any, y: any) => (x.source === "vault" ? 1 : 0) - (y.source === "vault" ? 1 : 0) || String(x.first_uploaded).localeCompare(String(y.first_uploaded))).slice(0, 24);
       const role = (r: any) => r.source === "product_ad_image" ? "SHOP AD IMAGE (product page)" : r.product_key ? "CREATIVE (vault upload)" : "UNASSIGNED creative (no product yet)";
       const ext = (r: any) => (String(r.name).match(/\.(\w{2,5})$/)?.[1] || r.url.match(/\.(\w{2,5})(?:\?|$)/)?.[1] || "?").toLowerCase();
-      const items = rows.map((r: any, i: number) => ({ number: i + 1, id: r.library_id, id_end: String(r.library_id).slice(-6), role: role(r), type: r.kind, file: r.name, format: ext(r), uploaded: String(r.first_uploaded).slice(0, 10), used_in_ads: r.times_used || 0, warning: ext(r) === "webp" ? "webp may not display or may be rejected by Meta; prefer png or jpg" : undefined, preview_url: r.url }));
-      const table = ["| # | Preview | Role | File | Format | Uploaded | Used in ads |", "|---|---|---|---|---|---|---|", ...items.map((x: any) => `| ${x.number} | ![#${x.number}](${x.preview_url}) [open](${x.preview_url}) | ${x.role} | ${x.file} (…${x.id_end}) | ${x.format}${x.warning ? " ⚠️" : ""} | ${x.uploaded} | ${x.used_in_ads ? x.used_in_ads : "never"} |`)].join("\n");
+      const items = rows.map((r: any, i: number) => ({ number: i + 1, id: r.library_id, id_end: String(r.library_id).slice(-6), role: role(r), type: r.kind, file: r.name, format: ext(r), uploaded: String(r.first_uploaded).slice(0, 10), used_in_ads: r.times_used || 0, primary_text: r.primary_text || null, headline: r.headline || null, description: r.description || null, button: r.cta_type || null, warning: ext(r) === "webp" ? "webp may not display or may be rejected by Meta; prefer png or jpg" : undefined, preview_url: r.url }));
+      const table = ["| # | Preview | Role | Name | Format | Uploaded | Used in ads | Ad text |", "|---|---|---|---|---|---|---|---|", ...items.map((x: any) => `| ${x.number} | ![#${x.number}](${x.preview_url}) [open](${x.preview_url}) | ${x.role} | ${x.file} (…${x.id_end}) | ${x.format}${x.warning ? " ⚠️" : ""} | ${x.uploaded} | ${x.used_in_ads ? x.used_in_ads : "never"} | ${x.headline || x.primary_text ? `**${String(x.headline || "").replace(/\|/g, "/")}** ${String(x.primary_text || "").replace(/\|/g, "/").replace(/\s+/g, " ").slice(0, 80)}` : "none saved"} |`)].join("\n");
       return {
         product: a?.product_name || null,
         counts: { images: mine.filter((r: any) => r.kind === "image").length, videos: mine.filter((r: any) => r.kind === "video").length, creatives_for_this_product: mine.filter((r: any) => r.product_key).length, unassigned_creatives_not_shown: a?.include_unassigned === true ? 0 : unassigned.length, other_products_not_shown: key ? all.filter((r: any) => r.product_key && r.product_key !== key).length : 0 },
@@ -135,6 +135,35 @@ const TOOLS: Tool[] = [
         table_markdown: table, creatives: items,
         note: "Show table_markdown exactly as given (previews, role, format, upload date, usage). The pictures MUST come only from each row's preview_url: never web-search for images, never use stock or lookalike pictures, and if a picture does not display, give that row's open link instead. Then state the counts in plain words (say 'no video yet' if videos is 0). If unassigned_creatives_not_shown is above 0, tell the person and offer to list them (include_unassigned) so they can say which product they belong to, then call assign_creative. Warn about any webp, and ask image or video and which numbers to use. A creative can be reused in several ads. Pass the chosen ids as asset_ids, and build ads[] if they want more ads than creatives.",
       };
+    } },
+  { name: "update_creative", title: "Name a creative or save its ad text", description: "Give a creative a name, or save its primary text, headline, description and button so plan_campaign and the dashboard can reuse them. Use the id from list_creatives. Only save text the person approved or wrote; never invent claims. Changes every saved copy of that file.", inputSchema: OBJ({ creative_id: str("The creative id from list_creatives"), name: str("A name for the creative, e.g. 'Lagos testimonial video'"), primary_text: str("The main ad text"), headline: str("The headline"), description: str("The description line"), button: str("Button type, e.g. SHOP_NOW, LEARN_MORE, WHATSAPP_MESSAGE, ORDER_NOW") }, ["creative_id"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can do this." };
+      if (!/^[0-9a-f-]{36}$/i.test(String(a?.creative_id))) return { error: "Use the creative id from list_creatives." };
+      const { data: src } = await admin.from("creative_assets").select("public_url").eq("id", a.creative_id).eq("company_id", c.companyId).maybeSingle();
+      if (!src?.public_url) return { error: "That creative was not found." };
+      const patch: Record<string, unknown> = {};
+      if (a?.name !== undefined) patch.display_name = String(a.name).trim().slice(0, 120) || null;
+      if (a?.primary_text !== undefined) patch.primary_text = String(a.primary_text).slice(0, 2000) || null;
+      if (a?.headline !== undefined) patch.headline = String(a.headline).slice(0, 255) || null;
+      if (a?.description !== undefined) patch.description = String(a.description).slice(0, 500) || null;
+      if (a?.button !== undefined) patch.cta_type = String(a.button).toUpperCase().replace(/[^A-Z_]/g, "") || null;
+      if (!Object.keys(patch).length) return { error: "Nothing to change. Give a name, primary_text, headline, description or button." };
+      const { error, count } = await admin.from("creative_assets").update(patch, { count: "exact" }).eq("company_id", c.companyId).eq("public_url", src.public_url);
+      return error ? { error: error.message } : { ok: true, saved: Object.keys(patch), copies_updated: count };
+    } },
+  { name: "delete_creative", title: "Delete a creative (asks for confirmation)", description: "Delete an uploaded creative and its file. ALWAYS call it first WITHOUT confirmed: it says what will be deleted and whether ads used it. Tell the person, and only after they clearly say yes call again with confirmed true. Ads already running are not stopped.", inputSchema: OBJ({ creative_id: str("The creative id from list_creatives"), confirmed: { type: "boolean", description: "true only after the person said yes" } }, ["creative_id"]), annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, write: true,
+    run: async (a, c) => {
+      if (!["owner", "admin", "buyer"].includes(c.role)) return { error: "Only owners, admins and media buyers can do this." };
+      if (!/^[0-9a-f-]{36}$/i.test(String(a?.creative_id))) return { error: "Use the creative id from list_creatives (the product photo can't be deleted here)." };
+      const { data: src } = await admin.from("creative_assets").select("public_url, file_name, display_name").eq("id", a.creative_id).eq("company_id", c.companyId).maybeSingle();
+      if (!src?.public_url) return { error: "That creative was not found." };
+      const { data: rows } = await admin.from("creative_assets").select("launch_batch_id, campaign_name").eq("company_id", c.companyId).eq("public_url", src.public_url);
+      const used = (rows ?? []).filter((r: any) => r.launch_batch_id || r.campaign_name).length;
+      if (a?.confirmed !== true) return { needs_confirmation: true, creative: src.display_name || src.file_name, used_in_ads: used, say: `This will delete "${src.display_name || src.file_name}" and its file${used ? `. It was used in ${used} ad${used > 1 ? "s" : ""}; those keep running but you can't reuse it` : ""}. Ask the person to confirm, then call again with confirmed true.` };
+      const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/creative-admin`, { method: "POST", headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" }, body: JSON.stringify({ action: "delete", id: a.creative_id, force: true }) });
+      const o = await r.json().catch(() => ({}));
+      return r.ok ? { ok: true, deleted: o.deleted ?? 1 } : { error: o?.error || "Could not delete it." };
     } },
   { name: "assign_creative", title: "Assign a creative to a product", description: "Link an uploaded creative (image or video) to a product so it shows up for that product only. Use the id from list_creatives. Only do this when the person says which product it belongs to.", inputSchema: OBJ({ creative_id: str("The creative id from list_creatives"), product_name: str("The product it belongs to") }, ["creative_id", "product_name"]), annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, write: true,
     run: async (a, c) => {

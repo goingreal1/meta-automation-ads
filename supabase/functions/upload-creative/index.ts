@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { AwsClient } from "npm:aws4fetch@1.0.20";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -49,6 +50,7 @@ Deno.serve(async (req: Request) => {
     const file = formData.get('file') as File;
     const primaryText = (formData.get('primary_text') as string) || null;
     const headline = (formData.get('headline') as string) || null;
+    const creativeName = ((formData.get('creative_name') as string) || '').trim().slice(0, 120) || null;
     const description = (formData.get('description') as string) || null;
     const mechanism = (formData.get('mechanism') as string) || null;
     const format = (formData.get('format') as string) || null;
@@ -98,29 +100,32 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Upload to Supabase Storage
+    // Upload to Cloudflare R2 (big media lives there, not in Supabase Storage). Falls back to the old bucket only if R2 is not configured.
     const arrayBuffer = await file.arrayBuffer();
-    const { data: storageData, error: storageError } = await supabase.storage
-      .from('creative-vault')
-      .upload(bucketPath, new Uint8Array(arrayBuffer), {
-        contentType: file.type,
-        upsert: false,
-      });
-
-    if (storageError) {
-      console.error('Storage upload error:', storageError);
-      return new Response(
-        JSON.stringify({ error: `Storage error: ${storageError.message}` }),
-        { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      );
+    let fileUrl = '';
+    let storageProvider = 'supabase';
+    let storedPath = bucketPath;
+    const R2_ACCOUNT = Deno.env.get('R2_ACCOUNT_ID') ?? '', R2_BUCKET = Deno.env.get('R2_BUCKET') ?? '';
+    let R2_PUBLIC = (Deno.env.get('R2_PUBLIC_URL') ?? '').trim().replace(/\/+$/, '');
+    if (R2_PUBLIC && !/^https?:\/\//.test(R2_PUBLIC)) R2_PUBLIC = 'https://' + R2_PUBLIC;
+    if (R2_ACCOUNT && R2_BUCKET && R2_PUBLIC && Deno.env.get('R2_ACCESS_KEY_ID')) {
+      const r2 = new AwsClient({ accessKeyId: Deno.env.get('R2_ACCESS_KEY_ID')!, secretAccessKey: Deno.env.get('R2_SECRET_ACCESS_KEY')!, service: 's3', region: 'auto' });
+      const key = `creative-vault/${ownAcct.company_id}/${assetType}s/${filename}`;
+      const put = await r2.fetch(`https://${R2_ACCOUNT}.r2.cloudflarestorage.com/${R2_BUCKET}/${key.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', body: new Uint8Array(arrayBuffer), headers: { 'content-type': file.type, 'cache-control': 'public, max-age=31536000' } });
+      if (!put.ok) {
+        console.error('R2 upload error:', put.status, (await put.text()).slice(0, 200));
+        return new Response(JSON.stringify({ error: `Storage error (${put.status})` }), { status: 502, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+      fileUrl = `${R2_PUBLIC}/${key.split('/').map(encodeURIComponent).join('/')}`;
+      storageProvider = 'r2'; storedPath = key;
+    } else {
+      const { error: storageError } = await supabase.storage.from('creative-vault').upload(bucketPath, new Uint8Array(arrayBuffer), { contentType: file.type, upsert: false });
+      if (storageError) {
+        console.error('Storage upload error:', storageError);
+        return new Response(JSON.stringify({ error: `Storage error: ${storageError.message}` }), { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      }
+      fileUrl = supabase.storage.from('creative-vault').getPublicUrl(bucketPath).data?.publicUrl ?? '';
     }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('creative-vault')
-      .getPublicUrl(bucketPath);
-
-    const fileUrl = urlData?.publicUrl ?? '';
 
     // Multi-tenancy (Phase 1): stamp which company this creative belongs to,
     // via the ad account it's being uploaded for -- adAccountId is always
@@ -140,7 +145,9 @@ Deno.serve(async (req: Request) => {
       .insert({
         company_id: adAccountRow.company_id,
         file_name: file.name,
-        storage_path: bucketPath,
+        storage_path: storedPath,
+        storage_provider: storageProvider,
+        display_name: creativeName,
         public_url: fileUrl,
         asset_type: assetType,
         mechanism: mechanism,
