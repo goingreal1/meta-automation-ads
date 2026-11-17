@@ -3408,7 +3408,7 @@ async function render() {
     else if (activeTab === "website-leads") await renderWebsiteLeads(c);
     else if (activeTab === "approvals") await renderApprovals(c);
     else if (activeTab === "earnings")  await renderEarnings(c);
-    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderPagesPanel(); bvRenderWaPanel(); bvRenderHelpPanel(); bvRenderBillingPanel(); }
+    else if (activeTab === "settings")  { await renderSettings(c); bvRenderNotifPanel(); bvRenderKillRules(); bvRenderAiAgents(); bvRenderDomains(); bvRenderFbConnect(); bvRenderPagesPanel(); bvRenderWaPanel(); bvRenderHelpPanel(); bvRenderBillingPanel(); bvRenderPwPanel(); }
   } catch(e) {
     c.innerHTML = `<div class="panel"><div class="msg err">❌ Error loading data: ${e.message}</div></div>`;
   }
@@ -12975,6 +12975,8 @@ async function renderSettings(el) {
 
     <!-- Transfer PIN: every owner, admin and buyer sets their own, so it sits outside the admin-only block -->
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pinPanel"></div>' : ""}
+
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="security" id="pwPanel"></div>' : ""}
     ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="aiapps" id="aiAppsPanel"></div>' : ""}
 
     ${isAdmin || !window.myProfile?.media_buyer_id ? "" : (() => {
@@ -13480,6 +13482,39 @@ function bvLinkPage(accountId) {
       if (r.status === "linked") { bvCloseModal(); bvToast(`Linked ${r.page_name || "Page"}`); await loadAccounts(); if (activeTab === "settings") render(); return; }
       m.textContent = r.error || "Could not link that Page."; m.style.display = "block";
     } finally { b.disabled = false; b.textContent = "Check & link"; }
+  };
+}
+
+
+// Change password: Supabase checks the current password first, then sets the new one.
+function bvRenderPwPanel() {
+  const el = document.getElementById("pwPanel"); if (!el) return;
+  el.innerHTML = `<div class="ph"><div class="ph-title">Change password</div></div>
+    <div style="display:grid;gap:8px;max-width:360px;">
+      <input type="password" id="pwOld" class="inp" placeholder="Current password" autocomplete="current-password">
+      <input type="password" id="pwNew" class="inp" placeholder="New password (8+ characters)" autocomplete="new-password">
+      <input type="password" id="pwNew2" class="inp" placeholder="Repeat new password" autocomplete="new-password">
+      <button class="btn btn-a" id="pwSave" type="button">Update password</button>
+      <div style="font-size:12px;color:var(--text2);">Forgot it? Log out and use “Forgot password” on the login page.</div>
+    </div>`;
+  document.getElementById("pwSave").onclick = async () => {
+    const o = document.getElementById("pwOld").value, n = document.getElementById("pwNew").value, n2 = document.getElementById("pwNew2").value;
+    if (!o) return bvToast("Enter your current password.", "err");
+    if (n.length < 8) return bvToast("The new password needs at least 8 characters.", "err");
+    if (n !== n2) return bvToast("The two new passwords don't match.", "err");
+    if (n === o) return bvToast("Choose a password different from the current one.", "err");
+    const btn = document.getElementById("pwSave"); btn.disabled = true;
+    try {
+      const { data: u } = await supabaseClient.auth.getUser();
+      const email = u?.user?.email; if (!email) throw new Error("Please log in again first.");
+      const chk = await supabaseClient.auth.signInWithPassword({ email, password: o });
+      if (chk.error) throw new Error("Your current password is not correct.");
+      const up = await supabaseClient.auth.updateUser({ password: n });
+      if (up.error) throw new Error(up.error.message);
+      ["pwOld", "pwNew", "pwNew2"].forEach(id => document.getElementById(id).value = "");
+      bvToast("Password updated.");
+    } catch (e) { bvToast(e.message || "Couldn't update the password.", "err"); }
+    btn.disabled = false;
   };
 }
 
