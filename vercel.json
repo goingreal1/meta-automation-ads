@@ -284,6 +284,11 @@
     "api/site.js": {
       "includeFiles": "rv/**",
       "maxDuration": 15
+    },
+    "api/transcode.js": {
+      "includeFiles": "node_modules/ffmpeg-static/**",
+      "maxDuration": 60,
+      "memory": 1024
     }
   },
   "redirects": [

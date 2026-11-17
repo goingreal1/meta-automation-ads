@@ -9426,7 +9426,17 @@ async function bvCreUpload(fd) {
     const put = await fetch(sign.uploadUrl, { method: "PUT", headers: sign.headers || { "Content-Type": file.type }, body: file });
     if (!put.ok) throw new Error(`Upload to storage failed (${put.status}).`);
     const get = k => fd.get(k) || undefined;
-    return await fetch(`${SUPA_URL}/functions/v1/creative-admin`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "register", key: sign.key, file_name: file.name, content_type: file.type, name: get("creative_name"), primary_text: get("primary_text"), headline: get("headline"), description: get("description"), mechanism: get("mechanism"), format: get("format"), cta_type: get("cta_type"), uploaded_by: get("uploaded_by"), ad_account_id: get("ad_account_id"), product_id: get("product_id"), launch_at: get("launch_at") }) }).then(r => r.json());
+    const reg = await fetch(`${SUPA_URL}/functions/v1/creative-admin`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "register", key: sign.key, file_name: file.name, content_type: file.type, name: get("creative_name"), primary_text: get("primary_text"), headline: get("headline"), description: get("description"), mechanism: get("mechanism"), format: get("format"), cta_type: get("cta_type"), uploaded_by: get("uploaded_by"), ad_account_id: get("ad_account_id"), product_id: get("product_id"), launch_at: get("launch_at") }) }).then(r => r.json());
+    // Phones record HEVC .mov, which Chrome can't play. Convert it to a plain .mp4 so everyone can watch it (ads accept both).
+    if (reg?.asset?.id && reg.asset.asset_type === "video") {
+      try {
+        bvToast("Upload done. Making the video play in every browser…");
+        const tc = await fetch("/api/transcode", { method: "POST", headers: { Authorization: hdr.Authorization, "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: reg.asset.id }) }).then(r => r.json());
+        if (tc?.converted && tc.asset) reg.asset = tc.asset;
+        else if (tc?.error) bvToast(tc.error, "err");
+      } catch (e) { /* keep the original file */ }
+    }
+    return reg;
   } catch (e) { return { error: e.message || String(e) }; }
 }
 function bvCreFetch(fd) { const p = bvCreUpload(fd); return Promise.resolve({ ok: true, json: () => p }); }

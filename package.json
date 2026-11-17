@@ -1,0 +1,9 @@
+{
+  "name": "revora-site",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static pages plus Vercel functions (api/). ffmpeg-static is used by api/transcode.js to make uploaded videos play in every browser.",
+  "dependencies": {
+    "ffmpeg-static": "5.2.0"
+  }
+}
