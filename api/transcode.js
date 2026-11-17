@@ -48,6 +48,7 @@ module.exports = async (req, res) => {
     if (!dl.ok) return res.status(502).json({ error: `Couldn't read the file (${dl.status}).` });
     await pipeline(Readable.fromWeb(dl.body), fs.createWriteStream(src));
 
+    const dlMs = Date.now() - started;
     const probe = await run(["-hide_banner", "-i", src], 15000);
     const v = (probe.err.match(/Video: (\w+)/) || [])[1] || "";
     const au = (probe.err.match(/Audio: (\w+)/) || [])[1] || "";
@@ -62,7 +63,8 @@ module.exports = async (req, res) => {
     const cap = secs <= 20 ? 1080 : 720;
     const vf = `scale='if(lt(iw,ih),min(${cap},iw),-2)':'if(lt(iw,ih),-2,min(${cap},ih))'`;
     const enc = await run(["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0?", "-vf", vf, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out], left);
-    if (enc.killed) return res.status(504).json({ error: "This video is too long to convert here. It still works in Safari and in ads." });
+    const info = { video: v, audio: au, seconds: secs, size: (probe.err.match(/Video:[^\n]*?(\d{3,5}x\d{3,5})/) || [])[1], fps: (probe.err.match(/(\d+(?:\.\d+)?) fps/) || [])[1], bytes: fs.statSync(src).size, dlMs, encMs: Date.now() - started - dlMs, cap };
+    if (enc.killed) return res.status(504).json({ error: "This video is too long to convert here. It still works in Safari and in ads.", info });
     if (enc.code !== 0 || !fs.existsSync(out)) return res.status(500).json({ error: "Conversion failed.", detail: enc.err.slice(-300) });
 
     const size = fs.statSync(out).size;
