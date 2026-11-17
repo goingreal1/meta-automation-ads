@@ -4584,11 +4584,7 @@ async function bvExecuteLaunch(copies, scheduledIso) {
         fd.append("ad_account_id", activeAccountId);
         if (typeof productId !== "undefined" && productId) fd.append("product_id", productId); // creatives belong to a product
 
-        const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` },
-          body: fd,
-        });
+        const res = await bvCreFetch(fd);
         const r = await res.json();
         if (r.error) throw new Error(`"${copy.file.name}": ${r.error}`);
         if (r.asset?.id) { assetIds.push(r.asset.id); assetExtras.push(copy); if (copy.file) uploadedByFile.set(copy.file, r.asset); }
@@ -8005,7 +8001,7 @@ async function bvCatProduct(el) {
         const fd = new FormData(); fd.append("file", f); fd.append("product_id", p.id); fd.append("uploaded_by", "dashboard"); fd.append("ad_account_id", activeAccountId);
         if (!fi._meta) { fi._meta = await bvCreativeUploadSheet([...fi.files], { primary_text: p.ad_primary_text, headline: p.ad_headline, description: p.ad_description, cta_type: p.ad_cta_type }); if (!fi._meta) { fi._meta = null; fi.value = ""; return; } }
         const mt = fi._meta; fd.append("primary_text", mt.primary_text); fd.append("headline", mt.headline); fd.append("description", mt.description); fd.append("cta_type", mt.cta_type); if (mt.name) fd.append("creative_name", fi.files.length > 1 ? `${mt.name} ${[...fi.files].indexOf(f) + 1}` : mt.name);
-        const r = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json()).catch(e => ({ error: e.message }));
+        const r = await bvCreFetch(fd).then(x => x.json()).catch(e => ({ error: e.message }));
         if (r.error) { m.innerHTML = `<div class="msg err">${escH(f.name)}: ${escH(r.error)}</div>`; return; }
       }
       renderCatalog(el);
@@ -8527,7 +8523,7 @@ async function bvRenderProductVault(productId) {
       fd.append("primary_text", meta.primary_text); fd.append("headline", meta.headline); fd.append("description", meta.description); fd.append("cta_type", meta.cta_type);
       if (meta.name) fd.append("creative_name", files.length > 1 ? `${meta.name} ${done + failed + 1}` : meta.name);
       try {
-        const res = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd });
+        const res = await bvCreFetch(fd);
         const r = await res.json(); if (r.error) throw new Error(r.error); done++;
       } catch (err) { failed++; bvToast(`"${f.name}": ${err.message || err}`); }
     }
@@ -9416,6 +9412,23 @@ async function renderCareDesk(el) {
 }
 
 
+
+// Creative upload straight to R2: the file never passes through an edge function (those run out of memory on big videos).
+// Takes the same FormData the old upload used and answers like the old function: { asset } or { error }.
+async function bvCreUpload(fd) {
+  const file = fd.get("file");
+  try {
+    if (!file) throw new Error("No file chosen.");
+    const hdr = { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json", apikey: ANON };
+    const sign = await fetch(`${SUPA_URL}/functions/v1/media`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: file.name, contentType: file.type, size: file.size }) }).then(r => r.json());
+    if (!sign.uploadUrl) throw new Error(sign.error || "Couldn't start the upload.");
+    const put = await fetch(sign.uploadUrl, { method: "PUT", headers: sign.headers || { "Content-Type": file.type }, body: file });
+    if (!put.ok) throw new Error(`Upload to storage failed (${put.status}).`);
+    const get = k => fd.get(k) || undefined;
+    return await fetch(`${SUPA_URL}/functions/v1/creative-admin`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "register", key: sign.key, file_name: file.name, content_type: file.type, name: get("creative_name"), primary_text: get("primary_text"), headline: get("headline"), description: get("description"), mechanism: get("mechanism"), format: get("format"), cta_type: get("cta_type"), uploaded_by: get("uploaded_by"), ad_account_id: get("ad_account_id"), product_id: get("product_id"), launch_at: get("launch_at") }) }).then(r => r.json());
+  } catch (e) { return { error: e.message || String(e) }; }
+}
+function bvCreFetch(fd) { const p = bvCreUpload(fd); return Promise.resolve({ ok: true, json: () => p }); }
 
 // Name + ad text for creatives being uploaded. Returns { name, primary_text, headline, description, cta_type } or null if cancelled.
 function bvCreativeUploadSheet(files, d) {
@@ -14755,7 +14768,7 @@ function ccCreatives(c) {
       const pr = (window.bvProductsCache || []).find(x => c.product && String(x.product_name).toLowerCase() === String(c.product).toLowerCase()); if (pr) fd.append("product_id", pr.id);
       fd.append("cta_type", "WHATSAPP_MESSAGE");
       try {
-        const r = await fetch(`${SUPA_URL}/functions/v1/upload-creative`, { method: "POST", headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}` }, body: fd }).then(x => x.json());
+        const r = await bvCreFetch(fd).then(x => x.json());
         if (r.error || !r.asset?.id) throw new Error(r.error || "upload failed");
         if (box.querySelector("div")) box.innerHTML = "";
         sel.add(r.asset.id); add({ id: r.asset.id, url: r.asset.public_url, type: /video/.test(r.asset.asset_type || f.type) ? "video" : "image", name: f.name }); res.textContent = "";
