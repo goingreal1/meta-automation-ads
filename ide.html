@@ -38,6 +38,15 @@ iframe{flex:1;border:0;background:#fff}
 .status{padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);background:var(--panel);display:flex;gap:12px}
 .status .err{color:var(--err)}.status .ok{color:var(--ok)}
 .empty{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.chat{display:none;flex:1;flex-direction:column;min-height:0}
+.side.ai .chat{display:flex}.side.ai #pvwrap{display:none}
+#log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.m{padding:8px 11px;border-radius:12px;max-width:92%;white-space:pre-wrap;word-wrap:break-word}
+.m.u{align-self:flex-end;background:var(--accent);color:#fff}.m.a{align-self:flex-start;background:var(--bg)}
+.m.s{align-self:center;color:var(--muted);font-size:12px;background:none}
+.chat form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--border)}
+.chat textarea{flex:1;resize:none;height:54px;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--bg);color:var(--text);font:inherit}
+#pvwrap{flex:1;display:flex;flex-direction:column;min-height:0}
 @media (max-width:900px){.main{flex-direction:column}.tree{width:auto;max-height:28%;border-right:0;border-bottom:1px solid var(--border)}.side{width:auto;max-width:none;height:40%;border-left:0;border-top:1px solid var(--border)}}
 </style>
 </head>
@@ -56,7 +65,9 @@ iframe{flex:1;border:0;background:#fff}
 <div class="main">
   <div class="tree"><div class="head"><span>Files</span><button class="btn" id="newf" style="padding:2px 8px">+ New</button></div><div id="files"></div></div>
   <div class="center"><div class="tabs" id="tabs"></div><div id="ed"><div class="empty">Pick a site, then a file.</div></div></div>
-  <div class="side"><div class="t"><b>Live preview</b><span style="color:var(--muted);font-size:12px" id="pvnote"></span></div><iframe id="pv" sandbox="allow-scripts allow-forms allow-popups"></iframe></div>
+  <div class="side" id="side"><div id="pvwrap"><div class="t"><b>Preview</b><span><select id="pvmode" title="Quick shows unsaved edits instantly. Live page is the real rendered site (after you save)."><option value="quick">Quick (unsaved edits)</option><option value="live">Live page (saved)</option></select> <span style="color:var(--muted);font-size:12px" id="pvnote"></span></span></div><iframe id="pv" sandbox="allow-scripts allow-forms allow-popups"></iframe></div>
+  <div class="chat"><div class="t"><b>AI chat</b><span style="color:var(--muted);font-size:12px">edits are saved as versions, undo in History</span></div><div id="log"><div class="m s">Tell me what to change on this site, for example: make the header blue and add a WhatsApp button.</div></div>
+  <form id="chatf"><textarea id="chatin" placeholder="Ask for a change..."></textarea><button class="btn pri" id="chatgo">Send</button></form></div></div>
 </div>
 <div class="status"><span id="st">Loading…</span><span class="sp" style="flex:1"></span><span id="pos"></span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js"></script>
@@ -138,6 +149,13 @@ async function refreshPreview() {
     // Unsaved edits show in the preview too.
     files.forEach(function (f) { var o = S.open[f.path]; if (o) f.content = o.model.getValue(); });
     pageF = files.find(function (f) { return f.path === page; });
+    if ($("pvmode").value === "live" && S.meta && S.meta.test_link && !(S.current && S.open[S.current] && S.open[S.current].dirty)) {
+      var u = S.meta.test_link, slug = page === "index.html" ? "" : page.replace(/\.html?$/i, "");
+      if (slug) { var q = u.indexOf("?"); u = u.slice(0, q < 0 ? u.length : q).replace(/\/+$/, "") + "/" + slug + (q < 0 ? "" : u.slice(q)); }
+      $("pv").removeAttribute("sandbox"); $("pv").removeAttribute("srcdoc"); $("pv").src = u + (u.indexOf("?") < 0 ? "?" : "&") + "_=" + Date.now();
+      $("pvnote").textContent = "live render"; return;
+    }
+    $("pv").setAttribute("sandbox", "allow-scripts allow-forms allow-popups"); $("pv").removeAttribute("src");
     $("pv").srcdoc = pageF ? inline(pageF.content, files) : "<p style='font:14px sans-serif;padding:20px'>No " + esc(page) + " in this site.</p>";
     $("pvnote").textContent = page;
   } catch (e) { $("pvnote").textContent = e.message; }
@@ -171,8 +189,31 @@ $("live").onclick = async function () {
 $("mode").onclick = function (e) {
   var m = e.target.getAttribute("data-m"); if (!m) return;
   if (m === "widget") { location.href = "/builder.html" + (S.site ? "?site=" + S.site : ""); return; }
-  if (m === "ai") { alert("AI chat mode is the next step. For now, ask ChatGPT or Claude (connected to Revora) to edit this site, then press Refresh preview."); return; }
+  Array.prototype.forEach.call($("mode").children, function (b) { b.classList.toggle("on", b === e.target); });
+  $("side").classList.toggle("ai", m === "ai");
+  if (m === "ai") $("chatin").focus(); else refreshPreview();
 };
+$("pvmode").onchange = refreshPreview;
+var CHAT = [];
+$("chatf").onsubmit = async function (e) {
+  e.preventDefault(); var t = $("chatin").value.trim(); if (!t || !S.site) return;
+  if (Object.keys(S.open).some(function (p) { return S.open[p].dirty; })) { if (!confirm("You have unsaved edits. The AI works on the saved files, so save first. Continue anyway?")) return; }
+  function add(c, txt) { var d = document.createElement("div"); d.className = "m " + c; d.textContent = txt; $("log").appendChild(d); $("log").scrollTop = 1e9; return d; }
+  add("u", t); $("chatin").value = ""; CHAT.push({ role: "user", content: t });
+  var w = add("s", "Working..."); $("chatgo").disabled = true;
+  try {
+    var r = await call({ action: "ai", site_id: S.site, messages: CHAT });
+    w.remove(); add("a", r.reply || "Done."); CHAT.push({ role: "assistant", content: r.reply || "Done." });
+    if (r.changed && r.changed.length) {
+      add("s", "Changed: " + r.changed.join(", "));
+      r.changed.forEach(function (p) { if (S.open[p]) { S.open[p].model.dispose(); delete S.open[p]; } });
+      var cur = S.current;
+      await openSite(S.site); if (cur && S.files.some(function (f) { return f.path === cur; })) await openFile(cur);
+    }
+  } catch (x) { w.remove(); add("s", "Problem: " + x.message); }
+  $("chatgo").disabled = false;
+};
+$("chatin").onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatf").requestSubmit(); } };
 window.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); save(); } });
 window.addEventListener("beforeunload", function (e) { if (Object.keys(S.open).some(function (p) { return S.open[p].dirty; })) { e.preventDefault(); e.returnValue = ""; } });
 require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs" } });

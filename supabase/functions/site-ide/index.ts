@@ -34,6 +34,12 @@ Deno.serve(async (req) => {
     return json(o?.out ?? o, r.ok ? 200 : 502);
   }
 
+  if (b?.action === "ai") {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/site-ide-ai`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ site_id: b.site_id, messages: b.messages }) });
+    const o = await r.json().catch(() => ({}));
+    return json(o, r.ok ? 200 : r.status);
+  }
+
   if (b?.action === "get" || b?.action === "get_many") {
     const siteId = String(b?.site_id ?? "");
     const { data: site } = await db.from("sites").select("id, company_id").eq("id", siteId).maybeSingle();
