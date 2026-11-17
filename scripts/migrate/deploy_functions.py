@@ -20,8 +20,8 @@ def deploy(slug):
     for name, data in list(files.items()):
         if name.endswith(".ts"):
             txt = data.decode()
-            for m in set(re.findall(r'["\']\.\./_shared/([\w./-]+)["\']', txt)):
-                shared[m] = open(os.path.join(FN, "_shared", m), "rb").read()
+            for m in set(re.findall(r'["\']\.{1,2}/_shared/([\w./-]+)["\']', txt)):
+                if "_shared/" + m not in files: shared[m] = open(os.path.join(FN, "_shared", m), "rb").read()
                 txt = txt.replace("../_shared/" + m, "./_shared/" + m)
             files[name] = txt.encode()
     for m, data in shared.items(): files["_shared/" + m] = data

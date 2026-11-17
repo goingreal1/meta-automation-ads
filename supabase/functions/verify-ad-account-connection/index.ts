@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
 // Confirms a Facebook Page and a Meta Pixel are actually reachable from a
 // given ad account -- instead of trusting whatever ID someone typed into the
 // Settings form. Two Meta endpoints exist specifically for this:
@@ -17,76 +16,104 @@ const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-function json(obj: unknown, status = 200) {
+function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }
-
 const SVC_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-// Caller must be the service role (internal functions / cron) or a signed-in
-// dashboard user -- the public anon key alone is not enough. A service token
-// is proven with the Auth admin API because pg_cron may hold a different (but
-// valid) copy of the key than this function's env.
-type Caller = { service: boolean; company_id: string | null; role: string | null };
-async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+async function getCaller(req, admin) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  if (SVC_KEY && token === SVC_KEY) return { service: true, company_id: null, role: null };
+  if (SVC_KEY && token === SVC_KEY) return {
+    service: true,
+    company_id: null,
+    role: null
+  };
   const { data } = await admin.auth.getUser(token);
   if (data?.user) {
     const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
-    return p?.company_id ? { service: false, company_id: p.company_id, role: p.role } : null;
+    return p?.company_id ? {
+      service: false,
+      company_id: p.company_id,
+      role: p.role
+    } : null;
   }
   try {
-    const r = await fetch(`${Deno.env.get("SUPABASE_URL") ?? ""}/auth/v1/admin/users?per_page=1`, { headers: { apikey: token, Authorization: `Bearer ${token}` } });
-    if (r.status === 200) return { service: true, company_id: null, role: null };
-  } catch { /* not a service token */ }
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL") ?? ""}/auth/v1/admin/users?per_page=1`, {
+      headers: {
+        apikey: token,
+        Authorization: `Bearer ${token}`
+      }
+    });
+    if (r.status === 200) return {
+      service: true,
+      company_id: null,
+      role: null
+    };
+  } catch  {}
   return null;
 }
-
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
-      headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey" },
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey"
+      }
     });
   }
-  if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  if (!META_ACCESS_TOKEN) return json({ error: "META_ACCESS_TOKEN secret is not set yet in Supabase." }, 500);
-
+  if (req.method !== "POST") return json({
+    error: "POST only"
+  }, 405);
+  if (!META_ACCESS_TOKEN) return json({
+    error: "META_ACCESS_TOKEN secret is not set yet in Supabase."
+  }, 500);
   try {
     const caller = await getCaller(req, supabase);
-    if (!caller) return json({ error: "Not signed in" }, 401);
-    const body = await req.json().catch(() => ({}));
-    if (!body.ad_account_id) return json({ error: "Missing ad_account_id in request body." }, 400);
-
+    if (!caller) return json({
+      error: "Not signed in"
+    }, 401);
+    const body = await req.json().catch(()=>({}));
+    if (!body.ad_account_id) return json({
+      error: "Missing ad_account_id in request body."
+    }, 400);
     const { data: accountRow } = await supabase.from("ad_accounts").select("*").eq("id", body.ad_account_id).maybeSingle();
-    if (!accountRow || (!caller.service && accountRow.company_id !== caller.company_id)) return json({ error: `No ad_accounts row found for id ${body.ad_account_id}` }, 404);
-
+    if (!accountRow || !caller.service && accountRow.company_id !== caller.company_id) return json({
+      error: `No ad_accounts row found for id ${body.ad_account_id}`
+    }, 404);
     // meta_ad_account_id is always purely numeric -- a row saved with Meta's
     // own "ID: 123..." label still attached (confirmed this happened live,
     // from pasting straight off Meta's Business Settings page) silently
     // turned every Graph URL below into a dead endpoint. Pull just the
     // digits out instead of trusting whatever got stored.
-    const metaAdAccountId = String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "").match(/\d+/)?.[0]
-      || String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "");
-
+    const metaAdAccountId = String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "").match(/\d+/)?.[0] || String(accountRow.meta_ad_account_id).trim().replace(/^act_/, "");
     const [pagesRes, pixelsRes] = await Promise.all([
-      fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/promote_pages?fields=id,name&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()),
-      fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/adspixels?fields=id,name&access_token=${META_ACCESS_TOKEN}`).then(r => r.json()),
+      fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/promote_pages?fields=id,name&access_token=${META_ACCESS_TOKEN}`).then((r)=>r.json()),
+      fetch(`${META_GRAPH_BASE}/act_${metaAdAccountId}/adspixels?fields=id,name&access_token=${META_ACCESS_TOKEN}`).then((r)=>r.json())
     ]);
-
-    if (pagesRes.error) return json({ error: `Couldn't reach this ad account's pages: ${pagesRes.error.message}`, code: pagesRes.error.code }, 400);
-    if (pixelsRes.error) return json({ error: `Couldn't reach this ad account's pixels: ${pixelsRes.error.message}`, code: pixelsRes.error.code }, 400);
-
-    const pages = (pagesRes.data || []).map((p: any) => ({ id: p.id, name: p.name }));
-    const pixels = (pixelsRes.data || []).map((p: any) => ({ id: p.id, name: p.name }));
-
+    if (pagesRes.error) return json({
+      error: `Couldn't reach this ad account's pages: ${pagesRes.error.message}`,
+      code: pagesRes.error.code
+    }, 400);
+    if (pixelsRes.error) return json({
+      error: `Couldn't reach this ad account's pixels: ${pixelsRes.error.message}`,
+      code: pixelsRes.error.code
+    }, 400);
+    const pages = (pagesRes.data || []).map((p)=>({
+        id: p.id,
+        name: p.name
+      }));
+    const pixels = (pixelsRes.data || []).map((p)=>({
+        id: p.id,
+        name: p.name
+      }));
     // Each Page can have a WhatsApp number connected to it (Page Settings ->
     // WhatsApp), which is what populates the dropdown on Meta's own ad form.
     // Reading it back needs the Page's own `whatsapp_number` field -- try it
@@ -94,25 +121,32 @@ Deno.serve(async (req: Request) => {
     // instead of free-typing the number. A page with none connected (or a
     // permission this token doesn't have) just comes back without one; that
     // isn't a failure for the rest of the pages.
-    const pagesWithWhatsapp = await Promise.all(pages.map(async (p: any) => {
+    const pagesWithWhatsapp = await Promise.all(pages.map(async (p)=>{
       try {
-        const r = await fetch(`${META_GRAPH_BASE}/${p.id}?fields=whatsapp_number&access_token=${META_ACCESS_TOKEN}`).then(r => r.json());
-        return { ...p, whatsapp_number: r.whatsapp_number || null };
-      } catch {
-        return { ...p, whatsapp_number: null };
+        const r = await fetch(`${META_GRAPH_BASE}/${p.id}?fields=whatsapp_number&access_token=${META_ACCESS_TOKEN}`).then((r)=>r.json());
+        return {
+          ...p,
+          whatsapp_number: r.whatsapp_number || null
+        };
+      } catch  {
+        return {
+          ...p,
+          whatsapp_number: null
+        };
       }
     }));
-
     return json({
       success: true,
       pages: pagesWithWhatsapp,
       pixels,
       current_fb_page_id: accountRow.fb_page_id || null,
       current_pixel_id: accountRow.meta_pixel_id || null,
-      page_connected: accountRow.fb_page_id ? pages.some((p: any) => p.id === accountRow.fb_page_id) : null,
-      pixel_connected: accountRow.meta_pixel_id ? pixels.some((p: any) => p.id === accountRow.meta_pixel_id) : null,
+      page_connected: accountRow.fb_page_id ? pages.some((p)=>p.id === accountRow.fb_page_id) : null,
+      pixel_connected: accountRow.meta_pixel_id ? pixels.some((p)=>p.id === accountRow.meta_pixel_id) : null
     });
-  } catch (err: any) {
-    return json({ error: err.message }, 500);
+  } catch (err) {
+    return json({
+      error: err.message
+    }, 500);
   }
 });

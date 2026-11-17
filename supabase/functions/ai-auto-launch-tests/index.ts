@@ -1,338 +1,262 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
-// META_AD_ACCOUNT_ID is resolved per-creative from ad_accounts table at runtime
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v21.0";
-
-// Caller must be the service role (internal) or a signed-in dashboard user --
-// the public anon key alone is not enough. This function launches real Meta
-// campaigns, so it is scoped to the caller's own company's creatives.
-type Caller = { service: boolean; company_id: string | null; role: string | null };
-async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+async function getCaller(req, admin) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return {
+    service: true,
+    company_id: null,
+    role: null
+  };
   const { data } = await admin.auth.getUser(token);
   if (!data?.user) return null;
   const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
   if (!p?.company_id) return null;
-  return { service: false, company_id: p.company_id, role: p.role };
+  return {
+    service: false,
+    company_id: p.company_id,
+    role: p.role
+  };
 }
-
-// Browser callers (the dashboard's Publish button, Run Tonight's Batch) send
-// Authorization + Content-Type headers, which triggers a CORS preflight. Every
-// response -- not just the OPTIONS preflight -- needs Access-Control-Allow-Origin
-// or the browser blocks it outright and fetch() throws "Failed to fetch" with
-// no further detail, regardless of the actual HTTP status. Confirmed live: curl
-// (no CORS enforcement) never surfaced this.
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info"
 };
-
-// ─── AI SYSTEM: TRAINED ON SENIOR BUYER BEHAVIOR ──────────────────────────────
-
-/**
- * SENIOR BUYER TRAINING DATA
- * 
- * Senior buyers who scale to 5-20 orders/month follow these patterns:
- * 1. Test multiple CTAs - SHOP_NOW vs ORDER vs LEARN_MORE vs SIGN_UP
- * 2. Rotate CTAs based on audience age & gender
- * 3. Launch tests at specific times (peak hours: 6 PM - 10 PM)
- * 4. Use different targeting for men (direct sale) vs women (education)
- * 5. Scale winners aggressively (2-3x budget increase after 2-3 orders)
- * 6. Kill losers fast (< 1 order after ₦1,500 spend)
- */
-
-interface AudienceSegment {
-  name: string;
-  genders: number[];
-  states: string[];
-  ageMin: number;
-  ageMax: number;
-  bestCTA: string;
-  bestHours: number[];
-  testBudget: number;
-  scaleBudget: number;
-  description: string;
-}
-
-interface LaunchDecision {
-  shouldLaunch: boolean;
-  reason: string;
-  cta: string;
-  targetingRule: string;
-  budget: number;
-  timing: string;
-}
-
-// ─── AUDIENCE SEGMENTS TRAINED FROM SENIOR BUYER PATTERNS ──────────────────────
-
-const TRAINED_AUDIENCE_SEGMENTS: Record<string, AudienceSegment> = {
-  "male_young": {
-    name: "Male 20-60",
-    genders: [1],
-    states: ["Lagos", "Ogun", "Oyo", "Kano"],
-    ageMin: 20,
-    ageMax: 60,
-    bestCTA: "SHOP_NOW", // Direct to purchase
-    bestHours: [18, 19, 20, 21], // Peak: 6-9 PM
-    testBudget: 2500,
-    scaleBudget: 7500,
-    description: "High impulse buyers, responds to urgency"
-  },
-  "male_mid": {
-    name: "Male 20-60",
-    genders: [1],
-    states: ["Lagos", "Ogun", "Abuja", "Rivers"],
-    ageMin: 20,
-    ageMax: 60,
-    bestCTA: "LEARN_MORE", // More deliberate
-    bestHours: [19, 20, 21, 22], // Peak: 7-10 PM
-    testBudget: 3000,
-    scaleBudget: 10000,
-    description: "Decision makers, wants more info before purchase"
-  },
-  "female_young": {
-    name: "Female 20-60",
-    genders: [2],
-    states: ["Lagos", "Ogun", "Abuja", "Enugu"],
-    ageMin: 20,
-    ageMax: 60,
-    bestCTA: "LEARN_MORE", // Build trust first
-    bestHours: [18, 19, 20], // Peak: 6-8 PM
-    testBudget: 2500,
-    scaleBudget: 8000,
-    description: "Values research, brand trust, community feedback"
-  },
-  "female_mid": {
-    name: "Female 20-60",
-    genders: [2],
-    states: ["Lagos", "Ogun", "Kano", "Port Harcourt"],
-    ageMin: 20,
-    ageMax: 60,
-    bestCTA: "ORDER", // Direct, authoritative
-    bestHours: [20, 21, 22, 23], // Peak: 8-11 PM
-    testBudget: 3000,
-    scaleBudget: 12000,
-    description: "High purchasing power, responds to quality/lifestyle"
-  }
+// CURRENCY. Meta takes budgets in the ad account's own currency, in minor units (x100). Only currencies whose minor unit is 100 are verified here.
+const VERIFIED_CURRENCIES = [
+  "NGN",
+  "USD",
+  "EUR",
+  "GBP",
+  "CAD",
+  "AUD",
+  "NZD",
+  "ZAR",
+  "GHS",
+  "KES",
+  "AED",
+  "INR",
+  "SGD",
+  "CHF"
+];
+const CURRENCY_SYMBOLS = {
+  NGN: "₦",
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  CAD: "CA$",
+  AUD: "A$",
+  NZD: "NZ$",
+  ZAR: "R",
+  GHS: "GH₵",
+  KES: "KSh ",
+  AED: "AED ",
+  INR: "₹",
+  SGD: "S$",
+  CHF: "CHF "
 };
-
-// ─── CTA OPTIMIZATION ENGINE ────────────────────────────────────────────────────
-
-/**
- * Map CTA values to Meta API call_to_action_type
- * Meta Ads Manager CTA options:
- * - SHOP_NOW → Direct purchase (e-commerce)
- * - LEARN_MORE → Click to learn (lead gen)
- * - ORDER → Direct order (services, books)
- * - SIGN_UP → Registration  
- * - GET_OFFER → Coupon/discount
- * - CONTACT_US → WhatsApp/direct contact
- */
-function selectCTAByAudience(segment: AudienceSegment, previousPerformance?: any): string {
-  // If we have previous performance data for this segment, use learnings
-  if (previousPerformance?.avg_ctr && previousPerformance.avg_ctr > 1.8) {
-    // High CTR suggests content resonates, can be more aggressive
-    return segment.genders.includes(1) ? "SHOP_NOW" : "ORDER";
-  }
-  
-  // Use trained CTA for this segment
-  return segment.bestCTA;
-}
-
-// ─── LAUNCH TIMING ENGINE (WHEN TO TEST) ────────────────────────────────────────
-
-function shouldLaunchNow(segment: AudienceSegment): boolean {
-  const currentHour = new Date().getUTCHours() + 1; // Lagos time (UTC+1)
-  const isCurrentlyPeak = segment.bestHours.includes(currentHour);
-  
-  // Launch if:
-  // 1. Current time is peak hour for this segment
-  // 2. We haven't tested this segment in last 3 hours
-  
-  return isCurrentlyPeak;
-}
-
-// ─── AI DECISION ENGINE ───────────────────────────────────────────────────────
-
-async function makeAILaunchDecision(
-  supabase: any,
-  creativeAsset: any
-): Promise<LaunchDecision> {
+const money = (cur, n)=>`${CURRENCY_SYMBOLS[cur] ?? `${cur} `}${Number(n).toLocaleString("en-US")}`;
+async function getAccountCurrency(supabase, accountRowId, actId) {
+  const { data } = await supabase.from("ad_accounts").select("currency, billing_mode").eq("id", accountRowId).maybeSingle();
+  const billing_mode = data?.billing_mode ?? null;
+  const have = String(data?.currency ?? "").trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(have)) return {
+    currency: have,
+    billing_mode
+  };
   try {
-    // 1. Analyze recent performance data (last 7 days)
-    const { data: recentPerformance } = await supabase
-      .from('daily_metrics')
-      .select('*')
-      .gte('metric_date', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-      .order('metric_date', { ascending: false });
-
-    // 2. Fetch winning ad sets to learn from
-    const { data: winners } = await supabase
-      .from('ad_sets')
-      .select('*')
-      .eq('status', 'ACTIVE')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    // 3. Analyze which audience segments are performing best
-    let bestPerformingSegment: AudienceSegment | null = null;
-    let highestCTR = 0;
-
-    // Check performance against trained segments
-    if (winners && winners.length > 0) {
-      for (const winner of winners) {
-        // Match winner's targeting to trained segment
-        const matchingSegment = matchSegment(winner.states, winner.genders, winner.age_min, winner.age_max);
-        if (matchingSegment) {
-          const segmentMetrics = recentPerformance?.find(m => 
-            m.orders > 0 && m.ctr && m.ctr > highestCTR
-          );
-          if (segmentMetrics && segmentMetrics.ctr > highestCTR) {
-            highestCTR = segmentMetrics.ctr;
-            bestPerformingSegment = matchingSegment;
-          }
-        }
-      }
+    const r = await fetch(`${META_GRAPH_BASE}/act_${actId}?fields=currency&access_token=${META_ACCESS_TOKEN}`);
+    const j = await r.json();
+    const cur = String(j?.currency ?? "").trim().toUpperCase();
+    if (/^[A-Z]{3}$/.test(cur)) {
+      await supabase.from("ad_accounts").update({
+        currency: cur
+      }).eq("id", accountRowId);
+      return {
+        currency: cur,
+        billing_mode
+      };
     }
-
-    // 4. Default to best segment if no previous data
-    if (!bestPerformingSegment) {
-      bestPerformingSegment = Object.values(TRAINED_AUDIENCE_SEGMENTS)[0];
-    }
-
-    // 5. Determine timing
-    const isGoodTiming = shouldLaunchNow(bestPerformingSegment);
-    const timing = isGoodTiming 
-      ? `NOW (peak hour: ${bestPerformingSegment.bestHours[0]}:00 Lagos time)`
-      : `QUEUE for ${bestPerformingSegment.bestHours[0]}:00 Lagos time`;
-
-    // 6. Select optimized CTA
-    const performanceData = recentPerformance?.find(m => m.orders && m.ctr);
-    const selectedCTA = selectCTAByAudience(bestPerformingSegment, performanceData);
-
     return {
-      shouldLaunch: isGoodTiming || true, // Queue if not peak
-      reason: `AI trained on senior buyer behavior. Best segment: ${bestPerformingSegment.name}`,
-      cta: selectedCTA,
-      targetingRule: bestPerformingSegment.name,
-      budget: bestPerformingSegment.testBudget,
-      timing: timing
+      error: `Could not read this ad account's currency from Meta, so nothing was launched. ${j?.error?.message ?? ""}`.trim()
     };
-
   } catch (err) {
-    console.error('AI decision error:', err);
     return {
-      shouldLaunch: false,
-      reason: 'AI analysis failed, falling back to safe defaults',
-      cta: 'LEARN_MORE',
-      targetingRule: 'male_young',
-      budget: 2500,
-      timing: 'MANUAL_REVIEW_REQUIRED'
+      error: `Could not read this ad account's currency from Meta, so nothing was launched. ${err?.message ?? err}`
     };
   }
 }
-
-// ─── SEGMENT MATCHING HELPER ──────────────────────────────────────────────────
-
-function matchSegment(
-  states: string[],
-  genders: number[],
-  ageMin: number,
-  ageMax: number
-): AudienceSegment | null {
-  for (const [key, segment] of Object.entries(TRAINED_AUDIENCE_SEGMENTS)) {
-    const statesMatch = states.some(s => segment.states.includes(s));
-    const gendersMatch = genders.some(g => segment.genders.includes(g));
-    const ageMatch = ageMin >= segment.ageMin && ageMax <= segment.ageMax;
-    if (statesMatch && gendersMatch && ageMatch) {
-      return segment;
+const US_STATES = {
+  AL: "Alabama",
+  AK: "Alaska",
+  AZ: "Arizona",
+  AR: "Arkansas",
+  CA: "California",
+  CO: "Colorado",
+  CT: "Connecticut",
+  DE: "Delaware",
+  DC: "District of Columbia",
+  FL: "Florida",
+  GA: "Georgia",
+  HI: "Hawaii",
+  ID: "Idaho",
+  IL: "Illinois",
+  IN: "Indiana",
+  IA: "Iowa",
+  KS: "Kansas",
+  KY: "Kentucky",
+  LA: "Louisiana",
+  ME: "Maine",
+  MD: "Maryland",
+  MA: "Massachusetts",
+  MI: "Michigan",
+  MN: "Minnesota",
+  MS: "Mississippi",
+  MO: "Missouri",
+  MT: "Montana",
+  NE: "Nebraska",
+  NV: "Nevada",
+  NH: "New Hampshire",
+  NJ: "New Jersey",
+  NM: "New Mexico",
+  NY: "New York",
+  NC: "North Carolina",
+  ND: "North Dakota",
+  OH: "Ohio",
+  OK: "Oklahoma",
+  OR: "Oregon",
+  PA: "Pennsylvania",
+  RI: "Rhode Island",
+  SC: "South Carolina",
+  SD: "South Dakota",
+  TN: "Tennessee",
+  TX: "Texas",
+  UT: "Utah",
+  VT: "Vermont",
+  VA: "Virginia",
+  WA: "Washington",
+  WV: "West Virginia",
+  WI: "Wisconsin",
+  WY: "Wyoming"
+};
+// The countries an ad set runs in: the plan's own choice, else the saved config's countries, else Nigeria (as before).
+const effectiveCountries = (c)=>c?.plan_countries?.length ? c.plan_countries : c?.geo_type === "countries" && Array.isArray(c?.countries) && c.countries.length ? c.countries.map((x)=>String(x).toUpperCase()) : [
+    "NG"
+  ];
+// Meta needs a thumbnail (image_url or image_hash) on every video ad creative.
+// After a video is uploaded Meta processes it for a while, then generates thumbnails.
+// We wait for Meta (polling) and use its own preferred thumbnail.
+const sleep = (ms)=>new Promise((r)=>setTimeout(r, ms));
+async function waitForVideoThumbnail(videoId, maxWaitMs = 90 * 1e3) {
+  const deadline = Date.now() + maxWaitMs;
+  let lastStatus = "unknown";
+  while(Date.now() < deadline){
+    try {
+      const sRes = await fetch(`${META_GRAPH_BASE}/${videoId}?fields=status,picture&access_token=${META_ACCESS_TOKEN}`);
+      const s = await sRes.json();
+      const vs = s?.status?.video_status;
+      if (vs) lastStatus = vs;
+      if (vs === "error") {
+        console.error("Meta video processing error:", s.status);
+        return {
+          error: `Meta could not process the video ${videoId}: ${JSON.stringify(s.status)}`
+        };
+      }
+      if (vs === "ready") {
+        const tRes = await fetch(`${META_GRAPH_BASE}/${videoId}/thumbnails?fields=uri,is_preferred&access_token=${META_ACCESS_TOKEN}`);
+        const t = await tRes.json();
+        const list = Array.isArray(t?.data) ? t.data : [];
+        const pick = list.find((x)=>x?.is_preferred && x?.uri) || list.find((x)=>x?.uri);
+        if (pick?.uri) return {
+          thumbnailUrl: pick.uri
+        };
+        if (s?.picture) return {
+          thumbnailUrl: s.picture
+        };
+      }
+    } catch (err) {
+      console.error("waitForVideoThumbnail error:", err);
     }
+    await sleep(4e3);
   }
-  return null;
+  return {
+    error: `Meta has not finished processing video ${videoId} (status: ${lastStatus}) so no thumbnail is available yet. Try again in a minute.`
+  };
 }
-
-// ─── UPLOAD CREATIVE TO META + CREATE THE AD CREATIVE ──────────────────────────
-// This is the piece that was entirely missing before: nothing ever pushed the
-// uploaded video/image to Meta or created a real ad-creative object, so
-// createAdWithCTA (below) had no real creative_id to reference and was never
-// even called. Caches the result on creative_assets.meta_video_id /
-// meta_image_hash (columns already existed, unused) so a re-launch or
-// duplicate doesn't re-upload the same file.
-
-async function ensureMetaMedia(
-  supabase: any,
-  accountId: string,
-  creative: any
-): Promise<{ videoId?: string; imageUrl?: string; error?: string } | null> {
-  if (creative.meta_video_id) return { videoId: creative.meta_video_id };
-
+async function ensureMetaMedia(supabase, accountId, creative) {
   const isVideo = creative.asset_type === "video";
-  if (!isVideo) {
-    // Images skip Meta's ad-image-library pre-upload (/adimages) entirely --
-    // confirmed live that this app's access to that specific endpoint is
-    // blocked ("(#3) Application does not have the capability to make this
-    // API call"), while ad-creative creation itself works fine. link_data
-    // accepts a direct external "picture" URL, which Meta fetches itself when
-    // building the creative -- verified working via a real test ad creative.
-    return { imageUrl: creative.public_url };
-  }
-
-  try {
-    const params = new URLSearchParams({ file_url: creative.public_url, access_token: META_ACCESS_TOKEN });
-    const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/advideos`, { method: "POST", body: params });
-    const data = await res.json();
-    if (!data.id) {
-      console.error("Video upload failed:", data);
-      return { error: JSON.stringify(data.error || data) };
+  let videoId = creative.meta_video_id || null;
+  if (!videoId) {
+    if (!isVideo) {
+      return {
+        imageUrl: creative.public_url
+      };
     }
-    await supabase.from("creative_assets").update({ meta_video_id: data.id }).eq("id", creative.id);
-    return { videoId: data.id };
-  } catch (err: any) {
-    console.error("ensureMetaMedia error:", err);
-    return { error: err.message || String(err) };
+    try {
+      const params = new URLSearchParams({
+        file_url: creative.public_url,
+        access_token: META_ACCESS_TOKEN
+      });
+      const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/advideos`, {
+        method: "POST",
+        body: params
+      });
+      const data = await res.json();
+      if (!data.id) {
+        console.error("Video upload failed:", data);
+        return {
+          error: JSON.stringify(data.error || data)
+        };
+      }
+      await supabase.from("creative_assets").update({
+        meta_video_id: data.id
+      }).eq("id", creative.id);
+      videoId = data.id;
+    } catch (err) {
+      console.error("ensureMetaMedia error:", err);
+      return {
+        error: err.message || String(err)
+      };
+    }
   }
+  const thumb = await waitForVideoThumbnail(videoId);
+  if (thumb.error) return {
+    error: thumb.error
+  };
+  return {
+    videoId,
+    thumbnailUrl: thumb.thumbnailUrl
+  };
 }
-
-// destinationType "whatsapp": click-to-WhatsApp sales creative -- opens a chat
-// with the product's connected WhatsApp number (the Beoliv AI salesperson bot)
-// instead of a website link. Shape verified live against your real "Lunessa
-// Whatsapp AD COPY" ad (id 120248136997400710, creative 1427562949307282) via
-// the diagnose-meta-token proxy: link_data with link "https://api.whatsapp.com/send",
-// a WHATSAPP_MESSAGE CTA, page_welcome_message.text_format matching this shape
-// exactly, and -- the one field this was missing -- instagram_user_id alongside
-// page_id, or the ad has no explicit IG account attached the way your real ad does.
-async function createAdCreative(
-  accountId: string,
-  pageId: string,
-  igUserId: string | null,
-  creative: any,
-  media: { videoId?: string; imageUrl?: string },
-  destinationLink: string,
-  ctaType: string,
-  destinationType: Dest,
-  productName: string
-): Promise<{ id?: string; error?: string }> {
+async function createAdCreative(accountId, pageId, igUserId, creative, media, destinationLink, ctaType, destinationType, productName) {
   try {
-    let objectStorySpec: Record<string, any>;
-
+    let objectStorySpec;
+    const thumb = media.thumbnailUrl ? {
+      image_url: media.thumbnailUrl
+    } : {};
     if (destinationType === "whatsapp") {
       objectStorySpec = {
         page_id: pageId,
-        ...(igUserId ? { instagram_user_id: igUserId } : {}),
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
         link_data: {
-          picture: media.imageUrl || undefined,
+          picture: media.imageUrl || void 0,
           link: "https://api.whatsapp.com/send",
           message: creative.primary_text || "",
-          name: creative.headline || undefined,
-          description: creative.description || undefined,
-          call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+          name: creative.headline || void 0,
+          description: creative.description || void 0,
+          call_to_action: {
+            type: "WHATSAPP_MESSAGE",
+            value: {
+              app_destination: "WHATSAPP"
+            }
+          },
           page_welcome_message: {
             type: "VISUAL_EDITOR",
             version: 2,
@@ -341,116 +265,180 @@ async function createAdCreative(
             text_format: {
               customer_action_type: "autofill_message",
               message: {
-                // What the customer sees when the chat opens, and what is pre-typed in their message
-                // box -- both typed in the dashboard per ad. When left blank: the linked product's name if
-                // there is one, otherwise a neutral line. Never the campaign name (that produced
-                // greetings like "Interested in ADS 12:12 AM buyer?"). Meta limit: greeting <= 300 chars.
-                text: String(creative.whatsapp_greeting ?? "").trim().slice(0, 300)
-                  || (productName ? `Hi! Interested in ${productName}? 👋` : "Hi! 👋 Thanks for clicking our ad. How can we help you today?"),
+                text: String(creative.whatsapp_greeting ?? "").trim().slice(0, 300) || (productName ? `Hi! Interested in ${productName}? 👋` : "Hi! 👋 Thanks for clicking our ad. How can we help you today?"),
                 autofill_message: {
-                  content: String(creative.whatsapp_prefill ?? "").trim().slice(0, 1000)
-                    || (productName ? `Hi, I'm interested in ${productName}` : "Hi, I saw your ad and I'd like to know more."),
-                },
-              },
-            },
-          },
-        },
+                  content: String(creative.whatsapp_prefill ?? "").trim().slice(0, 1e3) || (productName ? `Hi, I'm interested in ${productName}` : "Hi, I saw your ad and I'd like to know more.")
+                }
+              }
+            }
+          }
+        }
       };
     } else if (destinationType === "form") {
-      // Instant (lead) form: the person fills a form inside Facebook / Instagram.
-      const okCta = ["SIGN_UP", "LEARN_MORE", "APPLY_NOW", "GET_QUOTE", "SUBSCRIBE", "DOWNLOAD", "BOOK_TRAVEL"].includes(ctaType) ? ctaType : "SIGN_UP";
-      const cta = { type: okCta, value: { lead_gen_form_id: String(creative.lead_form_id) } };
+      const okCta = [
+        "SIGN_UP",
+        "LEARN_MORE",
+        "APPLY_NOW",
+        "GET_QUOTE",
+        "SUBSCRIBE",
+        "DOWNLOAD",
+        "BOOK_TRAVEL"
+      ].includes(ctaType) ? ctaType : "SIGN_UP";
+      const cta = {
+        type: okCta,
+        value: {
+          lead_gen_form_id: String(creative.lead_form_id)
+        }
+      };
       const formLink = destinationLink || `https://www.facebook.com/${pageId}`;
-      objectStorySpec = media.videoId
-        ? { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), video_data: { video_id: media.videoId, title: creative.headline || undefined, message: creative.primary_text || "", call_to_action: cta } }
-        : { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), link_data: { picture: media.imageUrl, link: formLink, message: creative.primary_text || "", name: creative.headline || undefined, description: creative.description || undefined, call_to_action: cta } };
+      objectStorySpec = media.videoId ? {
+        page_id: pageId,
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
+        video_data: {
+          video_id: media.videoId,
+          ...thumb,
+          title: creative.headline || void 0,
+          message: creative.primary_text || "",
+          call_to_action: cta
+        }
+      } : {
+        page_id: pageId,
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
+        link_data: {
+          picture: media.imageUrl,
+          link: formLink,
+          message: creative.primary_text || "",
+          name: creative.headline || void 0,
+          description: creative.description || void 0,
+          call_to_action: cta
+        }
+      };
     } else if (destinationType === "messenger" || destinationType === "instagram") {
-      // Click-to-Messenger / Click-to-Instagram-Direct: a message button, no website.
       const ig = destinationType === "instagram";
-      const cta = ig
-        ? { type: "INSTAGRAM_MESSAGE", value: { app_destination: "INSTAGRAM_DIRECT" } }
-        : { type: "MESSAGE_PAGE", value: { app_destination: "MESSENGER" } };
+      const cta = ig ? {
+        type: "INSTAGRAM_MESSAGE",
+        value: {
+          app_destination: "INSTAGRAM_DIRECT"
+        }
+      } : {
+        type: "MESSAGE_PAGE",
+        value: {
+          app_destination: "MESSENGER"
+        }
+      };
       const msgLink = "https://fb.com/messenger_doc/";
-      objectStorySpec = media.videoId
-        ? { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), video_data: { video_id: media.videoId, title: creative.headline || undefined, message: creative.primary_text || "", call_to_action: cta } }
-        : { page_id: pageId, ...(igUserId ? { instagram_user_id: igUserId } : {}), link_data: { picture: media.imageUrl, link: msgLink, message: creative.primary_text || "", name: creative.headline || undefined, description: creative.description || undefined, call_to_action: cta } };
+      objectStorySpec = media.videoId ? {
+        page_id: pageId,
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
+        video_data: {
+          video_id: media.videoId,
+          ...thumb,
+          title: creative.headline || void 0,
+          message: creative.primary_text || "",
+          call_to_action: cta
+        }
+      } : {
+        page_id: pageId,
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
+        link_data: {
+          picture: media.imageUrl,
+          link: msgLink,
+          message: creative.primary_text || "",
+          name: creative.headline || void 0,
+          description: creative.description || void 0,
+          call_to_action: cta
+        }
+      };
     } else {
-      const cta = { type: ctaType, value: { link: destinationLink } };
-      objectStorySpec = media.videoId
-        ? {
-            page_id: pageId,
-            ...(igUserId ? { instagram_user_id: igUserId } : {}),
-            video_data: {
-              video_id: media.videoId,
-              title: creative.headline || undefined,
-              message: creative.primary_text || "",
-              call_to_action: cta,
-            },
-          }
-        : {
-            page_id: pageId,
-            ...(igUserId ? { instagram_user_id: igUserId } : {}),
-            link_data: {
-              picture: media.imageUrl,
-              link: destinationLink,
-              message: creative.primary_text || "",
-              name: creative.headline || undefined,
-              description: creative.description || undefined,
-              call_to_action: cta,
-            },
-          };
+      const cta = {
+        type: ctaType,
+        value: {
+          link: destinationLink
+        }
+      };
+      objectStorySpec = media.videoId ? {
+        page_id: pageId,
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
+        video_data: {
+          video_id: media.videoId,
+          ...thumb,
+          title: creative.headline || void 0,
+          message: creative.primary_text || "",
+          call_to_action: cta
+        }
+      } : {
+        page_id: pageId,
+        ...igUserId ? {
+          instagram_user_id: igUserId
+        } : {},
+        link_data: {
+          picture: media.imageUrl,
+          link: destinationLink,
+          message: creative.primary_text || "",
+          name: creative.headline || void 0,
+          description: creative.description || void 0,
+          call_to_action: cta
+        }
+      };
     }
-
     const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
         name: `Creative-${creative.file_name}-${Date.now()}`,
         object_story_spec: objectStorySpec,
-        // Opt out of Meta showing this ad bundled with other advertisers' ads
-        // in the same unit (Reels etc.) -- confirmed field via Meta's own docs,
-        // still worth reconfirming against a live response the first time this runs.
-        contextual_multi_ads: { enroll_status: "OPT_OUT" },
-        access_token: META_ACCESS_TOKEN,
-      }),
+        contextual_multi_ads: {
+          enroll_status: "OPT_OUT"
+        },
+        access_token: META_ACCESS_TOKEN
+      })
     });
     const data = await res.json();
     if (!data.id) {
       console.error("Ad creative creation failed:", data);
-      return { error: JSON.stringify(data.error || data) };
+      return {
+        error: JSON.stringify(data.error || data)
+      };
     }
-    return { id: data.id };
+    return {
+      id: data.id
+    };
   } catch (err) {
     console.error("createAdCreative error:", err);
-    return { error: String((err as Error)?.message || err) };
+    return {
+      error: String(err?.message || err)
+    };
   }
 }
-
-// ─── CREATE THE AD (attaches the ad creative under one ad set) ────────────────
-
-async function createAdWithCTA(
-  adsetId: string,
-  creativeId: string,
-  adName: string,
-  accountId: string,
-  status: "ACTIVE" | "PAUSED" = "ACTIVE"
-): Promise<string | null> {
+async function createAdWithCTA(adsetId, creativeId, adName, accountId, status = "ACTIVE") {
   try {
     const adPayload = {
       adset_id: adsetId,
-      creative: { creative_id: creativeId },
-      // Goes live immediately -- no WhatsApp/dashboard approval gate anymore.
-      // A future-dated launch still creates this now; the ad set's own
-      // start_time (see buildAdSetPayload) is what actually holds delivery
-      // until then, a native Meta behavior, not something this app enforces.
+      creative: {
+        creative_id: creativeId
+      },
       status,
       name: adName,
-      access_token: META_ACCESS_TOKEN,
+      access_token: META_ACCESS_TOKEN
     };
     const res = await fetch(`${META_GRAPH_BASE}/act_${accountId}/ads`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(adPayload),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(adPayload)
     });
     const data = await res.json();
     if (!data.id) console.error("Ad creation failed:", data);
@@ -460,135 +448,316 @@ async function createAdWithCTA(
     return null;
   }
 }
-
-// ─── CREATE ONE AD SET PER AD-SET CONFIG ROW ───────────────────────────────────
-// Ad sets come from ad_set_configs -- direct rows the dashboard's ad-set builder
-// writes (one row per ad set; "Duplicate x N" clones it into more rows), with
-// real fields the user set themselves: budget, age, gender, geography. Replaces
-// the earlier targeting_presets checkbox flow ("Wellness Interest" etc), which
-// used abstract named presets the user found confusing.
-
-// Real settings, refreshed from your most recent actual launch ("New Sales
-// campaign", ad sets 1-5, act_643541631210844) -- ABO, OFFSITE_CONVERSIONS,
-// LOWEST_COST_WITHOUT_CAP, Advantage+ audience with individual_setting (a
-// newer sub-field Meta added -- which specific dimensions, age/gender, it's
-// allowed to expand), broader placements than the earlier Lunessa-retargeting
-// data this was first based on, and location_types alongside bare countries.
 const REAL_OPTIMIZATION_GOAL = "OFFSITE_CONVERSIONS";
 const REAL_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
 const REAL_PLACEMENTS = {
-  publisher_platforms: ["facebook", "instagram"],
-  facebook_positions: ["feed", "marketplace", "facebook_reels", "profile_feed", "notification"],
-  // "explore_home" requires "explore" also be selected -- confirmed live
-  // (Meta rejects explore_home alone with "You must also select Instagram Explore").
-  instagram_positions: ["stream", "story", "reels", "explore", "explore_home", "profile_feed"],
-  device_platforms: ["mobile"],
+  publisher_platforms: [
+    "facebook",
+    "instagram"
+  ],
+  facebook_positions: [
+    "feed",
+    "marketplace",
+    "facebook_reels",
+    "profile_feed",
+    "notification"
+  ],
+  instagram_positions: [
+    "stream",
+    "story",
+    "reels",
+    "explore",
+    "explore_home",
+    "profile_feed"
+  ],
+  device_platforms: [
+    "mobile"
+  ]
 };
-// WhatsApp-destination placements are narrower -- pulled live from your real,
-// currently-ACTIVE "Lunessa Whatsapp ADSET" (120248136860460710) via
-// diagnose-meta-token, not assumed. Kept separate from REAL_PLACEMENTS (which
-// is from a website-destination campaign) since the two destination types use
-// genuinely different real placement sets on your account.
 const REAL_WHATSAPP_PLACEMENTS = {
-  publisher_platforms: ["facebook", "instagram"],
-  facebook_positions: ["feed", "search", "facebook_reels"],
-  instagram_positions: ["stream", "reels"],
-  device_platforms: ["mobile"],
+  publisher_platforms: [
+    "facebook",
+    "instagram"
+  ],
+  facebook_positions: [
+    "feed",
+    "search",
+    "facebook_reels"
+  ],
+  instagram_positions: [
+    "stream",
+    "reels"
+  ],
+  device_platforms: [
+    "mobile"
+  ]
 };
-const GENDER_MAP: Record<string, number[]> = { all: [1, 2], male: [1], female: [2] };
-
-// Ad-set settings that used to be fixed constants, now real per-ad-set
-// choices from the dashboard's builder (ad_set_configs.placement_preset /
-// device_platforms / bid_strategy / billing_event / optimization_goal /
-// advantage_audience). Every one of these is nullable -- a row written
-// before this feature shipped has nulls everywhere, and every fallback
-// below reproduces EXACTLY the old hardcoded behavior, so an existing
-// config keeps launching identically unless someone explicitly changes it.
-const PLACEMENT_PRESETS: Record<string, { facebook_positions: string[]; instagram_positions: string[] }> = {
-  feed_only: { facebook_positions: ["feed"], instagram_positions: ["stream"] },
-  feed_stories_reels: { facebook_positions: ["feed", "facebook_reels"], instagram_positions: ["stream", "reels", "story"] },
+const GENDER_MAP = {
+  all: [
+    1,
+    2
+  ],
+  male: [
+    1
+  ],
+  female: [
+    2
+  ]
 };
-const VALID_BID_STRATEGIES = ["LOWEST_COST_WITHOUT_CAP", "LOWEST_COST_WITH_BID_CAP", "COST_CAP"];
-const VALID_BILLING_EVENTS = ["IMPRESSIONS", "LINK_CLICKS"];
-const VALID_WEBSITE_OPTIMIZATION_GOALS = ["OFFSITE_CONVERSIONS", "LINK_CLICKS", "LANDING_PAGE_VIEWS"];
-const VALID_DEVICE_PLATFORMS = ["mobile", "desktop"];
-
-// Placements the person ticked in the builder (ad_set_configs.placements). Same table and same
-// "needs a partner placement" rules as ads-manager's reach estimate, so the estimate matches what launches.
-const PLACEMENTS: Record<string, { p: string; k: string; pos: string[] }> = {
-  fb_feed: { p: "facebook", k: "facebook_positions", pos: ["feed"] },
-  fb_reels: { p: "facebook", k: "facebook_positions", pos: ["facebook_reels"] },
-  fb_stories: { p: "facebook", k: "facebook_positions", pos: ["story"] },
-  fb_marketplace: { p: "facebook", k: "facebook_positions", pos: ["marketplace"] },
-  fb_search: { p: "facebook", k: "facebook_positions", pos: ["search"] },
-  fb_profile: { p: "facebook", k: "facebook_positions", pos: ["profile_feed"] },
-  ig_feed: { p: "instagram", k: "instagram_positions", pos: ["stream"] },
-  ig_reels: { p: "instagram", k: "instagram_positions", pos: ["reels"] },
-  ig_stories: { p: "instagram", k: "instagram_positions", pos: ["story"] },
-  ig_explore: { p: "instagram", k: "instagram_positions", pos: ["explore", "explore_home"] },
-  ig_profile: { p: "instagram", k: "instagram_positions", pos: ["profile_feed"] },
-  threads: { p: "threads", k: "threads_positions", pos: ["threads_stream"] },
-  wa_status: { p: "whatsapp", k: "whatsapp_positions", pos: ["status"] },
-  an: { p: "audience_network", k: "audience_network_positions", pos: ["classic", "rewarded_video"] },
+const PLACEMENT_PRESETS = {
+  feed_only: {
+    facebook_positions: [
+      "feed"
+    ],
+    instagram_positions: [
+      "stream"
+    ]
+  },
+  feed_stories_reels: {
+    facebook_positions: [
+      "feed",
+      "facebook_reels"
+    ],
+    instagram_positions: [
+      "stream",
+      "reels",
+      "story"
+    ]
+  }
 };
-function placementSpec(keys: any): Record<string, any> | null {
-  const set = new Set<string>((Array.isArray(keys) ? keys : []).map(String).filter((k) => PLACEMENTS[k]));
+const VALID_BID_STRATEGIES = [
+  "LOWEST_COST_WITHOUT_CAP",
+  "LOWEST_COST_WITH_BID_CAP",
+  "COST_CAP"
+];
+const VALID_BILLING_EVENTS = [
+  "IMPRESSIONS",
+  "LINK_CLICKS"
+];
+const VALID_WEBSITE_OPTIMIZATION_GOALS = [
+  "OFFSITE_CONVERSIONS",
+  "LINK_CLICKS",
+  "LANDING_PAGE_VIEWS"
+];
+const VALID_DEVICE_PLATFORMS = [
+  "mobile",
+  "desktop"
+];
+const PLACEMENTS = {
+  fb_feed: {
+    p: "facebook",
+    k: "facebook_positions",
+    pos: [
+      "feed"
+    ]
+  },
+  fb_reels: {
+    p: "facebook",
+    k: "facebook_positions",
+    pos: [
+      "facebook_reels"
+    ]
+  },
+  fb_stories: {
+    p: "facebook",
+    k: "facebook_positions",
+    pos: [
+      "story"
+    ]
+  },
+  fb_marketplace: {
+    p: "facebook",
+    k: "facebook_positions",
+    pos: [
+      "marketplace"
+    ]
+  },
+  fb_search: {
+    p: "facebook",
+    k: "facebook_positions",
+    pos: [
+      "search"
+    ]
+  },
+  fb_profile: {
+    p: "facebook",
+    k: "facebook_positions",
+    pos: [
+      "profile_feed"
+    ]
+  },
+  ig_feed: {
+    p: "instagram",
+    k: "instagram_positions",
+    pos: [
+      "stream"
+    ]
+  },
+  ig_reels: {
+    p: "instagram",
+    k: "instagram_positions",
+    pos: [
+      "reels"
+    ]
+  },
+  ig_stories: {
+    p: "instagram",
+    k: "instagram_positions",
+    pos: [
+      "story"
+    ]
+  },
+  ig_explore: {
+    p: "instagram",
+    k: "instagram_positions",
+    pos: [
+      "explore",
+      "explore_home"
+    ]
+  },
+  ig_profile: {
+    p: "instagram",
+    k: "instagram_positions",
+    pos: [
+      "profile_feed"
+    ]
+  },
+  threads: {
+    p: "threads",
+    k: "threads_positions",
+    pos: [
+      "threads_stream"
+    ]
+  },
+  wa_status: {
+    p: "whatsapp",
+    k: "whatsapp_positions",
+    pos: [
+      "status"
+    ]
+  },
+  an: {
+    p: "audience_network",
+    k: "audience_network_positions",
+    pos: [
+      "classic",
+      "rewarded_video"
+    ]
+  }
+};
+function placementSpec(keys) {
+  const set = new Set((Array.isArray(keys) ? keys : []).map(String).filter((k)=>PLACEMENTS[k]));
   if (!set.size) return null;
-  if (["fb_marketplace", "fb_search", "fb_profile"].some((k) => set.has(k))) set.add("fb_feed");
+  if ([
+    "fb_marketplace",
+    "fb_search",
+    "fb_profile"
+  ].some((k)=>set.has(k))) set.add("fb_feed");
   if (set.has("fb_stories") && !set.has("fb_feed") && !set.has("ig_stories")) set.add("fb_feed");
-  if (["ig_explore", "ig_profile"].some((k) => set.has(k))) set.add("ig_feed");
+  if ([
+    "ig_explore",
+    "ig_profile"
+  ].some((k)=>set.has(k))) set.add("ig_feed");
   if (set.has("wa_status")) set.add("ig_stories");
   if (set.has("threads") && !set.has("fb_feed") && !set.has("ig_feed")) set.add("fb_feed");
-  if (set.has("an") && !set.has("fb_feed")) set.add("fb_feed"); // Audience Network alone isn't accepted; with Facebook feed it is
-  const out: Record<string, any> = { publisher_platforms: [] as string[] };
-  for (const key of set) {
+  if (set.has("an") && !set.has("fb_feed")) set.add("fb_feed");
+  const out = {
+    publisher_platforms: []
+  };
+  for (const key of set){
     const m = PLACEMENTS[key];
     if (!out.publisher_platforms.includes(m.p)) out.publisher_platforms.push(m.p);
-    out[m.k] = [...(out[m.k] ?? []), ...m.pos];
+    out[m.k] = [
+      ...out[m.k] ?? [],
+      ...m.pos
+    ];
   }
   return out;
 }
-
-// The campaign builder's objective step (website destination only -- a
-// WhatsApp-destination product stays forced to OUTCOME_SALES/CONVERSATIONS
-// exactly as before, same Meta requirement as ever). Each objective has its
-// own correct optimization goal and promoted_object shape -- OUTCOME_SALES
-// is the only one that still offers a real per-ad-set optimization-goal
-// choice (see its use below), since Traffic/Engagement/Awareness each have
-// one sensible goal, not several worth exposing as a dropdown. Leads is
-// deliberately NOT in this map -- it needs a real Meta Lead Ads form, which
-// nothing here creates yet, so the dashboard disables that choice entirely
-// rather than silently launching something broken.
-type Dest = "website" | "whatsapp" | "messenger" | "instagram" | "form";
-const MSG_DESTINATIONS = ["whatsapp", "messenger", "instagram"];
-const OBJECTIVE_CONFIG: Record<string, { optimizationGoal: string; promotedObject: (pixelId: string, pageId: string) => Record<string, any> | null }> = {
-  OUTCOME_SALES: { optimizationGoal: REAL_OPTIMIZATION_GOAL, promotedObject: (pixelId) => ({ pixel_id: pixelId, custom_event_type: "PURCHASE" }) },
-  OUTCOME_LEADS: { optimizationGoal: REAL_OPTIMIZATION_GOAL, promotedObject: (pixelId) => ({ pixel_id: pixelId, custom_event_type: "LEAD" }) },
-  OUTCOME_TRAFFIC: { optimizationGoal: "LINK_CLICKS", promotedObject: () => null },
-  OUTCOME_ENGAGEMENT: { optimizationGoal: "POST_ENGAGEMENT", promotedObject: (_pixelId, pageId) => ({ page_id: pageId }) },
-  OUTCOME_AWARENESS: { optimizationGoal: "REACH", promotedObject: () => null },
+const MSG_DESTINATIONS = [
+  "whatsapp",
+  "messenger",
+  "instagram"
+];
+const OBJECTIVE_CONFIG = {
+  OUTCOME_SALES: {
+    optimizationGoal: REAL_OPTIMIZATION_GOAL,
+    promotedObject: (pixelId)=>({
+        pixel_id: pixelId,
+        custom_event_type: "PURCHASE"
+      })
+  },
+  OUTCOME_LEADS: {
+    optimizationGoal: REAL_OPTIMIZATION_GOAL,
+    promotedObject: (pixelId)=>({
+        pixel_id: pixelId,
+        custom_event_type: "LEAD"
+      })
+  },
+  OUTCOME_TRAFFIC: {
+    optimizationGoal: "LINK_CLICKS",
+    promotedObject: ()=>null
+  },
+  OUTCOME_ENGAGEMENT: {
+    optimizationGoal: "POST_ENGAGEMENT",
+    promotedObject: (_pixelId, pageId)=>({
+        page_id: pageId
+      })
+  },
+  OUTCOME_AWARENESS: {
+    optimizationGoal: "REACH",
+    promotedObject: ()=>null
+  }
 };
 const VALID_OBJECTIVES = Object.keys(OBJECTIVE_CONFIG);
-
-// Resolves Nigerian state names (as picked in the dashboard's ad-set builder,
-// e.g. "Lagos") to Meta's actual region keys via the geolocation Targeting
-// Search API -- sending human-readable names directly is not a valid Meta
-// targeting value.
-async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: string; name: string }[]> {
-  const resolved: { key: string; name: string }[] = [];
-  for (const name of stateNames) {
+// Special ad categories (housing, employment, financial products): Meta requires the campaign to declare them.
+// A plan's category (ai_plans.plan.special_ad_category) wins; otherwise the product's default (products.special_ad_category) is used.
+const SPECIAL_CATEGORIES = [
+  "HOUSING",
+  "EMPLOYMENT",
+  "FINANCIAL_PRODUCTS_SERVICES"
+];
+const MIN_RESTRICTED_RADIUS_KM = 25;
+const MIN_RESTRICTED_RADIUS_MI = 16;
+// "Nigeria" (and similar) means the whole country, never a state/region.
+const NATIONWIDE_TERMS = new Set([
+  "nigeria",
+  "all nigeria",
+  "whole nigeria",
+  "entire nigeria",
+  "nationwide",
+  "national",
+  "all states",
+  "all",
+  "ng",
+  "naija",
+  "across nigeria",
+  "nigeria wide",
+  "nigeria-wide",
+  "country wide",
+  "countrywide"
+]);
+const isNationwideTerm = (s)=>NATIONWIDE_TERMS.has(String(s ?? "").toLowerCase().replace(/[^a-z\- ]+/g, " ").replace(/\s+/g, " ").trim());
+// Looks up Meta region keys for state names IN THE GIVEN COUNTRY (Nigeria by default, as before). US two-letter codes like SC are expanded to the state name first.
+async function resolveStateRegionKeys(stateNames, countryCode = "NG") {
+  const resolved = [];
+  for (const raw of stateNames){
+    const code = String(raw ?? "").trim().toUpperCase();
+    const name = countryCode === "US" && US_STATES[code] ? US_STATES[code] : String(raw ?? "").trim();
     try {
-      const res = await fetch(
-        `${META_GRAPH_BASE}/search?type=adgeolocation&location_types=${encodeURIComponent(
-          JSON.stringify(["region"])
-        )}&country_code=NG&q=${encodeURIComponent(name)}&limit=1&access_token=${META_ACCESS_TOKEN}`
-      );
+      const res = await fetch(`${META_GRAPH_BASE}/search?type=adgeolocation&location_types=${encodeURIComponent(JSON.stringify([
+        "region"
+      ]))}&country_code=${encodeURIComponent(countryCode)}&q=${encodeURIComponent(name)}&limit=5&access_token=${META_ACCESS_TOKEN}`);
       const data = await res.json();
-      const match = data?.data?.[0];
+      const list = Array.isArray(data?.data) ? data.data : [];
+      const match = list.find((x)=>String(x?.name ?? "").toLowerCase() === name.toLowerCase()) ?? list[0];
       if (match?.key) {
-        resolved.push({ key: match.key, name: match.name || name });
+        resolved.push({
+          key: match.key,
+          name: match.name || name
+        });
       } else {
-        console.warn(`No Meta region match found for state "${name}" -- dropping from geo targeting.`);
+        console.warn(`No Meta region match found for state "${name}" in ${countryCode}.`);
       }
     } catch (err) {
       console.error(`Failed to resolve state "${name}":`, err);
@@ -596,129 +765,226 @@ async function resolveStateRegionKeys(stateNames: string[]): Promise<{ key: stri
   }
   return resolved;
 }
-
-// Ad-set config comes directly from the dashboard's ad-set builder (one row =
-// one ad set, "Duplicate x N" clones it) -- real, direct fields the user set
-// themselves (budget, age, gender, geography), not an abstract named preset.
-async function buildTargetingFromConfig(config: any, destinationType: Dest): Promise<Record<string, any>> {
-  const basePlacements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS
-    : destinationType === "instagram" ? { publisher_platforms: ["instagram"], facebook_positions: [] as string[], instagram_positions: ["stream", "story", "reels"], device_platforms: ["mobile"] }
-    : destinationType === "form" ? { publisher_platforms: ["facebook", "instagram"], facebook_positions: ["feed", "facebook_reels"], instagram_positions: ["stream", "reels"], device_platforms: ["mobile"] }
-    : destinationType === "messenger" ? { publisher_platforms: ["facebook", "instagram"], facebook_positions: ["feed", "story", "facebook_reels"], instagram_positions: ["stream", "story", "reels"], device_platforms: ["mobile"] }
-    : REAL_PLACEMENTS;
-  // "automatic"/null (the default) keeps the exact existing broad preset;
-  // any other value swaps in a narrower, user-chosen preset instead. Publisher
-  // platforms and device platforms are deliberately NOT swapped by the preset
-  // (those are independent choices, device especially), only the positions.
+// Returns the Meta targeting object, or { error } when the places cannot be resolved safely.
+async function buildTargetingFromConfig(config, destinationType, restricted = false) {
+  const basePlacements = destinationType === "whatsapp" ? REAL_WHATSAPP_PLACEMENTS : destinationType === "instagram" ? {
+    publisher_platforms: [
+      "instagram"
+    ],
+    facebook_positions: [],
+    instagram_positions: [
+      "stream",
+      "story",
+      "reels"
+    ],
+    device_platforms: [
+      "mobile"
+    ]
+  } : destinationType === "form" ? {
+    publisher_platforms: [
+      "facebook",
+      "instagram"
+    ],
+    facebook_positions: [
+      "feed",
+      "facebook_reels"
+    ],
+    instagram_positions: [
+      "stream",
+      "reels"
+    ],
+    device_platforms: [
+      "mobile"
+    ]
+  } : destinationType === "messenger" ? {
+    publisher_platforms: [
+      "facebook",
+      "instagram"
+    ],
+    facebook_positions: [
+      "feed",
+      "story",
+      "facebook_reels"
+    ],
+    instagram_positions: [
+      "stream",
+      "story",
+      "reels"
+    ],
+    device_platforms: [
+      "mobile"
+    ]
+  } : REAL_PLACEMENTS;
   const positionOverride = config.placement_preset ? PLACEMENT_PRESETS[config.placement_preset] : null;
-  const devicePlatforms = Array.isArray(config.device_platforms) && config.device_platforms.length
-    ? config.device_platforms.filter((d: string) => VALID_DEVICE_PLATFORMS.includes(d))
-    : basePlacements.device_platforms;
-  const genders = GENDER_MAP[config.gender ?? "all"] ?? [1, 2];
-  // Advantage+ audience expansion defaults ON (existing behavior) -- only a
-  // row that explicitly set advantage_audience=false turns it off.
-  // Meta only lets Advantage+ audience use a minimum age of 25 or lower and a maximum of 65; a narrower age
-  // range is a hard limit, so it needs Advantage+ off (this is what rejected a 30-60 ad set).
+  const devicePlatforms = Array.isArray(config.device_platforms) && config.device_platforms.length ? config.device_platforms.filter((d)=>VALID_DEVICE_PLATFORMS.includes(d)) : basePlacements.device_platforms;
+  const genders = GENDER_MAP[config.gender ?? "all"] ?? [
+    1,
+    2
+  ];
   const ageMin = config.age_min ?? 25, ageMax = config.age_max ?? 65;
   const advantageOn = config.advantage_audience !== false && ageMin <= 25 && ageMax >= 65;
-  const targeting: Record<string, any> = {
+  const targeting = {
     genders,
     age_min: ageMin,
     age_max: ageMax,
-    ...(advantageOn ? { targeting_automation: { advantage_audience: 1, individual_setting: { age: 1, gender: 1 } } } : { targeting_automation: { advantage_audience: 0 } }),
+    ...advantageOn ? {
+      targeting_automation: {
+        advantage_audience: 1,
+        individual_setting: {
+          age: 1,
+          gender: 1
+        }
+      }
+    } : {
+      targeting_automation: {
+        advantage_audience: 0
+      }
+    },
     publisher_platforms: basePlacements.publisher_platforms,
     facebook_positions: positionOverride?.facebook_positions ?? basePlacements.facebook_positions,
     instagram_positions: positionOverride?.instagram_positions ?? basePlacements.instagram_positions,
-    device_platforms: devicePlatforms.length ? devicePlatforms : basePlacements.device_platforms,
+    device_platforms: devicePlatforms.length ? devicePlatforms : basePlacements.device_platforms
   };
-  for (const k of ["facebook_positions", "instagram_positions"]) if (Array.isArray(targeting[k]) && !targeting[k].length) delete targeting[k];
-  // Placements picked one by one replace the preset/default entirely.
+  for (const k of [
+    "facebook_positions",
+    "instagram_positions"
+  ])if (Array.isArray(targeting[k]) && !targeting[k].length) delete targeting[k];
   const chosen = placementSpec(config.placements);
   if (chosen) {
-    for (const k of ["facebook_positions", "instagram_positions"]) delete targeting[k];
+    for (const k of [
+      "facebook_positions",
+      "instagram_positions"
+    ])delete targeting[k];
     Object.assign(targeting, chosen);
   }
-
-  // Where: states (Meta regions) and/or cities (with a radius). Nothing resolvable -> nationwide.
-  const geo: Record<string, any> = { location_types: ["frequently_in", "home", "recent"] };
-  if (config.geo_type === "states" && config.states?.length) {
-    const resolvedStates = await resolveStateRegionKeys(config.states);
-    if (resolvedStates.length) geo.regions = resolvedStates.map((s) => ({ key: s.key }));
+  const geo = {
+    location_types: [
+      "frequently_in",
+      "home",
+      "recent"
+    ]
+  };
+  const rawStates = Array.isArray(config.states) ? config.states : [];
+  // If any entry means "the whole country", the ad set is nationwide: never look it up as a region.
+  const wantsNationwide = rawStates.some(isNationwideTerm);
+  const stateList = wantsNationwide ? [] : rawStates;
+  if (wantsNationwide) console.log(`Ad set "${config.label}": states ${JSON.stringify(rawStates)} means nationwide -- targeting the whole country.`);
+  // Countries: the plan's own choice (config.plan_countries), or the countries picked in the builder (geo_type "countries"); no pick means Nigeria, as before.
+  const planCountries = Array.isArray(config.plan_countries) ? config.plan_countries : [];
+  const builderCountries = config.geo_type === "countries" && Array.isArray(config.countries) ? [
+    ...new Set(config.countries.map((c)=>String(c).toUpperCase()).filter((c)=>/^[A-Z]{2}$/.test(c)))
+  ] : [];
+  const chosenCountries = planCountries.length ? planCountries : builderCountries;
+  const placeCountry = chosenCountries.length === 1 ? chosenCountries[0] : chosenCountries.length ? null : "NG";
+  const cityList = Array.isArray(config.cities) ? config.cities.filter((c)=>/^\d+$/.test(String(c?.key))) : [];
+  if (config.geo_type === "states" && !wantsNationwide && (stateList.length || cityList.length) && !placeCountry) {
+    return {
+      error: `Ad set "${config.label}" names states or cities but also several countries. Use one country per ad set when you pick states or cities.`
+    };
   }
-  if (config.geo_type === "states" && Array.isArray(config.cities) && config.cities.length) {
-    const cities = config.cities
-      .filter((c: any) => /^\d+$/.test(String(c?.key)))
-      .map((c: any) => ({ key: String(c.key), radius: Math.min(Math.max(Number(c.radius) || 17, 10), 80), distance_unit: "kilometer" }));
+  if (config.geo_type === "states" && stateList.length) {
+    const resolvedStates = await resolveStateRegionKeys(stateList, placeCountry ?? "NG");
+    if (resolvedStates.length) geo.regions = resolvedStates.map((s)=>({
+        key: s.key
+      }));
+  }
+  if (!wantsNationwide && config.geo_type === "states" && cityList.length) {
+    const cities = cityList.map((c)=>{
+      const mile = String(c?.distance_unit ?? "").toLowerCase().startsWith("mi");
+      return mile ? {
+        key: String(c.key),
+        radius: Math.min(Math.max(Number(c.radius) || 10, 6), 50),
+        distance_unit: "mile"
+      } : {
+        key: String(c.key),
+        radius: Math.min(Math.max(Number(c.radius) || 17, 10), 80),
+        distance_unit: "kilometer"
+      };
+    });
     if (cities.length) geo.cities = cities;
   }
   if (!geo.regions && !geo.cities) {
-    if (config.geo_type === "states") console.warn(`Ad set "${config.label}" specified places but none resolved -- falling back to nationwide (NG).`);
-    geo.countries = ["NG"];
+    if (config.geo_type === "states" && !wantsNationwide) {
+      // Outside Nigeria never fall back to the whole country when the places were not found: that would spend in the wrong place.
+      if (placeCountry && placeCountry !== "NG") {
+        return {
+          error: `Ad set "${config.label}": its places (${[
+            ...stateList,
+            ...cityList.map((c)=>c.name || c.key)
+          ].join(", ")}) could not be found in ${placeCountry}, so it was NOT created (it would have targeted the whole country). Check the names with search_locations.`
+        };
+      }
+      console.warn(`Ad set "${config.label}" specified places but none resolved -- falling back to nationwide (NG).`);
+    }
+    geo.countries = chosenCountries.length ? chosenCountries : [
+      "NG"
+    ];
   }
   targeting.geo_locations = geo;
-
-  // Who: interests / behaviors (one OR-group, so "business owners + students" reaches either). Detailed
-  // targeting is only a hard filter when Advantage+ expansion is off, so it is switched off whenever
-  // any are chosen -- otherwise Meta may show the ad to anyone.
-  const pick = (arr: any) => (Array.isArray(arr) ? arr : []).filter((x: any) => /^\d+$/.test(String(x?.id))).map((x: any) => ({ id: String(x.id), name: String(x.name ?? "") }));
+  const pick = (arr)=>(Array.isArray(arr) ? arr : []).filter((x)=>/^\d+$/.test(String(x?.id))).map((x)=>({
+        id: String(x.id),
+        name: String(x.name ?? "")
+      }));
   const interests = pick(config.interests), behaviors = pick(config.behaviors);
   if (interests.length || behaviors.length) {
-    targeting.flexible_spec = [{ ...(interests.length ? { interests } : {}), ...(behaviors.length ? { behaviors } : {}) }];
-    targeting.targeting_automation = { advantage_audience: 0 };
+    targeting.flexible_spec = [
+      {
+        ...interests.length ? {
+          interests
+        } : {},
+        ...behaviors.length ? {
+          behaviors
+        } : {}
+      }
+    ];
+    targeting.targeting_automation = {
+      advantage_audience: 0
+    };
   }
-
+  if (restricted) {
+    // Special ad categories: Meta fixes age 18-65, all genders, no detailed targeting and a wide city radius.
+    targeting.age_min = 18;
+    targeting.age_max = 65;
+    targeting.genders = [
+      1,
+      2
+    ];
+    delete targeting.flexible_spec;
+    targeting.targeting_automation = {
+      advantage_audience: 0
+    };
+    if (targeting.geo_locations?.cities) {
+      targeting.geo_locations.cities = targeting.geo_locations.cities.map((c)=>({
+          ...c,
+          radius: Math.max(Number(c.radius) || 0, c.distance_unit === "mile" ? MIN_RESTRICTED_RADIUS_MI : MIN_RESTRICTED_RADIUS_KM)
+        }));
+    }
+  }
   return targeting;
 }
-
-function buildAdSetPayload(opts: {
-  name: string;
-  budgetNaira: number;
-  budgetType: "abo" | "cbo";
-  targeting: Record<string, any>;
-  promotedObject: Record<string, any> | null;
-  optimizationGoal: string;
-  bidStrategy: string;
-  bidAmountNaira?: number | null;
-  billingEvent: string;
-  destinationType: Dest;
-  objective?: string;
-  status?: "ACTIVE" | "PAUSED";
-  startTime?: string | null;
-  endTime?: string | null;
-}) {
-  const payload: Record<string, any> = {
+function buildAdSetPayload(opts) {
+  const payload = {
     name: opts.name,
     optimization_goal: opts.optimizationGoal,
     bid_strategy: opts.bidStrategy,
     billing_event: opts.billingEvent,
     targeting: opts.targeting,
-    // Goes live immediately; start_time (below, when set) is what actually
-    // delays real delivery for a scheduled launch -- Meta won't spend on an
-    // ACTIVE ad set before its own start_time arrives.
     status: opts.status ?? "ACTIVE",
-    access_token: META_ACCESS_TOKEN,
+    access_token: META_ACCESS_TOKEN
   };
-  // Traffic/Awareness objectives need no promoted_object at all -- Meta
-  // rejects the field being present-but-empty, so it's omitted entirely
-  // rather than sent as null.
   if (opts.promotedObject) payload.promoted_object = opts.promotedObject;
-  // LOWEST_COST_WITH_BID_CAP / COST_CAP both require an explicit bid_amount
-  // (in kobo, same *100 convention as budget) -- Meta rejects either strategy
-  // without one. LOWEST_COST_WITHOUT_CAP (the default) takes none.
   if (opts.bidStrategy !== "LOWEST_COST_WITHOUT_CAP" && opts.bidAmountNaira) {
     payload.bid_amount = Math.round(opts.bidAmountNaira * 100);
   }
-  // Required alongside CONVERSATIONS optimization for Click-to-WhatsApp ad
-  // sets under OUTCOME_SALES -- without it Meta rejects the optimization_goal
-  // itself with "Performance goal isn't available", confirmed via live testing.
   if (opts.destinationType === "whatsapp") payload.destination_type = "WHATSAPP";
   else if (opts.destinationType === "messenger") payload.destination_type = "MESSENGER";
   else if (opts.destinationType === "instagram") payload.destination_type = "INSTAGRAM_DIRECT";
   else if (opts.destinationType === "form") payload.destination_type = "ON_AD";
-  // Engagement on a website ad is "post engagement": Meta needs the destination type ON_POST for that goal.
   else if (opts.objective === "OUTCOME_ENGAGEMENT") payload.destination_type = "ON_POST";
-  // CBO: budget lives on the campaign, not here -- Meta rejects an ad set that
-  // sets its own budget under a campaign-budget-optimized campaign.
+  else if (opts.destinationType === "website" && (opts.objective === "OUTCOME_SALES" || opts.objective === "OUTCOME_LEADS")) payload.destination_type = "WEBSITE";
+  if (opts.destinationType === "website" && opts.objective === "OUTCOME_SALES" && opts.lifecycle !== "none") payload.ad_set_goal = {
+    type: 0
+  };
   if (opts.budgetType === "abo") {
     payload.daily_budget = Math.round(opts.budgetNaira * 100);
   }
@@ -726,220 +992,289 @@ function buildAdSetPayload(opts: {
   if (opts.endTime) payload.end_time = opts.endTime;
   return payload;
 }
-
-// creativeGroup: every creative_assets row uploaded together as one batch
-// (dashboard's "+ Add another ad copy" -- shares one launch_batch_id). All
-// rows in a group share the same product/ad_account/campaign settings;
-// creativeGroup[0] (the "anchor") is where ad_set_configs was written and is
-// used for every shared field. A legacy single-copy upload (launch_batch_id
-// null) is just a group of one, unchanged from the old behavior.
-async function launchAdSetGroup(
-  supabase: any,
-  creativeGroup: any[]
-): Promise<{ campaign_id: string; ad_sets: { meta_id: string; db_id: string; label: string; budgetNaira: number }[] } | { error: string }> {
+async function launchAdSetGroup(supabase, creativeGroup) {
   const creative = creativeGroup[0];
   try {
-    // Same "ID: 123..." Meta-label-left-in-the-field issue as
-    // verify-ad-account-connection -- pull just the digits, don't trust
-    // whatever got pasted into the field.
     const rawAccountId = creative.ad_accounts?.meta_ad_account_id || "";
     const accountId = rawAccountId.replace("act_", "").match(/\d+/)?.[0] || rawAccountId.replace("act_", "");
     const pixelId = creative.ad_accounts?.meta_pixel_id || Deno.env.get("META_PIXEL_ID") || "";
     const pageId = creative.ad_accounts?.fb_page_id || "";
     const igUserId = creative.ad_accounts?.ig_user_id || null;
-    // The campaign builder no longer requires a linked product -- these three
-    // fields can be set directly on the creative/campaign now. A linked
-    // product's own fields are still the fallback, so an older product-linked
-    // row (or one where only the product side was filled in) launches exactly
-    // as it did before this existed.
     const rawDest = String(creative.destination_type || creative.products?.destination_type || "");
-    const destinationType: Dest = (MSG_DESTINATIONS.includes(rawDest) || rawDest === "form" ? rawDest : "website") as Dest;
+    const destinationType = MSG_DESTINATIONS.includes(rawDest) || rawDest === "form" ? rawDest : "website";
     const isForm = destinationType === "form";
     const isMsg = destinationType !== "website" && !isForm;
-    // Draft mode: everything is created on Meta but left PAUSED, so it shows in Ads Manager and nothing spends.
-    const liveStatus: "ACTIVE" | "PAUSED" = creative.launch_paused === true ? "PAUSED" : "ACTIVE";
+    const liveStatus = creative.launch_paused === true ? "PAUSED" : "ACTIVE";
     const whatsappNumber = creative.whatsapp_number || creative.products?.whatsapp_number || "";
     const destinationLink = creative.landing_page_url || creative.products?.landing_page_url || "";
     const ctaType = creative.cta_type || "SHOP_NOW";
     const productName = creative.campaign_name?.trim() || creative.products?.product_name || "this business";
-    const budgetType: "abo" | "cbo" = creative.budget_type === "cbo" ? "cbo" : "abo";
-    // Real column the dashboard's upload form actually writes to is
-    // scheduled_for (creative_assets.launch_at exists too but is unused/orphaned).
-    const startTime = creative.scheduled_for || null;
-    const endTime = creative.campaign_end_date || null;
-
+    const budgetType = creative.budget_type === "cbo" ? "cbo" : "abo";
+    let startTime = creative.scheduled_for || null;
+    let endTime = creative.campaign_end_date || null;
+    // Plans made through the AI assistant keep extra settings on the plan itself (ai_plans.plan): a schedule and chosen placements.
+    let planMeta = null;
+    if (creative.uploaded_by === "ai_chat") {
+      const { data: livePlans } = await supabase.from("ai_plans").select("plan").eq("status", "launching").eq("company_id", creative.company_id).eq("ad_account_id", creative.ad_account_id).order("created_at", {
+        ascending: false
+      }).limit(5);
+      planMeta = (livePlans ?? []).map((r)=>r.plan).find((p)=>p?.campaign_name === creative.campaign_name) ?? null;
+    }
+    if (!startTime && planMeta?.scheduled_for && liveStatus === "ACTIVE") {
+      if (new Date(planMeta.scheduled_for).getTime() < Date.now() + 2 * 60 * 1e3) {
+        return {
+          error: `The scheduled start time (${planMeta.scheduled_for}) has already passed or is less than 2 minutes away. Make a new plan with a later start time, or one without a start time to launch now.`
+        };
+      }
+      startTime = planMeta.scheduled_for;
+      endTime = planMeta.campaign_end_date || endTime;
+    }
+    const planPlacements = Array.isArray(planMeta?.placements) ? planMeta.placements.map(String).filter((k)=>PLACEMENTS[k]) : [];
+    // ADS PER AD SET: a plan can give each ad set its own ads. plan.adsets[n].ad_numbers lists which of the plan's ads (1, 2, 3 ...) ad set n runs.
+    // Every staged ad is named "... · Ad N" and carries its ad set number, so drop the ones an ad set did not choose BEFORE anything is created on Meta.
+    // Plans without ad_numbers (the old way) are not touched: every ad set runs every ad.
+    if (planMeta?.adsets?.some((s)=>Array.isArray(s?.ad_numbers) && s.ad_numbers.length)) {
+      const kept = [];
+      for (const row of creativeGroup){
+        const chosen = planMeta.adsets[row.ad_set_sort_order]?.ad_numbers;
+        if (!Array.isArray(chosen) || !chosen.length) {
+          kept.push(row);
+          continue;
+        }
+        const n = Number(String(row.ad_name ?? "").match(/ Ad (\d+)$/)?.[1]);
+        if (!Number.isFinite(n)) {
+          return {
+            error: `Could not tell which ad "${row.ad_name}" is, so nothing was launched. Use a shorter product or ad set name and plan it again.`
+          };
+        }
+        if (chosen.map(Number).includes(n)) kept.push(row);
+      }
+      if (!kept.length) return {
+        error: "None of the ads chosen for the ad sets were found, so nothing was launched. Plan it again."
+      };
+      creativeGroup = kept;
+    }
     if (!pageId) {
       const msg = `Missing fb_page_id for creative ${creative.id} -- check the ad_accounts row.`;
       console.error(msg);
-      return { error: msg };
+      return {
+        error: msg
+      };
+    }
+    // CURRENCY GUARD: budgets go to Meta in the ad account's own currency. Naira accounts keep working exactly as before.
+    // Any other currency needs a plan that says it was made in that currency (the assistant planner does this); everything else is refused, so a naira number can never become dollars.
+    const acctInfo = await getAccountCurrency(supabase, creative.ad_account_id, accountId);
+    if (acctInfo.error) return {
+      error: acctInfo.error
+    };
+    const currency = acctInfo.currency;
+    const planCurrency = String(planMeta?.currency ?? "").trim().toUpperCase();
+    if (!VERIFIED_CURRENCIES.includes(currency)) {
+      return {
+        error: `This ad account bills in ${currency}, which is not verified for launching yet, so nothing was launched.`
+      };
+    }
+    if (planCurrency && planCurrency !== currency) {
+      return {
+        error: `This plan was made in ${planCurrency} but the ad account bills in ${currency}, so nothing was launched. Plan it again for this account.`
+      };
+    }
+    if (currency !== "NGN") {
+      if (planCurrency !== currency) {
+        return {
+          error: `This ad account bills in ${currency}, but this plan does not state its budgets in ${currency} (plans made in the dashboard count in naira), so nothing was launched. Plan it again from the assistant so the budgets are in ${currency}.`
+        };
+      }
+      if (acctInfo.billing_mode === "managed") {
+        return {
+          error: `Managed wallet accounts only run in naira. This account bills in ${currency}, so nothing was launched.`
+        };
+      }
     }
     if (destinationType === "whatsapp" && !whatsappNumber) {
       const msg = `Creative ${creative.id} is set to WhatsApp destination but has no WhatsApp number (set directly on the campaign, or on its linked product).`;
       console.error(msg);
-      return { error: msg };
+      return {
+        error: msg
+      };
     }
     if (isForm && !creative.lead_form_id) {
       const msg = `Creative ${creative.id} is set to an Instant form but no lead form was chosen.`;
       console.error(msg);
-      return { error: msg };
+      return {
+        error: msg
+      };
     }
     if (destinationType === "website" && !destinationLink) {
       const msg = `Missing a landing page URL for creative ${creative.id} (set directly on the campaign, or on its linked product).`;
       console.error(msg);
-      return { error: msg };
+      return {
+        error: msg
+      };
     }
-
-    // The campaign builder's objective step -- WhatsApp destination stays
-    // forced to OUTCOME_SALES regardless of what's picked (that destination
-    // IS a sales-via-messaging flow in this app, same as always).
-    // WhatsApp is always Sales. Messenger / Instagram messages can be Sales, Leads or Engagement. Website: any objective.
-    const campaignObjective = isForm
-      ? "OUTCOME_LEADS"
-      : destinationType === "whatsapp"
-      ? "OUTCOME_SALES"
-      : isMsg
-        ? (["OUTCOME_SALES", "OUTCOME_LEADS", "OUTCOME_ENGAGEMENT"].includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES")
-        : (VALID_OBJECTIVES.includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES");
+    const campaignObjective = isForm ? "OUTCOME_LEADS" : destinationType === "whatsapp" ? "OUTCOME_SALES" : isMsg ? [
+      "OUTCOME_SALES",
+      "OUTCOME_LEADS",
+      "OUTCOME_ENGAGEMENT"
+    ].includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES" : VALID_OBJECTIVES.includes(creative.campaign_objective) ? creative.campaign_objective : "OUTCOME_SALES";
     const objectiveDefaults = OBJECTIVE_CONFIG[campaignObjective];
+    // Special ad category: the plan's own choice wins, then the product's default, otherwise none.
+    const planCat = String(planMeta?.special_ad_category ?? "").toUpperCase();
+    const prodCat = String(creative.products?.special_ad_category ?? "").toUpperCase();
+    const specialCategory = SPECIAL_CATEGORIES.includes(planCat) ? planCat : SPECIAL_CATEGORIES.includes(prodCat) ? prodCat : null;
     if (destinationType === "instagram" && !igUserId) {
       const msg = `Creative ${creative.id} is set to Instagram messages but this ad account has no Instagram account linked.`;
       console.error(msg);
-      return { error: msg };
+      return {
+        error: msg
+      };
     }
     if (destinationType === "website" && (campaignObjective === "OUTCOME_SALES" || campaignObjective === "OUTCOME_LEADS") && !pixelId) {
       const msg = `Missing pixel_id for creative ${creative.id} -- check the ad_accounts row (Sales objective needs a connected pixel).`;
       console.error(msg);
-      return { error: msg };
+      return {
+        error: msg
+      };
     }
-
-    // promoted_object depends on destination + objective: website Sales
-    // optimizes for the pixel's Purchase event; website Traffic/Awareness
-    // need none at all; website Engagement optimizes for the Page's post
-    // engagement; WhatsApp Sales optimizes for CONVERSATIONS against the
-    // connected WhatsApp number -- per Meta's Click-to-WhatsApp docs.
-    const promotedObject =
-      destinationType === "whatsapp"
-        ? { page_id: pageId, whatsapp_phone_number: whatsappNumber }
-        : isMsg || isForm
-          ? { page_id: pageId }
-          : objectiveDefaults.promotedObject(pixelId, pageId);
-
-    // Ad sets to create for this creative -- built directly in the dashboard's
-    // ad-set builder (one row = one ad set; "Duplicate x N" clones it into more
-    // rows). Falls back to one default ad set (₦5,000/day, 25-65, all genders,
-    // nationwide) if the creative predates this builder / has none configured.
-    let adSetConfigs: any[] = [];
+    const promotedObject = destinationType === "whatsapp" ? {
+      page_id: pageId,
+      whatsapp_phone_number: whatsappNumber
+    } : isMsg || isForm ? {
+      page_id: pageId
+    } : objectiveDefaults.promotedObject(pixelId, pageId);
+    let adSetConfigs = [];
     {
-      const { data } = await supabase
-        .from("ad_set_configs")
-        .select("*")
-        .eq("creative_id", creative.id)
-        .order("sort_order", { ascending: true });
+      const { data } = await supabase.from("ad_set_configs").select("*").eq("creative_id", creative.id).order("sort_order", {
+        ascending: true
+      });
       adSetConfigs = data || [];
     }
     if (!adSetConfigs.length) {
       adSetConfigs = [
-        { label: "Ad Set 1", budget_naira: 5000, age_min: 25, age_max: 65, gender: "all", geo_type: "nationwide", states: null },
+        {
+          label: "Ad Set 1",
+          budget_naira: 5e3,
+          age_min: 25,
+          age_max: 65,
+          gender: "all",
+          geo_type: "nationwide",
+          states: null
+        }
       ];
     }
-
-    // 1. Create campaign. CBO: campaign carries the total daily budget and its
-    // own bid strategy; ABO: budget stays on each ad set (unchanged).
-    // User-editable campaign name (dashboard's ad-set builder) -- falls back to
-    // an auto-generated one only if left blank, so it's always recognizable in
-    // Ads Manager instead of the old always-auto-generated product+filename+timestamp.
-    const campaignName = creative.campaign_name?.trim() || `${productName} - ${new Date().toLocaleDateString("en-NG")}`;
-    const totalBudgetNaira = adSetConfigs.reduce((sum: number, c: any) => sum + Number(c.budget_naira || 5000), 0);
-    const campaignPayload: Record<string, any> = {
+    // Placements: an ad set's own choice (plan.adsets[n].placements) wins, then the plan-wide default, then whatever is saved on the ad set config.
+    // Customer life cycle strategy: plan.adsets[n].lifecycle "none" = leave it blank, anything else = "all audiences".
+    // Budget: for a non-naira account the plan's own budget (in the account currency) is used. Countries: plan.adsets[n].countries.
+    const budgetProblems = [];
+    adSetConfigs = adSetConfigs.map((cfg0, idx)=>{
+      const planSet = planMeta?.adsets?.[cfg0.sort_order ?? idx];
+      const cfg = {
+        ...cfg0,
+        lifecycle: planSet?.lifecycle === "none" ? "none" : "broad"
+      };
+      if (currency !== "NGN") {
+        const amt = Number(planSet?.budget_naira);
+        if (!(amt >= 1 && amt <= 1e4)) budgetProblems.push(`"${cfg0.label}": ${Number.isFinite(amt) ? amt : "no"} ${currency}/day is not a usable daily budget (1 to 10,000 ${currency}).`);
+        cfg.budget_naira = amt;
+      }
+      const pcs = Array.isArray(planSet?.countries) ? [
+        ...new Set(planSet.countries.map((x)=>String(x).toUpperCase()).filter((x)=>/^[A-Z]{2}$/.test(x)))
+      ] : [];
+      if (pcs.length) {
+        cfg.plan_countries = pcs;
+        cfg.countries = pcs;
+        if (cfg.geo_type !== "states") cfg.geo_type = "countries";
+      }
+      const own = planSet?.placements;
+      const ownList = Array.isArray(own) ? own.map(String) : [];
+      if (ownList.length === 1 && ownList[0] === "automatic") return {
+        ...cfg,
+        placements: null
+      };
+      const ownKeys = ownList.filter((k)=>PLACEMENTS[k]);
+      if (ownKeys.length) return {
+        ...cfg,
+        placements: ownKeys
+      };
+      return planPlacements.length ? {
+        ...cfg,
+        placements: planPlacements
+      } : cfg;
+    });
+    if (budgetProblems.length) return {
+      error: `Nothing was launched. ${budgetProblems.join(" ")}`
+    };
+    const campaignName = creative.campaign_name?.trim() || `${productName} - ${/* @__PURE__ */ new Date().toLocaleDateString("en-NG")}`;
+    const totalBudgetNaira = adSetConfigs.reduce((sum, c)=>sum + Number(c.budget_naira || 5e3), 0);
+    const campaignPayload = {
       name: campaignName,
       objective: campaignObjective,
-      // Required by Meta on every campaign since their special-ads-category
-      // compliance rollout (housing/employment/credit/social issues) --
-      // "NONE" for an ordinary product. Missing this hard-fails campaign
-      // creation with error #100, unrelated to anything else in this payload.
-      special_ad_categories: ["NONE"],
-      // Goes live immediately -- no approval gate. A scheduled launch is
-      // still created ACTIVE now; its ad set's start_time (native Meta
-      // scheduling) is what holds real delivery until that time.
+      special_ad_categories: specialCategory ? [
+        specialCategory
+      ] : [
+        "NONE"
+      ],
       status: liveStatus,
-      access_token: META_ACCESS_TOKEN,
+      access_token: META_ACCESS_TOKEN
     };
+    if (specialCategory) {
+      // Meta wants the country the special-category ads run in (US for a US realtor, NG by default).
+      campaignPayload.special_ad_category_country = [
+        ...new Set(adSetConfigs.flatMap((c)=>effectiveCountries(c)))
+      ];
+    }
     if (budgetType === "cbo") {
       campaignPayload.daily_budget = Math.round(totalBudgetNaira * 100);
-      // CBO's bid strategy lives on the campaign, shared by every ad set under
-      // it -- takes the first ad set's choice (or the default if unset/mixed).
       campaignPayload.bid_strategy = VALID_BID_STRATEGIES.includes(adSetConfigs[0]?.bid_strategy) ? adSetConfigs[0].bid_strategy : REAL_BID_STRATEGY;
     } else {
-      // Meta now requires this explicitly for ABO campaigns: whether ad sets
-      // can share up to 20% of budget with each other for overall performance.
-      // False matches your real historical pattern -- each ad set's budget
-      // stays independent, no sharing.
       campaignPayload.is_adset_budget_sharing_enabled = false;
     }
     const campaignRes = await fetch(`${META_GRAPH_BASE}/act_${accountId}/campaigns`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(campaignPayload),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(campaignPayload)
     });
     const campaignData = await campaignRes.json();
     if (!campaignData.id) {
       console.error("Failed to create campaign:", campaignData);
-      return { error: `Campaign creation failed: ${JSON.stringify(campaignData.error || campaignData)}` };
+      return {
+        error: `Campaign creation failed: ${JSON.stringify(campaignData.error || campaignData)}`
+      };
     }
     const campaignId = campaignData.id;
-
-    // ad_sets.campaign_id is a local uuid FK, not Meta's numeric campaign id --
-    // inserting the Meta id directly there was silently failing on every launch
-    // (the insert error was never checked), so ad sets that were genuinely
-    // created on Meta were never recorded here at all. Create the local
-    // campaigns row first and use its id for that FK.
-    const { data: campaignRow, error: campaignRowErr } = await supabase
-      .from("campaigns")
-      .insert({
-        meta_campaign_id: campaignId,
-        campaign_name: campaignPayload.name,
-        campaign_type: "testing",
-        objective: campaignObjective,
-        daily_budget_naira: budgetType === "abo" ? null : totalBudgetNaira,
-        // Mirrors the real Meta object's status -- goes live immediately now
-        // that nothing flips this from "paused" to "active" on approval anymore.
-        status: liveStatus === "PAUSED" ? "paused" : "active",
-        ad_account_id: creative.ad_account_id,
-        // Every row below (campaigns/creatives/ad_sets/ad_set_ads) must carry
-        // company_id -- every read anywhere in the dashboard filters by
-        // company_id = current_company_id(), and this runs on the service
-        // role key which bypasses RLS on the way IN, so a missing company_id
-        // here doesn't error, it just makes the row permanently invisible to
-        // everyone the moment it's created. Confirmed live: campaigns/ad_sets
-        // were completely empty company-wide despite this pipeline existing.
-        company_id: creative.company_id,
-      })
-      .select("id")
-      .single();
+    const { data: campaignRow, error: campaignRowErr } = await supabase.from("campaigns").insert({
+      meta_campaign_id: campaignId,
+      campaign_name: campaignPayload.name,
+      campaign_type: "testing",
+      objective: campaignObjective,
+      meta_raw: {
+        special_ad_categories: campaignPayload.special_ad_categories
+      },
+      daily_budget_naira: budgetType === "abo" ? null : totalBudgetNaira,
+      status: liveStatus === "PAUSED" ? "paused" : "active",
+      ad_account_id: creative.ad_account_id,
+      company_id: creative.company_id
+    }).select("id").single();
     if (campaignRowErr || !campaignRow) {
       console.error("Failed to record local campaign row:", campaignRowErr);
-      return { error: `Campaign "${campaignId}" was created on Meta but failed to save locally: ${campaignRowErr?.message}` };
+      return {
+        error: `Campaign "${campaignId}" was created on Meta but failed to save locally: ${campaignRowErr?.message}`
+      };
     }
     const localCampaignId = campaignRow.id;
-
-    // If anything below fails before any ad set exists, delete the campaign
-    // we just created instead of leaving an empty orphaned shell on the real
-    // ad account -- confirmed via live testing this was happening on every
-    // failed launch (media upload failures especially, since that's an early,
-    // easy-to-hit failure point).
-    const abortAndCleanup = async (errorMsg: string) => {
-      await fetch(`${META_GRAPH_BASE}/${campaignId}?access_token=${META_ACCESS_TOKEN}`, { method: "DELETE" }).catch(() => {});
+    const abortAndCleanup = async (errorMsg)=>{
+      await fetch(`${META_GRAPH_BASE}/${campaignId}?access_token=${META_ACCESS_TOKEN}`, {
+        method: "DELETE"
+      }).catch(()=>{});
       await supabase.from("campaigns").delete().eq("id", localCampaignId);
-      return { error: errorMsg };
+      return {
+        error: errorMsg
+      };
     };
-
-    // 2. Upload every ad copy in the group to Meta and create its own ad
-    // creative -- one real Meta ad-creative object per copy (matching how your
-    // real "Lunessa Whatsapp ADSET" runs 3 distinct ad copies side by side).
-    // Every ad set created below gets one ad per copy here, not just one
-    // shared ad, so testing 3 copies across 4 ad sets produces 12 real ads.
-    const localCreatives: { id: string; metaCreativeId: string; fileName: string; adName: string; adSetSortOrder: number | null }[] = [];
-    for (const copy of creativeGroup) {
+    const localCreatives = [];
+    for (const copy of creativeGroup){
       const media = await ensureMetaMedia(supabase, accountId, copy);
       if (!media || media.error) {
         return await abortAndCleanup(`Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`);
@@ -949,41 +1284,33 @@ async function launchAdSetGroup(
       if (!adCreativeId) {
         return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}): ${adCreativeRes?.error || "no reason given"}`);
       }
-      const { data: localCreativeRow, error: localCreativeErr } = await supabase
-        .from("creatives")
-        .insert({
-          creative_name: String(copy.ad_name ?? "").trim() || `${productName}-${copy.file_name}`,
-          format: copy.format || "customer_review",
-          mechanism: copy.mechanism || "why_product_works",
-          awareness_stage: "product_aware",
-          primary_text: copy.primary_text,
-          headline: copy.headline,
-          description: copy.description,
-          image_url: media.imageUrl || null,
-          video_id: media.videoId || null,
-          destination_link: destinationLink || null,
-          cta_type: ctaType,
-          meta_ad_id: adCreativeId,
-          status: "testing",
-          company_id: creative.company_id,
-          // Carries the dashboard's launch_batch_id over from the staging
-          // row so the Ads list can group a duplicated ad's copies under
-          // the original instead of showing them as unrelated flat rows.
-          launch_batch_id: copy.launch_batch_id || null,
-        })
-        .select("id")
-        .single();
+      const { data: localCreativeRow, error: localCreativeErr } = await supabase.from("creatives").insert({
+        creative_name: String(copy.ad_name ?? "").trim() || `${productName}-${copy.file_name}`,
+        format: copy.format || "customer_review",
+        mechanism: copy.mechanism || "why_product_works",
+        awareness_stage: "product_aware",
+        primary_text: copy.primary_text,
+        headline: copy.headline,
+        description: copy.description,
+        image_url: media.imageUrl || null,
+        video_id: media.videoId || null,
+        destination_link: destinationLink || null,
+        cta_type: ctaType,
+        meta_ad_id: adCreativeId,
+        status: "testing",
+        company_id: creative.company_id,
+        launch_batch_id: copy.launch_batch_id || null
+      }).select("id").single();
       if (localCreativeErr?.code === "23505") {
-        // Meta deduplicates ad creatives with byte-identical content (same
-        // image/video + same text) -- two "copies" cloned from the same
-        // original (e.g. the builder's "Duplicate this ad") can come back
-        // with the SAME meta_ad_id instead of two distinct ones. That's
-        // real, expected Meta behavior, not a failure -- reuse the local
-        // row already recorded for it instead of aborting the whole batch
-        // over a unique-constraint hit.
         const { data: existing } = await supabase.from("creatives").select("id").eq("meta_ad_id", adCreativeId).maybeSingle();
         if (existing) {
-          localCreatives.push({ id: existing.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim(), adSetSortOrder: copy.ad_set_sort_order ?? null });
+          localCreatives.push({
+            id: existing.id,
+            metaCreativeId: adCreativeId,
+            fileName: copy.file_name,
+            adName: String(copy.ad_name ?? "").trim(),
+            adSetSortOrder: copy.ad_set_sort_order ?? null
+          });
           continue;
         }
       }
@@ -991,55 +1318,39 @@ async function launchAdSetGroup(
         console.error("Failed to record local creative row:", localCreativeErr);
         return await abortAndCleanup(`Ad creative "${adCreativeId}" was created on Meta but failed to save locally: ${localCreativeErr?.message}`);
       }
-      localCreatives.push({ id: localCreativeRow.id, metaCreativeId: adCreativeId, fileName: copy.file_name, adName: String(copy.ad_name ?? "").trim(), adSetSortOrder: copy.ad_set_sort_order ?? null });
+      localCreatives.push({
+        id: localCreativeRow.id,
+        metaCreativeId: adCreativeId,
+        fileName: copy.file_name,
+        adName: String(copy.ad_name ?? "").trim(),
+        adSetSortOrder: copy.ad_set_sort_order ?? null
+      });
     }
-    // Kept for backward compat with dashboard code that still reads
-    // ad_sets.creative_id as a single value (e.g. the creative-detail modal) --
-    // points at the first copy; the full set lives in ad_set_ads.
     const localCreativeId = localCreatives[0].id;
-
-    // 3. Create one ad set per ad-set config (each row from the dashboard's
-    // builder, including any "Duplicate x N" clones), then attach an ad under
-    // each one using the shared ad creative above.
-    const createdAdSets: { row: any; metaId: string; label: string; budgetNaira: number; sortOrder: number | null }[] = [];
-    const adSetErrors: string[] = [];
-    for (const config of adSetConfigs) {
-      const targeting = await buildTargetingFromConfig(config, destinationType);
+    const createdAdSets = [];
+    const adSetErrors = [];
+    for (const config of adSetConfigs){
+      const targeting = await buildTargetingFromConfig(config, destinationType, !!specialCategory);
       const label = config.label;
-      // A name typed in the builder is used exactly as written; otherwise the old generated name.
+      if (targeting?.error) {
+        console.error(`Ad set "${label}" skipped:`, targeting.error);
+        adSetErrors.push(`"${label}": ${targeting.error}`);
+        continue;
+      }
       const customAdSetName = String(config.display_name ?? "").trim();
-
-      // Per-ad-set resolution, each falling back to the exact previous fixed
-      // behavior when the config row doesn't set it. WhatsApp's optimization
-      // goal is never overridable -- CONVERSATIONS is a Meta requirement for
-      // that destination type, not a choice (see promotedObject above). Only
-      // OUTCOME_SALES offers a real per-ad-set choice (Conversions/Link
-      // clicks/Landing page views) -- Traffic/Engagement/Awareness each have
-      // one objective-correct goal, not several worth exposing.
-      const optimizationGoal = isForm
-        ? "LEAD_GENERATION"
-        : isMsg
-        ? "CONVERSATIONS"
-        : campaignObjective === "OUTCOME_SALES"
-          ? (VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL)
-          : objectiveDefaults.optimizationGoal;
+      const optimizationGoal = isForm ? "LEAD_GENERATION" : isMsg ? "CONVERSATIONS" : campaignObjective === "OUTCOME_SALES" ? VALID_WEBSITE_OPTIMIZATION_GOALS.includes(config.optimization_goal) ? config.optimization_goal : REAL_OPTIMIZATION_GOAL : objectiveDefaults.optimizationGoal;
       const bidStrategy = VALID_BID_STRATEGIES.includes(config.bid_strategy) ? config.bid_strategy : REAL_BID_STRATEGY;
       const billingEvent = VALID_BILLING_EVENTS.includes(config.billing_event) ? config.billing_event : "IMPRESSIONS";
-
-      // Posting to /{campaignId}/adsets directly is rejected by this app/API
-      // combo with a misleading "object does not exist" error (code 100,
-      // subcode 33) even though the campaign is fully readable right after
-      // creation -- confirmed via isolated live testing. The account-scoped
-      // path with campaign_id in the body is the one that actually works
-      // (same fix already applied in auto-duplicate-adsets).
       const adsetRes = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adsets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({
           campaign_id: campaignId,
           ...buildAdSetPayload({
             name: customAdSetName || `${label}-${creative.file_name.substring(0, 20)}-${Date.now()}`,
-            budgetNaira: Number(config.budget_naira || 5000),
+            budgetNaira: Number(config.budget_naira || 5e3),
             budgetType,
             targeting,
             promotedObject,
@@ -1049,11 +1360,12 @@ async function launchAdSetGroup(
             billingEvent,
             destinationType,
             objective: campaignObjective,
+            lifecycle: config.lifecycle,
             status: liveStatus,
             startTime,
-            endTime,
-          }),
-        }),
+            endTime
+          })
+        })
       });
       const adsetData = await adsetRes.json();
       if (!adsetData.id) {
@@ -1061,215 +1373,166 @@ async function launchAdSetGroup(
         adSetErrors.push(`"${label}": ${JSON.stringify(adsetData.error || adsetData)}`);
         continue;
       }
-
-      const { data: row, error: rowErr } = await supabase
-        .from("ad_sets")
-        .insert({
-          campaign_id: localCampaignId,
-          meta_adset_id: adsetData.id,
-          adset_name: customAdSetName || `${label}-${creative.file_name}`,
-          creative_id: localCreativeId,
-          targeting_type: config.geo_type === "states" ? "narrow" : "broad",
-          budget_naira: budgetType === "abo" ? Number(config.budget_naira || 5000) : null,
-          ad_account_id: creative.ad_account_id,
-          // Mirrors the real Meta ad set's status -- same reasoning as the
-          // campaigns-row status above.
-          status: liveStatus === "PAUSED" ? "paused" : "active",
-          age_min: config.age_min,
-          age_max: config.age_max,
-          genders: targeting.genders,
-          states: config.states,
-          countries: ["NG"],
-          optimization_goal: optimizationGoal,
-          bid_strategy: bidStrategy,
-          company_id: creative.company_id,
-          // Buyer-role RLS on ad_sets requires media_buyer_id to match the
-          // viewer's own profile (owner/admin bypass it) -- without this, the
-          // buyer who actually launched the test couldn't see it themselves.
-          media_buyer_id: creative.ad_accounts?.media_buyer_id || null,
-        })
-        .select("id")
-        .single();
-
+      const nationwideAdSet = !targeting.geo_locations?.regions && !targeting.geo_locations?.cities;
+      const { data: row, error: rowErr } = await supabase.from("ad_sets").insert({
+        campaign_id: localCampaignId,
+        meta_adset_id: adsetData.id,
+        adset_name: customAdSetName || `${label}-${creative.file_name}`,
+        creative_id: localCreativeId,
+        targeting_type: nationwideAdSet ? "broad" : config.geo_type === "states" ? "narrow" : "broad",
+        budget_naira: budgetType === "abo" ? Number(config.budget_naira || 5e3) : null,
+        ad_account_id: creative.ad_account_id,
+        status: liveStatus === "PAUSED" ? "paused" : "active",
+        age_min: config.age_min,
+        age_max: config.age_max,
+        genders: targeting.genders,
+        states: nationwideAdSet ? null : config.states,
+        countries: targeting.geo_locations?.countries?.length ? targeting.geo_locations.countries : effectiveCountries(config),
+        optimization_goal: optimizationGoal,
+        bid_strategy: bidStrategy,
+        company_id: creative.company_id,
+        media_buyer_id: creative.ad_accounts?.media_buyer_id || null
+      }).select("id").single();
       if (row) {
-        createdAdSets.push({ row, metaId: adsetData.id, label, budgetNaira: Number(config.budget_naira || 5000), sortOrder: config.sort_order ?? null });
+        createdAdSets.push({
+          row,
+          metaId: adsetData.id,
+          label,
+          budgetNaira: Number(config.budget_naira || 5e3),
+          sortOrder: config.sort_order ?? null
+        });
       } else {
-        // The ad set is real and live (PAUSED) on Meta at this point even though
-        // the local record failed -- surface this distinctly so it isn't lost.
         console.error(`Ad set "${label}" (meta id ${adsetData.id}) created on Meta but failed to save locally:`, rowErr);
         adSetErrors.push(`"${label}": created on Meta (${adsetData.id}) but DB save failed: ${rowErr?.message}`);
       }
     }
-
     if (!createdAdSets.length) {
       const msg = `No ad sets were successfully created for creative batch ${creative.id}. ${adSetErrors.join(" | ")}`;
       console.error(msg);
       return await abortAndCleanup(msg);
     }
-
-    // 4. Attach one ad per ad copy under every ad set that was actually
-    // created -- N copies x M ad sets = N*M real ads, each recorded in
-    // ad_set_ads so the dashboard can show exactly which creative is running
-    // in which ad set (not just the targeting-level ad set list).
-    for (const a of createdAdSets) {
-      for (const lc of localCreatives) {
-        // An ad built for a specific ad set runs only there; an ad with no ad set (older launches) runs in all of them.
+    for (const a of createdAdSets){
+      for (const lc of localCreatives){
         if (lc.adSetSortOrder != null && a.sortOrder != null && lc.adSetSortOrder !== a.sortOrder) continue;
-        const adId = await createAdWithCTA(
-          a.metaId,
-          lc.metaCreativeId,
-          lc.adName || `AD-${a.label}-${lc.fileName.substring(0, 20)}-${Date.now()}`,
-          accountId,
-          liveStatus
-        );
+        const adId = await createAdWithCTA(a.metaId, lc.metaCreativeId, lc.adName || `AD-${a.label}-${lc.fileName.substring(0, 20)}-${Date.now()}`, accountId, liveStatus);
         if (!adId) {
           console.error(`Failed to create ad for "${a.label}" ad set with creative ${lc.id} (${lc.fileName})`);
           continue;
         }
-        const { error: adSetAdErr } = await supabase
-          .from("ad_set_ads")
-          .insert({ ad_set_id: a.row.id, creative_id: lc.id, meta_ad_id: adId, company_id: creative.company_id });
+        const { error: adSetAdErr } = await supabase.from("ad_set_ads").insert({
+          ad_set_id: a.row.id,
+          creative_id: lc.id,
+          meta_ad_id: adId,
+          company_id: creative.company_id
+        });
         if (adSetAdErr) console.error(`Failed to record ad_set_ads for "${a.label}"/${lc.fileName}:`, adSetAdErr);
       }
     }
-
     return {
       campaign_id: campaignId,
-      ad_sets: createdAdSets.map((a) => ({ meta_id: a.metaId, db_id: a.row.id, label: a.label, budgetNaira: a.budgetNaira })),
+      start_time: startTime,
+      currency,
+      ad_sets: createdAdSets.map((a)=>({
+          meta_id: a.metaId,
+          db_id: a.row.id,
+          label: a.label,
+          budgetNaira: a.budgetNaira
+        }))
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("Launch ad set group error:", err);
-    return { error: `Unhandled error: ${err.message || err}` };
+    return {
+      error: `Unhandled error: ${err.message || err}`
+    };
   }
 }
-
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: CORS_HEADERS });
+    return new Response("ok", {
+      headers: CORS_HEADERS
+    });
   }
-
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const caller = await getCaller(req, supabase);
     if (!caller) {
-      return new Response(JSON.stringify({ error: "Not signed in" }), { status: 401, headers: { "Content-Type": "application/json", ...CORS_HEADERS } });
+      return new Response(JSON.stringify({
+        error: "Not signed in"
+      }), {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          ...CORS_HEADERS
+        }
+      });
     }
-
-    // An explicit product_id (the dashboard's "Publish" button, scoped to one
-    // product) bypasses the auto_post_enabled gate -- that toggle controls
-    // whether a product's creatives launch automatically in an unattended
-    // batch run, not whether a human can manually publish them right now.
-    // creative_ids (the campaign builder's own Launch/Schedule button) targets
-    // the exact rows it just wrote, independent of any product at all -- the
-    // campaign builder no longer requires linking one.
-    let requestedProductId: string | null = null;
-    let requestedCreativeIds: string[] | null = null;
+    let requestedProductId = null;
+    let requestedCreativeIds = null;
     try {
       const body = await req.json();
       requestedProductId = body?.product_id || null;
       requestedCreativeIds = Array.isArray(body?.creative_ids) && body.creative_ids.length ? body.creative_ids : null;
-    } catch {
-      // No/invalid JSON body -- treat as a plain batch run.
-    }
-
-    // 1. Get the pending creatives for this request. Real column is
-    // test_status (not the nonexistent "status" this used to filter on --
-    // that silently matched zero rows every single run, regardless of
-    // anything uploaded). The product-less creative_ids/product_id paths use
-    // a plain left join (a creative may have no product_id at all now); only
-    // the unattended batch path needs !inner, since it filters on the joined
-    // auto_post_enabled column.
+    } catch  {}
     let pendingQuery;
     if (requestedCreativeIds) {
-      pendingQuery = supabase
-        .from("creative_assets")
-        .select(
-          "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
-        )
-        .eq("test_status", "untested")
-        .in("id", requestedCreativeIds)
-        .order("uploaded_at", { ascending: true });
+      pendingQuery = supabase.from("creative_assets").select("*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number, special_ad_category)").eq("test_status", "untested").in("id", requestedCreativeIds).order("uploaded_at", {
+        ascending: true
+      });
     } else if (requestedProductId) {
-      pendingQuery = supabase
-        .from("creative_assets")
-        .select(
-          "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
-        )
-        .eq("test_status", "untested")
-        .eq("product_id", requestedProductId)
-        .order("uploaded_at", { ascending: true })
-        .limit(20);
+      pendingQuery = supabase.from("creative_assets").select("*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number, special_ad_category)").eq("test_status", "untested").eq("product_id", requestedProductId).order("uploaded_at", {
+        ascending: true
+      }).limit(20);
     } else {
-      pendingQuery = supabase
-        .from("creative_assets")
-        .select(
-          "*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number)"
-        )
-        .eq("test_status", "untested")
-        .eq("products.auto_post_enabled", true)
-        .order("uploaded_at", { ascending: true })
-        .limit(5);
+      pendingQuery = supabase.from("creative_assets").select("*, ad_accounts(meta_ad_account_id, fb_page_id, meta_pixel_id, ig_user_id, media_buyer_id), products!inner(product_name, landing_page_url, auto_post_enabled, destination_type, whatsapp_number, special_ad_category)").eq("test_status", "untested").eq("products.auto_post_enabled", true).order("uploaded_at", {
+        ascending: true
+      }).limit(5);
     }
-
-    // Tenant scope: a signed-in user can only launch their own company's creatives.
     if (!caller.service) pendingQuery = pendingQuery.eq("company_id", caller.company_id);
-
     const { data: pendingCreatives, error: pendingErr } = await pendingQuery;
-
     if (pendingErr) {
       console.error("Failed to fetch pending creatives:", pendingErr);
-      return new Response(JSON.stringify({ error: pendingErr.message }), {
+      return new Response(JSON.stringify({
+        error: pendingErr.message
+      }), {
         status: 500,
-        headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+        headers: {
+          "Content-Type": "application/json",
+          ...CORS_HEADERS
+        }
       });
     }
-
     if (!pendingCreatives || pendingCreatives.length === 0) {
-      return new Response(
-        JSON.stringify({
-          message: "No pending creatives to launch",
-          launched: 0,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
-      );
+      return new Response(JSON.stringify({
+        message: "No pending creatives to launch",
+        launched: 0
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          ...CORS_HEADERS
+        }
+      });
     }
-
     console.log(`📊 Processing ${pendingCreatives.length} creatives`);
-
-    // Group by launch_batch_id -- rows uploaded together via the dashboard's
-    // "+ Add another ad copy" flow share one batch and must launch as ONE
-    // campaign with all copies as separate ads, not one campaign each. A row
-    // with no launch_batch_id (legacy uploads, or a solo copy) is its own
-    // group of one -- unchanged behavior.
-    const groups = new Map<string, any[]>();
-    for (const c of pendingCreatives) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const c of pendingCreatives){
       const key = c.launch_batch_id || `solo:${c.id}`;
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(c);
+      groups.get(key).push(c);
     }
-
-    // 2. Launch each batch's configured ad sets. No approval gate: every
-    // campaign/ad set/ad is created ACTIVE (see launchAdSetGroup) and goes
-    // live immediately -- a scheduled launch instead relies on its ad set's
-    // own start_time (native Meta scheduling) to hold real delivery, not a
-    // PAUSED-until-approved state. (handle-whatsapp-reply/process-approval
-    // and the pending_approvals table stay in place for other approval types
-    // -- scale_winner, pause_ad, kill_ad -- just not used for a fresh launch.)
-    const launchPlans: any[] = [];
+    const launchPlans = [];
     let totalAdSetsCreated = 0;
     let totalBudgetNaira = 0;
-
-    const launchErrors: string[] = [];
-    const launchedGroups: any[][] = [];
-    for (const group of groups.values()) {
+    const launchErrors = [];
+    const launchedGroups = [];
+    for (const group of groups.values()){
       const anchor = group[0];
-      // Revora-provided ad accounts are paid for by Revora's card, so nothing goes live on one unless the
-      // customer's wallet has money in it.
       if (anchor.ad_account_id) {
         const { data: acct } = await supabase.from("ad_accounts").select("billing_mode").eq("id", anchor.ad_account_id).maybeSingle();
         if (acct?.billing_mode === "managed") {
-          // The wallet that pays for this account: its buyer's wallet, or the company wallet when an owner/admin holds it.
-          const { data: w } = await supabase.rpc("account_wallet_balance", { p_account: anchor.ad_account_id });
+          const { data: w } = await supabase.rpc("account_wallet_balance", {
+            p_account: anchor.ad_account_id
+          });
           if (Number(w ?? 0) <= 0) {
             launchErrors.push(`"${anchor.file_name}": the wallet for this ad account is empty. Top up your wallet, then publish again.`);
             continue;
@@ -1281,64 +1544,76 @@ Deno.serve(async (req: Request) => {
         launchErrors.push(`"${anchor.file_name}"${group.length > 1 ? ` +${group.length - 1} more copies` : ""}: ${result.error}`);
         continue;
       }
-
       totalAdSetsCreated += result.ad_sets.length;
-      const adSetBudget = result.ad_sets.reduce((sum, a) => sum + a.budgetNaira, 0);
+      const adSetBudget = result.ad_sets.reduce((sum, a)=>sum + a.budgetNaira, 0);
       totalBudgetNaira += adSetBudget;
-
-      const copyNames = group.map((c) => c.file_name).join(", ");
+      const copyNames = group.map((c)=>c.file_name).join(", ");
       launchedGroups.push(group);
       launchPlans.push({
         creative_name: anchor.products?.product_name ? `${copyNames} (${anchor.products.product_name})` : copyNames,
         campaign_id: result.campaign_id,
         paused: anchor.launch_paused === true,
+        start_time: result.start_time || null,
+        currency: result.currency || "NGN"
       });
     }
-
     if (launchPlans.length === 0) {
-      return new Response(
-        JSON.stringify({ error: launchErrors.length === 1 ? launchErrors[0] : "Failed to create any ad sets", details: launchErrors }),
-        { status: 500, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
-      );
+      return new Response(JSON.stringify({
+        error: launchErrors.length === 1 ? launchErrors[0] : "Failed to create any ad sets",
+        details: launchErrors
+      }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          ...CORS_HEADERS
+        }
+      });
     }
-
     const totalBudget = totalBudgetNaira;
-
-    // 3. Mark every successfully-launched copy as live (real column is
-    // test_status) -- only rows in a group that actually launched, not ones
-    // that failed and stayed untested for a retry.
-    for (const group of launchedGroups) {
-      for (const c of group) {
-        await supabase
-          .from("creative_assets")
-          .update({ test_status: "testing" })
-          .eq("id", c.id);
+    const cur = launchPlans[0].currency;
+    for (const group of launchedGroups){
+      for (const c of group){
+        await supabase.from("creative_assets").update({
+          test_status: "testing"
+        }).eq("id", c.id);
       }
     }
-
-    const allPaused = launchPlans.every((p: any) => p.paused);
-    return new Response(
-      JSON.stringify({
-        success: true,
-        status: allPaused ? "paused" : "live",
-        creatives: launchPlans.length,
-        ad_sets: totalAdSetsCreated,
-        budget_naira: totalBudget,
-        campaign_ids: launchPlans.map((p) => p.campaign_id),
-        message: launchErrors.length
-          ? `✅ Launched ${launchPlans.length} creative(s), but ${launchErrors.length} failed.`
-          : allPaused
-            ? `✅ Created ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s) on Meta, PAUSED (nothing is spending). Turn it on in Ads Manager or in Revora when ready.`
-            : `✅ Launched ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s), ₦${totalBudget.toLocaleString()}/day total.`,
-        errors: launchErrors.length ? launchErrors : undefined,
-      }),
-      { status: 200, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
-    );
-  } catch (err: any) {
+    const allPaused = launchPlans.every((p)=>p.paused);
+    const allScheduled = !allPaused && launchPlans.every((p)=>!p.paused && p.start_time && new Date(p.start_time).getTime() > Date.now());
+    const scheduledWhen = allScheduled ? new Date(launchPlans[0].start_time).toLocaleString("en-NG", {
+      timeZone: "Africa/Lagos",
+      dateStyle: "medium",
+      timeStyle: "short"
+    }) : "";
+    return new Response(JSON.stringify({
+      success: true,
+      status: allPaused ? "paused" : allScheduled ? "scheduled" : "live",
+      scheduled_for: allScheduled ? launchPlans[0].start_time : void 0,
+      creatives: launchPlans.length,
+      ad_sets: totalAdSetsCreated,
+      currency: cur,
+      budget: totalBudget,
+      budget_naira: totalBudget,
+      campaign_ids: launchPlans.map((p)=>p.campaign_id),
+      message: launchErrors.length ? `✅ Launched ${launchPlans.length} creative(s), but ${launchErrors.length} failed.` : allPaused ? `✅ Created ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s) on Meta, PAUSED (nothing is spending). Turn it on in Ads Manager or in Revora when ready.` : allScheduled ? `✅ Scheduled ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s) on Meta to start ${scheduledWhen} (Lagos time). It shows as Scheduled in Ads Manager and nothing spends until then; ${money(cur, totalBudget)}/day once it starts.` : `✅ Launched ${launchPlans.length} creative(s) across ${totalAdSetsCreated} ad set(s), ${money(cur, totalBudget)}/day total.`,
+      errors: launchErrors.length ? launchErrors : void 0
+    }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        ...CORS_HEADERS
+      }
+    });
+  } catch (err) {
     console.error("Error:", err);
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...CORS_HEADERS } }
-    );
+    return new Response(JSON.stringify({
+      error: err.message
+    }), {
+      status: 500,
+      headers: {
+        "Content-Type": "application/json",
+        ...CORS_HEADERS
+      }
+    });
   }
 });

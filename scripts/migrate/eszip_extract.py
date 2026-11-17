@@ -28,11 +28,13 @@ def parse(b):
     slen = u32(); sbase = pos
     out = {}
     for spec, so, ss in mods:
-        if spec.startswith("file:///src/") or spec.startswith("source/") or "/source/" in spec:
+        schemeless = "://" not in spec and ":" not in spec.split("/")[0] and not spec.startswith("-") and spec.endswith((".ts", ".js", ".mjs", ".tsx", ".json"))
+        if spec.startswith("file:///src/") or spec.startswith("source/") or "/source/" in spec or schemeless:
             out[spec] = b[sbase+so:sbase+so+ss]
     return out
 if __name__ == "__main__":
     data = open(sys.argv[1], "rb").read(); files = parse(data)
     for spec, content in files.items():
-        name = spec.split("/source/", 1)[-1] if "/source/" in spec else spec.split("file:///src/", 1)[-1]
+        # Path relative to the bundle root: "source/index.ts" -> "index.ts"; nested bundles keep their folders ("source/source/index.ts" -> "source/index.ts", "source/_shared/x.ts" -> "_shared/x.ts").
+        name = spec.split("file:///src/", 1)[1] if spec.startswith("file:///src/") else (spec[len("source/"):] if spec.startswith("source/") else spec.split("/source/", 1)[-1])
         p = os.path.join(sys.argv[2], name); os.makedirs(os.path.dirname(p), exist_ok=True); open(p, "wb").write(content); print("wrote", name, len(content))
