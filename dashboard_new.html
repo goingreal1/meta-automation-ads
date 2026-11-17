@@ -9952,6 +9952,7 @@ function bvWebSitesHtml() {
       <div class="ws-meta"><span>${prod ? "Sells: <b>" + escH(prod.product_name) + "</b>" : "⚠️ No product selected yet"}</span></div>
       <div class="ws-act">
         <button class="btn btn-a" onclick="bvWebEdit('${s.id}')">Edit</button>
+        <button class="btn btn-g" onclick="location.href='/ide.html?site=${s.id}'" title="Open the file editor">IDE</button>
         ${s.status === "published" ? `<a class="btn btn-g" href="${escH(url)}" target="_blank" rel="noopener" style="text-decoration:none;">View</a>` : ""}
         <button class="btn btn-g" onclick="bvWebLinks('${s.id}')" title="Links to every page, on your domain or ours">🔗 Links</button>
         <button class="btn btn-g" onclick="bvWebAdvertise('${s.id}')" title="Run Meta ads that send people to this site">📣 Advertise</button>
