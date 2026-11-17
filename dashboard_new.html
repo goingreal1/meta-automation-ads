@@ -13491,9 +13491,9 @@ function bvRenderPwPanel() {
   const el = document.getElementById("pwPanel"); if (!el) return;
   el.innerHTML = `<div class="ph"><div class="ph-title">Change password</div></div>
     <div style="display:grid;gap:8px;max-width:360px;">
-      <input type="password" id="pwOld" class="inp" placeholder="Current password" autocomplete="current-password">
-      <input type="password" id="pwNew" class="inp" placeholder="New password (8+ characters)" autocomplete="new-password">
-      <input type="password" id="pwNew2" class="inp" placeholder="Repeat new password" autocomplete="new-password">
+      <input type="password" id="pwOld" class="cat-in" placeholder="Current password" autocomplete="current-password">
+      <input type="password" id="pwNew" class="cat-in" placeholder="New password (8+ characters)" autocomplete="new-password">
+      <input type="password" id="pwNew2" class="cat-in" placeholder="Repeat new password" autocomplete="new-password">
       <button class="btn btn-a" id="pwSave" type="button">Update password</button>
       <div style="font-size:12px;color:var(--text2);">Forgot it? Log out and use “Forgot password” on the login page.</div>
     </div>`;
