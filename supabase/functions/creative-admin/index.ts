@@ -33,6 +33,36 @@ Deno.serve(async (req) => {
   const { data: me } = await db.from("profiles").select("company_id, role").eq("id", ud.user.id).maybeSingle();
   if (!me?.company_id || !["owner", "admin", "buyer"].includes(me.role)) return json({ error: "Only owners, admins and media buyers can change creatives." }, 403);
   const b = await req.json().catch(() => ({}));
+
+  // register: the browser already uploaded the file straight to R2 (signed link from the media function); this saves the library record.
+  if (b.action === "register") {
+    const key = String(b?.key ?? "");
+    if (!key.startsWith(`creative-vault/${ud.user.id}/`) || key.includes("..")) return json({ error: "That upload doesn't belong to you." }, 403);
+    let pub = (Deno.env.get("R2_PUBLIC_URL") ?? "").trim().replace(/\/+$/, ""); if (pub && !/^https?:\/\//.test(pub)) pub = "https://" + pub;
+    const ctype = String(b?.content_type ?? "").toLowerCase();
+    if (!/^(video\/(mp4|quicktime|webm)|image\/(jpeg|png|gif|webp))$/.test(ctype)) return json({ error: `Invalid file type: ${ctype}` }, 400);
+    const adAccountId = String(b?.ad_account_id ?? "");
+    const { data: acct } = await db.from("ad_accounts").select("company_id").eq("id", adAccountId).maybeSingle();
+    if (!acct || acct.company_id !== me.company_id) return json({ error: "Ad account not found." }, 403);
+    let productId: string | null = b?.product_id ? String(b.product_id) : null;
+    if (productId) { const { data: pr } = await db.from("products").select("company_id").eq("id", productId).maybeSingle(); if (!pr || pr.company_id !== me.company_id) return json({ error: "Product not found." }, 403); }
+    const url = `${pub}/${key.split("/").map(encodeURIComponent).join("/")}`;
+    // The file must really be in R2 (a half-finished upload must not become a library entry).
+    const acc = Deno.env.get("R2_ACCOUNT_ID"), bucket = Deno.env.get("R2_BUCKET");
+    if (acc && bucket) {
+      const r2 = new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!, secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!, service: "s3", region: "auto" });
+      const head = await r2.fetch(`https://${acc}.r2.cloudflarestorage.com/${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`, { method: "HEAD" });
+      if (!head.ok) return json({ error: "The file didn't finish uploading. Please try again." }, 409);
+    }
+    const { data: asset, error } = await db.from("creative_assets").insert({
+      company_id: me.company_id, file_name: String(b?.file_name ?? "file").slice(0, 200), display_name: String(b?.name ?? "").trim().slice(0, 120) || null,
+      storage_path: key, storage_provider: "r2", public_url: url, asset_type: ctype.startsWith("video/") ? "video" : "image",
+      mechanism: b?.mechanism || null, format: b?.format || null, primary_text: b?.primary_text || null, headline: b?.headline || null, description: b?.description || null,
+      cta_type: b?.cta_type || "SHOP_NOW", uploaded_by: String(b?.uploaded_by ?? "dashboard").slice(0, 40), ad_account_id: adAccountId, product_id: productId,
+      launch_at: b?.launch_at || null, test_status: "untested", uploaded_at: new Date().toISOString(),
+    }).select("*").single();
+    return error ? json({ error: error.message }, 500) : json({ success: true, asset });
+  }
   const id = String(b?.id ?? "");
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Missing creative id." }, 400);
   const { data: src } = await db.from("creative_assets").select("id, public_url, company_id").eq("id", id).eq("company_id", me.company_id).maybeSingle();
