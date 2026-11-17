@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
   const ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId: p.company_id, role: p.role ?? "", mediaBuyerId: p.media_buyer_id ?? null, displayName: p.display_name ?? "" };
   const b = await req.json().catch(() => ({}));
   const siteId = String(b?.site_id ?? "");
+  const active = String(b?.active_file ?? "").slice(0, 200);
   const { data: site } = await db.from("sites").select("id, company_id, name").eq("id", siteId).maybeSingle();
   if (!site || site.company_id !== ctx.companyId) return json({ error: "Site not found." }, 404);
   const history = (Array.isArray(b?.messages) ? b.messages : []).slice(-20).map((m: any) => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content ?? "").slice(0, 8000) })).filter((m: any) => m.content);
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
   });
 
   const system = `You are the coding assistant inside Revora's site IDE, working on the site "${site.name}". You change the site by reading and editing its files with the tools.
-Rules: look at the file list first, read a file before you change it, prefer small exact edits (site_patch_file) over rewriting whole files, keep what already works, keep the Revora order form and pixel as they are. Do the work, then reply in 1 to 4 short sentences saying what you changed and in which files. If a tool refuses something, explain it plainly and offer another way. You cannot publish the site or undo changes; the person does that from the IDE (History restores any earlier version). Write in plain, friendly English.`;
+Rules: look at the file list first, read a file before you change it, prefer small exact edits (site_patch_file) over rewriting whole files, keep what already works, keep the Revora order form and pixel as they are. Do the work, then reply in 1 to 4 short sentences saying what you changed and in which files. If a tool refuses something, explain it plainly and offer another way. The person currently has ${active ? `"${active}" open in the editor (changes about "this page" or "here" usually mean that file)` : "no file open"}. You cannot publish the site or undo changes; the person does that from the IDE (History restores any earlier version). Write in plain, friendly English.`;
 
   const messages: any[] = history.map((m: any) => ({ role: m.role, content: m.content }));
   const changed = new Set<string>();

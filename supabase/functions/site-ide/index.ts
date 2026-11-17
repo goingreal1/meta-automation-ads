@@ -11,7 +11,7 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const db = createClient(SUPABASE_URL, SERVICE);
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...cors } });
-const TOOLS = new Set(["site_new", "site_list_files", "site_search", "site_write_file", "site_patch_file", "site_delete_file", "site_history", "site_rollback", "site_set_live"]);
+const TOOLS = new Set(["site_new", "site_list_files", "site_search", "site_write_file", "site_patch_file", "site_delete_file", "site_history", "site_rollback", "site_set_live", "site_import_zip"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   }
 
   if (b?.action === "ai") {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/site-ide-ai`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ site_id: b.site_id, messages: b.messages }) });
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/site-ide-ai`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ site_id: b.site_id, messages: b.messages, active_file: b.active_file }) });
     const o = await r.json().catch(() => ({}));
     return json(o, r.ok ? 200 : r.status);
   }

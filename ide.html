@@ -2,82 +2,260 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Site IDE</title>
+<title>Revora IDE</title>
 <style>
-:root{color-scheme:light dark;--bg:#f4f5f7;--panel:#fff;--text:#14161a;--muted:#6b7280;--border:#dfe2e8;--accent:#1877F2;--ok:#16a34a;--err:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#16181d;--panel:#1e2128;--text:#e8eaee;--muted:#8b93a1;--border:#2f343d}}
+:root{
+  --bg:#1e1e1e;--side:#252526;--act:#333333;--tabbg:#2d2d2d;--line:#3c3c3c;--text:#cccccc;--dim:#8b8b8b;--hi:#ffffff;
+  --sel:#37373d;--selact:#04395e;--btn:#0e639c;--btnh:#1177bb;--status:#007acc;--err:#f48771;--ok:#89d185;--warn:#cca700;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}body{font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column}
-button,select{font:inherit;color:inherit}
-.bar{display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
-.bar .sp{flex:1}
-.btn{border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:6px 12px;cursor:pointer}
-.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn:disabled{opacity:.5;cursor:default}
-.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
-.seg button{border:0;background:var(--panel);padding:6px 12px;cursor:pointer}
-.seg button.on{background:var(--accent);color:#fff}
-select{border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:6px 8px;max-width:220px}
-.main{flex:1;display:flex;min-height:0}
-.tree{width:230px;border-right:1px solid var(--border);background:var(--panel);overflow:auto;padding:8px 0;flex:none}
-.tree .head{display:flex;justify-content:space-between;align-items:center;padding:4px 12px 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
-.f{display:flex;justify-content:space-between;gap:6px;padding:5px 12px;cursor:pointer;font-size:13px}
-.f:hover{background:var(--bg)}.f.on{background:color-mix(in srgb,var(--accent) 14%,transparent)}
-.f .x{color:var(--muted);visibility:hidden}.f:hover .x{visibility:visible}
-.f .dot{color:var(--accent)}
-.center{flex:1;display:flex;flex-direction:column;min-width:0}
-.tabs{display:flex;overflow:auto;background:var(--panel);border-bottom:1px solid var(--border)}
-.tab{padding:7px 12px;border-right:1px solid var(--border);cursor:pointer;white-space:nowrap;font-size:13px;color:var(--muted)}
-.tab.on{color:var(--text);background:var(--bg)}
-#ed{flex:1;min-height:0}
-.side{width:42%;max-width:640px;border-left:1px solid var(--border);display:flex;flex-direction:column;background:var(--panel);flex:none}
-.side .t{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-iframe{flex:1;border:0;background:#fff}
-.status{padding:4px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);background:var(--panel);display:flex;gap:12px}
-.status .err{color:var(--err)}.status .ok{color:var(--ok)}
-.empty{margin:auto;color:var(--muted);text-align:center;padding:24px}
-.chat{display:none;flex:1;flex-direction:column;min-height:0}
-.side.ai .chat{display:flex}.side.ai #pvwrap{display:none}
-#log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
-.m{padding:8px 11px;border-radius:12px;max-width:92%;white-space:pre-wrap;word-wrap:break-word}
-.m.u{align-self:flex-end;background:var(--accent);color:#fff}.m.a{align-self:flex-start;background:var(--bg)}
-.m.s{align-self:center;color:var(--muted);font-size:12px;background:none}
-.chat form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--border)}
-.chat textarea{flex:1;resize:none;height:54px;border:1px solid var(--border);border-radius:10px;padding:8px;background:var(--bg);color:var(--text);font:inherit}
-#pvwrap{flex:1;display:flex;flex-direction:column;min-height:0}
-@media (max-width:900px){.main{flex-direction:column}.tree{width:auto;max-height:28%;border-right:0;border-bottom:1px solid var(--border)}.side{width:auto;max-width:none;height:40%;border-left:0;border-top:1px solid var(--border)}}
+html,body{height:100%;overflow:hidden}
+body{font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select,textarea{font:inherit;color:var(--text)}
+svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#424242;border-radius:5px;border:2px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:#4f4f4f;background-clip:content-box;border:2px solid transparent}
+
+/* title bar */
+#title{height:38px;background:#323233;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid #252526;flex:none}
+#title .brand{font-weight:600;color:var(--hi);letter-spacing:.02em;display:flex;align-items:center;gap:7px}
+#title .brand i{width:16px;height:16px;border-radius:4px;background:linear-gradient(135deg,#1877F2,#6ea8ff);display:inline-block}
+#site{background:#3c3c3c;border:1px solid #4a4a4a;border-radius:5px;padding:4px 8px;max-width:260px;outline:none}
+#site:focus{border-color:var(--status)}
+.sp{flex:1}
+.tb{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:5px;color:var(--text)}
+.tb:hover{background:#3c3c3c}.tb.on{background:#3c3c3c;color:var(--hi)}
+.tb.pri{background:var(--btn);color:#fff}.tb.pri:hover{background:var(--btnh)}
+.tb:disabled{opacity:.45;cursor:default}
+#palette{background:#3c3c3c;border:1px solid #4a4a4a;border-radius:6px;padding:3px 40px;color:var(--dim);min-width:220px;text-align:center}
+#palette:hover{border-color:#5a5a5a;color:var(--text)}
+.modes{display:flex;background:#3c3c3c;border-radius:6px;padding:2px}
+.modes button{padding:3px 11px;border-radius:5px;color:var(--dim)}
+.modes button.on{background:var(--sel);color:var(--hi)}
+.modes button:hover:not(.on){color:var(--text)}
+
+/* body */
+#app{flex:1;display:flex;min-height:0}
+#act{width:48px;background:var(--act);display:flex;flex-direction:column;align-items:center;padding-top:6px;gap:2px;flex:none}
+#act button{width:48px;height:46px;display:flex;align-items:center;justify-content:center;color:#858585;border-left:2px solid transparent}
+#act button svg{width:23px;height:23px}
+#act button:hover{color:var(--hi)}#act button.on{color:var(--hi);border-left-color:var(--hi)}
+#side{width:260px;background:var(--side);display:flex;flex-direction:column;min-width:0;flex:none}
+.shead>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}.shead{height:35px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 20px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bbb;flex:none}
+.shead .ic{display:flex;gap:2px}
+.ib{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;color:#c5c5c5}
+.ib:hover{background:#3c3c3c;color:var(--hi)}.ib svg{width:16px;height:16px}
+.panel{flex:1;overflow:auto;display:none;min-height:0}.panel.on{display:block}
+#tree .row{display:flex;align-items:center;gap:5px;height:24px;padding-right:6px;cursor:pointer;white-space:nowrap;color:#ccc;position:relative}
+#tree .row:hover{background:#2a2d2e}#tree .row.sel{background:var(--sel);color:var(--hi)}#tree .row.cur{background:var(--selact);color:var(--hi)}
+#tree .chev{width:16px;height:16px;display:flex;align-items:center;justify-content:center;color:#c5c5c5;flex:none}
+#tree .chev svg{width:12px;height:12px;transition:transform .1s}#tree .chev.open svg{transform:rotate(90deg)}
+#tree .nm{overflow:hidden;text-overflow:ellipsis;flex:1}
+#tree .acts{display:none;gap:0}#tree .row:hover .acts{display:flex}
+#tree .dot{color:#e2c08d;font-size:10px}
+.fi{width:16px;height:16px;border-radius:3px;font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center;color:#1e1e1e;flex:none;letter-spacing:-.3px}
+.fi.html{background:#e44d26}.fi.css{background:#4b9be0}.fi.js{background:#f1dd3f}.fi.json{background:#cbcb41}.fi.img{background:#a074c4}.fi.md{background:#519aba}.fi.other{background:#8b8b8b}
+.fold{width:16px;height:16px;color:#c09553;flex:none}.fold svg{width:16px;height:16px;fill:#c09553;stroke:none}
+.empty{padding:20px;color:var(--dim);line-height:1.6}
+.empty b{color:var(--text)}
+.sbox{padding:6px 12px 10px}
+.sbox input{width:100%;background:#3c3c3c;border:1px solid transparent;border-radius:4px;padding:5px 8px;outline:none}.sbox input:focus{border-color:var(--status)}
+.hit{padding:3px 12px 3px 20px;cursor:pointer;color:#ccc;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hit:hover{background:#2a2d2e}.hit .ln{color:var(--dim);margin-right:6px}
+.hf{padding:5px 12px;font-weight:600;color:#ddd;font-size:12px}
+.asset{display:flex;gap:10px;align-items:center;padding:6px 12px}
+.asset img{width:44px;height:44px;object-fit:cover;border-radius:4px;background:#111}
+.asset .a2{min-width:0;flex:1}.asset .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini{padding:2px 8px;border-radius:4px;background:#3c3c3c;font-size:11px;margin-right:4px}.mini:hover{background:#4a4a4a;color:var(--hi)}
+.rz{width:4px;cursor:col-resize;flex:none;margin:0 -2px;z-index:5;position:relative}.rz:hover,.rz.drag{background:var(--status);opacity:.6}
+
+/* editor */
+#mid{flex:1;display:flex;flex-direction:column;min-width:0}
+#tabs{height:35px;background:var(--side);display:flex;overflow-x:auto;overflow-y:hidden;flex:none}
+#tabs::-webkit-scrollbar{height:4px}
+.tab{display:flex;align-items:center;gap:7px;padding:0 10px 0 12px;background:var(--tabbg);border-right:1px solid var(--side);color:#969696;cursor:pointer;white-space:nowrap;min-width:0}
+.tab.on{background:var(--bg);color:var(--hi);box-shadow:inset 0 1px 0 var(--status)}
+.tab .x{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;opacity:0}
+.tab:hover .x,.tab.on .x,.tab.dirty .x{opacity:1}.tab .x:hover{background:#4a4a4a}
+.tab.dirty .x svg{display:none}.tab.dirty .x::after{content:"";width:9px;height:9px;border-radius:50%;background:#ccc}.tab.dirty .x:hover::after{display:none}.tab.dirty .x:hover svg{display:block}
+#crumbs{height:24px;display:flex;align-items:center;gap:5px;padding:0 14px;color:var(--dim);font-size:12px;flex:none;background:var(--bg)}
+#crumbs b{color:#bbb;font-weight:400}
+#ed{flex:1;min-height:0;position:relative}
+#welcome{position:absolute;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;overflow:auto;padding:24px;z-index:3}
+#welcome.on{display:flex}
+.wl{max-width:560px;width:100%}
+.wl h1{font-size:26px;font-weight:300;color:var(--hi);margin-bottom:4px}
+.wl .sub{color:var(--dim);margin-bottom:26px}
+.wl h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#bbb;margin:20px 0 8px;font-weight:600}
+.wa{display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border-radius:6px;width:100%;text-align:left}
+.wa:hover{background:#2a2d2e}.wa svg{margin-top:2px;color:#4fc1ff}.wa b{display:block;color:#4fc1ff;font-weight:500}.wa span{color:var(--dim)}
+.keys{color:var(--dim);font-size:12px;line-height:2}.keys kbd{background:#333;border:1px solid #444;border-radius:4px;padding:1px 6px;font:11px ui-monospace,Menlo,monospace;color:#ccc}
+
+/* right pane */
+#right{width:42%;max-width:760px;min-width:280px;background:var(--side);display:flex;flex-direction:column;flex:none}
+.rtabs{height:35px;display:flex;align-items:center;padding:0 6px;gap:2px;border-bottom:1px solid var(--line);flex:none}
+.rtabs button{padding:0 12px;height:35px;color:#969696;border-bottom:1px solid transparent;text-transform:uppercase;font-size:11px;letter-spacing:.06em}
+.rtabs button.on{color:var(--hi);border-bottom-color:var(--status)}
+.rtabs .sp{flex:1}
+#pvbar{display:flex;align-items:center;gap:4px;padding:5px 8px;border-bottom:1px solid var(--line);flex:none}
+#pvbar select{background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:2px 5px;font-size:12px;outline:none}
+#pvbar .note{color:var(--dim);font-size:11px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:35%}
+#pvwrap{flex:1;background:#2b2b2b;overflow:auto;display:flex;justify-content:center;min-height:0;padding:0}
+#pvbox{width:100%;height:100%;background:#fff;transition:width .15s}
+#pvbox.dtab{width:768px;max-width:100%;margin:10px 0;height:calc(100% - 20px);box-shadow:0 0 0 1px #444}
+#pvbox.dmob{width:390px;max-width:100%;margin:10px 0;height:calc(100% - 20px);box-shadow:0 0 0 1px #444;border-radius:14px;overflow:hidden}
+#pv{width:100%;height:100%;border:0;background:#fff;display:block}
+#chat{flex:1;display:none;flex-direction:column;min-height:0}
+#chat.on{display:flex}
+#log{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+.msg{display:flex;flex-direction:column;gap:4px;max-width:100%}
+.msg .who{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.msg .bd{white-space:pre-wrap;word-wrap:break-word;line-height:1.55;color:#d4d4d4}
+.msg.u .bd{background:#2f3a47;border:1px solid #3b4a5c;border-radius:8px;padding:8px 11px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+.chip{background:#3c3c3c;border-radius:10px;padding:2px 9px;font-size:11.5px;color:#9cdcfe;cursor:pointer}.chip:hover{background:#4a4a4a}
+.sys{color:var(--dim);font-size:12px;text-align:center}
+.thinking{color:var(--dim)}.thinking::after{content:"...";animation:dots 1.2s infinite steps(4,end);display:inline-block;width:1.2em;overflow:hidden;vertical-align:bottom}
+@keyframes dots{0%{width:0}100%{width:1.2em}}
+#chatf{padding:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px;flex:none}
+#chatin{width:100%;min-height:64px;max-height:180px;resize:vertical;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:6px;padding:8px 10px;outline:none}#chatin:focus{border-color:var(--status)}
+.row2{display:flex;justify-content:space-between;align-items:center;color:var(--dim);font-size:11.5px}
+.send{background:var(--btn);color:#fff;border-radius:5px;padding:5px 14px}.send:hover{background:var(--btnh)}.send:disabled{opacity:.5}
+.ex{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.ex button{background:#2f2f31;border:1px solid #3c3c3c;border-radius:12px;padding:3px 10px;color:#bbb;font-size:12px}.ex button:hover{border-color:var(--status);color:var(--hi)}
+
+/* status bar */
+#status{height:22px;background:var(--status);color:#fff;display:flex;align-items:center;padding:0 10px;gap:16px;font-size:12px;flex:none}
+#status .sp{flex:1}#status.err{background:#a1260d}#status.busy{background:#68217a}
+#status span{white-space:nowrap}
+#status button{color:#fff;padding:0 4px;height:22px}#status button:hover{background:rgba(255,255,255,.15)}
+
+/* quick input / dialogs */
+#qo{position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;padding-top:70px;background:rgba(0,0,0,.35);z-index:50}
+#qo.on{display:flex}
+#qb{width:min(580px,calc(100vw - 24px));background:#252526;border:1px solid #454545;border-radius:7px;box-shadow:0 8px 30px rgba(0,0,0,.6);overflow:hidden}
+#qb .q1{padding:10px 12px;border-bottom:1px solid #3c3c3c}
+#qb .t{font-size:12px;color:var(--dim);padding:10px 12px 0}
+#qb input{width:100%;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;outline:none}#qb input:focus{border-color:var(--status)}
+#ql{max-height:300px;overflow:auto;padding:4px 0}
+.qi{padding:5px 14px;display:flex;gap:9px;align-items:center;cursor:pointer;white-space:nowrap;overflow:hidden}
+.qi.on{background:var(--selact);color:var(--hi)}.qi .d{color:var(--dim);margin-left:auto;font-size:11.5px;padding-left:12px}
+#qb .msg2{padding:12px 14px;color:#d4d4d4;line-height:1.55;white-space:pre-wrap}
+#qb .btns{display:flex;gap:8px;justify-content:flex-end;padding:10px 12px;border-top:1px solid #3c3c3c}
+#qb .btns button{padding:5px 14px;border-radius:5px;background:#3c3c3c}#qb .btns button.pri{background:var(--btn);color:#fff}
+.field{padding:6px 12px}.field label{display:block;color:var(--dim);font-size:11.5px;margin-bottom:4px}
+.field select,.field input[type=text]{width:100%;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;outline:none}
+
+/* narrow screens: one pane at a time */
+#mnav{display:none}
+@media (max-width:860px){
+  #palette,#title .brand span{display:none}
+  #act{display:none}
+  #mnav{display:flex;background:var(--act);flex:none}
+  #mnav button{flex:1;padding:9px 0;color:#999;border-top:2px solid transparent}
+  #mnav button.on{color:var(--hi);border-top-color:var(--status);background:var(--side)}
+  .rz{display:none}
+  #side,#mid,#right{width:100%!important;max-width:none;display:none;flex:1}
+  body[data-v="files"] #side{display:flex}
+  body[data-v="code"] #mid{display:flex}
+  body[data-v="preview"] #right,body[data-v="ai"] #right{display:flex}
+  .modes{display:none}
+}
 </style>
 </head>
-<body>
-<div class="bar">
-  <b>Site IDE</b>
-  <select id="site"></select>
-  <div class="seg" id="mode"><button data-m="widget">Widget</button><button data-m="ai">AI chat</button><button data-m="ide" class="on">IDE</button></div>
+<body data-v="code">
+<div id="title">
+  <div class="brand"><i></i><span>Revora IDE</span></div>
+  <select id="site" title="Switch site"></select>
   <span class="sp"></span>
-  <button class="btn" id="hist">History</button>
-  <button class="btn" id="prev">Refresh preview</button>
-  <button class="btn" id="test">Open test page</button>
-  <button class="btn pri" id="save" disabled>Save (Ctrl+S)</button>
-  <button class="btn" id="live" disabled>Publish</button>
+  <button id="palette" title="Quick open (Ctrl+P)">Search files…  Ctrl+P</button>
+  <span class="sp"></span>
+  <div class="modes" id="modes"><button data-m="widget" title="The visual builder">Widget</button><button data-m="ai" title="Chat with the AI about your site">AI chat</button><button data-m="ide" class="on" title="Code view">IDE</button></div>
+  <button class="tb" id="tSide" title="Show or hide files (Ctrl+B)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+  <button class="tb" id="tRight" title="Show or hide the preview / AI pane"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
+  <button class="tb" id="bTest" title="Open the real page in a new tab"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+  <button class="tb" id="bSave" disabled title="Save (Ctrl+S)">Save</button>
+  <button class="tb pri" id="bLive" disabled>Publish</button>
 </div>
-<div class="main">
-  <div class="tree"><div class="head"><span>Files</span><button class="btn" id="newf" style="padding:2px 8px">+ New</button></div><div id="files"></div></div>
-  <div class="center"><div class="tabs" id="tabs"></div><div id="ed"><div class="empty">Pick a site, then a file.</div></div></div>
-  <div class="side" id="side"><div id="pvwrap"><div class="t"><b>Preview</b><span><select id="pvmode" title="Quick shows unsaved edits instantly. Live page is the real rendered site (after you save)."><option value="quick">Quick (unsaved edits)</option><option value="live">Live page (saved)</option></select> <span style="color:var(--muted);font-size:12px" id="pvnote"></span></span></div><iframe id="pv" sandbox="allow-scripts allow-forms allow-popups"></iframe></div>
-  <div class="chat"><div class="t"><b>AI chat</b><span style="color:var(--muted);font-size:12px">edits are saved as versions, undo in History</span></div><div id="log"><div class="m s">Tell me what to change on this site, for example: make the header blue and add a WhatsApp button.</div></div>
-  <form id="chatf"><textarea id="chatin" placeholder="Ask for a change..."></textarea><button class="btn pri" id="chatgo">Send</button></form></div></div>
+<div id="app">
+  <div id="act">
+    <button data-p="explorer" class="on" title="Files (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></button>
+    <button data-p="search" title="Search in all files (Ctrl+Shift+F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/></svg></button>
+    <button data-p="assets" title="Images and assets"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></svg></button>
+    <button data-p="ai" title="AI chat"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg></button>
+  </div>
+  <div id="side">
+    <div class="panel on" id="p-explorer" style="display:flex;flex-direction:column">
+      <div class="shead"><span id="sname">Explorer</span><span class="ic"><button class="ib" id="iNew" title="New file"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M12 11v6M9 14h6"/></svg></button><button class="ib" id="iUp" title="Upload an image or file"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></button><button class="ib" id="iRef" title="Refresh"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></button><button class="ib" id="iCol" title="Collapse folders"><svg viewBox="0 0 24 24"><path d="M5 8l7 7 7-7"/></svg></button></span></div>
+      <div id="tree" style="flex:1;overflow:auto"></div>
+    </div>
+    <div class="panel" id="p-search"><div class="shead"><span>Search</span></div><div class="sbox"><input id="q" placeholder="Search in all files, press Enter"></div><div id="hits"></div></div>
+    <div class="panel" id="p-assets"><div class="shead"><span>Assets</span><span class="ic"><button class="ib" id="aUp" title="Upload"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></button></span></div><div id="alist"></div></div>
+  </div>
+  <div class="rz" id="rz1"></div>
+  <div id="mid">
+    <div id="tabs"></div>
+    <div id="crumbs"></div>
+    <div id="ed">
+      <div id="welcome">
+        <div class="wl">
+          <h1>Revora IDE</h1><div class="sub">Build your website with real code, with the AI beside you.</div>
+          <h3>Start</h3>
+          <button class="wa" id="wNew"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M12 11v6M9 14h6"/></svg><div><b>New site</b><span>A fresh site with index.html, thanks.html, styles.css and scripts.js, ready to edit.</span></div></button>
+          <button class="wa" id="wImp"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg><div><b>Import your own site (.zip)</b><span>Upload a website folder as a .zip. Your pages, scripts, forms and pixel stay exactly as written.</span></div></button>
+          <button class="wa" id="wAi"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg><div><b>Ask the AI to build it</b><span>Describe the page and the AI writes the files. Then you can edit them by hand.</span></div></button>
+          <h3>Shortcuts</h3>
+          <div class="keys"><kbd>Ctrl</kbd> <kbd>P</kbd> open a file &nbsp; <kbd>Ctrl</kbd> <kbd>S</kbd> save &nbsp; <kbd>Ctrl</kbd> <kbd>B</kbd> hide files<br><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>F</kbd> search all files &nbsp; <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>F</kbd> format code &nbsp; <kbd>Ctrl</kbd> <kbd>Space</kbd> suggestions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rz" id="rz2"></div>
+  <div id="right">
+    <div class="rtabs"><button data-r="preview" class="on">Preview</button><button data-r="ai">AI chat</button><span class="sp"></span><button class="ib" id="rClose" title="Hide this pane"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+    <div id="pane-preview" style="display:flex;flex-direction:column;flex:1;min-height:0">
+      <div id="pvbar">
+        <select id="pvmode" title="Quick shows your unsaved edits at once. Live page shows the real site after you save."><option value="quick">Quick</option><option value="live">Live page</option></select>
+        <button class="ib" data-dev="desk" title="Desktop"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+        <button class="ib" data-dev="dtab" title="Tablet"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M11 18h2"/></svg></button>
+        <button class="ib" data-dev="dmob" title="Phone"><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg></button>
+        <button class="ib" id="pvRef" title="Refresh preview"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></button>
+        <span class="note" id="pvnote"></span>
+      </div>
+      <div id="pvwrap"><div id="pvbox"><iframe id="pv" sandbox="allow-scripts allow-forms allow-popups"></iframe></div></div>
+    </div>
+    <div id="chat">
+      <div id="log"></div>
+      <form id="chatf">
+        <textarea id="chatin" placeholder="Tell the AI what to build or change…  (Enter to send, Shift+Enter for a new line)"></textarea>
+        <div class="row2"><span id="ctx">Working on: whole site</span><button class="send" id="chatgo" type="submit">Send</button></div>
+      </form>
+    </div>
+  </div>
 </div>
-<div class="status"><span id="st">Loading…</span><span class="sp" style="flex:1"></span><span id="pos"></span></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.45.4/supabase.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
+<div id="mnav"><button data-v="files">Files</button><button data-v="code" class="on">Code</button><button data-v="preview">Preview</button><button data-v="ai">AI</button></div>
+<div id="status"><span id="st">Loading…</span><span class="sp"></span><span id="stver"></span><span id="pos"></span><span id="lang"></span><button id="stFmt" title="Format document (Alt+Shift+F)">Format</button></div>
+<div id="qo"><div id="qb"></div></div>
+<input type="file" id="fileIn" style="display:none" multiple>
+<input type="file" id="zipIn" accept=".zip,application/zip" style="display:none">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script src="/rv/upload.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
 <script>
 var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
 var sb = window.supabase.createClient(SUPA_URL, ANON);
 var $ = function (id) { return document.getElementById(id); };
-var S = { site: null, sites: [], files: [], open: {}, current: null, editor: null, monaco: null };
-function status(t, cls) { $("st").className = cls || ""; $("st").textContent = t; }
+var S = { site: null, meta: {}, files: [], open: {}, order: [], current: null, ed: null, mo: null, collapsed: {}, assets: [], chat: [], dev: "desk", pending: null };
+var ICON_X = '<svg viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M6 6l12 12M18 6 6 18"/></svg>';
+var ICON_CHEV = '<svg viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><path d="M9 5l8 7-8 7z"/></svg>';
+var ICON_FOLD = '<svg viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem("rvide." + k)); localStorage.setItem("rvide." + k, JSON.stringify(v)); } catch (e) { return null; } }
+function status(t, cls) { var s = $("status"); s.className = cls || ""; $("st").textContent = t; }
+
+/* ---------- backend ---------- */
 async function call(body) {
   var s = (await sb.auth.getSession()).data.session;
   if (!s) { location.href = "/login.html?next=" + encodeURIComponent(location.pathname + location.search); throw new Error("login"); }
@@ -87,142 +265,466 @@ async function call(body) {
   return j;
 }
 function tool(name, args) { return call({ action: "tool", tool: name, args: args }); }
-function langOf(p) { var e = (p.split(".").pop() || "").toLowerCase(); return { html: "html", htm: "html", css: "css", js: "javascript", json: "json", md: "markdown", svg: "xml", txt: "plaintext" }[e] || "plaintext"; }
-function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 
-async function loadSites() {
+/* ---------- file helpers ---------- */
+function ext(p) { return (p.split(".").pop() || "").toLowerCase(); }
+function langOf(p) { return { html: "html", htm: "html", css: "css", js: "javascript", mjs: "javascript", json: "json", md: "markdown", svg: "xml", xml: "xml", txt: "plaintext" }[ext(p)] || "plaintext"; }
+function badge(p) {
+  var e = ext(p), c = { html: "html", htm: "html", css: "css", js: "js", mjs: "js", json: "json", md: "md", png: "img", jpg: "img", jpeg: "img", webp: "img", gif: "img", svg: "img" }[e] || "other";
+  var t = { html: "&lt;&gt;", css: "#", js: "JS", json: "{}", img: "IMG", md: "MD", other: "•" }[c];
+  return '<span class="fi ' + c + '">' + t + "</span>";
+}
+
+/* ---------- quick input / dialogs ---------- */
+var Q = null;
+function qclose(v) { if (!Q) return; $("qo").classList.remove("on"); var r = Q.res; Q = null; r(v); }
+function qopen(html, onready) { $("qb").innerHTML = html; $("qo").classList.add("on"); if (onready) onready(); }
+$("qo").addEventListener("mousedown", function (e) { if (e.target === $("qo")) qclose(null); });
+function askText(title, value, hint) {
+  return new Promise(function (res) {
+    Q = { res: res };
+    qopen('<div class="t">' + esc(title) + '</div><div class="q1"><input id="qi" value="' + esc(value || "") + '" placeholder="' + esc(hint || "") + '" autocomplete="off"></div>', function () {
+      var i = $("qi"); i.focus(); i.select();
+      i.onkeydown = function (e) { if (e.key === "Enter") qclose(i.value.trim() || null); if (e.key === "Escape") qclose(null); };
+    });
+  });
+}
+function askConfirm(title, text, okLabel) {
+  return new Promise(function (res) {
+    Q = { res: res };
+    qopen('<div class="t">' + esc(title) + '</div><div class="msg2">' + esc(text) + '</div><div class="btns"><button id="qn">Cancel</button><button class="pri" id="qy">' + esc(okLabel || "OK") + "</button></div>", function () {
+      $("qn").onclick = function () { qclose(false); }; $("qy").onclick = function () { qclose(true); }; $("qy").focus();
+      $("qb").onkeydown = function (e) { if (e.key === "Escape") qclose(false); };
+    });
+  });
+}
+function askPick(title, items, placeholder) { // items: [{label, detail, value}]
+  return new Promise(function (res) {
+    Q = { res: res }; var sel = 0, list = items.slice();
+    qopen('<div class="q1"><input id="qi" placeholder="' + esc(placeholder || title) + '" autocomplete="off"></div><div id="ql"></div>', function () {
+      var i = $("qi"); i.focus();
+      function draw() {
+        $("ql").innerHTML = list.map(function (it, n) { return '<div class="qi ' + (n === sel ? "on" : "") + '" data-n="' + n + '">' + (it.html || esc(it.label)) + (it.detail ? '<span class="d">' + esc(it.detail) + "</span>" : "") + "</div>"; }).join("") || '<div class="msg2" style="color:var(--dim)">Nothing matches.</div>';
+        var on = $("ql").querySelector(".on"); if (on) on.scrollIntoView({ block: "nearest" });
+      }
+      function score(it, q) { var l = (it.label + " " + (it.detail || "")).toLowerCase(), k = 0, p = 0; for (var c = 0; c < q.length; c++) { var f = l.indexOf(q[c], p); if (f < 0) return -1; k += f - p; p = f + 1; } return k; }
+      i.oninput = function () { var q = i.value.toLowerCase().replace(/\s+/g, ""); list = !q ? items.slice() : items.map(function (it) { return [score(it, q), it]; }).filter(function (x) { return x[0] >= 0; }).sort(function (a, b) { return a[0] - b[0]; }).map(function (x) { return x[1]; }); sel = 0; draw(); };
+      i.onkeydown = function (e) {
+        if (e.key === "ArrowDown") { sel = Math.min(sel + 1, list.length - 1); draw(); e.preventDefault(); }
+        else if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); draw(); e.preventDefault(); }
+        else if (e.key === "Enter") { qclose(list[sel] ? list[sel].value : null); }
+        else if (e.key === "Escape") qclose(null);
+      };
+      $("ql").onclick = function (e) { var d = e.target.closest(".qi"); if (d) qclose(list[+d.getAttribute("data-n")].value); };
+      draw();
+    });
+  });
+}
+
+/* ---------- sites ---------- */
+async function loadSites(selectId) {
   var r = await tool("site_list_files", {});
-  S.sites = r.sites || r.items || [];
-  $("site").innerHTML = S.sites.length ? S.sites.map(function (s) { return '<option value="' + s.site_id + '">' + esc(s.name || s.title || s.slug || s.site_id) + (s.status ? " · " + esc(s.status) : "") + "</option>"; }).join("") : '<option value="">No file-based sites yet</option>';
-  var want = new URLSearchParams(location.search).get("site");
+  S.sites = r.sites || [];
+  $("site").innerHTML = S.sites.length ? S.sites.map(function (s) { return '<option value="' + esc(s.site_id) + '">' + esc(s.name || s.site_id) + (s.status === "published" ? "  ● live" : "") + "</option>"; }).join("") : '<option value="">No sites yet</option>';
+  var want = selectId || new URLSearchParams(location.search).get("site") || store("site");
   if (want && S.sites.some(function (s) { return s.site_id === want; })) $("site").value = want;
-  if (S.sites.length) await openSite($("site").value); else status("No file-based sites yet. Ask your AI assistant to create one with site_new, or import a .zip.");
+  if (S.sites.length) await openSite($("site").value); else { S.site = null; S.files = []; renderTree(); showWelcome(true); status("No sites yet. Start one from the welcome screen."); }
 }
 async function openSite(id) {
-  S.site = id; S.open = {}; S.current = null; renderTabs();
+  if (!id) return;
+  S.site = id; store("site", id);
+  Object.keys(S.open).forEach(function (p) { S.open[p].model.dispose(); }); S.open = {}; S.order = []; S.current = null; S.chat = [];
   var r = await tool("site_list_files", { site_id: id });
-  S.files = r.files || r.tree || [];
-  S.meta = r; renderFiles();
+  S.meta = r; S.files = r.files || [];
+  S.assets = store("assets." + id) || [];
+  $("log").innerHTML = ""; chatWelcome();
+  renderTree(); renderTabs(); renderAssets();
   var first = S.files.find(function (f) { return f.path === "index.html"; }) || S.files[0];
-  if (first) await openFile(first.path); else { S.editor && S.editor.setValue(""); }
-  status("Opened " + (r.name || "site") + " · " + S.files.length + " files", "ok");
-  $("live").disabled = false; refreshPreview();
+  if (first) await openFile(first.path); else { showWelcome(true); }
+  $("bLive").disabled = false; $("bTest").disabled = false;
+  status("Opened " + (r.name || "site") + " · " + S.files.length + " files");
+  $("stver").textContent = r.status === "published" ? "Live" : "Draft";
+  refreshPreview();
 }
-function renderFiles() {
-  $("files").innerHTML = S.files.map(function (f) { var o = S.open[f.path]; return '<div class="f ' + (S.current === f.path ? "on" : "") + '" data-p="' + esc(f.path) + '"><span>' + esc(f.path) + (o && o.dirty ? ' <span class="dot">●</span>' : "") + '</span><span class="x" data-del="' + esc(f.path) + '" title="Delete">✕</span></div>'; }).join("");
+function showWelcome(on) { $("welcome").classList.toggle("on", !!on); if (S.ed) $("ed").querySelector(".monaco-editor") && ($("ed").querySelector(".monaco-editor").style.visibility = on ? "hidden" : "visible"); }
+
+/* ---------- explorer ---------- */
+function buildTree() {
+  var root = { dirs: {}, files: [] };
+  S.files.forEach(function (f) { var parts = f.path.split("/"), n = root; for (var i = 0; i < parts.length - 1; i++) { n = n.dirs[parts[i]] = n.dirs[parts[i]] || { dirs: {}, files: [] }; } n.files.push(f); });
+  return root;
 }
-function renderTabs() {
-  $("tabs").innerHTML = Object.keys(S.open).map(function (p) { return '<div class="tab ' + (S.current === p ? "on" : "") + '" data-p="' + esc(p) + '">' + esc(p.split("/").pop()) + (S.open[p].dirty ? " ●" : "") + "</div>"; }).join("");
-}
-async function openFile(path) {
-  if (!S.open[path]) {
-    var g = await call({ action: "get", site_id: S.site, path: path });
-    S.open[path] = { version: g.version, saved: g.content, model: S.monaco.editor.createModel(g.content, langOf(path)), dirty: false };
-    (function (p) { S.open[p].model.onDidChangeContent(function () { var o = S.open[p]; o.dirty = o.model.getValue() !== o.saved; renderTabs(); renderFiles(); $("save").disabled = !S.open[S.current] || !S.open[S.current].dirty; }); })(path);
+function renderTree() {
+  var out = [];
+  function walk(node, depth, prefix) {
+    Object.keys(node.dirs).sort().forEach(function (d) {
+      var path = prefix + d, open = !S.collapsed[path];
+      out.push('<div class="row" data-dir="' + esc(path) + '" style="padding-left:' + (8 + depth * 12) + 'px"><span class="chev ' + (open ? "open" : "") + '">' + ICON_CHEV + '</span><span class="fold">' + ICON_FOLD + '</span><span class="nm">' + esc(d) + "</span></div>");
+      if (open) walk(node.dirs[d], depth + 1, path + "/");
+    });
+    node.files.sort(function (a, b) { return a.path.localeCompare(b.path); }).forEach(function (f) {
+      var o = S.open[f.path], name = f.path.split("/").pop();
+      out.push('<div class="row ' + (S.current === f.path ? "cur" : "") + '" data-f="' + esc(f.path) + '" style="padding-left:' + (8 + depth * 12 + 16) + 'px">' + badge(f.path) + '<span class="nm">' + esc(name) + "</span>" + (o && o.dirty ? '<span class="dot">●</span>' : "") +
+        '<span class="acts"><button class="ib" data-ren="' + esc(f.path) + '" title="Rename"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button><button class="ib" data-del="' + esc(f.path) + '" title="Delete">' + ICON_X + "</button></span></div>");
+    });
   }
-  S.current = path; S.editor.setModel(S.open[path].model); renderTabs(); renderFiles(); $("save").disabled = !S.open[path].dirty;
+  walk(buildTree(), 0, "");
+  $("tree").innerHTML = out.length ? out.join("") : '<div class="empty"><b>No files yet.</b><br>Create one with the + button, upload files, or ask the AI to build the site.</div>';
+  $("sname").textContent = (S.meta.name || "Explorer").toUpperCase().slice(0, 28);
 }
-async function save() {
-  var o = S.open[S.current]; if (!o || !o.dirty) return;
-  var content = o.model.getValue(); status("Saving…");
+$("tree").addEventListener("click", async function (e) {
+  var d = e.target.closest("[data-del]"); if (d) { e.stopPropagation(); return delFile(d.getAttribute("data-del")); }
+  var rn = e.target.closest("[data-ren]"); if (rn) { e.stopPropagation(); return renFile(rn.getAttribute("data-ren")); }
+  var dir = e.target.closest("[data-dir]"); if (dir) { var p = dir.getAttribute("data-dir"); S.collapsed[p] = !S.collapsed[p]; return renderTree(); }
+  var f = e.target.closest("[data-f]"); if (f) openFile(f.getAttribute("data-f"));
+});
+async function delFile(p) {
+  if (!await askConfirm("Delete " + p + "?", "It disappears from the site. You can bring it back later from History (restore a version).", "Delete")) return;
+  try { var r = await tool("site_delete_file", { site_id: S.site, path: p }); if (r.error) throw new Error(r.error); closeTab(p, true); await refreshFiles(); status("Deleted " + p); refreshPreview(); } catch (x) { status(x.message, "err"); }
+}
+async function renFile(p) {
+  var np = await askText("Rename " + p + " to", p); if (!np || np === p) return;
+  try {
+    var g = await call({ action: "get", site_id: S.site, path: p });
+    var cur = S.open[p]; var content = cur ? cur.model.getValue() : g.content;
+    var w = await tool("site_write_file", { site_id: S.site, path: np, content: content }); if (w.error) throw new Error(w.error);
+    var d = await tool("site_delete_file", { site_id: S.site, path: p }); if (d.error) throw new Error(d.error);
+    closeTab(p, true); await refreshFiles(); await openFile(np); status("Renamed to " + np); refreshPreview();
+  } catch (x) { status(x.message, "err"); }
+}
+async function newFile(prefill) {
+  var p = await askText("New file path (use / for folders, e.g. about.html or assets/js/app.js)", prefill || ""); if (!p) return;
+  p = p.replace(/^\/+/, "");
+  var body = /\.html?$/i.test(p) ? '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>New page</title>\n</head>\n<body>\n  \n</body>\n</html>\n' : "\n";
+  try { var r = await tool("site_write_file", { site_id: S.site, path: p, content: body }); if (r.error) throw new Error(r.error); await refreshFiles(); await openFile(p); refreshPreview(); } catch (x) { status(x.message, "err"); }
+}
+async function refreshFiles() { var r = await tool("site_list_files", { site_id: S.site }); S.files = r.files || []; S.meta = r; renderTree(); }
+
+/* ---------- tabs and editor ---------- */
+function renderTabs() {
+  $("tabs").innerHTML = S.order.map(function (p) { var o = S.open[p]; return '<div class="tab ' + (S.current === p ? "on" : "") + (o.dirty ? " dirty" : "") + '" data-p="' + esc(p) + '">' + badge(p) + "<span>" + esc(p.split("/").pop()) + '</span><span class="x" data-x="' + esc(p) + '">' + ICON_X + "</span></div>"; }).join("");
+  var sel = $("tabs").querySelector(".on"); if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+  var o = S.open[S.current]; $("bSave").disabled = !(o && o.dirty);
+  $("crumbs").innerHTML = S.current ? S.current.split("/").map(function (x, i, a) { return i === a.length - 1 ? "<b>" + esc(x) + "</b>" : esc(x); }).join("  ›  ") : "";
+  $("lang").textContent = S.current ? langOf(S.current) : "";
+  $("ctx").textContent = "Working on: " + (S.current || "whole site");
+}
+$("tabs").addEventListener("mousedown", function (e) {
+  var x = e.target.closest("[data-x]"); if (x) { e.preventDefault(); return closeTab(x.getAttribute("data-x")); }
+  var t = e.target.closest(".tab"); if (t) { if (e.button === 1) return closeTab(t.getAttribute("data-p")); openFile(t.getAttribute("data-p")); }
+});
+async function closeTab(p, force) {
+  var o = S.open[p]; if (!o) return;
+  if (o.dirty && !force && !await askConfirm("Close " + p + "?", "It has unsaved changes. They will be lost.", "Close anyway")) return;
+  o.model.dispose(); delete S.open[p]; S.order = S.order.filter(function (x) { return x !== p; });
+  if (S.current === p) { S.current = S.order[S.order.length - 1] || null; if (S.current) S.ed.setModel(S.open[S.current].model); else showWelcome(true); }
+  renderTabs(); renderTree();
+}
+async function openFile(path, line) {
+  if (!S.mo) { S.pending = [path, line]; return; }
+  if (!S.open[path]) {
+    status("Opening " + path + "…", "busy");
+    var g = await call({ action: "get", site_id: S.site, path: path });
+    var model = S.mo.editor.createModel(g.content, langOf(path), S.mo.Uri.parse("inmemory://site/" + encodeURI(path)));
+    S.open[path] = { version: g.version, saved: g.content, model: model, dirty: false };
+    S.order.push(path);
+    model.onDidChangeContent(function () { var o = S.open[path]; if (!o) return; var d = model.getValue() !== o.saved; if (d !== o.dirty) { o.dirty = d; renderTabs(); renderTree(); } });
+    status("Ready");
+  }
+  S.current = path; showWelcome(false); S.ed.setModel(S.open[path].model); renderTabs(); renderTree();
+  $("stver").textContent = "v" + S.open[path].version;
+  if (line) { S.ed.revealLineInCenter(line); S.ed.setPosition({ lineNumber: line, column: 1 }); }
+  if (ext(path).match(/^html?$/) && $("pvmode").value === "quick") refreshPreview();
+  S.ed.focus();
+}
+async function save(quiet) {
+  var o = S.open[S.current]; if (!o || !o.dirty) return true;
+  var content = o.model.getValue(); status("Saving…", "busy");
   try {
     var r = await tool("site_write_file", { site_id: S.site, path: S.current, content: content, if_version: o.version });
     if (r.error) throw new Error(r.error);
-    o.version = r.version || (o.version + 1); o.saved = content; o.dirty = false;
-    renderTabs(); renderFiles(); $("save").disabled = true; status("Saved " + S.current + " (version " + o.version + ")", "ok"); refreshPreview();
-  } catch (e) { status(e.message, "err"); }
+    o.version = r.version || o.version + 1; o.saved = content; o.dirty = false;
+    renderTabs(); renderTree(); $("stver").textContent = "v" + o.version; status("Saved " + S.current); refreshPreview(true); return true;
+  } catch (e) { status(e.message, "err"); if (!quiet) toast(e.message); return false; }
 }
-function inline(html, files) {
+async function saveAll() { var cur = S.current; for (var p of S.order.slice()) { if (S.open[p].dirty) { S.current = p; await save(true); } } S.current = cur; renderTabs(); }
+function toast(m) { var b = document.createElement("div"); b.textContent = m; b.style.cssText = "position:fixed;bottom:36px;right:16px;max-width:420px;background:#5a1d1d;color:#fff;padding:10px 14px;border-radius:6px;z-index:60;box-shadow:0 4px 14px rgba(0,0,0,.5)"; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 6000); }
+
+/* ---------- preview ---------- */
+function inlineAssets(html, files) {
   var m = {}; files.forEach(function (f) { m[f.path] = f.content; });
-  function find(h) { h = h.replace(/^\.?\//, ""); return m[h]; }
-  html = html.replace(/<link[^>]*href=["']([^"']+\.css)["'][^>]*>/gi, function (all, h) { var c = find(h); return c != null ? "<style>" + c + "</style>" : all; });
-  html = html.replace(/<script([^>]*)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi, function (all, a, h, b) { var c = find(h); return c != null ? "<script" + a + b + ">" + c.replace(/<\/script/gi, "<\\/script") + "<\/script>" : all; });
+  function find(h) { return m[h.replace(/^\.?\//, "").split("?")[0]]; }
+  html = html.replace(/<link[^>]*href=["']([^"']+\.css[^"']*)["'][^>]*>/gi, function (all, h) { var c = find(h); return c != null ? "<style>" + c + "</style>" : all; });
+  html = html.replace(/<script([^>]*)src=["']([^"']+\.js[^"']*)["']([^>]*)><\/script>/gi, function (all, a, h, b) { var c = find(h); return c != null ? "<script" + a + b + ">" + c.replace(/<\/script/gi, "<\\/script") + "<\/script>" : all; });
   return html;
 }
-async function refreshPreview() {
-  if (!S.site) return;
+var pvTimer = null;
+function refreshPreview(afterSave) { clearTimeout(pvTimer); pvTimer = setTimeout(function () { doPreview(afterSave); }, afterSave ? 0 : 350); }
+async function doPreview() {
+  if (!S.site || !S.files.length) return;
   try {
     var page = S.current && /\.html?$/i.test(S.current) ? S.current : "index.html";
-    var paths = S.files.map(function (f) { return f.path; });
-    var r = await call({ action: "get_many", site_id: S.site, paths: paths });
-    var files = r.files || [], pageF = files.find(function (f) { return f.path === page; });
-    // Unsaved edits show in the preview too.
-    files.forEach(function (f) { var o = S.open[f.path]; if (o) f.content = o.model.getValue(); });
-    pageF = files.find(function (f) { return f.path === page; });
-    if ($("pvmode").value === "live" && S.meta && S.meta.test_link && !(S.current && S.open[S.current] && S.open[S.current].dirty)) {
+    var dirty = S.order.some(function (p) { return S.open[p].dirty; });
+    if ($("pvmode").value === "live" && S.meta.test_link && !dirty) {
       var u = S.meta.test_link, slug = page === "index.html" ? "" : page.replace(/\.html?$/i, "");
       if (slug) { var q = u.indexOf("?"); u = u.slice(0, q < 0 ? u.length : q).replace(/\/+$/, "") + "/" + slug + (q < 0 ? "" : u.slice(q)); }
       $("pv").removeAttribute("sandbox"); $("pv").removeAttribute("srcdoc"); $("pv").src = u + (u.indexOf("?") < 0 ? "?" : "&") + "_=" + Date.now();
-      $("pvnote").textContent = "live render"; return;
+      $("pvnote").textContent = "Live page · " + page; return;
     }
+    var r = await call({ action: "get_many", site_id: S.site, paths: S.files.map(function (f) { return f.path; }) });
+    var files = r.files || []; files.forEach(function (f) { var o = S.open[f.path]; if (o) f.content = o.model.getValue(); });
+    var pf = files.find(function (f) { return f.path === page; });
     $("pv").setAttribute("sandbox", "allow-scripts allow-forms allow-popups"); $("pv").removeAttribute("src");
-    $("pv").srcdoc = pageF ? inline(pageF.content, files) : "<p style='font:14px sans-serif;padding:20px'>No " + esc(page) + " in this site.</p>";
-    $("pvnote").textContent = page;
+    $("pv").srcdoc = pf ? inlineAssets(pf.content, files) : "<p style='font:14px sans-serif;padding:24px;color:#555'>There is no " + esc(page) + " in this site yet.</p>";
+    $("pvnote").textContent = (dirty ? "Quick · unsaved edits · " : "Quick · ") + page;
   } catch (e) { $("pvnote").textContent = e.message; }
 }
-$("files").onclick = async function (e) {
-  var d = e.target.getAttribute("data-del");
-  if (d) { if (!confirm("Delete " + d + "? You can bring it back from History.")) return;
-    try { var r = await tool("site_delete_file", { site_id: S.site, path: d }); if (r.error) throw new Error(r.error); if (S.open[d]) { S.open[d].model.dispose(); delete S.open[d]; } await openSite(S.site); } catch (x) { status(x.message, "err"); } return; }
-  var f = e.target.closest(".f"); if (f) openFile(f.getAttribute("data-p"));
+$("pvmode").onchange = function () { refreshPreview(true); };
+$("pvRef").onclick = function () { refreshPreview(true); };
+document.querySelectorAll("[data-dev]").forEach(function (b) { b.onclick = function () { S.dev = b.getAttribute("data-dev"); $("pvbox").className = S.dev === "desk" ? "" : S.dev; }; });
+
+/* ---------- search ---------- */
+$("q").onkeydown = async function (e) {
+  if (e.key !== "Enter") return; var q = $("q").value.trim(); if (!q || !S.site) return;
+  $("hits").innerHTML = '<div class="empty">Searching…</div>';
+  try {
+    var r = await tool("site_search", { site_id: S.site, query: q }); if (r.error) throw new Error(r.error);
+    var by = {}; (r.matches || []).forEach(function (m) { (by[m.path] = by[m.path] || []).push(m); });
+    var keys = Object.keys(by);
+    $("hits").innerHTML = keys.length ? keys.map(function (p) { return '<div class="hf">' + esc(p) + " · " + by[p].length + "</div>" + by[p].slice(0, 30).map(function (m) { return '<div class="hit" data-p="' + esc(p) + '" data-l="' + m.line + '"><span class="ln">' + m.line + "</span>" + esc(String(m.text).trim().slice(0, 120)) + "</div>"; }).join(""); }).join("") : '<div class="empty">No results.</div>';
+  } catch (x) { $("hits").innerHTML = '<div class="empty">' + esc(x.message) + "</div>"; }
 };
-$("tabs").onclick = function (e) { var t = e.target.closest(".tab"); if (t) openFile(t.getAttribute("data-p")); };
-$("site").onchange = function () { openSite(this.value); };
-$("test").onclick = function () { if (S.meta && S.meta.test_link) window.open(S.meta.test_link, "_blank"); };
-$("save").onclick = save; $("prev").onclick = refreshPreview;
-$("newf").onclick = async function () {
-  var p = prompt("New file path (e.g. about.html, styles/extra.css, assets/js/app.js)"); if (!p) return;
-  try { var r = await tool("site_write_file", { site_id: S.site, path: p.trim(), content: /\.html?$/i.test(p) ? "<!doctype html>\n<html>\n<head><meta charset=\"utf-8\"><title>New page</title></head>\n<body>\n\n</body>\n</html>\n" : "\n" }); if (r.error) throw new Error(r.error); await openSite(S.site); await openFile(p.trim()); } catch (x) { status(x.message, "err"); }
+$("hits").onclick = function (e) { var h = e.target.closest(".hit"); if (h) openFile(h.getAttribute("data-p"), +h.getAttribute("data-l")); };
+
+/* ---------- assets / uploads ---------- */
+function renderAssets() {
+  $("alist").innerHTML = S.assets.length ? S.assets.map(function (a, i) { var img = /\.(png|jpe?g|webp|gif|svg|avif)(\?|$)/i.test(a.url); return '<div class="asset">' + (img ? '<img src="' + esc(a.url) + '" alt="">' : badge(a.name)) + '<div class="a2"><div class="n" title="' + esc(a.name) + '">' + esc(a.name) + '</div><div><button class="mini" data-cp="' + i + '">Copy link</button><button class="mini" data-ins="' + i + '">Insert</button></div></div></div>'; }).join("") : '<div class="empty"><b>No uploads yet.</b><br>Upload pictures here. They are stored on Revora media storage and you get a link to use in your code.</div>';
+}
+$("alist").onclick = function (e) {
+  var c = e.target.closest("[data-cp]"), n = e.target.closest("[data-ins]");
+  if (c) { navigator.clipboard && navigator.clipboard.writeText(S.assets[+c.getAttribute("data-cp")].url); status("Link copied"); }
+  if (n && S.ed) { var a = S.assets[+n.getAttribute("data-ins")], img = /\.(png|jpe?g|webp|gif|svg|avif)(\?|$)/i.test(a.url); S.ed.trigger("kb", "type", { text: img ? '<img src="' + a.url + '" alt="">' : a.url }); S.ed.focus(); }
 };
-$("hist").onclick = async function () {
+async function uploadFiles(list) {
+  for (var f of list) {
+    try { status("Uploading " + f.name + "…", "busy"); var url = await window.rvUpload(sb, "site-media", f); S.assets.unshift({ name: f.name, url: url }); store("assets." + S.site, S.assets.slice(0, 60)); renderAssets(); status("Uploaded " + f.name + ". Find it under Assets."); }
+    catch (e) { status(e.message, "err"); toast(f.name + ": " + e.message); }
+  }
+  setPanel("assets");
+}
+$("iUp").onclick = $("aUp").onclick = function () { $("fileIn").click(); };
+$("fileIn").onchange = function () { uploadFiles(Array.prototype.slice.call(this.files)); this.value = ""; };
+document.addEventListener("dragover", function (e) { e.preventDefault(); });
+document.addEventListener("drop", function (e) { if (e.dataTransfer && e.dataTransfer.files.length && !e.target.closest("#qo")) { e.preventDefault(); uploadFiles(Array.prototype.slice.call(e.dataTransfer.files)); } });
+
+/* ---------- new site / import ---------- */
+async function productsList() { try { var r = await sb.from("products").select("id, product_name").order("product_name"); return r.data || []; } catch (e) { return []; } }
+async function newSiteFlow() {
+  var prods = await productsList();
+  if (!prods.length) { await askConfirm("Add a product first", "A site belongs to a product (what you sell). Add one in the dashboard under Catalog, then come back here.", "OK"); return; }
+  var res = await new Promise(function (resolve) {
+    Q = { res: resolve };
+    qopen('<div class="t">New site</div><div class="field"><label>Product</label><select id="npP">' + prods.map(function (p) { return '<option value="' + esc(p.product_name) + '">' + esc(p.product_name) + "</option>"; }).join("") + '</select></div><div class="field"><label>Site name</label><input type="text" id="npT" placeholder="e.g. Aura Glow sales page"></div><div class="btns"><button id="qn">Cancel</button><button class="pri" id="qy">Create site</button></div>', function () {
+      $("qn").onclick = function () { qclose(null); }; $("qy").onclick = function () { qclose({ product: $("npP").value, title: $("npT").value.trim() }); }; $("npT").focus();
+    });
+  });
+  if (!res) return;
+  status("Creating the site…", "busy");
+  try { var r = await tool("site_new", { product_name: res.product, title: res.title || res.product + " site" }); if (r.error) throw new Error(r.error); await loadSites(r.site_id || (r.site && r.site.id)); status("Site created. Edit the files, or ask the AI."); }
+  catch (x) { status(x.message, "err"); toast(x.message); }
+}
+async function importFlow() {
+  var prods = await productsList();
+  var res = await new Promise(function (resolve) {
+    Q = { res: resolve };
+    qopen('<div class="t">Import a website (.zip)</div><div class="field"><label>Zip file</label><button class="mini" id="zpick" style="padding:7px 10px;margin:0">Choose a .zip…</button> <span id="zn" style="color:var(--dim)"></span></div>' +
+      (prods.length ? '<div class="field"><label>Product this site sells</label><select id="zP">' + prods.map(function (p) { return '<option value="' + esc(p.product_name) + '">' + esc(p.product_name) + "</option>"; }).join("") + "</select></div>" : "") +
+      '<div class="field"><label>Site name (optional)</label><input type="text" id="zT"></div><div class="btns"><button id="qn">Cancel</button><button class="pri" id="qy">Import</button></div>', function () {
+      var file = null; $("zpick").onclick = function () { $("zipIn").click(); };
+      $("zipIn").onchange = function () { file = this.files[0] || null; $("zn").textContent = file ? file.name : ""; this.value = ""; };
+      $("qn").onclick = function () { qclose(null); };
+      $("qy").onclick = function () { if (!file) { $("zn").textContent = "Choose a file first"; return; } qclose({ file: file, product: $("zP") ? $("zP").value : undefined, title: $("zT").value.trim() }); };
+    });
+  });
+  if (!res) return;
+  try {
+    status("Uploading " + res.file.name + "…", "busy");
+    var s = (await sb.auth.getSession()).data.session;
+    var sign = await fetch(SUPA_URL + "/functions/v1/media", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token, apikey: ANON }, body: JSON.stringify({ action: "sign", folder: "uploads", filename: res.file.name, contentType: "application/zip", size: res.file.size }) }).then(function (r) { return r.json(); });
+    if (!sign.uploadUrl) throw new Error(sign.error || "Upload could not start.");
+    var put = await fetch(sign.uploadUrl, { method: "PUT", headers: { "Content-Type": "application/zip" }, body: res.file }); if (!put.ok) throw new Error("Upload failed (" + put.status + ").");
+    status("Reading your site…", "busy");
+    var r = await tool("site_import_zip", { zip_url: sign.publicUrl, product_name: res.product, title: res.title || undefined });
+    if (r.error) throw new Error(r.error);
+    if (r.needs_decision) { var keep = await askConfirm("Your page already has a Meta pixel", (r.message || r.next || "The page has its own pixel that differs from your ad account pixel.") + "\n\nKeep your pixel as written?", "Keep mine"); r = await tool("site_import_zip", { zip_url: sign.publicUrl, product_name: res.product, title: res.title || undefined, pixel_mode: keep ? "keep" : "swap" }); if (r.error) throw new Error(r.error); }
+    await loadSites(r.site_id); status("Imported. Your files are on the left.");
+  } catch (x) { status(x.message, "err"); toast(x.message); }
+}
+$("wNew").onclick = newSiteFlow; $("wImp").onclick = importFlow; $("wAi").onclick = function () { setRight("ai"); };
+
+/* ---------- history / publish ---------- */
+async function history() {
   if (!S.current) return;
-  try { var r = await tool("site_history", { site_id: S.site, path: S.current }); var v = r.versions || r.history || [];
-    var pick = prompt("Saved versions of " + S.current + " (newest first):\n" + v.map(function (x) { return "v" + x.version + " · " + (x.action || "") + " · " + (x.saved_at || x.when || ""); }).join("\n") + "\n\nType a version number to restore it, or Cancel."); if (!pick) return;
-    var rr = await tool("site_rollback", { site_id: S.site, path: S.current, version: Number(pick.replace(/\D/g, "")) }); if (rr.error) throw new Error(rr.error);
-    delete S.open[S.current]; var cur = S.current; await openSite(S.site); await openFile(cur); status("Restored " + cur, "ok");
-  } catch (x) { status(x.message, "err"); }
+  try {
+    var r = await tool("site_history", { site_id: S.site, path: S.current }); var v = r.versions || [];
+    var pick = await askPick("History of " + S.current, v.map(function (x) { return { label: "Version " + x.version + " · " + (x.action || "save"), detail: new Date(x.saved_at).toLocaleString() + " · " + (x.saved_via || ""), value: x.version }; }), "Pick a version to restore");
+    if (!pick) return;
+    var rr = await tool("site_rollback", { site_id: S.site, path: S.current, version: pick }); if (rr.error) throw new Error(rr.error);
+    var p = S.current; closeTab(p, true); await refreshFiles(); await openFile(p); status("Restored " + p + " to version " + pick); refreshPreview(true);
+  } catch (x) { status(x.message, "err"); toast(x.message); }
+}
+$("bLive").onclick = async function () {
+  await saveAll();
+  if (!await askConfirm("Publish this site?", "Customers will see it at once, and every save after this shows to them too. History can undo any change.", "Publish")) return;
+  try { var r = await tool("site_set_live", { site_id: S.site, live: true }); if (r.error) throw new Error(r.error); status(r.next || "The site is live.", ""); $("stver").textContent = "Live"; toast2("Published. " + (r.live_link || "")); }
+  catch (x) { status(x.message, "err"); toast(x.message); }
 };
-$("live").onclick = async function () {
-  if (!confirm("Publish this site so customers see it? Every save after this shows to customers at once. (History can undo a change.)")) return;
-  try { var r = await tool("site_set_live", { site_id: S.site, live: true }); if (r.error) throw new Error(r.error); status(r.next || "The site is live.", "ok"); } catch (x) { status(x.message, "err"); }
-};
-$("mode").onclick = function (e) {
-  var m = e.target.getAttribute("data-m"); if (!m) return;
-  if (m === "widget") { location.href = "/builder.html" + (S.site ? "?site=" + S.site : ""); return; }
-  Array.prototype.forEach.call($("mode").children, function (b) { b.classList.toggle("on", b === e.target); });
-  $("side").classList.toggle("ai", m === "ai");
-  if (m === "ai") $("chatin").focus(); else refreshPreview();
-};
-$("pvmode").onchange = refreshPreview;
-var CHAT = [];
+function toast2(m) { var b = document.createElement("div"); b.textContent = m; b.style.cssText = "position:fixed;bottom:36px;right:16px;max-width:420px;background:#1f4d2c;color:#fff;padding:10px 14px;border-radius:6px;z-index:60"; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 5000); }
+$("bTest").onclick = function () { if (S.meta.live_link && S.meta.status === "published") window.open(S.meta.live_link, "_blank"); else if (S.meta.test_link) window.open(S.meta.test_link, "_blank"); };
+$("bSave").onclick = function () { save(); };
+
+/* ---------- AI chat ---------- */
+function chatWelcome() {
+  var d = document.createElement("div"); d.className = "sys";
+  d.innerHTML = 'Describe what you want. I read your files, make the change, and tell you what I did. Every change is a version you can undo from History.<div class="ex"><button>Make the header blue</button><button>Add a WhatsApp chat button</button><button>Make the page load faster</button><button>Write a thank-you page</button></div>';
+  $("log").appendChild(d);
+  d.querySelectorAll(".ex button").forEach(function (b) { b.onclick = function () { $("chatin").value = b.textContent; $("chatin").focus(); }; });
+}
+function addMsg(who, text, chips) {
+  var d = document.createElement("div"); d.className = "msg " + (who === "You" ? "u" : "a");
+  d.innerHTML = '<div class="who">' + esc(who) + '</div><div class="bd"></div>'; d.querySelector(".bd").textContent = text;
+  if (chips && chips.length) { var c = document.createElement("div"); c.className = "chips"; chips.forEach(function (p) { var k = document.createElement("span"); k.className = "chip"; k.textContent = p; k.onclick = function () { openFile(p); }; c.appendChild(k); }); d.appendChild(c); }
+  $("log").appendChild(d); $("log").scrollTop = 1e9; return d;
+}
 $("chatf").onsubmit = async function (e) {
   e.preventDefault(); var t = $("chatin").value.trim(); if (!t || !S.site) return;
-  if (Object.keys(S.open).some(function (p) { return S.open[p].dirty; })) { if (!confirm("You have unsaved edits. The AI works on the saved files, so save first. Continue anyway?")) return; }
-  function add(c, txt) { var d = document.createElement("div"); d.className = "m " + c; d.textContent = txt; $("log").appendChild(d); $("log").scrollTop = 1e9; return d; }
-  add("u", t); $("chatin").value = ""; CHAT.push({ role: "user", content: t });
-  var w = add("s", "Working..."); $("chatgo").disabled = true;
+  if (S.order.some(function (p) { return S.open[p].dirty; })) { await saveAll(); }
+  $("log").querySelectorAll(".sys").forEach(function (x) { x.remove(); });
+  addMsg("You", t); $("chatin").value = ""; S.chat.push({ role: "user", content: t });
+  var w = document.createElement("div"); w.className = "msg a"; w.innerHTML = '<div class="who">AI</div><div class="bd thinking">Working</div>'; $("log").appendChild(w); $("log").scrollTop = 1e9; $("chatgo").disabled = true;
   try {
-    var r = await call({ action: "ai", site_id: S.site, messages: CHAT });
-    w.remove(); add("a", r.reply || "Done."); CHAT.push({ role: "assistant", content: r.reply || "Done." });
+    var r = await call({ action: "ai", site_id: S.site, messages: S.chat, active_file: S.current });
+    w.remove(); addMsg("AI", r.reply || "Done.", r.changed); S.chat.push({ role: "assistant", content: r.reply || "Done." });
     if (r.changed && r.changed.length) {
-      add("s", "Changed: " + r.changed.join(", "));
-      r.changed.forEach(function (p) { if (S.open[p]) { S.open[p].model.dispose(); delete S.open[p]; } });
-      var cur = S.current;
-      await openSite(S.site); if (cur && S.files.some(function (f) { return f.path === cur; })) await openFile(cur);
+      r.changed.forEach(function (p) { if (S.open[p]) { S.open[p].model.dispose(); delete S.open[p]; S.order = S.order.filter(function (x) { return x !== p; }); if (S.current === p) S.current = null; } });
+      var keep = S.order.slice(); await refreshFiles();
+      var next = r.changed.find(function (p) { return S.files.some(function (f) { return f.path === p; }); }) || keep[0] || "index.html";
+      if (S.files.some(function (f) { return f.path === next; })) await openFile(next); else renderTabs();
+      for (var p of keep) { if (!S.open[p] && S.files.some(function (f) { return f.path === p; })) { try { await openFile(p); } catch (x) {} } }
+      if (S.files.some(function (f) { return f.path === next; })) await openFile(next);
+      refreshPreview(true);
     }
-  } catch (x) { w.remove(); add("s", "Problem: " + x.message); }
-  $("chatgo").disabled = false;
+  } catch (x) { w.remove(); addMsg("AI", "I couldn't do that: " + x.message); }
+  $("chatgo").disabled = false; $("chatin").focus();
 };
 $("chatin").onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatf").requestSubmit(); } };
-window.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); save(); } });
-window.addEventListener("beforeunload", function (e) { if (Object.keys(S.open).some(function (p) { return S.open[p].dirty; })) { e.preventDefault(); e.returnValue = ""; } });
-require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs" } });
+
+/* ---------- layout controls ---------- */
+function setPanel(p) {
+  if (p === "ai") { document.body.classList.remove("noright"); setRight("ai"); return; }
+  document.body.classList.remove("noside");
+  document.querySelectorAll("#act button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-p") === p); });
+  document.querySelectorAll("#side .panel").forEach(function (x) { x.classList.toggle("on", x.id === "p-" + p); x.style.display = x.id === "p-" + p ? (x.id === "p-explorer" ? "flex" : "block") : "none"; });
+  if (p === "search") $("q").focus();
+  applyLayout();
+}
+function setRight(t) {
+  document.body.classList.remove("noright");
+  document.querySelectorAll(".rtabs [data-r]").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-r") === t); });
+  $("pane-preview").style.display = t === "preview" ? "flex" : "none"; $("chat").classList.toggle("on", t === "ai");
+  Array.prototype.forEach.call($("modes").children, function (b) { b.classList.toggle("on", b.getAttribute("data-m") === (t === "ai" ? "ai" : "ide")); });
+  document.querySelectorAll("#act button").forEach(function (b) { b.classList.toggle("on", t === "ai" ? b.getAttribute("data-p") === "ai" : b.getAttribute("data-p") === (document.querySelector("#side .panel.on") || { id: "p-explorer" }).id.slice(2)); });
+  store("right", t); applyLayout(); if (t === "ai") $("chatin").focus(); else refreshPreview(true);
+}
+function applyLayout() {
+  var ns = document.body.classList.contains("noside"), nr = document.body.classList.contains("noright");
+  $("side").style.display = ns ? "none" : ""; $("rz1").style.display = ns ? "none" : ""; $("right").style.display = nr ? "none" : ""; $("rz2").style.display = nr ? "none" : "";
+  $("tSide").classList.toggle("on", !ns); $("tRight").classList.toggle("on", !nr); store("noside", ns); store("noright", nr);
+  if (S.ed) S.ed.layout();
+}
+document.querySelectorAll("#act button").forEach(function (b) { b.onclick = function () { var p = b.getAttribute("data-p"); if (b.classList.contains("on") && p !== "ai" && !document.body.classList.contains("noside")) { document.body.classList.add("noside"); applyLayout(); } else setPanel(p); }; });
+document.querySelectorAll(".rtabs [data-r]").forEach(function (b) { b.onclick = function () { setRight(b.getAttribute("data-r")); }; });
+$("tSide").onclick = function () { document.body.classList.toggle("noside"); applyLayout(); };
+$("tRight").onclick = function () { document.body.classList.toggle("noright"); applyLayout(); };
+$("rClose").onclick = function () { document.body.classList.add("noright"); applyLayout(); };
+$("modes").onclick = function (e) { var m = e.target.getAttribute("data-m"); if (!m) return; if (m === "widget") { location.href = "/builder.html" + (S.site ? "?site=" + S.site : ""); return; } setRight(m === "ai" ? "ai" : "preview"); };
+document.querySelectorAll("#mnav button").forEach(function (b) { b.onclick = function () { var v = b.getAttribute("data-v"); document.body.setAttribute("data-v", v); document.querySelectorAll("#mnav button").forEach(function (x) { x.classList.toggle("on", x === b); }); document.body.classList.remove("noside", "noright"); if (v === "ai") setRight("ai"); else if (v === "preview") setRight("preview"); if (S.ed) setTimeout(function () { S.ed.layout(); }, 50); }; });
+function drag(id, which) {
+  var el = $(id); el.onmousedown = function (e) {
+    e.preventDefault(); el.classList.add("drag"); var sx = e.clientX, w0 = which === 1 ? $("side").offsetWidth : $("right").offsetWidth;
+    function mv(ev) { var d = ev.clientX - sx; if (which === 1) $("side").style.width = Math.max(170, Math.min(520, w0 + d)) + "px"; else $("right").style.width = Math.max(280, Math.min(900, w0 - d)) + "px"; if (S.ed) S.ed.layout(); }
+    function up() { el.classList.remove("drag"); document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up); $("pv").style.pointerEvents = ""; }
+    $("pv").style.pointerEvents = "none"; document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+  };
+}
+drag("rz1", 1); drag("rz2", 2);
+$("iNew").onclick = function () { newFile(""); }; $("iRef").onclick = function () { refreshFiles(); }; $("iCol").onclick = function () { buildTreeDirs().forEach(function (d) { S.collapsed[d] = true; }); renderTree(); };
+function buildTreeDirs() { var s = {}; S.files.forEach(function (f) { var p = f.path.split("/"); for (var i = 1; i < p.length; i++) s[p.slice(0, i).join("/")] = 1; }); return Object.keys(s); }
+$("site").onchange = function () { openSite(this.value); };
+async function quickOpen() {
+  if (!S.site) return;
+  var f = await askPick("Open a file", S.files.map(function (f) { var n = f.path.split("/").pop(); return { html: badge(f.path) + " " + esc(n), detail: f.path.indexOf("/") > 0 ? f.path.slice(0, f.path.lastIndexOf("/")) : "", label: f.path, value: f.path }; }), "Type a file name…");
+  if (f) openFile(f);
+}
+$("palette").onclick = quickOpen;
+$("stFmt").onclick = function () { if (S.ed) S.ed.getAction("editor.action.formatDocument").run(); };
+window.addEventListener("keydown", function (e) {
+  var k = e.key.toLowerCase(), c = e.ctrlKey || e.metaKey;
+  if (c && k === "s") { e.preventDefault(); save(); }
+  else if (c && k === "p" && !e.shiftKey) { e.preventDefault(); quickOpen(); }
+  else if (c && k === "b") { e.preventDefault(); $("tSide").click(); }
+  else if (c && e.shiftKey && k === "f") { e.preventDefault(); setPanel("search"); }
+  else if (c && e.shiftKey && k === "e") { e.preventDefault(); setPanel("explorer"); }
+});
+window.addEventListener("beforeunload", function (e) { if (S.order.some(function (p) { return S.open[p].dirty; })) { e.preventDefault(); e.returnValue = ""; } });
+$("zipIn").addEventListener("click", function (e) { e.stopPropagation(); });
+
+/* ---------- editor boot ---------- */
+window.MonacoEnvironment = { getWorkerUrl: function () { return "data:text/javascript;charset=utf-8," + encodeURIComponent("self.MonacoEnvironment={baseUrl:'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/'};importScripts('https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/base/worker/workerMain.js');"); } };
+require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs" } });
 require(["vs/editor/editor.main"], function () {
-  S.monaco = monaco;
-  S.editor = monaco.editor.create($("ed"), { automaticLayout: true, theme: matchMedia("(prefers-color-scheme: dark)").matches ? "vs-dark" : "vs", minimap: { enabled: false }, fontSize: 14, wordWrap: "on", scrollBeyondLastLine: false });
-  S.editor.onDidChangeCursorPosition(function (e) { $("pos").textContent = "Ln " + e.position.lineNumber + ", Col " + e.position.column; });
-  S.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
-  loadSites().catch(function (e) { if (e.message !== "login") status(e.message, "err"); });
+  S.mo = monaco;
+  monaco.editor.defineTheme("revora", { base: "vs-dark", inherit: true, rules: [], colors: { "editor.background": "#1e1e1e" } });
+  S.ed = monaco.editor.create($("ed"), {
+    theme: "revora", automaticLayout: true, fontSize: 14, lineHeight: 22, fontFamily: "'JetBrains Mono','Cascadia Code',Menlo,Consolas,'Courier New',monospace",
+    minimap: { enabled: true, scale: 1, showSlider: "mouseover" }, wordWrap: "off", scrollBeyondLastLine: false, smoothScrolling: true, cursorBlinking: "smooth", cursorSmoothCaretAnimation: "on",
+    renderWhitespace: "selection", bracketPairColorization: { enabled: true }, guides: { bracketPairs: true, indentation: true }, folding: true, foldingHighlight: true, linkedEditing: true,
+    quickSuggestions: { other: true, comments: false, strings: true }, suggestOnTriggerCharacters: true, acceptSuggestionOnEnter: "on", tabCompletion: "on", snippetSuggestions: "top", wordBasedSuggestions: "allDocuments",
+    parameterHints: { enabled: true }, formatOnPaste: true, formatOnType: true, autoClosingBrackets: "always", autoClosingQuotes: "always", autoClosingTags: true, autoSurround: "languageDefined",
+    padding: { top: 8 }, tabSize: 2, insertSpaces: true, stickyScroll: { enabled: true }, inlineSuggest: { enabled: true }, hover: { delay: 250 }, contextmenu: true, mouseWheelZoom: true, fixedOverflowWidgets: true
+  });
+  S.ed.onDidChangeCursorPosition(function (e) { $("pos").textContent = "Ln " + e.position.lineNumber + ", Col " + e.position.column; });
+  S.ed.onDidChangeModelContent(function () { refreshPreview(); });
+  S.ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () { save(); });
+  S.ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, quickOpen);
+  S.ed.addAction({ id: "rv.history", label: "Revora: File history…", run: history });
+  S.ed.addAction({ id: "rv.saveall", label: "Revora: Save all files", run: saveAll });
+  // Suggest the site's own files inside href="" and src="" (and url()).
+  monaco.languages.registerCompletionItemProvider("html", { triggerCharacters: ['"', "'", "/"], provideCompletionItems: function (model, pos) {
+    var line = model.getLineContent(pos.lineNumber).slice(0, pos.column - 1);
+    if (!/(?:href|src|action)=["'][^"']*$/i.test(line)) return { suggestions: [] };
+    var w = model.getWordUntilPosition(pos), range = { startLineNumber: pos.lineNumber, endLineNumber: pos.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn };
+    return { suggestions: S.files.map(function (f) { return { label: f.path, kind: monaco.languages.CompletionItemKind.File, insertText: f.path, range: range, detail: "site file" }; }).concat(S.assets.map(function (a) { return { label: a.name, kind: monaco.languages.CompletionItemKind.File, insertText: a.url, range: range, detail: "uploaded asset" }; })) };
+  } });
+  // Quick snippets for HTML (type the word, press Tab).
+  monaco.languages.registerCompletionItemProvider("html", { provideCompletionItems: function (model, pos) {
+    var w = model.getWordUntilPosition(pos), range = { startLineNumber: pos.lineNumber, endLineNumber: pos.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn }, K = monaco.languages.CompletionItemKind.Snippet, R = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+    function sn(label, text, doc) { return { label: label, kind: K, insertText: text, insertTextRules: R, range: range, documentation: doc || label, detail: "Revora snippet" }; }
+    return { suggestions: [
+      sn("html5", '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>${1:Page title}</title>\n  <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  $0\n  <script src="scripts.js"><\/script>\n</body>\n</html>', "Full page starter"),
+      sn("section", '<section class="${1:section}">\n  <h2>${2:Heading}</h2>\n  <p>${3:Text}</p>\n</section>'),
+      sn("button", '<a class="btn" href="${1:#}">${2:Button text}</a>'),
+      sn("whatsapp", '<a href="https://wa.me/${1:234XXXXXXXXXX}?text=${2:Hello}" target="_blank" rel="noopener">${3:Chat on WhatsApp}</a>', "WhatsApp chat link"),
+      sn("img", '<img src="${1:image.jpg}" alt="${2:description}" loading="lazy">'),
+      sn("ul", '<ul>\n  <li>${1:Item}</li>\n  <li>${2:Item}</li>\n</ul>'),
+      sn("card", '<div class="card">\n  <img src="${1:image.jpg}" alt="">\n  <h3>${2:Title}</h3>\n  <p>${3:Text}</p>\n</div>'),
+      sn("grid", '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">\n  $0\n</div>')
+    ] };
+  } });
+  $("ed").querySelector(".monaco-editor").style.visibility = "hidden";
+  var ns = store("noside"), nr = store("noright"); if (ns) document.body.classList.add("noside"); if (nr) document.body.classList.add("noright"); applyLayout();
+  setRight(store("right") === "ai" ? "ai" : "preview");
+  loadSites().catch(function (e) { if (e.message !== "login") { status(e.message, "err"); showWelcome(true); } });
 });
 </script>
 </body>
