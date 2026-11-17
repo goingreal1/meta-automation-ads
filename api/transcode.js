@@ -12,7 +12,7 @@ const { pipeline } = require("stream/promises");
 const SUPA = process.env.SUPABASE_URL || "https://oicqtpjjwmgsiluvkmpu.supabase.co";
 const ANON = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
 const FFMPEG = require("ffmpeg-static");
-const BUDGET_MS = 52000;
+const BUDGET_MS = 285000;
 
 function run(args, ms) {
   return new Promise((resolve) => {
