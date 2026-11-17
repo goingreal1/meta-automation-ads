@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="/rv/upload.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/rv/config.js"></script>
 <script src="/rv/ai-apps.js" defer></script>
@@ -6177,11 +6178,7 @@ function bvQuickPreview(f) {
 }
 
 async function bvUploadFitted(file) {
-  const uid = sessionData?.user?.id;
-  const path = `${uid}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_")}`;
-  const { error } = await supabaseClient.storage.from("ad-fit").upload(path, file, { contentType: file.type || "image/jpeg" });
-  if (error) throw new Error(error.message);
-  return supabaseClient.storage.from("ad-fit").getPublicUrl(path).data.publicUrl;
+  return window.rvUpload(supabaseClient, "ad-fit", file);
 }
 
 async function bvOpenAdPreview() {
@@ -8296,11 +8293,7 @@ function bvEditProduct(id) {
 async function bvUploadTierImage(file) {
   if (!file || !/^image\//.test(file.type)) throw new Error("Please choose an image file.");
   if (file.size > 10 * 1024 * 1024) throw new Error("That image is over 10MB.");
-  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const path = `${window.myProfile.company_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const up = await supabaseClient.storage.from("site-media").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
-  if (up.error) throw up.error;
-  return supabaseClient.storage.from("site-media").getPublicUrl(path).data.publicUrl;
+  return window.rvUpload(supabaseClient, "site-media", file);
 }
 
 // the product's price follows its default package

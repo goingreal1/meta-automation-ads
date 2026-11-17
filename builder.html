@@ -428,6 +428,7 @@ input,select,textarea{font:inherit}
 
 <div class="toast" id="toast"></div>
 
+<script src="/rv/upload.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/vendor/grapesjs/grapes.min.js"></script>
 <script src="/rv/config.js"></script>
@@ -2008,11 +2009,8 @@ input,select,textarea{font:inherit}
     for (var i = 0; i < files.length; i++) {
       var f = files[i]; if (!/^image\//.test(f.type)) continue;
       if (f.size > 10 * 1024 * 1024) { toast("“" + esc(f.name) + "” is over 10MB"); continue; }
-      var ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
-      var path = S.company + "/" + Date.now() + "-" + Math.random().toString(36).slice(2, 8) + "." + ext;
-      var up = await sb.storage.from("site-media").upload(path, f, { contentType: f.type, cacheControl: "31536000" });
-      if (up.error) { toast("Upload failed: " + esc(up.error.message)); continue; }
-      out.push({ src: sb.storage.from("site-media").getPublicUrl(path).data.publicUrl, name: f.name, type: "image" });
+      try { out.push({ src: await window.rvUpload(sb, "site-media", f), name: f.name, type: "image" }); }
+      catch (e) { toast("Upload failed: " + esc(e.message)); continue; }
     }
     if (out.length) S.editor.AssetManager.add(out);
   }
