@@ -27,7 +27,7 @@ Your system now has:
 At the **TOP** of the `<script type="module">` tag (around line 1600), replace:
 
 ```javascript
-const SUPABASE_URL = 'https://rrkhkhgdxhmogxxtbvyt.supabase.co';
+const SUPABASE_URL = 'https://oicqtpjjwmgsiluvkmpu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
 ```
 

@@ -29,8 +29,8 @@
  * newsletter signup).
  */
 (function () {
-  const SUPABASE_FUNCTION_URL = "https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/receive-order";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+  const SUPABASE_FUNCTION_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/receive-order";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
 
   // const FORM_SELECTOR = "#your-real-form-id"; // set this once known, then use it in the guard below
 

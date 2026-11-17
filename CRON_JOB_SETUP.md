@@ -40,7 +40,7 @@ SELECT cron.schedule(
   $$
     SELECT
       net.http_post(
-        url:='https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/ai-auto-launch-tests',
+        url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ai-auto-launch-tests',
         headers:='{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU"}'::jsonb,
         body:='{"action": "launch_test"}'::jsonb
       ) as request_id;
@@ -54,7 +54,7 @@ SELECT cron.schedule(
   $$
     SELECT
       net.http_post(
-        url:='https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/pull-meta-metrics',
+        url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/pull-meta-metrics',
         headers:='{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU"}'::jsonb
       ) as request_id;
   $$
@@ -67,7 +67,7 @@ SELECT cron.schedule(
   $$
     SELECT
       net.http_post(
-        url:='https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/sync-meta-audiences',
+        url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/sync-meta-audiences',
         headers:='{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU"}'::jsonb
       ) as request_id;
   $$
@@ -119,7 +119,7 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/ai-auto-launch-tests',
+      'https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ai-auto-launch-tests',
       {
         method: 'POST',
         headers: {
@@ -182,7 +182,7 @@ jobs:
       - name: Trigger AI Launch
         run: |
           curl -X POST \
-            'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/ai-auto-launch-tests' \
+            'https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ai-auto-launch-tests' \
             -H 'Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}' \
             -H 'Content-Type: application/json' \
             -d '{"action": "launch_test"}'
@@ -244,7 +244,7 @@ SELECT now() AT TIME ZONE 'UTC' as utc_time,
 
 ```bash
 # Test the ai-auto-launch-tests function directly
-curl -X POST 'https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/ai-auto-launch-tests' \
+curl -X POST 'https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ai-auto-launch-tests' \
   -H 'Authorization: Bearer YOUR_ANON_KEY' \
   -H 'Content-Type: application/json'
 ```

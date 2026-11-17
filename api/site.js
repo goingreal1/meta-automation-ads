@@ -5,8 +5,8 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://rrkhkhgdxhmogxxtbvyt.supabase.co";
-const ANON = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwNTc3ODgsImV4cCI6MjEwMTYzMzc4OH0.zAWC-s3PVsYi_EIHibbqLkCQ0u095ppDh-2l_DA-_Pc";
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://oicqtpjjwmgsiluvkmpu.supabase.co";
+const ANON = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
 const ROOT = path.join(__dirname, "..");
 
 // Sites must be served from their own origin (see rv/config.js) so pasted scripts can't reach dashboard sessions.

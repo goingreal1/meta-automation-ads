@@ -1,6 +1,6 @@
 # Edge function registry
 
-Supabase project: `rrkhkhgdxhmogxxtbvyt`. This file is the source of truth for
+Supabase project: `oicqtpjjwmgsiluvkmpu`. This file is the source of truth for
 what's deployed and why. Every function deployed to Supabase should have a
 matching entry here and a matching directory in `supabase/functions/`.
 

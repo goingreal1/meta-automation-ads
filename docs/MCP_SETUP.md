@@ -2,7 +2,7 @@
 
 The server is the Supabase edge function `mcp` in the Revora project.
 
-    https://rrkhkhgdxhmogxxtbvyt.supabase.co/functions/v1/mcp
+    https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/mcp
 
 It speaks MCP over streamable HTTP (stateless JSON). Every tool runs **as the signed-in person**: the
 connector signs the person in with their own Revora account (Supabase OAuth), and the access token is passed on to
@@ -20,7 +20,7 @@ Write (logged in `mcp_audit`, capped at 80 a day, launches capped at 5 a day): `
 
 Not exposed on purpose: anything that moves money (transfers, fund approvals).
 
-## One-time setup in the Supabase dashboard (project rrkhkhgdxhmogxxtbvyt)
+## One-time setup in the Supabase dashboard (project oicqtpjjwmgsiluvkmpu)
 
 1. Authentication, OAuth Server: turn it **on**.
 2. Turn on **Allow dynamic OAuth apps** (Claude and ChatGPT register themselves).
