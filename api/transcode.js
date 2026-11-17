@@ -12,7 +12,7 @@ const { pipeline } = require("stream/promises");
 const SUPA = process.env.SUPABASE_URL || "https://oicqtpjjwmgsiluvkmpu.supabase.co";
 const ANON = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
 const FFMPEG = require("ffmpeg-static");
-const BUDGET_MS = 285000;
+const BUDGET_MS = 53000;
 
 function run(args, ms) {
   return new Promise((resolve) => {
@@ -56,8 +56,12 @@ module.exports = async (req, res) => {
 
     const left = BUDGET_MS - (Date.now() - started) - 9000; // keep time for the upload
     if (left < 8000) return res.status(504).json({ error: "File took too long to fetch." });
-    const vf = "scale='if(lt(iw,ih),min(1080,iw),-2)':'if(lt(iw,ih),-2,min(1080,ih))'";
-    const enc = await run(["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0?", "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out], left);
+    // Longer clips get a smaller picture so the conversion finishes inside the time limit.
+    const dm = probe.err.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/);
+    const secs = dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : 60;
+    const cap = secs <= 20 ? 1080 : 720;
+    const vf = `scale='if(lt(iw,ih),min(${cap},iw),-2)':'if(lt(iw,ih),-2,min(${cap},ih))'`;
+    const enc = await run(["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-map", "0:v:0", "-map", "0:a:0?", "-vf", vf, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out], left);
     if (enc.killed) return res.status(504).json({ error: "This video is too long to convert here. It still works in Safari and in ads." });
     if (enc.code !== 0 || !fs.existsSync(out)) return res.status(500).json({ error: "Conversion failed.", detail: enc.err.slice(-300) });
 
