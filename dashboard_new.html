@@ -7988,7 +7988,7 @@ async function bvCatProduct(el) {
     const lib = await sbQuery("ad_library", `select=id,headline,primary_text,cost_per_result,source&product_id=eq.${p.id}&order=imported_at.desc&limit=8`, { allAccounts: true }).catch(() => []);
     body.innerHTML = `<div class="cat-two"><div class="cat-panel"><div class="ph" style="margin-bottom:6px"><div class="ph-title">Images and videos</div><button type="button" class="btn btn-g" id="cc_up">Upload</button><input type="file" id="cc_file" accept="image/*,video/*" multiple hidden></div>
         <div class="sub" style="color:var(--text2);font-size:12.5px;margin-bottom:10px">Used by your campaigns and by the assistant when it plans ads.</div><div id="cc_msg"></div>
-        ${mine.length ? `<div class="cat-thumbs">${mine.slice(0, 40).map(a => `<div class="cat-th"><div class="i" data-view="${escH(a.public_url)}" data-type="${a.asset_type === "video" ? "video" : "image"}">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}#t=0.1" muted playsinline preload="metadata"></video><span class="bv-play">▶</span>` : `<img src="${escH(a.public_url)}" loading="lazy" alt="">`}</div><small>${escH(a.display_name || a.file_name || "")}</small><small style="display:flex;justify-content:space-between;align-items:center;">${escH(({ untested: "Not used yet", testing: "Testing", winner: "Winner", winning: "Winner" })[a.test_status] || a.test_status || "")}<button type="button" title="Delete this creative" style="color:var(--danger);font-size:13px;padding:0 2px;" onclick="bvCatDelCre('${a.id}')">🗑</button></small></div>`).join("")}</div>` : `<div style="color:var(--muted);padding:14px 0">No creatives yet. Upload a few and the assistant can launch them for you.</div>`}</div>
+        ${mine.length ? `<div class="cat-thumbs">${mine.slice(0, 40).map(a => `<div class="cat-th"><div class="i" data-view="${escH(a.public_url)}" data-type="${a.asset_type === "video" ? "video" : "image"}">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}#t=0.1" muted playsinline preload="metadata"></video><span class="bv-play">▶</span>` : `<img src="${escH(a.public_url)}" loading="lazy" alt="">`}</div><small>${escH(a.display_name || a.file_name || "")}</small><small style="display:flex;justify-content:space-between;align-items:center;">${escH(({ untested: "Not used yet", testing: "Testing", winner: "Winner", winning: "Winner" })[a.test_status] || a.test_status || "")}<span><button type="button" title="Edit name and ad text" style="font-size:13px;padding:0 4px;" onclick="bvCreativeEdit('${a.id}')">✎</button><button type="button" title="Delete this creative" style="color:var(--danger);font-size:13px;padding:0 2px;" onclick="bvCatDelCre('${a.id}')">🗑</button></span></small></div>`).join("")}</div>` : `<div style="color:var(--muted);padding:14px 0">No creatives yet. Upload a few and the assistant can launch them for you.</div>`}</div>
       <div><div class="cat-panel"><h4>Saved ad copy</h4><div class="sub">Copy you saved, and your past ads that worked</div>
         ${(lib || []).length ? lib.map(c => `<div class="cat-copy"><b>${escH(c.headline || "Ad copy")}</b>${c.cost_per_result ? ` <span style="color:var(--green,#1a9a4a);font-size:12px">${fN(c.cost_per_result)} per result</span>` : ""}<p>${escH(c.primary_text)}</p></div>`).join("") : `<div style="color:var(--muted);font-size:13px">Nothing saved yet. Ask the assistant to write copy and tap “Save to my library”.</div>`}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn btn-a" onclick="bvCatAskAI('${escH(p.product_name).replace(/'/g, "\\'")}')">✨ Launch ads with AI</button><button type="button" class="btn btn-g" onclick="bvOpenObjectiveGateModal()">New campaign (manual)</button></div></div></div>`;
@@ -8484,7 +8484,7 @@ async function bvRenderProductVault(productId) {
             <div class="field"><label style="font-size:10.5px;">Button</label><select class="vf" data-k="cta_type" style="${inp}">${BV_CTAS.map(c => `<option value="${c[0]}" ${(a.cta_type || "SHOP_NOW") === c[0] ? "selected" : ""}>${c[1]}</option>`).join("")}</select></div></div>
             <div class="field" style="margin-top:6px;"><label style="font-size:10.5px;">Primary text (ad copy)</label><textarea class="vf" data-k="primary_text" rows="3" style="${inp}">${escH(a.primary_text || "")}</textarea></div>
             <div class="field" style="margin-top:6px;"><label style="font-size:10.5px;">Description</label><input class="vf" data-k="description" value="${escH(a.description || "")}" placeholder="Supporting line under the headline" style="${inp}"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;"><span class="vSaved" style="font-size:10.5px;color:var(--muted);"></span><button type="button" class="btn btn-g vDel" style="padding:3px 8px;font-size:10px;color:var(--danger);">Delete creative</button></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;"><span class="vSaved" style="font-size:10.5px;color:var(--muted);"></span><button type="button" class="btn btn-g vEdit" style="padding:3px 8px;font-size:10px;margin-right:6px;">Edit</button><button type="button" class="btn btn-g vDel" style="padding:3px 8px;font-size:10px;color:var(--danger);">Delete creative</button></div>
           </div>
         </div>`).join("") || `<div style="font-size:11.5px;color:var(--muted);">No creatives yet.</div>`}
     </div>`;
@@ -8503,6 +8503,7 @@ async function bvRenderProductVault(productId) {
       if (!error) { clearTimeout(box._rt); box._rt = setTimeout(() => bvRenderProductVault(productId), 1200); }
     };
     card.querySelectorAll(".vf").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { clearTimeout(timer); timer = setTimeout(save, 700); }));
+    card.querySelector(".vEdit").addEventListener("click", () => bvCreativeEdit(aid, () => bvRenderProductVault(productId)));
     card.querySelector(".vDel").addEventListener("click", async () => {
       if (!confirm("Delete this creative and its file?")) return;
       if (await bvDeleteCreative(aid)) bvRenderProductVault(productId);
@@ -9431,26 +9432,37 @@ async function bvCreUpload(fd) {
 function bvCreFetch(fd) { const p = bvCreUpload(fd); return Promise.resolve({ ok: true, json: () => p }); }
 
 // Name + ad text for creatives being uploaded. Returns { name, primary_text, headline, description, cta_type } or null if cancelled.
-function bvCreativeUploadSheet(files, d) {
+function bvCreativeUploadSheet(files, d, opt) {
   return new Promise(resolve => {
-    d = d || {};
-    const stem = (files[0]?.name || "").replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").slice(0, 80);
+    d = d || {}; opt = opt || {};
+    const stem = opt.noStem ? "" : (files[0]?.name || "").replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").slice(0, 80);
     const ov = bvOpenSheet("bvCreUp", `
       <button class="bv-modal-close" data-sheet-close>✕</button>
-      <h3 style="margin:0 0 4px">Name this creative</h3>
-      <div style="color:var(--text2);font-size:12.5px;margin-bottom:12px">${files.length > 1 ? `${files.length} files: they share this ad text, and the name gets a number.` : escH(files[0]?.name || "")}</div>
+      <h3 style="margin:0 0 4px">${escH(opt.title || "Name this creative")}</h3>
+      <div style="color:var(--text2);font-size:12.5px;margin-bottom:12px">${opt.sub ? escH(opt.sub) : files.length > 1 ? `${files.length} files: they share this ad text, and the name gets a number.` : escH(files[0]?.name || "")}</div>
       <div class="field"><label>Name</label><input class="cat-in" id="cuN" value="${escH(d.name || stem)}" placeholder="e.g. Lagos testimonial video"></div>
       <div class="field" style="margin-top:8px"><label>Primary text (the main ad copy)</label><textarea class="cat-in" id="cuP" rows="3" placeholder="Reused every time this creative is in a campaign">${escH(d.primary_text || "")}</textarea></div>
       <div class="field" style="margin-top:8px"><label>Headline</label><input class="cat-in" id="cuH" value="${escH(d.headline || "")}" placeholder="Short bold hook"></div>
       <div class="field" style="margin-top:8px"><label>Description (optional)</label><input class="cat-in" id="cuD" value="${escH(d.description || "")}"></div>
       <div class="field" style="margin-top:8px"><label>Button</label><select class="cat-in" id="cuC">${BV_CTAS.map(c => `<option value="${c[0]}" ${(d.cta_type || "SHOP_NOW") === c[0] ? "selected" : ""}>${escH(c[1])}</option>`).join("")}</select></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" class="btn btn-g" id="cuX">Cancel</button><button type="button" class="btn btn-a" id="cuOk">Upload</button></div>`, 520);
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" class="btn btn-g" id="cuX">Cancel</button><button type="button" class="btn btn-a" id="cuOk">${escH(opt.ok || "Upload")}</button></div>`, 520);
     const done = v => { bvCloseSheet("bvCreUp"); resolve(v); };
     ov.querySelector("[data-sheet-close]").onclick = () => done(null);
     ov.querySelector("#cuX").onclick = () => done(null);
     ov.querySelector("#cuOk").onclick = () => done({ name: ov.querySelector("#cuN").value.trim(), primary_text: ov.querySelector("#cuP").value.trim(), headline: ov.querySelector("#cuH").value.trim(), description: ov.querySelector("#cuD").value.trim(), cta_type: ov.querySelector("#cuC").value });
     setTimeout(() => ov.querySelector("#cuN")?.focus(), 30);
   });
+}
+
+// Edit a creative's name and ad text (primary text, headline, description, button). Saves on every copy of the file.
+async function bvCreativeEdit(id, after) {
+  const rows = await sbQuery("creative_assets", `select=id,file_name,display_name,primary_text,headline,description,cta_type&id=eq.${id}`).catch(() => []);
+  const a = rows?.[0]; if (!a) return bvToast("Couldn't load that creative.", "err");
+  const v = await bvCreativeUploadSheet([{ name: a.file_name || "" }], { name: a.display_name || "", primary_text: a.primary_text, headline: a.headline, description: a.description, cta_type: a.cta_type }, { title: "Edit creative", sub: a.file_name || "", ok: "Save", noStem: true });
+  if (!v) return;
+  const r = await sbFn("creative-admin", { action: "update", id, name: v.name, primary_text: v.primary_text, headline: v.headline, description: v.description, cta_type: v.cta_type });
+  if (r?.error) return bvToast("Couldn't save: " + r.error, "err");
+  bvToast("Saved."); if (after) after(); else document.querySelector('[data-tab="catalog"]')?.click();
 }
 async function bvCatDelCre(id) { if (!confirm("Delete this creative and its file?")) return; if (await bvDeleteCreative(id)) document.querySelector('[data-tab="catalog"]')?.click(); }
 // Delete a creative everywhere (library, file on R2/Supabase). Asks again if ads used it.
