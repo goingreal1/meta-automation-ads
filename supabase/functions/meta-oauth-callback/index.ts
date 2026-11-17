@@ -1,144 +1,119 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { verifyState } from "../_shared/oauth_state.ts";
-
-// Step 2: Facebook redirects the browser here after the buyer approves (or
-// denies) the OAuth dialog from meta-oauth-start. Exchanges the code for a
-// long-lived user token, lists the ad accounts that token can see, and
-// stores it -- then sends the browser back to the dashboard.
-//
-// This exact URL (SUPABASE_URL/functions/v1/meta-oauth-callback) must be
-// added to the Meta App's Valid OAuth Redirect URIs, or Facebook rejects the
-// whole flow before it ever reaches this function.
-
+import { verifyState } from "./_shared/oauth_state.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_APP_ID = Deno.env.get("META_APP_ID") ?? "";
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const META_OAUTH_STATE_SECRET = Deno.env.get("META_OAUTH_STATE_SECRET") ?? "";
-// Where to send the buyer's browser back to once connected -- e.g.
-// https://yourdomain.com/dashboard_new.html. Optional: without it, they see a
-// plain "connected, go back to your dashboard" page instead of an auto-redirect.
 const DASHBOARD_URL = Deno.env.get("DASHBOARD_URL") ?? "";
-
 const META_GRAPH_BASE = "https://graph.facebook.com/v19.0";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-function finish(status: "connected" | "error", detail: string, extra: Record<string, string> = {}) {
-  // DASHBOARD_URL missing its https:// scheme (e.g. set to just
-  // "yourdomain.com/dashboard_new.html") used to crash this with a raw
-  // "Invalid URL" 500 right after a successful connection was already saved
-  // -- the buyer saw an error page despite the connection having worked.
+function finish(status, detail, extra = {}) {
   const dashboardUrl = DASHBOARD_URL && !/^https?:\/\//i.test(DASHBOARD_URL) ? `https://${DASHBOARD_URL}` : DASHBOARD_URL;
   if (dashboardUrl) {
     const u = new URL(dashboardUrl);
     u.searchParams.set("meta_oauth", status);
     u.searchParams.set("detail", detail);
-    for (const [k, v] of Object.entries(extra)) u.searchParams.set(k, v);
-    return new Response(null, { status: 302, headers: { Location: u.toString() } });
+    for (const [k, v] of Object.entries(extra))u.searchParams.set(k, v);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: u.toString()
+      }
+    });
   }
   const ok = status === "connected";
-  return new Response(
-    `<!doctype html><html><body style="font-family:sans-serif;text-align:center;padding:60px 20px;">
+  return new Response(`<!doctype html><html><body style="font-family:sans-serif;text-align:center;padding:60px 20px;">
       <h2>${ok ? "✅ Connected" : "❌ Something went wrong"}</h2>
-      <p>${detail.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]!))}</p>
+      <p>${detail.replace(/[<>&]/g, (c)=>({
+      "<": "&lt;",
+      ">": "&gt;",
+      "&": "&amp;"
+    })[c])}</p>
       <p>${ok ? "You can close this tab and go back to your dashboard's Settings page." : "Go back to your dashboard and try again."}</p>
-    </body></html>`,
-    { status: ok ? 200 : 400, headers: { "Content-Type": "text/html; charset=utf-8" } },
-  );
+    </body></html>`, {
+    status: ok ? 200 : 400,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8"
+    }
+  });
 }
-
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req)=>{
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state") ?? "";
   const fbError = url.searchParams.get("error_description") || url.searchParams.get("error");
-
   if (fbError) return finish("error", `Facebook said: ${fbError}`);
   if (!META_APP_ID || !META_APP_SECRET || !META_OAUTH_STATE_SECRET) {
     return finish("error", "Meta OAuth isn't fully configured on the server (missing META_APP_ID / META_APP_SECRET / META_OAUTH_STATE_SECRET).");
   }
   if (!code) return finish("error", "No authorization code from Facebook.");
-
   const verified = await verifyState(META_OAUTH_STATE_SECRET, state);
   if (!verified) return finish("error", "This connection link expired or is invalid -- go back to Settings and click Connect Meta again.");
   const { mediaBuyerId } = verified;
-
   try {
     const redirectUri = `${SUPABASE_URL}/functions/v1/meta-oauth-callback`;
-
-    // code -> short-lived user token
-    const shortRes = await fetch(
-      `${META_GRAPH_BASE}/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`,
-    );
+    const shortRes = await fetch(`${META_GRAPH_BASE}/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${META_APP_SECRET}&code=${code}`);
     const shortData = await shortRes.json();
     if (!shortRes.ok || !shortData.access_token) throw new Error(shortData.error?.message || "Failed to exchange code for a token.");
-
-    // short-lived -> long-lived (~60 days) user token
     // Business Login "system-user" tokens never expire (no expires_in) and cannot be exchanged;
     // ordinary user tokens are extended to ~60 days.
-    let accessToken = shortData.access_token as string;
-    let expiresAt: string | null = shortData.expires_in ? new Date(Date.now() + shortData.expires_in * 1000).toISOString() : null;
+    let accessToken = shortData.access_token;
+    let expiresAt = shortData.expires_in ? new Date(Date.now() + shortData.expires_in * 1000).toISOString() : null;
     if (shortData.expires_in) {
-      const longRes = await fetch(
-        `${META_GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${shortData.access_token}`,
-      );
+      const longRes = await fetch(`${META_GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${shortData.access_token}`);
       const longData = await longRes.json();
       if (!longRes.ok || !longData.access_token) throw new Error(longData.error?.message || "Failed to get a long-lived token.");
-      accessToken = longData.access_token as string;
+      accessToken = longData.access_token;
       expiresAt = longData.expires_in ? new Date(Date.now() + longData.expires_in * 1000).toISOString() : null;
     }
-
     // What did the person actually share? (also gives us their id when /me is not available to system users)
     const dbgRes = await fetch(`${META_GRAPH_BASE}/debug_token?input_token=${accessToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`);
     const dbg = (await dbgRes.json())?.data ?? {};
-    const grantedAdIds = new Set<string>();
-    for (const g of dbg.granular_scopes ?? []) {
-      if (["ads_management", "ads_read"].includes(g.scope)) for (const id of g.target_ids ?? []) grantedAdIds.add(String(id));
+    const grantedAdIds = new Set();
+    for (const g of dbg.granular_scopes ?? []){
+      if ([
+        "ads_management",
+        "ads_read"
+      ].includes(g.scope)) for (const id of g.target_ids ?? [])grantedAdIds.add(String(id));
     }
     if (dbg.is_valid === false) throw new Error("Facebook did not give us a valid login. Please try again.");
-
     const meRes = await fetch(`${META_GRAPH_BASE}/me?fields=id,name&access_token=${accessToken}`);
     let me = await meRes.json();
     if (!meRes.ok) {
       if (!dbg.user_id) throw new Error(me.error?.message || "Could not read the connected Facebook profile.");
-      me = { id: String(dbg.user_id), name: null };
+      me = {
+        id: String(dbg.user_id),
+        name: null
+      };
     }
-
     const acctFields = "name,account_id,account_status,business_name,currency";
     const acctRes = await fetch(`${META_GRAPH_BASE}/me/adaccounts?fields=${acctFields}&limit=200&access_token=${accessToken}`);
     const acctData = await acctRes.json();
-    let acctRows: any[] = acctRes.ok ? (acctData.data ?? []) : [];
+    let acctRows = acctRes.ok ? acctData.data ?? [] : [];
     if (!acctRows.length && grantedAdIds.size) {
       // System-user tokens have no /me/adaccounts; read each shared account directly.
-      const got = await Promise.all([...grantedAdIds].slice(0, 100).map(async (id) => {
+      const got = await Promise.all([
+        ...grantedAdIds
+      ].slice(0, 100).map(async (id)=>{
         const r = await fetch(`${META_GRAPH_BASE}/act_${id}?fields=${acctFields}&access_token=${accessToken}`);
         return r.ok ? await r.json() : null;
       }));
       acctRows = got.filter(Boolean);
     }
     if (!acctRes.ok && !acctRows.length && !grantedAdIds.size) throw new Error(acctData.error?.message || "Could not list ad accounts for this Facebook login.");
-    const discoveredAdAccounts = acctRows.map((a: any) => ({
-      account_id: a.account_id,
-      name: a.name,
-      business_name: a.business_name ?? null,
-      account_status: a.account_status,
-      currency: a.currency,
-    }));
-
-    // Supersede any earlier connection for this same buyer so pull-meta-metrics
-    // never has two "active" tokens to choose between for one buyer.
-    await supabase.from("meta_connections").update({ status: "revoked" }).eq("media_buyer_id", mediaBuyerId).eq("status", "active");
-
-    // company_id has no useful default here -- this insert runs under the
-    // service role (no auth.uid()), not the buyer's own session, so
-    // current_company_id() can't resolve it automatically the way it does
-    // for a client-side insert. Resolved explicitly instead: without it,
-    // every RLS policy that scopes meta_connections by company (Settings'
-    // "Connected as ..." display, the WhatsApp number wizard's "are you
-    // connected" check) silently treats this buyer as never having connected.
+    const discoveredAdAccounts = acctRows.map((a)=>({
+        account_id: a.account_id,
+        name: a.name,
+        business_name: a.business_name ?? null,
+        account_status: a.account_status,
+        currency: a.currency
+      }));
+    await supabase.from("meta_connections").update({
+      status: "revoked"
+    }).eq("media_buyer_id", mediaBuyerId).eq("status", "active");
     const { data: buyerRow } = await supabase.from("media_buyers").select("company_id").eq("id", mediaBuyerId).maybeSingle();
-
     const { data: connection, error } = await supabase.from("meta_connections").insert({
       media_buyer_id: mediaBuyerId,
       company_id: buyerRow?.company_id ?? null,
@@ -149,12 +124,13 @@ Deno.serve(async (req: Request) => {
       scopes: (dbg.scopes ?? []).join(",") || "ads_management,ads_read,business_management,whatsapp_business_management,whatsapp_business_messaging,pages_show_list,pages_read_engagement,pages_manage_engagement",
       status: "active",
       discovered_ad_accounts: discoveredAdAccounts,
-      last_synced_at: new Date().toISOString(),
+      last_synced_at: new Date().toISOString()
     }).select("id").single();
     if (error || !connection) throw new Error(`Could not save the connection: ${error?.message}`);
-
-    return finish("connected", `Connected as ${me.name || me.id}. Found ${discoveredAdAccounts.length} ad account(s) -- pick which ones to add in Settings.`, { connection_id: connection.id });
-  } catch (err: any) {
+    return finish("connected", `Connected as ${me.name || me.id}. Found ${discoveredAdAccounts.length} ad account(s) -- pick which ones to add in Settings.`, {
+      connection_id: connection.id
+    });
+  } catch (err) {
     console.error("meta-oauth-callback error:", err);
     return finish("error", err.message);
   }

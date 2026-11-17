@@ -1,25 +1,27 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { AwsClient } from "npm:aws4fetch@1.0.20";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
+import { AwsClient } from "npm:aws4fetch@1.0.20";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-// Caller must be the service role (internal) or a signed-in dashboard user --
-// the public anon key alone is not enough.
-type Caller = { service: boolean; company_id: string | null; role: string | null };
-async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+async function getCaller(req, admin) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return {
+    service: true,
+    company_id: null,
+    role: null
+  };
   const { data } = await admin.auth.getUser(token);
   if (!data?.user) return null;
   const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
   if (!p?.company_id) return null;
-  return { service: false, company_id: p.company_id, role: p.role };
+  return {
+    service: false,
+    company_id: p.company_id,
+    role: p.role
+  };
 }
-
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req)=>{
   // CORS Preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -30,76 +32,113 @@ Deno.serve(async (req: Request) => {
       }
     });
   }
-
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    return new Response(JSON.stringify({
+      error: 'Method not allowed'
+    }), {
       status: 405,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
     });
   }
-
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const caller = await getCaller(req, supabase);
     if (!caller) {
-      return new Response(JSON.stringify({ error: 'Not signed in' }), { status: 401, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      return new Response(JSON.stringify({
+        error: 'Not signed in'
+      }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-    
     // Parse multipart form data
     const formData = await req.formData();
-    const file = formData.get('file') as File;
-    const primaryText = (formData.get('primary_text') as string) || null;
-    const headline = (formData.get('headline') as string) || null;
-    const creativeName = ((formData.get('creative_name') as string) || '').trim().slice(0, 120) || null;
-    const description = (formData.get('description') as string) || null;
-    const mechanism = (formData.get('mechanism') as string) || null;
-    const format = (formData.get('format') as string) || null;
-    const ctaType = (formData.get('cta_type') as string) || 'SHOP_NOW';
-    const uploadedBy = (formData.get('uploaded_by') as string) || null;
-    const adAccountId = formData.get('ad_account_id') as string;
-    const productId = (formData.get('product_id') as string) || null;
-    const launchAt = (formData.get('launch_at') as string) || null;
-    let assetType = formData.get('asset_type') as string;
-
+    const file = formData.get('file');
+    const primaryText = formData.get('primary_text') || null;
+    const headline = formData.get('headline') || null;
+    const creativeName = String(formData.get('creative_name') || '').trim().slice(0, 120) || null;
+    const description = formData.get('description') || null;
+    const mechanism = formData.get('mechanism') || null;
+    const format = formData.get('format') || null;
+    const ctaType = formData.get('cta_type') || 'SHOP_NOW';
+    const uploadedBy = formData.get('uploaded_by') || null;
+    const adAccountId = formData.get('ad_account_id');
+    const productId = formData.get('product_id') || null;
+    const launchAt = formData.get('launch_at') || null;
+    let assetType = formData.get('asset_type');
     if (!file || !adAccountId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing file or ad_account_id' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      );
+      return new Response(JSON.stringify({
+        error: 'Missing file or ad_account_id'
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-
     if (!assetType) {
       assetType = file.type.startsWith('video/') ? 'video' : 'image';
     }
-
     // Validate file type
-    const validTypes = ['video/mp4', 'video/quicktime', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const validTypes = [
+      'video/mp4',
+      'video/quicktime',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
     if (!validTypes.includes(file.type)) {
-      return new Response(
-        JSON.stringify({ error: `Invalid file type: ${file.type}` }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      );
+      return new Response(JSON.stringify({
+        error: `Invalid file type: ${file.type}`
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-
     // Generate a unique storage path (kept distinct from the human-readable file_name column)
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
     const safeStem = file.name.replace(/[^a-z0-9.]/gi, '-');
     const filename = `${timestamp}-${random}-${safeStem}`;
     const bucketPath = `creative-assets/${assetType}s/${filename}`;
-
     // Tenant check: the ad account (and product, if given) must belong to the caller's company.
     const { data: ownAcct } = await supabase.from('ad_accounts').select('company_id').eq('id', adAccountId).maybeSingle();
-    if (!ownAcct || (!caller.service && ownAcct.company_id !== caller.company_id)) {
-      return new Response(JSON.stringify({ error: 'Ad account not found' }), { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+    if (!ownAcct || !caller.service && ownAcct.company_id !== caller.company_id) {
+      return new Response(JSON.stringify({
+        error: 'Ad account not found'
+      }), {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
     if (productId) {
       const { data: ownProd } = await supabase.from('products').select('company_id').eq('id', productId).maybeSingle();
-      if (!ownProd || (!caller.service && ownProd.company_id !== caller.company_id)) {
-        return new Response(JSON.stringify({ error: 'Product not found' }), { status: 403, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+      if (!ownProd || !caller.service && ownProd.company_id !== caller.company_id) {
+        return new Response(JSON.stringify({
+          error: 'Product not found'
+        }), {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          }
+        });
       }
     }
-
     // Upload to Cloudflare R2 (big media lives there, not in Supabase Storage). Falls back to the old bucket only if R2 is not configured.
     const arrayBuffer = await file.arrayBuffer();
     let fileUrl = '';
@@ -132,64 +171,71 @@ Deno.serve(async (req: Request) => {
     // present (checked above), so this is a reliable resolution path.
     const { data: adAccountRow } = await supabase.from('ad_accounts').select('company_id').eq('id', adAccountId).maybeSingle();
     if (!adAccountRow) {
-      return new Response(
-        JSON.stringify({ error: 'Unknown ad_account_id' }),
-        { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      );
+      return new Response(JSON.stringify({
+        error: 'Unknown ad_account_id'
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-
     // Insert into creative_assets table (columns must match the live schema exactly —
     // this previously wrote asset_name/file_url/status/test_count, none of which exist)
-    const { data: creativeData, error: dbError } = await supabase
-      .from('creative_assets')
-      .insert({
-        company_id: adAccountRow.company_id,
-        file_name: file.name,
-        storage_path: storedPath,
-        storage_provider: storageProvider,
-        display_name: creativeName,
-        public_url: fileUrl,
-        asset_type: assetType,
-        mechanism: mechanism,
-        format: format,
-        primary_text: primaryText,
-        headline: headline,
-        description: description,
-        cta_type: ctaType,
-        uploaded_by: uploadedBy,
-        ad_account_id: adAccountId,
-        product_id: productId,
-        launch_at: launchAt,
-        test_status: 'untested',
-        uploaded_at: new Date().toISOString(),
-      })
-      .select('*')
-      .single();
-
+    const { data: creativeData, error: dbError } = await supabase.from('creative_assets').insert({
+      company_id: adAccountRow.company_id,
+      file_name: file.name,
+      storage_path: storedPath,
+      storage_provider: storageProvider,
+      display_name: creativeName,
+      public_url: fileUrl,
+      asset_type: assetType,
+      mechanism: mechanism,
+      format: format,
+      primary_text: primaryText,
+      headline: headline,
+      description: description,
+      cta_type: ctaType,
+      uploaded_by: uploadedBy,
+      ad_account_id: adAccountId,
+      product_id: productId,
+      launch_at: launchAt,
+      test_status: 'untested',
+      uploaded_at: new Date().toISOString()
+    }).select('*').single();
     if (dbError) {
       console.error('Database insert error:', dbError);
-      return new Response(
-        JSON.stringify({ error: `Database error: ${dbError.message}` }),
-        { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-      );
+      return new Response(JSON.stringify({
+        error: `Database error: ${dbError.message}`
+      }), {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
     }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        asset: creativeData,
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    return new Response(JSON.stringify({
+      success: true,
+      asset: creativeData
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
       }
-    );
-
-  } catch (err: any) {
+    });
+  } catch (err) {
     console.error('Upload error:', err);
-    return new Response(
-      JSON.stringify({ error: err.message || 'Unknown error' }),
-      { status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
-    );
+    return new Response(JSON.stringify({
+      error: err.message || 'Unknown error'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
   }
 });

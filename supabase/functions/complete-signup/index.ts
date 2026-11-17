@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
 // The one and only place a `profiles` row gets created. profiles has no
 // client-side INSERT/UPDATE policy at all (see the Phase 1 migration) --
 // role and company_id are only ever set here, under the service role, so a
@@ -14,228 +13,381 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //        profile.account_type "personal" = a one-person workspace: the caller is its owner AND its media buyer
 //   POST { mode: "join", invite_token }           -> caller joins the invite's company/role
 //   POST { mode: "profile", profile }             -> owner/admin saves (or updates) the business profile of their company
-
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-function json(obj: unknown, status = 200) {
+function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }
-
-function slugify(name: string): string {
+function slugify(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "company";
 }
-
-async function uniqueSlug(base: string): Promise<string> {
+async function uniqueSlug(base) {
   let slug = base;
-  for (let i = 0; i < 50; i++) {
+  for(let i = 0; i < 50; i++){
     const { data } = await supabase.from("companies").select("id").eq("slug", slug).maybeSingle();
     if (!data) return slug;
     slug = `${base}-${Math.floor(Math.random() * 10000)}`;
   }
   throw new Error("Could not find an available company URL -- try a different name.");
 }
-
 // Gives a self-joining buyer a real media_buyers row automatically, so ROAS
 // attribution works from day one without an admin having to separately add
 // them in Settings. Code comes from their email's local part, deduped with
 // a numeric suffix if it collides with an existing buyer's code.
-async function ensureMediaBuyer(companyId: string, email: string, displayName: string | null): Promise<string | null> {
+async function ensureMediaBuyer(companyId, email, displayName) {
   const base = (email.split("@")[0] || "BUYER").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 16).toUpperCase() || "BUYER";
   let code = base;
-  for (let i = 0; i < 50; i++) {
+  for(let i = 0; i < 50; i++){
     const { data: existing } = await supabase.from("media_buyers").select("id").eq("company_id", companyId).eq("code", code).maybeSingle();
     if (!existing) break;
     code = `${base}${i + 2}`;
   }
-  const { data: buyer, error } = await supabase.from("media_buyers")
-    .insert({ company_id: companyId, code, name: displayName || email, active: true })
-    .select("id").single();
+  const { data: buyer, error } = await supabase.from("media_buyers").insert({
+    company_id: companyId,
+    code,
+    name: displayName || email,
+    active: true
+  }).select("id").single();
   if (error) {
     console.error("ensureMediaBuyer failed:", error.message);
     return null;
   }
   return buyer.id;
 }
-
-
 // Nigerian phone -> 234XXXXXXXXXX (how whatsapp_number is stored). null when it is not a valid number.
-function normPhone(raw: unknown): string | null {
+function normPhone(raw) {
   const d = String(raw ?? "").replace(/\D/g, "");
   if (d.length === 13 && d.startsWith("234")) return d;
   if (d.length === 11 && d.startsWith("0")) return "234" + d.slice(1);
   return null;
 }
-
 // Dedicated bank accounts are set up automatically: the company wallet when a company signs up, and a customer-payment
 // account for every media buyer (named "<company> <buyer>"). Failure here must never block sign-up; both are retried lazily.
-async function provisionAccounts(opts: { companyId?: string; mediaBuyerId?: string | null; email?: string | null; phone?: string | null }) {
-  const post = (fnName: string, body: unknown) => fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify(body),
-  }).then(async (r) => { if (!r.ok) console.error(`${fnName} failed:`, r.status, (await r.text()).slice(0, 200)); }).catch((e) => console.error(`${fnName} error:`, e));
-  const jobs: Promise<unknown>[] = [];
-  if (opts.companyId) jobs.push(post("paystack-create-company-account", { company_id: opts.companyId, email: opts.email ?? undefined, phone: opts.phone ?? undefined }));
-  if (opts.mediaBuyerId) jobs.push(post("paystack-create-account", { media_buyer_id: opts.mediaBuyerId, email: opts.email ?? undefined, phone: opts.phone ?? undefined }));
-  await Promise.race([Promise.all(jobs), new Promise((r) => setTimeout(r, 12000))]);
+async function provisionAccounts(opts) {
+  const post = (fnName, body)=>fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      },
+      body: JSON.stringify(body)
+    }).then(async (r)=>{
+      if (!r.ok) console.error(`${fnName} failed:`, r.status, (await r.text()).slice(0, 200));
+    }).catch((e)=>console.error(`${fnName} error:`, e));
+  const jobs = [];
+  if (opts.companyId) jobs.push(post("paystack-create-company-account", {
+    company_id: opts.companyId,
+    email: opts.email ?? undefined,
+    phone: opts.phone ?? undefined
+  }));
+  if (opts.mediaBuyerId) jobs.push(post("paystack-create-account", {
+    media_buyer_id: opts.mediaBuyerId,
+    email: opts.email ?? undefined,
+    phone: opts.phone ?? undefined
+  }));
+  await Promise.race([
+    Promise.all(jobs),
+    new Promise((r)=>setTimeout(r, 12000))
+  ]);
 }
-
 // Welcome WhatsApp (Meta-approved template) for a new owner. Never blocks or fails sign-up: short timeout, errors only logged.
-async function sendWelcome(phone: string, name: string | null) {
+async function sendWelcome(phone, name) {
   try {
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 6000);
+    const t = setTimeout(()=>ctl.abort(), 6000);
     const r = await fetch(`${SUPABASE_URL}/functions/v1/send-welcome-whatsapp`, {
-      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-      body: JSON.stringify({ phone, name: name ?? undefined }), signal: ctl.signal,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      },
+      body: JSON.stringify({
+        phone,
+        name: name ?? undefined
+      }),
+      signal: ctl.signal
     });
     clearTimeout(t);
     if (!r.ok) console.error("send-welcome-whatsapp failed:", r.status, (await r.text()).slice(0, 200));
-  } catch (e) { console.error("send-welcome-whatsapp error:", e); }
+  } catch (e) {
+    console.error("send-welcome-whatsapp error:", e);
+  }
 }
-
 // ── business profile (whitelisted, never trust the browser) ─────────────────
 const PICK = {
-  account_type: ["company", "personal"],
-  business_types: ["health_wellness", "beauty_skincare", "food_drinks", "fashion_clothing", "shoes_bags", "perfume_fragrance", "gadgets_electronics", "home_living", "baby_kids", "agro_farm", "services", "courses_digital", "real_estate", "other"],
-  sales_channels: ["whatsapp", "website_cod", "website_prepaid", "social_dm", "marketplace", "in_person"],
-  fulfilment: ["own_riders", "third_party_courier", "pickup", "digital", "none"],
-  team_size: ["1", "2-5", "6-20", "21-50", "50+"],
-  monthly_ad_spend: ["under_100k", "100k-500k", "500k-2m", "over_2m", "not_yet"],
-  copy_language: ["pidgin_mix", "english", "pidgin", "yoruba_mix", "igbo_mix", "hausa_mix"],
-  team_roles: ["buyers", "care", "delivery", "admins"],
-  goals: ["launch_ads", "track_orders", "whatsapp_sales", "delivery", "team_reporting", "build_website", "payments"],
+  account_type: [
+    "company",
+    "personal"
+  ],
+  business_types: [
+    "health_wellness",
+    "beauty_skincare",
+    "food_drinks",
+    "fashion_clothing",
+    "shoes_bags",
+    "perfume_fragrance",
+    "gadgets_electronics",
+    "home_living",
+    "baby_kids",
+    "agro_farm",
+    "services",
+    "courses_digital",
+    "real_estate",
+    "other"
+  ],
+  sales_channels: [
+    "whatsapp",
+    "website_cod",
+    "website_prepaid",
+    "social_dm",
+    "marketplace",
+    "in_person"
+  ],
+  fulfilment: [
+    "own_riders",
+    "third_party_courier",
+    "pickup",
+    "digital",
+    "none"
+  ],
+  team_size: [
+    "1",
+    "2-5",
+    "6-20",
+    "21-50",
+    "50+"
+  ],
+  monthly_ad_spend: [
+    "under_100k",
+    "100k-500k",
+    "500k-2m",
+    "over_2m",
+    "not_yet"
+  ],
+  copy_language: [
+    "pidgin_mix",
+    "english",
+    "pidgin",
+    "yoruba_mix",
+    "igbo_mix",
+    "hausa_mix"
+  ],
+  team_roles: [
+    "buyers",
+    "care",
+    "delivery",
+    "admins"
+  ],
+  goals: [
+    "launch_ads",
+    "track_orders",
+    "whatsapp_sales",
+    "delivery",
+    "team_reporting",
+    "build_website",
+    "payments"
+  ]
 };
-function cleanProfile(raw: any) {
-  const out: Record<string, unknown> = {};
+function cleanProfile(raw) {
+  const out = {};
   if (!raw || typeof raw !== "object") return out;
-  const one = (k: keyof typeof PICK) => { if (typeof raw[k] === "string" && (PICK[k] as string[]).includes(raw[k])) out[k] = raw[k]; };
-  const many = (k: keyof typeof PICK) => { if (Array.isArray(raw[k])) out[k] = [...new Set(raw[k].filter((v: unknown) => typeof v === "string" && (PICK[k] as string[]).includes(v as string)))].slice(0, 12); };
-  one("account_type"); one("fulfilment"); one("team_size"); one("monthly_ad_spend"); one("copy_language");
-  many("business_types"); many("sales_channels"); many("goals"); many("team_roles");
+  const one = (k)=>{
+    if (typeof raw[k] === "string" && PICK[k].includes(raw[k])) out[k] = raw[k];
+  };
+  const many = (k)=>{
+    if (Array.isArray(raw[k])) out[k] = [
+      ...new Set(raw[k].filter((v)=>typeof v === "string" && PICK[k].includes(v)))
+    ].slice(0, 12);
+  };
+  one("account_type");
+  one("fulfilment");
+  one("team_size");
+  one("monthly_ad_spend");
+  one("copy_language");
+  many("business_types");
+  many("sales_channels");
+  many("goals");
+  many("team_roles");
   if (typeof raw.description === "string") out.description = raw.description.trim().slice(0, 1500);
   if (Number.isFinite(Number(raw.buyers_count))) out.buyers_count = Math.min(Math.max(Math.round(Number(raw.buyers_count)), 0), 100000);
   if (typeof raw.country === "string" && /^[A-Z]{2}$/.test(raw.country)) out.country = raw.country;
   return out;
 }
-
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey",
-      },
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey"
+      }
     });
   }
-
   try {
     const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-    if (!token) return json({ error: "Missing Authorization bearer token." }, 401);
+    if (!token) return json({
+      error: "Missing Authorization bearer token."
+    }, 401);
     const { data: userData, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !userData?.user) return json({ error: "Invalid or expired session -- sign in again." }, 401);
+    if (authErr || !userData?.user) return json({
+      error: "Invalid or expired session -- sign in again."
+    }, 401);
     const user = userData.user;
-
     const { data: existingProfile } = await supabase.from("profiles").select("company_id, role, media_buyer_id").eq("id", user.id).maybeSingle();
-    const body = await req.json().catch(() => ({}));
-    const mode = body?.mode as string | undefined;
-
+    const body = await req.json().catch(()=>({}));
+    const mode = body?.mode;
     if (mode === "profile") {
-      if (!existingProfile?.company_id) return json({ error: "Create your company first." }, 400);
-      if (!["owner", "admin"].includes(existingProfile.role)) return json({ error: "Only an owner or admin can change the business profile." }, 403);
+      if (!existingProfile?.company_id) return json({
+        error: "Create your company first."
+      }, 400);
+      if (![
+        "owner",
+        "admin"
+      ].includes(existingProfile.role)) return json({
+        error: "Only an owner or admin can change the business profile."
+      }, 403);
       const clean = cleanProfile(body?.profile);
       // The account type is chosen once at signup; it is never switched from here.
-      delete (clean as any).account_type;
-      const { error } = await supabase.from("companies").update({ ...clean, onboarding_completed_at: new Date().toISOString() }).eq("id", existingProfile.company_id);
+      delete clean.account_type;
+      const { error } = await supabase.from("companies").update({
+        ...clean,
+        onboarding_completed_at: new Date().toISOString()
+      }).eq("id", existingProfile.company_id);
       if (error) throw new Error(`Could not save the profile: ${error.message}`);
-      return json({ saved: true });
+      return json({
+        saved: true
+      });
     }
-
     if (existingProfile?.company_id) {
-      return json({ company_id: existingProfile.company_id, role: existingProfile.role, already_set_up: true });
+      return json({
+        company_id: existingProfile.company_id,
+        role: existingProfile.role,
+        already_set_up: true
+      });
     }
-
     if (mode === "create") {
       const clean = cleanProfile(body?.profile);
       const personal = clean.account_type === "personal";
-      const displayName = (body?.display_name as string | undefined)?.trim() || null;
+      const displayName = body?.display_name?.trim() || null;
       const phone = normPhone(body?.phone);
-      if (body?.phone && !phone) return json({ error: "Enter a valid Nigerian phone number, e.g. 08012345678." }, 400);
-      const companyName = (body?.company_name as string | undefined)?.trim() || (personal && displayName ? `${displayName}'s workspace` : "");
-      if (!companyName) return json({ error: "company_name is required." }, 400);
-
+      if (body?.phone && !phone) return json({
+        error: "Enter a valid Nigerian phone number, e.g. 08012345678."
+      }, 400);
+      const companyName = body?.company_name?.trim() || (personal && displayName ? `${displayName}'s workspace` : "");
+      if (!companyName) return json({
+        error: "company_name is required."
+      }, 400);
       const slug = await uniqueSlug(slugify(companyName));
-      const { data: company, error: companyErr } = await supabase.from("companies")
-        .insert({ name: companyName, slug, ...clean, ...(clean.business_types || clean.description ? { onboarding_completed_at: new Date().toISOString() } : {}) }).select("id").single();
+      const { data: company, error: companyErr } = await supabase.from("companies").insert({
+        name: companyName,
+        slug,
+        ...clean,
+        ...clean.business_types || clean.description ? {
+          onboarding_completed_at: new Date().toISOString()
+        } : {}
+      }).select("id").single();
       if (companyErr || !company) throw new Error(`Could not create company: ${companyErr?.message}`);
-
       // A personal profile is one person who is both the owner and the media buyer: give them
       // their buyer record straight away so ads, orders and ROAS attribute to them from day one.
       const mediaBuyerId = personal ? await ensureMediaBuyer(company.id, user.email ?? "", displayName) : null;
-
       const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: user.id, company_id: company.id, role: "owner", display_name: displayName, ...(phone ? { whatsapp_number: phone } : {}),
-        ...(mediaBuyerId ? { media_buyer_id: mediaBuyerId } : {}),
+        id: user.id,
+        company_id: company.id,
+        role: "owner",
+        display_name: displayName,
+        ...phone ? {
+          whatsapp_number: phone
+        } : {},
+        ...mediaBuyerId ? {
+          media_buyer_id: mediaBuyerId
+        } : {}
       });
       if (profileErr) throw new Error(`Could not create owner profile: ${profileErr.message}`);
-
-      await provisionAccounts({ companyId: company.id, mediaBuyerId, email: user.email, phone });
+      await provisionAccounts({
+        companyId: company.id,
+        mediaBuyerId,
+        email: user.email,
+        phone
+      });
       if (phone) await sendWelcome(phone, displayName);
-
-      return json({ company_id: company.id, role: "owner", account_type: personal ? "personal" : "company" });
+      return json({
+        company_id: company.id,
+        role: "owner",
+        account_type: personal ? "personal" : "company"
+      });
     }
-
     if (mode === "join") {
-      const inviteToken = (body?.invite_token as string | undefined)?.trim();
+      const inviteToken = body?.invite_token?.trim();
       const phone = normPhone(body?.phone);
-      if (body?.phone && !phone) return json({ error: "Enter a valid Nigerian phone number, e.g. 08012345678." }, 400);
-      if (!inviteToken) return json({ error: "invite_token is required." }, 400);
-
+      if (body?.phone && !phone) return json({
+        error: "Enter a valid Nigerian phone number, e.g. 08012345678."
+      }, 400);
+      if (!inviteToken) return json({
+        error: "invite_token is required."
+      }, 400);
       // Optimistic-locking consume: only succeeds if it's still unused. Two
       // people racing to use the same link can't both get in on it.
-      const { data: invite, error: inviteErr } = await supabase.from("company_invites")
-        .update({ used_at: new Date().toISOString(), used_by: user.id })
-        .eq("token", inviteToken)
-        .is("used_at", null)
-        .gt("expires_at", new Date().toISOString())
-        .select("company_id, role")
-        .maybeSingle();
+      const { data: invite, error: inviteErr } = await supabase.from("company_invites").update({
+        used_at: new Date().toISOString(),
+        used_by: user.id
+      }).eq("token", inviteToken).is("used_at", null).gt("expires_at", new Date().toISOString()).select("company_id, role").maybeSingle();
       if (inviteErr) throw new Error(`Could not verify invite: ${inviteErr.message}`);
-      if (!invite) return json({ error: "This invite link is invalid, expired, or already used -- ask for a new one." }, 400);
-
-      let mediaBuyerId: string | null = null;
+      if (!invite) return json({
+        error: "This invite link is invalid, expired, or already used -- ask for a new one."
+      }, 400);
+      let mediaBuyerId = null;
       if (invite.role === "buyer") {
         mediaBuyerId = await ensureMediaBuyer(invite.company_id, user.email ?? "", body?.display_name ?? null);
       }
-
       const { error: profileErr } = await supabase.from("profiles").upsert({
-        id: user.id, company_id: invite.company_id, role: invite.role,
-        media_buyer_id: mediaBuyerId, display_name: body?.display_name ?? null, ...(phone ? { whatsapp_number: phone } : {}),
+        id: user.id,
+        company_id: invite.company_id,
+        role: invite.role,
+        media_buyer_id: mediaBuyerId,
+        display_name: body?.display_name ?? null,
+        ...phone ? {
+          whatsapp_number: phone
+        } : {}
       });
       if (profileErr) throw new Error(`Could not create profile: ${profileErr.message}`);
-
-      if (mediaBuyerId) await provisionAccounts({ mediaBuyerId, email: user.email, phone });
-
+      if (mediaBuyerId) await provisionAccounts({
+        mediaBuyerId,
+        email: user.email,
+        phone
+      });
       // A delivery agent needs a rider record (that is what orders are offered to) linked to their login, or their
       // "My deliveries" stays empty and no order is ever offered to them.
       if (invite.role === "delivery_agent") {
-        const { data: rider, error: riderErr } = await supabase.from("delivery_agents")
-          .insert({ company_id: invite.company_id, name: body?.display_name || user.email || "Rider", phone: phone ? "+" + phone : null, active: true })
-          .select("id").single();
+        const { data: rider, error: riderErr } = await supabase.from("delivery_agents").insert({
+          company_id: invite.company_id,
+          name: body?.display_name || user.email || "Rider",
+          phone: phone ? "+" + phone : null,
+          active: true
+        }).select("id").single();
         if (riderErr) console.error("delivery agent record failed:", riderErr.message);
-        else await supabase.from("profiles").update({ delivery_agent_id: rider.id }).eq("id", user.id);
+        else await supabase.from("profiles").update({
+          delivery_agent_id: rider.id
+        }).eq("id", user.id);
       }
-
-      return json({ company_id: invite.company_id, role: invite.role });
+      return json({
+        company_id: invite.company_id,
+        role: invite.role
+      });
     }
-
-    return json({ error: "mode must be 'create', 'join' or 'profile'." }, 400);
-  } catch (err: any) {
+    return json({
+      error: "mode must be 'create', 'join' or 'profile'."
+    }, 400);
+  } catch (err) {
     console.error("complete-signup error:", err);
-    return json({ error: err.message }, 500);
+    return json({
+      error: err.message
+    }, 500);
   }
 });

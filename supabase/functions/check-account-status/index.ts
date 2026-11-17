@@ -1,66 +1,82 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-// Caller must be the service role (internal) or a signed-in dashboard user --
-// the public anon key alone is not enough.
-type Caller = { service: boolean; company_id: string | null; role: string | null };
-async function getCaller(req: Request, admin: ReturnType<typeof createClient>): Promise<Caller | null> {
+async function getCaller(req, admin) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return { service: true, company_id: null, role: null };
+  if (SUPABASE_SERVICE_ROLE_KEY && token === SUPABASE_SERVICE_ROLE_KEY) return {
+    service: true,
+    company_id: null,
+    role: null
+  };
   const { data } = await admin.auth.getUser(token);
   if (!data?.user) return null;
   const { data: p } = await admin.from("profiles").select("company_id, role").eq("id", data.user.id).maybeSingle();
   if (!p?.company_id) return null;
-  return { service: false, company_id: p.company_id, role: p.role };
+  return {
+    service: false,
+    company_id: p.company_id,
+    role: p.role
+  };
 }
 const META_GRAPH_BASE = "https://graph.facebook.com/v20.0";
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-function json(obj: unknown, status = 200) {
+function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }
   });
 }
-
-function parseWalletBalance(displayString: string | undefined): number | null {
+function parseWalletBalance(displayString) {
   if (!displayString) return null;
   const match = displayString.match(/([\d,]+\.\d{2})/);
   if (!match) return null;
   return parseFloat(match[1].replace(/,/g, ""));
 }
-
-Deno.serve(async (req: Request) => {
+Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
-      headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey" },
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey"
+      }
     });
   }
-  if (req.method !== "POST") return json({ error: "POST only" }, 405);
-  if (!META_ACCESS_TOKEN) return json({ error: "META_ACCESS_TOKEN secret is not set yet in Supabase." }, 500);
-
+  if (req.method !== "POST") return json({
+    error: "POST only"
+  }, 405);
+  if (!META_ACCESS_TOKEN) return json({
+    error: "META_ACCESS_TOKEN secret is not set yet in Supabase."
+  }, 500);
   try {
     const caller = await getCaller(req, supabase);
-    if (!caller) return json({ error: "Not signed in" }, 401);
-    const body = await req.json().catch(() => ({}));
-    if (!body.ad_account_id) return json({ error: "Missing ad_account_id in request body." }, 400);
-
+    if (!caller) return json({
+      error: "Not signed in"
+    }, 401);
+    const body = await req.json().catch(()=>({}));
+    if (!body.ad_account_id) return json({
+      error: "Missing ad_account_id in request body."
+    }, 400);
     const { data: accountRow } = await supabase.from("ad_accounts").select("*").eq("id", body.ad_account_id).maybeSingle();
-    if (!accountRow || (!caller.service && accountRow.company_id !== caller.company_id)) return json({ error: `No ad_accounts row found for id ${body.ad_account_id}` }, 404);
-
+    if (!accountRow || !caller.service && accountRow.company_id !== caller.company_id) return json({
+      error: `No ad_accounts row found for id ${body.ad_account_id}`
+    }, 404);
     const metaAdAccountId = String(accountRow.meta_ad_account_id).replace(/^act_/, "");
     const fields = "account_id,name,balance,amount_spent,spend_cap,currency,funding_source_details,account_status";
     const url = `${META_GRAPH_BASE}/act_${metaAdAccountId}?fields=${fields}&access_token=${META_ACCESS_TOKEN}`;
     const res = await fetch(url);
     const data = await res.json();
-    if (data.error) return json({ error: data.error.message, code: data.error.code, type: data.error.type }, 400);
-
+    if (data.error) return json({
+      error: data.error.message,
+      code: data.error.code,
+      type: data.error.type
+    }, 400);
     // funding_source_details.display_string holds the real remaining prepaid
     // wallet balance for wallet-funded accounts (e.g. "Available balance
     // (NGN8,554.30)") -- this is the number the person actually sees in
@@ -69,21 +85,21 @@ Deno.serve(async (req: Request) => {
     // it should only be used as a last-resort fallback for non-wallet
     // (card/threshold-billed) accounts that have no wallet balance at all.
     const walletBalance = parseWalletBalance(data.funding_source_details?.display_string);
-    let finalBalance = walletBalance !== null ? walletBalance : (data.balance !== undefined ? Number(data.balance) / 100 : null);
+    let finalBalance = walletBalance !== null ? walletBalance : data.balance !== undefined ? Number(data.balance) / 100 : null;
     let amountSpent = data.amount_spent !== undefined ? Number(data.amount_spent) / 100 : null;
     // A Revora-managed ad account is paid by Revora's card: the customer's balance is their Revora wallet, and spend is shown with Revora's markup.
     const managed = accountRow.billing_mode === "managed";
     if (managed) {
-      const { data: w } = await supabase.rpc("account_wallet_balance", { p_account: accountRow.id });
+      const { data: w } = await supabase.rpc("account_wallet_balance", {
+        p_account: accountRow.id
+      });
       finalBalance = Math.max(0, Number(w ?? 0));
       if (amountSpent !== null) amountSpent = amountSpent * (1 + Number(accountRow.markup_pct ?? 0) / 100);
     }
-
     await supabase.from("ad_accounts").update({
       balance_naira: finalBalance,
-      balance_updated_at: new Date().toISOString(),
+      balance_updated_at: new Date().toISOString()
     }).eq("id", accountRow.id);
-
     return json({
       success: true,
       balance_source: managed ? "wallet" : walletBalance !== null ? "wallet" : "accrued_spend_fallback",
@@ -93,9 +109,13 @@ Deno.serve(async (req: Request) => {
       status: data.account_status === 1 ? "ACTIVE" : `status_code_${data.account_status}`,
       amount_spent_naira: amountSpent,
       spend_cap_naira: managed ? null : data.spend_cap ? Number(data.spend_cap) / 100 : null,
-      ...(managed ? {} : { raw: data }),
+      ...managed ? {} : {
+        raw: data
+      }
     });
-  } catch (err: any) {
-    return json({ error: err.message }, 500);
+  } catch (err) {
+    return json({
+      error: err.message
+    }, 500);
   }
 });
