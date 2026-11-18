@@ -15,10 +15,11 @@
 // Called only by the `mcp` router with the service key: { action: "list" } and { action: "call", tool, args, ctx }.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withR2, R2_ON, r2PublicBase } from "../_shared/r2storage.ts";
 import { unzip, planImport, swapPixel, hoistPixel } from "./import_plan.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+const admin = withR2(createClient(SUPABASE_URL, SERVICE_KEY));
 const SITE = "https://metaautomationads.vercel.app"; // dashboard + builder (never serves customer pages in links we hand out)
 const SITES = "https://revora-sites.vercel.app"; // isolated project that serves customer pages only (RV_SITE_ORIGIN)
 const CORS = {
@@ -416,7 +417,7 @@ async function build(s, c) {
     if (s.settings?.imported !== true && /fbq\s*\(/.test(im.html)) warnings.push(`${f.path}: a Meta pixel in the body is counted on top of the pixel Revora installs. Move yours into <head> (Revora then skips its own) or remove it.`);
     const outside = [
       ...f.content.matchAll(/<img\b[^>]*\bsrc=["'](https?:\/\/[^"']+)["']/gi)
-    ].map((m)=>m[1]).filter((u)=>!u.startsWith(storage));
+    ].map((m)=>m[1]).filter((u)=>!u.startsWith(storage) && !(R2_ON && u.startsWith(r2PublicBase() + "/")));
     if (outside.length && s.settings?.imported !== true) warnings.push(`${f.path}: ${outside.length} picture(s) are not Revora links, so they may not load or may be slow.`);
     if (slug === "" && !im.html.includes("data-rv-form") && s.settings?.external_form !== true) warnings.push("index.html has no <div data-rv-form=\"1\"></div>, so the page cannot take orders and cannot be published.");
     const css = [
@@ -1202,7 +1203,8 @@ const TOOLS = [
         };
       }
       const siteId = crypto.randomUUID();
-      const assetBase = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/imports/${siteId}/`;
+      // Imported pictures, videos and fonts are stored on Cloudflare R2 when it is configured (key = site-media/imports/<site>/<file>).
+      const assetBase = R2_ON ? `${r2PublicBase()}/${BUCKET}/imports/${siteId}/` : `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/imports/${siteId}/`;
       let plan;
       try {
         plan = planImport(entries, assetBase);
