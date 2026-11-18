@@ -256,13 +256,15 @@ async function launchWidgetApprove(req) {
   if (new Date(ap.expires_at).getTime() < Date.now()) return jres({
     error: "This approval expired. Ask your assistant to prepare the launch again."
   }, 410);
-  const { data: pl } = await admin.from("ai_plans").select("status").eq("id", ap.plan_id).maybeSingle();
+  const { data: pl } = await admin.from("ai_plans").select("status, launching_at").eq("id", ap.plan_id).maybeSingle();
   if (pl?.status === "launched") return jres({
     ok: true,
     launched: true,
     already: true
   });
-  if (pl?.status !== "draft") return jres({
+  // A launch cut off by the platform time limit stays "launching": after 5 minutes it can be launched again.
+  const staleLaunch = pl?.status === "launching" && (!pl.launching_at || Date.now() - Date.parse(pl.launching_at) > 5 * 60_000);
+  if (pl?.status !== "draft" && !staleLaunch) return jres({
     error: `This plan is ${pl?.status ?? "missing"} and cannot be launched.`
   }, 410);
   const { data: opt } = await admin.from("ai_plan_options").select("start_time").eq("plan_id", ap.plan_id).maybeSingle();
@@ -828,7 +830,7 @@ async function callTool(name, args, c, client) {
         }
       ]
     };
-    const { data: pl } = await admin.from("ai_plans").select("id, status, company_id").eq("id", planId).maybeSingle();
+    const { data: pl } = await admin.from("ai_plans").select("id, status, company_id, launching_at").eq("id", planId).maybeSingle();
     if (!pl || pl.company_id !== c.companyId) return {
       isError: true,
       content: [
@@ -846,7 +848,8 @@ async function callTool(name, args, c, client) {
         }
       ]
     };
-    if (pl.status !== "draft") return {
+    const staleLaunch = pl.status === "launching" && (!pl.launching_at || Date.now() - Date.parse(pl.launching_at) > 5 * 60_000);
+    if (pl.status !== "draft" && !staleLaunch) return {
       isError: true,
       content: [
         {
