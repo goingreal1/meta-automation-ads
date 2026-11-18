@@ -1,0 +1,259 @@
+/* Revora dashboard styles, part 05 of 5 */
+
+/* ── PHONE APP LOOK, pass 2: tables become cards, action rows scroll, compact stats ── */
+@media(max-width:760px){
+  /* Wide tables (4+ columns) turn into one card per row; labels come from the column headings (see bvCardifyTables). */
+  .tbl-wrap:has(> table.m-card){border:0;background:none;border-radius:0;overflow:visible;}
+  table.m-card,table.m-card tbody{display:block;width:100%;}
+  table.m-card thead,table.m-card tr:has(> th){display:none;}
+  table.m-card tr{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;padding:14px;margin-bottom:10px;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  }
+  table.m-card tr.bv-clickable-row:active{background:var(--panel2);}
+  table.m-card td{display:block;padding:0;border:0;min-width:0;max-width:none!important;font-size:13.5px;color:var(--text);white-space:normal!important;overflow:visible!important;word-break:break-word;}
+  table.m-card td::before{content:attr(data-label);display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+  table.m-card td:first-child{grid-column:1/-1;font-size:16px;font-weight:700;}
+  table.m-card td:first-child::before,table.m-card td[data-label=""]::before{display:none;}
+  table.m-card td[data-label=""]{grid-column:1/-1;}
+  table.m-card td:empty{display:none;}
+
+  /* Rows of buttons/filters at the top of a screen: one swipeable line instead of a tall stack. */
+  .sh-actions{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:8px;width:100%;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .sh-actions::-webkit-scrollbar{display:none;}
+  .sh-actions > *{flex:none;margin-left:0!important;}
+  .sh-actions .btn{white-space:nowrap;}
+
+  /* Chats: header actions sit closer to the list. */
+  #convTabRoot > .sh{margin-bottom:10px;}
+
+  /* Wallet: balance cards with less copy, full-width buttons. */
+  .wallet-hero{padding:18px;border-radius:18px;margin-bottom:12px;}
+  .wallet-hero-lbl{font-size:11.5px;margin-bottom:4px;}
+  .wallet-hero-val{font-size:32px;}
+  .wallet-hero-sub{font-size:12px;margin-top:6px;line-height:1.4;}
+  .wallet-hero-actions{flex-wrap:nowrap;margin-top:14px;}
+  .wallet-hero-actions .btn{flex:1;justify-content:center;padding:11px 8px;font-size:14px;}
+
+
+  /* Campaigns toolbar: search + New campaign on one line, then date range, then filters (was five stacked rows). */
+  .am-subline{display:none;}
+  .am-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .am-toolbar .am-search{order:1;flex:1 1 0;min-width:0;width:auto;}
+  .am-toolbar > .btn-a{order:2;flex:none;white-space:nowrap;}
+  .am-toolbar .rv-seg,.am-toolbar .am-more{order:3;}
+  .am-toolbar .am-filter,.am-toolbar > .btn-g{order:4;}
+  .am-toolbar .am-grow{display:none;}
+
+  /* Product screen: title lives in the top bar; Save is pinned above the tab bar. */
+  body.m-detail .chat-toggle{display:none;}
+  body.m-detail #catSave{
+    position:fixed;left:16px;right:16px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:330;width:auto;padding:14px;border-radius:14px;
+    font-size:15px;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  }
+  body.m-detail .content{padding-bottom:calc(150px + env(safe-area-inset-bottom));}
+  .cat-photo{min-height:0;height:150px;aspect-ratio:auto;}
+  /* An open chat takes the full screen: drop the notices above it. */
+  body:has(#convTabRoot.thread-open) #convTabRoot > .panel:not(.conv-thread){display:none;}
+
+  /* Section titles on root screens: lighter, so content comes first. */
+  .sh-title{font-size:23px;letter-spacing:-.02em;}
+  .content{padding-top:12px;}
+}
+
+/* ── ORDER SCREEN (phones): tap an order card to open it full screen ── */
+.ord-screen{display:none;}
+@media(max-width:760px){
+  .ord-screen{display:flex;flex-direction:column;position:fixed;inset:0;z-index:360;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  body:has(#ordScreen) .chat-toggle{display:none;}
+  .ord-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;height:54px;padding:0 10px 0 4px;background:var(--panel);border-bottom:1px solid var(--border);flex:none;}
+  .ord-bar .m-back{max-width:none;}
+  .ord-body{padding:16px 16px calc(32px + env(safe-area-inset-bottom));}
+  .ord-hero{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px;}
+  .ord-hero h2{font-size:22px;margin:0 0 4px;letter-spacing:-.02em;}
+  .ord-hero .ord-val{font-size:30px;font-weight:700;margin:10px 0 2px;letter-spacing:-.02em;}
+  .ord-hero .ord-sub{font-size:13px;color:var(--muted);}
+  .ord-act{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;}
+  .ord-act a,.ord-act button{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:14px;font:inherit;font-size:15px;font-weight:600;text-decoration:none;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;}
+  .ord-act .call{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .ord-act .wa{background:#25d366;border-color:#25d366;color:#fff;}
+  .ord-lbl{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:20px 4px 8px;}
+  .ord-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .ord-seg button{padding:13px 8px;border-radius:12px;border:1.5px solid var(--border);background:var(--panel);color:var(--text);font:inherit;font-size:14.5px;font-weight:600;cursor:pointer;}
+  .ord-seg button.on{border-color:var(--accent);background:var(--accentBg);color:var(--accent);}
+  .ord-seg button:disabled{opacity:.45;}
+  .ord-list{background:var(--panel);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+  .ord-row{display:flex;justify-content:space-between;gap:16px;padding:13px 14px;border-bottom:1px solid var(--border);font-size:14px;}
+  .ord-row:last-child{border-bottom:0;}
+  .ord-row span:first-child{color:var(--muted);flex:none;}
+  .ord-row span:last-child{text-align:right;min-width:0;word-break:break-word;}
+}
+
+/* ── CAMPAIGN SCREENS (phones): a campaign / ad set opens as its own screen ── */
+.am-drill{display:none;}
+@media(max-width:760px){
+  #amRoot.am-drilled .am-drill{display:block;}
+  #amRoot.am-drilled > .am-head-top,#amRoot.am-drilled > .am-toolbar,#amRoot.am-drilled > .am-bal,#amRoot.am-drilled > .am-kpis,
+  #amRoot.am-drilled > .am-tabs,#amRoot.am-drilled > .am-chips,#amRoot.am-drilled > .am-stamp,#amRoot.am-drilled .am-head,#amRoot.am-drilled .am-foot{display:none;}
+  .am-drill .m-back{padding-left:0;max-width:100%;margin-bottom:8px;}
+  .am-drill-card{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;}
+  .am-drill-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px;}
+  .am-drill-top h2{margin:0;font-size:19px;line-height:1.25;letter-spacing:-.01em;min-width:0;word-break:break-word;}
+  .am-drill-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+  .am-drill-stats b{display:block;font-size:17px;}
+  .am-drill-stats span{font-size:11.5px;color:var(--muted);}
+  .am-drill-h{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:20px 4px 10px;}
+}
+
+/* Campaign list rows on phones: one card each, whole card opens the campaign. */
+@media(max-width:760px){
+  .am-card{border:0;background:none;box-shadow:none;}
+  .am-scroll{overflow:visible;}
+  .am-tbl,.am-tbl tbody{display:block;width:100%;min-width:0!important;}
+  .am-tbl .num{text-align:left;}
+  .am-tbl thead,.am-tbl tfoot{display:none;}
+  .am-tbl tr{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 10px;padding:14px;margin-bottom:10px;background:var(--panel);border:1px solid var(--border);border-radius:14px;cursor:pointer;}
+  .am-tbl tr:active{background:var(--panel2);}
+  .am-tbl td{display:block;padding:0;border:0;min-width:0;}
+  .am-tbl td.c-chk{display:none;}
+  .am-tbl td:nth-child(2){grid-column:1/4;grid-row:1;}
+  .am-tbl td.c-sw{grid-column:4;grid-row:1;justify-self:end;}
+  .am-tbl td.c-type{grid-column:1/-1;grid-row:2;}
+  .am-tbl td.num{grid-row:3;font-size:14px;margin-top:6px;}
+  .am-tbl td.num::before{display:block;font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px;}
+  .am-tbl td:nth-child(4)::before{content:"Budget/day";}
+  .am-tbl td:nth-child(5)::before{content:"Spent";}
+  .am-tbl td:nth-child(6)::before{content:"Results";}
+  .am-tbl td:nth-child(7)::before{content:"Cost";}
+  .am-row .am-c-chk{display:none;}
+}
+
+/* ── PHONE CAMPAIGN CREATOR: one question per screen (see BV_MS) ── */
+.ms-top{display:none;}
+@media(max-width:760px){
+  #bvBuilderOverlay .bv-builder-sidebar,#bvBuilderOverlay .wz-sub,#bvBuilderOverlay .wz-steps{display:none!important;}
+  #bvBuilderOverlay .ms-top{display:block;order:1;position:sticky;top:0;z-index:6;background:var(--bg);padding:12px 16px 4px;}
+  #bvBuilderOverlay .ms-bar{height:5px;border-radius:3px;background:var(--border);overflow:hidden;}
+  #bvBuilderOverlay .ms-bar i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .25s;}
+  #bvBuilderOverlay .ms-step{font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 2px;text-transform:uppercase;letter-spacing:.05em;}
+  #bvBuilderOverlay .ms-top h2{font-size:24px;line-height:1.2;letter-spacing:-.02em;margin:0;}
+  #bvBuilderOverlay .ms-top p{font-size:14px;color:var(--text2);margin:6px 0 8px;line-height:1.4;}
+
+  /* head + sections are always "open"; each tagged group shows only on its own screen */
+  #bvBuilderOverlay:not([data-step="campaign"]) .bv-builder-head{display:block;}
+  #bvBuilderOverlay .bv-builder-head{padding:0 16px;}
+  #bvBuilderOverlay .bv-builder-section{display:block!important;}
+  #bvBuilderOverlay .bv-builder-section > *:not([data-ms]){display:none!important;}
+  #bvBuilderOverlay [data-ms]{display:none!important;}
+  #bvBuilderOverlay[data-mscur="dest"] [data-ms~="dest"],#bvBuilderOverlay[data-mscur="name"] [data-ms~="name"],
+  #bvBuilderOverlay[data-mscur="who"] [data-ms~="who"],#bvBuilderOverlay[data-mscur="budget"] [data-ms~="budget"],
+  #bvBuilderOverlay[data-mscur="budget"] [data-ms~="budget2"],#bvBuilderOverlay[data-mscur="media"] [data-ms~="media"],
+  #bvBuilderOverlay[data-mscur="copy"] [data-ms~="copy"],#bvBuilderOverlay[data-mscur="adv"] [data-ms~="adv"]{display:block!important;}
+  /* shared cards lose their box/title and only show the pieces tagged for the current screen */
+  #bvBuilderOverlay .ms-split > :not([data-ms]){display:none!important;}
+  #bvBuilderOverlay[data-mscur="copy"] #bvSection-ad{display:flex!important;flex-direction:column;}
+  #bvBuilderOverlay[data-mscur="copy"] .ms-copycard{order:-1;display:flex!important;flex-direction:column;}
+  #bvBuilderOverlay .fg[data-ms~="who"]{display:grid!important;grid-template-columns:1fr 1fr;gap:0 12px;}
+  #bvBuilderOverlay[data-mscur]:not([data-mscur="who"]) .fg[data-ms~="who"]{display:none!important;}
+  #bvBuilderOverlay .fg[data-ms~="who"] > .field:first-child{grid-column:1/-1;}
+  /* anything the form itself hides for this destination (WhatsApp box on a website ad, the button on a chat ad) stays hidden */
+  #bvBuilderOverlay [data-ms][style*="display: none"]{display:none!important;}
+  #bvBuilderOverlay .field:has(#f_cta:disabled){display:none!important;}
+  /* the goal was already chosen on the first screen */
+  #bvBuilderOverlay .field:has(#f_objective){display:none!important;}
+  #bvBuilderOverlay .bv-section-card{border:0;background:none;box-shadow:none;padding:0;}
+  #bvBuilderOverlay .bv-section-card-title{display:none!important;}
+  /* with several ad sets, each card must say which one it is */
+  #bvBuilderOverlay #adSetRows .bv-section-card-title{display:flex!important;font-size:15px;font-weight:700;margin:6px 0 12px;padding-top:12px;border-top:1px solid var(--border);}
+  #bvBuilderOverlay #adSetRows .ms-split:first-child .bv-section-card-title{border-top:0;padding-top:0;}
+  #bvBuilderOverlay .field{margin-bottom:16px;}
+  #bvBuilderOverlay .field label{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;display:block;}
+  #bvBuilderOverlay .fg{grid-template-columns:1fr;gap:0;}
+  #bvBuilderOverlay input:not([type=checkbox]):not([type=radio]):not([type=file]),#bvBuilderOverlay select,#bvBuilderOverlay textarea{min-height:50px;border-radius:12px;padding:12px 14px;width:100%;}
+  #bvBuilderOverlay textarea{min-height:110px;}
+  /* Daily budget: the one big number on its screen */
+  #bvBuilderOverlay[data-mscur="budget"] [data-ms~="budget"] input[type=number]{font-size:28px;font-weight:700;min-height:64px;}
+
+  /* destination cards */
+  #bvBuilderOverlay .ms-opt{display:flex!important;align-items:center;gap:14px;padding:14px;margin:0 0 10px;border:1.5px solid var(--border);border-radius:16px;background:var(--panel);cursor:pointer;font-weight:400;}
+  #bvBuilderOverlay .ms-opt[hidden]{display:none!important;}
+  #bvBuilderOverlay .ms-opt input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;}
+  #bvBuilderOverlay .ms-opt:has(input:checked){border-color:var(--accent);background:var(--accentBg);box-shadow:0 0 0 3px var(--accentBg);}
+  #bvBuilderOverlay .ms-opt-ic{font-size:26px;flex:none;width:44px;text-align:center;}
+  #bvBuilderOverlay .ms-opt-tx b{display:block;font-size:16px;color:var(--text);}
+  #bvBuilderOverlay .ms-opt-tx small{display:block;font-size:13px;color:var(--text2);margin-top:2px;line-height:1.35;}
+  #bvBuilderOverlay .field[data-ms~="dest"] > div:first-of-type{display:block!important;}
+  #bvBuilderOverlay .field[data-ms~="dest"] > label:first-child{display:none!important;}
+
+  /* footer: Back + Next on every screen; Review & Launch only on the last */
+  #bvBuilderOverlay[data-mscur="dest"] #bvTabBackBtn{display:none;}
+  #bvBuilderOverlay #bvDraftStatus{display:none;}
+  #bvBuilderOverlay #bvTabBackBtn{display:flex!important;visibility:visible!important;}
+  #bvBuilderOverlay #bvTabNextBtn{display:flex!important;visibility:visible!important;}
+  #bvBuilderOverlay[data-mscur="review"] #bvTabNextBtn{display:none!important;}
+  #bvBuilderOverlay[data-mscur="review"] .bv-builder-summary{display:block;}
+  #bvBuilderOverlay:not([data-mscur="review"]) .bv-builder-summary{display:none!important;}
+  #bvBuilderOverlay #uploadBtn{display:none;}
+  #bvBuilderOverlay[data-mscur="review"] #uploadBtn{display:flex;flex:1;align-items:center;}
+  #bvBuilderOverlay[data-mscur="review"] .bv-builder-foot > div{flex:0 0 auto;}
+  #bvBuilderOverlay #uploadMsg{order:5;position:sticky;bottom:calc(72px + env(safe-area-inset-bottom));z-index:7;padding:0 16px 8px!important;}
+}
+
+/* ── AD SETUP SCREENS (ad accounts, Pages, datasets) ── */
+.more-h1{font-size:28px;letter-spacing:-.02em;margin:0 4px 14px;}
+.adx{max-width:560px;margin:0 auto;}
+.adx-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.adx-tile{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;padding:14px;border-radius:16px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit;cursor:pointer;}
+.adx-tile:active{background:var(--panel2);}
+.adx-tile-ic{width:34px;height:34px;border-radius:10px;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:6px;}
+.adx-tile b{font-size:15px;}.adx-tile small{font-size:12.5px;color:var(--muted);line-height:1.35;}
+.adx-h{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:22px 4px 10px;display:flex;justify-content:space-between;}
+.adx-h span{background:var(--panel2);border-radius:99px;padding:0 8px;}
+.adx-card,.adx-step{position:relative;display:block;width:100%;text-align:left;padding:14px 38px 14px 14px;margin-bottom:10px;border-radius:16px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit;cursor:pointer;}
+.adx-card:active,.adx-step:active{background:var(--panel2);}
+.adx-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+.adx-card-top b,.adx-card-top h2{font-size:16px;margin:0;word-break:break-word;}
+.adx-sub{font-size:12.5px;color:var(--muted);margin-top:3px;word-break:break-all;}
+.adx-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.adx-chip{font-size:12px;font-weight:600;border-radius:99px;padding:4px 10px;}
+.adx-chip.ok{background:rgba(52,199,89,.15);color:#1f9d46;}.adx-chip.todo{background:rgba(255,159,10,.17);color:#b26a00;}
+.adx-chev{position:absolute;right:12px;top:50%;width:18px;height:18px;margin-top:-9px;color:var(--muted);opacity:.7;}
+.adx-empty{padding:18px;border:1.5px dashed var(--border);border-radius:16px;text-align:center;color:var(--muted);font-size:14px;display:flex;flex-direction:column;gap:10px;align-items:center;}
+.adx-note{padding:12px 14px;border-radius:12px;background:var(--accentBg);color:var(--text);font-size:13.5px;line-height:1.4;margin:0 0 12px;}
+.adx-note.warn{background:rgba(255,159,10,.15);}.adx-note.ok{background:rgba(52,199,89,.15);}
+.adx-hero{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:6px;}
+.adx-hero h2{font-size:20px;margin:2px 0 0;letter-spacing:-.01em;}
+.adx-kv{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.adx-kv b{display:block;font-size:17px;}.adx-kv span{font-size:12px;color:var(--muted);}
+.adx-num{position:absolute;left:14px;top:14px;width:30px;height:30px;border-radius:50%;background:rgba(255,159,10,.2);color:#b26a00;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px;}
+.adx-num.done{background:rgba(52,199,89,.2);color:#1f9d46;}
+.adx-step{padding-left:56px;min-height:64px;}
+.adx-step-tx b{display:block;font-size:15.5px;}.adx-step-tx small{display:block;font-size:13px;color:var(--muted);margin-top:3px;line-height:1.35;}
+.adx-intro{padding:2px 4px 8px;}.adx-intro b{font-size:16px;}.adx-intro p{margin:6px 0 0;color:var(--text2);font-size:14px;line-height:1.45;}
+.adx-panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;}
+.adx-lbl{display:block;font-size:14px;font-weight:600;margin-bottom:6px;}
+.adx-help{font-size:12.5px;color:var(--muted);margin:8px 0 0;line-height:1.4;}
+.adx-check{display:flex;gap:10px;align-items:center;font-size:14px;margin:14px 0;}
+.adx-check input{width:20px;height:20px;}
+.adx-price{display:flex;justify-content:space-between;font-size:14.5px;padding:8px 0;border-top:1px solid var(--border);}
+.adx-price .bad{color:var(--danger);}
+.adx-btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;padding:0 18px;border-radius:14px;border:0;background:var(--accent);color:#fff;font:inherit;font-size:16px;font-weight:600;cursor:pointer;margin-top:12px;}
+.adx-btn:disabled{opacity:.5;}.adx-btn.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--border);}
+.adx-btn.small{width:auto;min-height:40px;padding:0 16px;font-size:14px;margin:0;flex:none;}
+.adx input:not([type=checkbox]),.adx select{width:100%;min-height:50px;border-radius:12px;padding:12px 14px;font-size:16px;}
+.adx input[type=checkbox]{width:22px;height:22px;min-height:0;flex:none;}
+.adx-opt{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:14px;}
+.adx-opt h3{margin:0 0 6px;font-size:17px;}.adx-opt p{margin:0 0 6px;font-size:14px;color:var(--text2);line-height:1.45;}
+.adx-opt-tag{display:inline-block;font-size:11.5px;font-weight:700;background:rgba(52,199,89,.17);color:#1f9d46;border-radius:99px;padding:3px 10px;margin-bottom:8px;}
+.adx-steps{margin:10px 0 0;padding-left:22px;font-size:14px;line-height:1.5;color:var(--text2);}
+.adx-steps li{margin-bottom:14px;}.adx-steps li b{color:var(--text);}
+.adx-steps.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px 16px 4px 36px;}
+.adx-share{margin-top:8px;background:var(--panel2);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.6;}
+.adx-share span{display:block;font-weight:600;color:var(--text);margin-bottom:2px;}
+.adx-copy{display:flex;gap:8px;align-items:center;margin-top:8px;}
+.adx-copy code{flex:1;min-width:0;background:var(--panel2);border-radius:10px;padding:12px;font-size:14px;word-break:break-all;}
+.adx-found{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;margin-bottom:8px;background:var(--panel);border:1px solid var(--border);border-radius:14px;}
+.adx-found b{display:block;font-size:15px;word-break:break-word;}.adx-found small{font-size:12.5px;color:var(--muted);}
+.adx-err{background:rgba(255,59,48,.1);border:1px solid rgba(255,59,48,.35);border-radius:14px;padding:14px;margin:12px 0 0;}
+.adx-err b{display:block;font-size:15.5px;margin-bottom:4px;}.adx-err p{margin:6px 0;font-size:14px;line-height:1.45;color:var(--text2);}
+.adx-err details{margin:6px 0;font-size:13px;color:var(--muted);}.adx-err small{display:block;margin-top:6px;word-break:break-word;}

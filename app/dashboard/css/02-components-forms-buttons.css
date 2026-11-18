@@ -1,0 +1,398 @@
+/* Revora dashboard styles, part 02 of 5 */
+
+/* ── EMPTY ─────────────────────────────────────────────────────────────────── */
+.empty{padding:46px;text-align:center;color:var(--muted);font-size:14px;}
+.empty-ico{font-size:30px;margin-bottom:10px;opacity:.5;}
+
+/* ── FORMS ─────────────────────────────────────────────────────────────────── */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+@media(max-width:580px){.fg{grid-template-columns:1fr;}}
+.field{display:flex;flex-direction:column;gap:6px;}
+.field label{font-size:12.5px;color:var(--text2);font-weight:600;letter-spacing:.01em;}
+input,select,textarea{
+  background:var(--panel);border:1.5px solid var(--border);color:var(--text);
+  border-radius:8px;padding:10px 13px;font-size:14.5px;font-family:'Inter',sans-serif;
+  width:100%;transition:border-color .14s,box-shadow .14s;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accentBg);}
+input[type="checkbox"],input[type="radio"]{width:auto;flex:none;padding:0;}
+textarea{resize:vertical;min-height:80px;}
+
+/* ── BUTTONS ───────────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:9px 16px;border-radius:8px;font-size:13.5px;font-weight:600;
+  cursor:pointer;transition:all .14s;border:1.5px solid transparent;
+  white-space:nowrap;font-family:'Inter',sans-serif;letter-spacing:.002em;
+}
+.btn-a{background:var(--accent);color:#fff;border-color:var(--accent);}
+.btn-a:hover{background:var(--accentDk);border-color:var(--accentDk);}
+.btn-g{background:transparent;color:var(--text);border-color:var(--borderStrong);}
+.btn-g:hover{border-color:var(--text);background:var(--panel2);}
+.btn-d{background:var(--dangerBg);color:var(--danger);border-color:var(--dangerBdr);}
+.btn-d:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+.btn-w{background:var(--warnBg);color:var(--warn);border-color:var(--warnBdr);}
+.btn-b{background:var(--blueBg);color:var(--blue);border-color:var(--blueBdr);}
+.btn:disabled{opacity:.42;cursor:not-allowed;}
+.btn-full{width:100%;justify-content:center;margin-top:14px;padding:11px;}
+
+/* ── PILLS ─────────────────────────────────────────────────────────────────── */
+.pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;}
+.pill.untested,.pill.pending_test{background:var(--panel2);color:var(--muted);}
+.pill.testing,.pill.active,.pill.ACTIVE,.pill.winner,.pill.winning,.pill.approved,.pill.delivered,.pill.valid{background:var(--accentBg);color:var(--accent);}
+.pill.pending,.pill.pending_approval,.pill.staged,.pill.watch,.pill.awaiting_approval,.pill.scheduled{background:var(--warnBg);color:var(--warn);}
+.pill.loser,.pill.killed,.pill.paused,.pill.PAUSED,.pill.returned,.pill.cancelled,.pill.rejected,.pill.off{background:var(--dangerBg);color:var(--danger);}
+.pill.scaling,.pill.scale{background:var(--blueBg);color:var(--blue);}
+.pill.warmup,.pill.warming_up{background:var(--panel2);color:var(--muted);}
+
+/* ── CTR SIGNALS ───────────────────────────────────────────────────────────── */
+.ctr-hot{color:var(--accent);font-weight:700;}
+.ctr-warm{color:var(--warn);}
+.ctr-cold{color:var(--danger);}
+.ctr-neu{color:var(--muted);}
+
+/* ── MESSAGES ──────────────────────────────────────────────────────────────── */
+.msg{font-size:13px;padding:10px 14px;border-radius:8px;margin-top:11px;border:1px solid transparent;font-weight:500;}
+.msg.ok{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);}
+.msg.err{background:var(--dangerBg);color:var(--danger);border-color:var(--dangerBdr);}
+.msg.info{background:var(--blueBg);color:var(--blue);border-color:var(--blueBdr);}
+
+/* ── QUICK ACTIONS ─────────────────────────────────────────────────────────── */
+.qa{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
+
+/* ── SYSTEM STATUS BAR ─────────────────────────────────────────────────────── */
+.sysbar{
+  display:flex;gap:0;background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:0;margin-bottom:22px;overflow-x:auto;
+}
+.sysbar::-webkit-scrollbar{height:0;}
+.sys-item{
+  display:flex;flex-direction:column;gap:4px;
+  padding:14px 20px;border-right:1px solid var(--border);white-space:nowrap;
+}
+.sys-item:last-child{border-right:none;}
+.sys-lbl{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
+.sys-val{font-size:13.5px;color:var(--text2);font-weight:600;}
+.sys-val.a{color:var(--accent);}
+
+/* ── DRAG & DROP ───────────────────────────────────────────────────────────── */
+.dz{
+  border:2px dashed var(--border);border-radius:12px;padding:40px 22px;
+  text-align:center;cursor:pointer;transition:all .18s;background:var(--panel2);
+  margin-bottom:16px;
+}
+.dz:hover,.dz.over{border-color:var(--accent);background:var(--accentBg);}
+.dz-ico{font-size:32px;margin-bottom:9px;opacity:.55;}
+.dz-txt{font-size:14px;color:var(--text2);margin-bottom:4px;}
+.dz-hint{font-size:12px;color:var(--muted);}
+.dz-prev{margin-top:13px;font-size:12px;color:var(--accent);font-weight:600;}
+.dz-thumb{max-height:72px;max-width:120px;border-radius:7px;margin-top:9px;border:1px solid var(--border);display:block;margin-left:auto;margin-right:auto;}
+
+/* ── CONVERSATIONS (Beoliv WhatsApp bot) ──────────────────────────────────── */
+.conv-wrap{display:grid;grid-template-columns:290px 1fr;gap:14px;align-items:start;}
+@media(max-width:820px){.conv-wrap{grid-template-columns:minmax(0,1fr);}.conv-thread{min-width:0;}}
+.conv-search{padding:10px;border-bottom:1px solid var(--border);}
+.conv-search input{font-size:12px;padding:7px 10px;}
+.conv-list-items{max-height:660px;overflow-y:auto;}
+/* Chat list rows, WhatsApp style: avatar, name + time on one line, ticks + preview
+   + unread badge on the next. The divider is inset so it starts after the avatar. */
+.conv-row{position:relative;display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;transition:background .12s;}
+.conv-row::after{content:"";position:absolute;left:72px;right:0;bottom:0;height:1px;background:var(--border);}
+.conv-row:hover{background:var(--panel2);}
+.conv-row.active{background:var(--accentBg);}
+.cr-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+.cr-top,.cr-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
+.conv-name{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.conv-time{font-size:11.5px;color:var(--muted);white-space:nowrap;flex-shrink:0;}
+.conv-time.unread{color:var(--accent);font-weight:600;}
+.cr-preview{font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;display:flex;align-items:center;gap:2px;}
+.cr-preview .cr-text{overflow:hidden;text-overflow:ellipsis;}
+.cr-preview .bubble-ticks span{margin:0 3px 0 0 !important;font-size:12px;}
+.conv-row:has(.conv-unread-badge) .conv-name{font-weight:800;}
+.conv-row:has(.conv-unread-badge) .cr-preview{color:var(--text);}
+.cr-state{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:0 5px;margin-left:6px;flex-shrink:0;}
+.conv-unread-badge{
+  background:#25d366;color:#fff;font-size:11.5px;font-weight:700;
+  min-width:20px;height:20px;border-radius:10px;padding:0 6px;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.conv-chips{display:flex;gap:6px;padding:0 10px 10px;border-bottom:1px solid var(--border);overflow-x:auto;}
+.conv-chip{background:var(--panel2);color:var(--text2);border:1px solid var(--border);border-radius:16px;padding:4px 12px;font-size:12px;cursor:pointer;white-space:nowrap;}
+.conv-chip.on{background:var(--accentBg);color:var(--accent);border-color:var(--accentBdr);font-weight:600;}
+.conv-thread{height:680px;display:flex;flex-direction:column;}
+.conv-thread:has(.empty){justify-content:center;align-items:center;}
+.conv-thread-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;flex-shrink:0;}
+.conv-msgs{padding:14px;display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;overflow-y:auto;}
+.conv-compose{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);flex-shrink:0;align-items:flex-end;}
+.conv-compose input,.conv-compose textarea{flex:1;min-width:0;font-size:13px;padding:9px 14px;border-radius:20px;}
+/* Multi-line reply box: grows with the text (see bvAutoGrow) up to a cap, then scrolls. */
+.conv-compose textarea{resize:none;min-height:0;height:38px;max-height:140px;line-height:1.35;font-family:inherit;overflow-y:auto;display:block;}
+.conv-compose button{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--accent);color:#fff;border:none;cursor:pointer;transition:opacity .14s;
+}
+.conv-compose button:disabled{opacity:.5;cursor:not-allowed;}
+.compose-icon-btn{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel2);color:var(--text2);border:1px solid var(--border);cursor:pointer;transition:all .14s;
+}
+.compose-icon-btn:hover{border-color:var(--accent);color:var(--accent);}
+
+.conv-compose .compose-mic-btn{background:var(--panel2);color:var(--text2);border:1px solid var(--border);}
+.conv-compose .compose-mic-btn:hover{border-color:var(--accent);color:var(--accent);}
+.conv-recording{flex:1;display:flex;align-items:center;gap:10px;min-width:0;padding:0 6px;font-size:13px;}
+.conv-recording .rec-dot{width:10px;height:10px;border-radius:50%;background:var(--danger,#e5484d);animation:recPulse 1s infinite;flex-shrink:0;}
+@keyframes recPulse{50%{opacity:.25;}}
+.conv-recording .rec-time{font-variant-numeric:tabular-nums;font-weight:600;}
+.conv-recording .rec-hint{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.conv-thread.drag-over{outline:2px dashed var(--accent);outline-offset:-6px;}
+.bubble-audio{display:block;width:240px;max-width:100%;height:36px;margin-bottom:2px;}
+.bv-media-preview{width:100%;max-height:300px;object-fit:contain;border-radius:8px;background:var(--panel2);display:block;margin-bottom:10px;}
+.compose-attach-wrap{position:relative;flex-shrink:0;}
+.compose-attach-menu{
+  display:none;flex-direction:column;position:absolute;bottom:44px;left:0;min-width:220px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:var(--shadow-md,0 8px 24px rgba(0,0,0,.35));overflow:hidden;z-index:50;
+}
+.compose-attach-menu.open{display:flex;}
+.compose-attach-menu button{
+  display:flex;align-items:center;gap:9px;padding:10px 12px;background:none;border:none;
+  color:var(--text);font-size:12.5px;text-align:left;cursor:pointer;transition:background .12s;
+}
+.compose-attach-menu button:hover{background:var(--panel2);}
+.conv-back-btn{
+  display:none;width:32px;height:32px;border-radius:50%;flex-shrink:0;padding:0;
+  align-items:center;justify-content:center;background:none;border:none;color:var(--text2);cursor:pointer;
+}
+
+/* Mobile: the list and a full thread can't fit side by side, and fixed pixel
+   heights (660px list + 680px thread stacked) made the thread unreachable
+   without a lot of scrolling. Below 820px, show one full-screen panel at a
+   time -- the list by default, or the thread (with a back button) once a
+   conversation is open -- each sized to the actual viewport instead of a
+   fixed height. */
+@media(max-width:820px){
+  .conv-back-btn{display:flex;}
+  #convTabRoot.thread-open > .sh,
+  #convTabRoot.thread-open > .g4,
+  #convTabRoot.thread-open #convListPanel{display:none;}
+  #convTabRoot:not(.thread-open) #convThread{display:none;}
+  .conv-list-items{max-height:none;height:calc(100vh - 300px);height:calc(100dvh - 300px);}
+
+  /* An open thread should feel like a full-screen chat, not a panel wedged
+     below the app's own header (brand/account picker/sync time/logout) --
+     confirmed via a real screenshot that the two stacked headers pushed
+     messages almost entirely off screen. Hide the app chrome around it
+     instead, and let the thread claim the space that frees up. :has() lets
+     this react to the thread-open state without any extra JS to toggle it. */
+  body:has(#convTabRoot.thread-open) .hdr,
+  body:has(#convTabRoot.thread-open) .chat-toggle,
+  body:has(#convTabRoot.thread-open) .chat-panel{display:none;}
+  .content:has(#convTabRoot.thread-open){padding:0;}
+  #convTabRoot.thread-open .conv-thread{
+    height:100vh;height:100dvh;border-radius:0;border:none;padding:0;margin:0;overflow:hidden;
+  }
+  .conv-compose{padding:8px;gap:6px;}
+  .conv-compose > .compose-icon-btn,.conv-compose > button,.compose-attach-wrap > .compose-icon-btn{width:34px;height:34px;}
+  .bubble{max-width:82%;}
+
+  /* Chat LIST on phones: big "Chats" title, pill search, no KPI tiles, taller rows. */
+  #convTabRoot:not(.thread-open) .g4{display:none;}
+  #convTabRoot .sh-title{font-size:24px;font-weight:700;}
+  #convTabRoot .conv-search{padding:6px 12px 8px;border-bottom:none;}
+  #convTabRoot .conv-search input{font-size:16px;padding:10px 16px;border-radius:22px;background:var(--panel2);border-color:transparent;}
+  #convTabRoot .conv-chips{padding:0 12px 8px;}
+  #convTabRoot #convListPanel{border:none;border-radius:0;box-shadow:none;background:transparent;}
+  #convTabRoot .conv-name{font-size:16.5px;font-weight:500;}
+  #convTabRoot .conv-row:has(.conv-unread-badge) .conv-name{font-weight:700;}
+  #convTabRoot .cr-preview{font-size:14.5px;}
+  #convTabRoot .conv-row{padding:11px 14px;}
+  #convTabRoot .cr-state{display:none;}
+  .conv-list-items{height:calc(100vh - 250px);height:calc(100dvh - 250px);}
+
+  /* WhatsApp-style chat on phones: wallpaper, compact bubbles, slim header,
+     pill input with a mic/send button that swaps depending on whether you've typed. */
+  .conv-thread-head{flex-wrap:nowrap;padding:8px 10px;gap:8px;background:var(--panel);}
+  .conv-thread-head .cth-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1;}
+  .conv-thread-head .cth-who{min-width:0;}
+  .conv-thread-head .cth-name{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conv-thread-head .cth-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .conv-thread-head .cth-actions{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+  .conv-thread-head .cth-wa{padding:8px 10px;}
+  .conv-thread-head .cth-wa-label{display:none;}
+  #convTabRoot .conv-msgs{padding:10px 10px 6px;gap:2px;background-color:#efeae2;background-image:radial-gradient(rgba(0,0,0,.05) 1px,transparent 1px);background-size:20px 20px;}
+  [data-theme="dark"] #convTabRoot .conv-msgs{background-color:#0b141a;background-image:radial-gradient(rgba(255,255,255,.04) 1px,transparent 1px);}
+  #convTabRoot .bubble{max-width:82%;font-size:14.5px;box-shadow:0 1px .5px rgba(11,20,26,.13);}
+  #convTabRoot .bubble.in{background:#fff;color:#111b21;border:none;}
+  #convTabRoot .bubble.out{background:#d9fdd3;color:#111b21;border:none;}
+  [data-theme="dark"] #convTabRoot .bubble.in{background:#202c33;color:#e9edef;}
+  [data-theme="dark"] #convTabRoot .bubble.out{background:#005c4b;color:#e9edef;}
+  #convTabRoot .agent-tag{color:#1f7a8c;}
+  [data-theme="dark"] #convTabRoot .agent-tag{color:#7fd1e8;}
+  .conv-thread-head .cth-extra{display:none;}
+  #convTabRoot .bubble-time{color:#667781;}
+  [data-theme="dark"] #convTabRoot .bubble-time{color:#8696a0;}
+  #convTabRoot .day-divider span{background:#fff;color:#54656f;}
+  [data-theme="dark"] #convTabRoot .day-divider span{background:#182229;color:#8696a0;}
+  #convTabRoot .conv-compose{align-items:flex-end;background:#f0f2f5;border-top:none;padding:6px 8px calc(6px + env(safe-area-inset-bottom));}
+  [data-theme="dark"] #convTabRoot .conv-compose{background:#202c33;}
+  #convTabRoot .conv-compose input,#convTabRoot .conv-compose textarea{font-size:16px;padding:9px 14px;border-radius:22px;background:#fff;border:1px solid transparent;}
+  [data-theme="dark"] #convTabRoot .conv-compose input,[data-theme="dark"] #convTabRoot .conv-compose textarea{background:#2a3942;color:#e9edef;}
+  #convTabRoot .conv-compose textarea{max-height:120px;}
+}
+.agent-tag{font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--blue);margin-bottom:2px;text-transform:uppercase;}
+/* Whitespace is only preserved inside .bubble-text. The bubble itself used to be
+   white-space:pre-wrap, so the indentation/newlines in the thread's template
+   literal rendered as blank lines -- that's what made every bubble tall. */
+.bubble{max-width:65%;width:fit-content;min-width:56px;padding:6px 8px 4px 9px;border-radius:8px;font-size:13.5px;line-height:1.35;word-break:break-word;box-shadow:0 1px 1px rgba(0,0,0,.2);}
+.bubble-text{white-space:pre-wrap;}
+.bubble-text::after{content:"";display:table;clear:both;}
+.day-divider{align-self:center;margin:10px 0 6px;}
+.day-divider span{display:block;background:var(--panel2);color:var(--text2);font-size:11.5px;padding:4px 10px;border-radius:8px;box-shadow:0 1px 1px rgba(0,0,0,.12);}
+.bubble.in{background:var(--panel2);color:var(--text);align-self:flex-start;border-bottom-left-radius:2px;}
+.bubble.out{background:var(--accentBg);color:var(--text);border:1px solid var(--accentBdr);align-self:flex-end;border-bottom-right-radius:2px;}
+/* Time + ticks float to the bottom-right of the last line of text, like WhatsApp. */
+.bubble-time{float:right;margin:7px 0 -3px 10px;font-size:10.5px;line-height:1;color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;}
+.bubble-media{width:260px;max-width:100%;border-radius:6px;margin:0 0 4px;display:block;}
+.msg-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+.msg-chip{background:var(--panel2);border:1px solid var(--borderStrong);border-radius:14px;padding:3px 9px;font-size:10.5px;color:var(--text2);}
+
+/* ── AI CHAT ───────────────────────────────────────────────────────────────── */
+.chat-toggle{
+  position:fixed;bottom:22px;right:22px;width:48px;height:48px;border-radius:50%;
+  background:var(--accent);color:#fff;border:none;font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(0,0,0,.35);transition:all .18s;z-index:1000;font-weight:700;
+}
+.chat-toggle:hover{transform:scale(1.09);}
+.chat-panel{
+  position:fixed;bottom:82px;right:22px;width:380px;height:min(600px,calc(100vh - 110px));
+  background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;z-index:999;
+  transform:translateY(18px) scale(.95);opacity:0;pointer-events:none;
+  transition:all .2s cubic-bezier(.34,1.5,.64,1);overflow:hidden;
+}
+.chat-panel.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all;}
+.ch-head{
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;background:var(--panel2);
+}
+.ch-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(160deg,#5ac8fa,#0a84ff);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;}
+.ch-hmid{flex:1;min-width:0;}
+.ch-name{font-size:13px;font-weight:600;}
+.ch-status{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ch-x,.ch-back{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:6px 8px;border-radius:8px;line-height:1;}
+.ch-x:hover,.ch-back:hover{background:var(--panel);}
+.ch-back{display:none;font-size:26px;padding:0 8px 3px;color:#0a84ff;}
+.ch-acct{display:none;padding:6px 12px;font-size:11px;color:var(--text2);border-bottom:1px solid var(--border);background:var(--panel);}
+.ch-acct.on{display:block;}
+.ch-acct b{color:var(--text);font-weight:600;}
+.ch-msgs{flex:1;overflow-y:auto;padding:12px 12px 6px;display:flex;flex-direction:column;gap:2px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+.ch-time{align-self:center;font-size:10.5px;color:var(--muted);margin:10px 0 6px;font-weight:500;}
+.ch-msg{max-width:82%;padding:8px 12px;border-radius:18px;font-size:13.5px;line-height:1.38;white-space:pre-wrap;word-break:break-word;margin-top:1px;}
+.ch-msg.bot{background:var(--panel2);color:var(--text);align-self:flex-start;box-shadow:inset 0 0 0 1px var(--border);}
+.ch-msg.user{background:#0a84ff;color:#fff;align-self:flex-end;}
+.ch-msg.bot.tail{border-bottom-left-radius:5px;margin-bottom:6px;}
+.ch-msg.user.tail{border-bottom-right-radius:5px;margin-bottom:6px;}
+.ch-msg b{font-weight:650;}
+.ch-typing{display:inline-flex;gap:4px;padding:11px 14px;}
+.ch-typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.5;animation:chDot 1.2s infinite ease-in-out;}
+.ch-typing i:nth-child(2){animation-delay:.18s;}.ch-typing i:nth-child(3){animation-delay:.36s;}
+@keyframes chDot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:.9}}
+.ch-suggs{padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;}
+.ch-sugg{font-size:12px;padding:6px 12px;border-radius:16px;border:1px solid #0a84ff;color:#0a84ff;cursor:pointer;transition:all .13s;background:transparent;}
+.ch-sugg:hover{background:#0a84ff;color:#fff;}
+.ch-pay-card,.ch-act-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:11px 13px;align-self:stretch;margin:4px 0 6px;max-width:100%;}
+.ch-pay-row{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0;color:var(--text2);}
+.ch-pay-row strong{color:var(--text);font-weight:600;text-align:right;}
+.ch-pay-row.ch-pay-amt{border-top:1px dashed var(--border);margin-top:4px;padding-top:7px;font-size:13px;}
+.ch-pay-row.ch-pay-amt strong{color:var(--accent);font-size:15px;}
+.ch-act-h{display:flex;gap:9px;align-items:flex-start;}
+.ch-act-ico{font-size:20px;line-height:1.1;}
+.ch-act-t{font-size:13px;font-weight:650;line-height:1.3;}
+.ch-act-s{font-size:11.5px;color:var(--text2);margin-top:2px;line-height:1.4;}
+.ch-act-btns{display:flex;gap:8px;margin-top:10px;}
+.ch-act-btns button{flex:1;padding:9px 10px;border-radius:12px;border:none;font-size:13px;font-weight:650;cursor:pointer;}
+.ch-act-ok{background:#0a84ff;color:#fff;}
+.ch-act-no{background:var(--panel2);color:var(--text2);}
+.ch-act-card.done{border-color:rgba(48,209,88,.5);}
+.ch-act-card.fail{border-color:rgba(255,69,58,.5);}
+.ch-act-res{font-size:12px;margin-top:8px;font-weight:600;}
+.ch-inp{display:flex;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--border);align-items:flex-end;background:var(--panel);}
+.ch-inp textarea{flex:1;resize:none;max-height:120px;min-height:36px;padding:8px 14px;font-size:14px;line-height:1.35;border-radius:19px;border:1px solid var(--border);background:var(--panel2);color:var(--text);font-family:inherit;outline:none;}
+.ch-inp textarea:focus{border-color:#0a84ff;}
+.ch-inp button{width:36px;height:36px;flex:none;border-radius:50%;background:#0a84ff;color:#fff;border:none;font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.ch-inp button:disabled{background:var(--border);cursor:default;}
+
+/* ── SPINNER ───────────────────────────────────────────────────────────────── */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:rot .65s linear infinite;vertical-align:middle;}
+@keyframes rot{to{transform:rotate(360deg);}}
+
+/* ── TOAST ─────────────────────────────────────────────────────────────────── */
+.bv-toast-wrap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+.bv-toast{display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow);pointer-events:auto;animation:bv-toast-in .18s ease-out;background:var(--panel);border:1px solid var(--border);color:var(--text);}
+.bv-toast.ok{background:var(--accentBg);border-color:var(--accentBdr);color:var(--accent);}
+.bv-toast.err{background:var(--dangerBg);border-color:var(--dangerBdr);color:var(--danger);}
+.bv-toast.closing{animation:bv-toast-out .18s ease-in forwards;}
+@keyframes bv-toast-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+@keyframes bv-toast-out{from{opacity:1;transform:translateY(0);}to{opacity:0;transform:translateY(10px);}}
+
+
+/* ── INSTALLED-APP POLISH ─────────────────────────────────────────────────── */
+html{-webkit-text-size-adjust:100%;}
+*{-webkit-tap-highlight-color:transparent;}
+
+/* Install / notification prompt strip under the header */
+.app-banner{display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--accentBg);border-bottom:1px solid var(--accentBdr);color:var(--text);font-size:13px;}
+.app-banner.show{display:flex;}
+.app-banner .ab-ico{width:34px;height:34px;border-radius:9px;flex-shrink:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;}
+.app-banner .ab-txt{flex:1;min-width:0;line-height:1.35;}
+.app-banner .ab-txt b{display:block;font-size:13.5px;}
+.app-banner .ab-txt span{color:var(--text2);font-size:12px;}
+.app-banner .ab-x{background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:4px 6px;}
+
+/* Notification settings panel */
+.np-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--border);}
+.np-row .np-lbl{font-size:13.5px;font-weight:600;}
+.np-row .np-sub{font-size:11.5px;color:var(--muted);margin-top:1px;}
+.np-status{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:14px;}
+.np-status.on{background:var(--accentBg);color:var(--accent);}
+.np-status.off{background:var(--panel2);color:var(--muted);}
+.np-status.warn{background:var(--warnBg);color:var(--warn);}
+.np-steps{margin:10px 0 0;padding-left:20px;font-size:13px;line-height:1.6;color:var(--text2);}
+.np-steps li{margin-bottom:6px;}
+.switch{position:relative;width:44px;height:26px;flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;position:absolute;}
+.switch .sw-track{position:absolute;inset:0;background:var(--borderStrong);border-radius:13px;transition:background .18s;cursor:pointer;}
+.switch .sw-track::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .18s;}
+.switch input:checked + .sw-track{background:var(--accent);}
+.switch input:checked + .sw-track::after{transform:translateX(18px);}
+
+/* ── MOBILE ────────────────────────────────────────────────────────────────── */
+@media(max-width:760px){
+  /* .app-shell switches to flex-direction:column here, which turns .content's
+     "margin:0 auto" (a main-axis centering trick on desktop's row layout)
+     into a CROSS-axis auto margin instead -- that makes a flex item
+     shrink-to-fit its content's max-content width rather than stretch to
+     fill the container, which is what was pushing the whole page into
+     horizontal scroll. Plain block margin/width on mobile instead. */
+  .content{padding:18px 16px calc(90px + env(safe-area-inset-bottom));margin:0;max-width:none;width:100%;}
+  .sh{flex-direction:column;align-items:flex-start;gap:10px;}
+  .sh-title{font-size:21px;}
+  .g4,.g2{gap:10px;margin-bottom:18px;}
+  .kc{padding:14px 15px;}
+  .kc-val{font-size:23px;}
+  .panel{padding:16px;}
+  /* The Pull Meta Metrics / Sync / Refresh action row used to stack full-width
+     and eat half the screen -- let it scroll horizontally like a chip row. */
+  .qa{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
+  .qa .btn{flex-shrink:0;}
+  .wallet-hero{padding:20px;}
+  .wallet-hero-val{font-size:30px;}
+}
+@media(max-width:620px){
+  .chat-panel{width:calc(100vw - 32px);right:16px;}
+  .chat-toggle{bottom:18px;right:18px;}
+}
