@@ -1,48 +1,6 @@
 // Revora dashboard, part 04 of 23: ADMIN OVERVIEW: the whole company at a glance (no ad-account context; each buyer's ads are their own) · QUICK ACTION HANDLERS · TAB: CREATIVE VAULT · CAMPAIGN BUILDER (big modal, Meta Ads Manager-style tabs) · CAMPAIGN DRAFTS
 
 
-// ── ADMIN OVERVIEW: the whole company at a glance (no ad-account context; each buyer's ads are their own) ──
-async function renderAdminOverview(el) {
-  const since = watDate(-6), prev = watDate(-13);
-  const [orders, buyers, wallet, setup] = await Promise.all([
-    sbQuery("orders", `select=order_status,order_value_naira,media_buyer_id,ordered_at&ordered_at=gte.${prev}T00:00:00%2B01:00&limit=5000`).catch(() => []),
-    sbQuery("media_buyers", "select=id,code,name&order=code.asc").catch(() => []),
-    fetchWalletBalances().catch(() => ({ walletBalances: {}, fundingWalletBalance: 0 })),
-    bvSetupState().catch(() => null),
-  ]);
-  const cut = new Date(since + "T00:00:00+01:00").getTime();
-  const cur = [], old = [];
-  (orders || []).forEach(o => (new Date(o.ordered_at).getTime() >= cut ? cur : old).push(o));
-  const sum = a => a.reduce((t, o) => t + Number(o.order_value_naira || 0), 0);
-  const cnt = (a, st) => a.filter(o => o.order_status === st).length;
-  const done = a => a.filter(o => ["delivered", "returned", "cancelled", "failed"].includes(o.order_status)).length;
-  const rateOf = a => { const d = done(a); return d ? cnt(a, "delivered") / d * 100 : null; };
-  const delta = (c, p) => p ? `${c >= p ? "▲" : "▼"} ${Math.abs((c - p) / p * 100).toFixed(0)}% vs previous 7 days` : "no earlier data";
-  const rate = rateOf(cur);
-  const byBuyer = new Map();
-  cur.forEach(o => { const k = o.media_buyer_id || "none"; const r = byBuyer.get(k) || { n: 0, rev: 0, del: 0, ret: 0 }; r.n++; r.rev += Number(o.order_value_naira || 0); if (o.order_status === "delivered") r.del++; if (o.order_status === "returned") r.ret++; byBuyer.set(k, r); });
-  const nameOf = id => { const b = (buyers || []).find(x => x.id === id); return b ? (b.name || b.code) : "Unassigned"; };
-  const rows = [...byBuyer.entries()].sort((a, b) => b[1].n - a[1].n);
-  const fund = wallet.fundingWalletBalance;
-  el.innerHTML = `
-    <div class="sh"><div class="sh-title">Company overview</div><div class="sh-actions" id="qaActions"></div></div>
-    ${fund != null ? `<div class="wallet-chip" onclick="bvGoToTab('wallet')">💰 ${fund < 0 ? "⚠️ Funding wallet low" : "Funding wallet"}: ${fN(fund)} <span style="opacity:.7;">→ Wallet</span></div>` : ""}
-    ${setup && !setup.done ? bvSetupChecklistHtml(setup) : ""}
-    <div class="g4">
-      <div class="kc"><div class="kc-lbl">Orders · 7 days</div><div class="kc-val">${cur.length}</div><div class="kc-sub">${delta(cur.length, old.length)}</div></div>
-      <div class="kc"><div class="kc-lbl">Order value · 7 days</div><div class="kc-val a">${fN(sum(cur))}</div><div class="kc-sub">${delta(sum(cur), sum(old))}</div></div>
-      <div class="kc"><div class="kc-lbl">Delivery rate · 7 days</div><div class="kc-val ${rate == null ? "" : rate >= 70 ? "a" : rate >= 50 ? "w" : "d"}">${rate == null ? "—" : rate.toFixed(0) + "%"}</div><div class="kc-sub">${cnt(cur, "delivered")} delivered · ${cnt(cur, "returned")} returned</div></div>
-      <div class="kc"><div class="kc-lbl">Waiting to be handled</div><div class="kc-val ${cnt(cur, "pending") ? "w" : ""}">${cnt(cur, "pending")}</div><div class="kc-sub">pending orders this week</div></div>
-    </div>
-    <div class="panel">
-      <div class="ph"><div class="ph-title">Media buyers · last 7 days</div><div class="ph-count">${(buyers || []).length} buyers</div></div>
-      ${!rows.length ? `<div class="empty"><div class="empty-ico">📦</div>No orders in the last 7 days.</div>` : `<div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Orders</th><th>Order value</th><th>Delivered</th><th>Returned</th></tr>
-        ${rows.map(([id, r]) => `<tr><td class="s n">${escH(id === "none" ? "Unassigned" : nameOf(id))}</td><td>${r.n}</td><td>${fN(r.rev)}</td><td>${r.del}</td><td>${r.ret}</td></tr>`).join("")}
-      </table></div>`}
-      <div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Ad spend and campaigns are personal to each buyer. See ROAS per buyer on <a href="javascript:void(0)" onclick="bvGoToTab('leaderboard')" style="color:var(--accent);">Leaderboard</a>.</div>
-    </div>`;
-}
 
 // ── QUICK ACTION HANDLERS ─────────────────────────────────────────────────────
 async function triggerMetrics() {
