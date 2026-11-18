@@ -1870,6 +1870,7 @@ textarea.cat-in{min-height:78px;resize:vertical;}
 .adx-err b{display:block;font-size:15.5px;margin-bottom:4px;}.adx-err p{margin:6px 0;font-size:14px;line-height:1.45;color:var(--text2);}
 .adx-err details{margin:6px 0;font-size:13px;color:var(--muted);}.adx-err small{display:block;margin-top:6px;word-break:break-word;}
 </style>
+<link rel="stylesheet" href="/rv/settings-ui.css?v=1">
 </head>
 <body>
 
@@ -13097,30 +13098,54 @@ let bvSettingsSec = "accounts";
 let bvSetOpen = false; // phones: false = the list of sections, true = one section open
 function bvLimitedRole() { const r = window.myProfile?.role; return r === "delivery_agent" || r === "customer_care"; }
 const BV_SHOW_WHATSAPP = false; // switch on once the Revora WhatsApp account is verified
+const BV_SET_ICONS = {
+  accounts: '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
+  pages: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 21V9"/>',
+  domains: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
+  whatsapp: '<path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.5A8 8 0 1121 12z"/>',
+  aiapps: '<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7L19 15z"/>',
+  business: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 21v-4h6v4"/>',
+  billing: '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/>',
+  automation: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  aiteam: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>',
+  security: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/>',
+  help: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/>',
+  ext: '<path d="M7 17L17 7M8 7h9v9"/>'
+};
+const bvSetIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${BV_SET_ICONS[id] || ""}</svg>`;
+// Settings are grouped by what the person is trying to do: connect things, run the business, automate, manage the account.
 function bvSettingsSections(isAdmin) {
   // Riders and customer care have no ad accounts, pixels or domains: they only manage their own alerts.
   const r = window.myProfile?.role;
-  if (r === "delivery_agent" || r === "customer_care") return [{ id: "automation", icon: "🔔", label: "Alerts & notifications" }];
-  const phone = mobileMq.matches; // ad accounts, pages and datasets have their own screens on phones
-  const list = [
-    ...(phone ? [] : [{ id: "accounts", icon: "🔌", label: "Ad accounts" }]),
-    ...(!phone && ["owner", "admin", "buyer"].includes(r) ? [{ id: "pages", icon: "📄", label: "Pages" }] : []),
-    ...(BV_SHOW_WHATSAPP && ["owner", "admin", "buyer"].includes(r) ? [{ id: "whatsapp", icon: "💬", label: "WhatsApp" }] : []),
-    { id: "domains", icon: "🌐", label: "Domains" },
-    ...(!phone && ["owner", "admin", "buyer"].includes(r) ? [{ id: "events", icon: "📡", label: "Event Manager" }] : []),
-    { id: "automation", icon: "⚙️", label: "Automation & alerts" },
-    { id: "business", icon: "🏢", label: isAdmin ? "Business & team" : "Business" },
-    ...(isAdmin ? [{ id: "billing", icon: "💳", label: "Billing" }] : []),
-    { id: "help", icon: "🛟", label: "Help & support" },
-    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "security", icon: "🔐", label: "Security" }] : []),
-    ...(["owner", "admin", "buyer"].includes(r) ? [{ id: "aiapps", icon: "🤖", label: "AI apps" }] : []),
+  if (r === "delivery_agent" || r === "customer_care") return [{ id: "automation", group: "Automation", label: "Alerts & notifications" }];
+  const phone = mobileMq.matches; // ad accounts and pages have their own screens on phones
+  const pro = ["owner", "admin", "buyer"].includes(r);
+  return [
+    ...(phone ? [] : [{ id: "accounts", group: "Connections", label: "Ad accounts" }]),
+    ...(!phone && pro ? [{ id: "pages", group: "Connections", label: "Pages & pixels" }] : []),
+    { id: "domains", group: "Connections", label: "Domains" },
+    ...(BV_SHOW_WHATSAPP && pro ? [{ id: "whatsapp", group: "Connections", label: "WhatsApp" }] : []),
+    ...(pro ? [{ id: "aiapps", group: "Connections", label: "AI apps" }] : []),
+    { id: "business", group: "Business & team", label: isAdmin ? "Company & team" : "Company" },
+    ...(isAdmin ? [{ id: "billing", group: "Business & team", label: "Billing" }] : []),
+    { id: "automation", group: "Automation", label: "Automation & alerts" },
+    ...(pro ? [{ id: "aiteam", group: "Automation", label: "AI Team", link: "/ai-team.html" }] : []),
+    ...(pro ? [{ id: "security", group: "Account", label: "Security" }] : []),
+    { id: "help", group: "Account", label: "Help & support" },
   ];
-  return list;
+}
+function bvSettingsNavHtml(isAdmin) {
+  let g = "";
+  return bvSettingsSections(isAdmin).map(x => {
+    const head = x.group !== g ? `<div class="set-grp">${escH(x.group)}</div>` : ""; g = x.group;
+    return `${head}<button type="button" class="set-nav-btn ${x.id === bvSettingsSec ? "active" : ""}" data-sec="${x.id}" ${x.link ? `data-link="${x.link}"` : ""}><span>${bvSetIcon(x.id)}</span>${escH(x.label)}${x.link ? `<svg class="ext" viewBox="0 0 24 24" aria-hidden="true">${BV_SET_ICONS.ext}</svg>` : ""}</button>`;
+  }).join("");
 }
 function bvSettingsWire() {
   const nav = document.getElementById("setNav"), body = document.getElementById("setBody");
   if (!nav || !body) return;
   nav.querySelectorAll(".set-nav-btn").forEach(btn => btn.onclick = () => {
+    if (btn.dataset.link) { location.href = btn.dataset.link; return; }
     bvSettingsSec = btn.dataset.sec;
     body.dataset.active = bvSettingsSec;
     if (body.parentElement.dataset.m) { bvSetOpen = true; body.parentElement.dataset.m = "detail"; bvUpdateAppBar(); window.scrollTo(0, 0); }
@@ -13196,7 +13221,7 @@ async function renderSettings(el) {
     ${(window.myProfile?.role === "delivery_agent" || window.myProfile?.role === "customer_care") ? "<style>#fbConnectPanel,#killRulesPanel,#domainsPanel,#aiAgentPanel,[data-sec=accounts],[data-sec=business],[data-sec=domains],[data-sec=billing]{display:none!important}</style>" : ""}
     <div id="setupCheckSlot"></div>
     <div class="set-wrap" ${mobileMq.matches ? `data-m="${bvSetOpen || bvLimitedRole() ? "detail" : "list"}"` : ""}>
-    <nav class="set-nav" id="setNav">${bvSettingsSections(isAdmin).map(x => `<button type="button" class="set-nav-btn ${x.id === bvSettingsSec ? "active" : ""}" data-sec="${x.id}"><span>${x.icon}</span>${x.label}</button>`).join("")}</nav>
+    <nav class="set-nav" id="setNav">${bvSettingsNavHtml(isAdmin)}</nav>
     <div class="set-body" id="setBody" data-active="${bvSettingsSec}">
 
     ${oauthToast ? `<div class="msg ${oauthToast.ok ? "ok" : "err"}" style="display:block;margin-bottom:14px;">${oauthToast.ok ? "✅" : "❌"} ${escH(oauthToast.detail)}</div>` : ""}
@@ -13222,7 +13247,7 @@ async function renderSettings(el) {
     <div class="panel" data-sec="automation" id="killRulesPanel"></div>
 
     <div class="panel" data-sec="domains" id="domainsPanel"></div>
-    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="events" id="eventsPanel"></div>' : ""}
+    ${["owner", "admin", "buyer"].includes(window.myProfile?.role) ? '<div class="panel" data-sec="pages" id="eventsPanel"></div>' : ""}
 
     ${isAdmin ? '<div class="panel" data-sec="billing" id="billingPanel"></div>' : ""}
 
@@ -13361,6 +13386,7 @@ async function renderSettings(el) {
     </div>` : ""}
     </div></div>`;
   bvSettingsWire();
+  try { window.rvSettingsPolish && window.rvSettingsPolish(); } catch (e) {}
   bvUpdateAppBar();
   bvRenderSetupSlot();
   bvRenderTransferNames();
@@ -15146,6 +15172,7 @@ init().then(() => {
   if (window.bvPendingAi || location.hash === "#ai") { window.bvPendingAi = false; history.replaceState(null, "", location.pathname + location.search); toggleChat(true); }
 });
 </script>
+<script src="/rv/settings-ui.js?v=1"></script>
 <script src="/rv/notifications.js"></script>
 <script src="/rv/chat-smart.js"></script>
 </body>

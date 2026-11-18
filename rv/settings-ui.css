@@ -1,0 +1,72 @@
+/* Settings: calmer layout, line icons, grouped navigation. Glass hint pill + nudge pill. Uses the dashboard's own colour variables, so light and dark both work. */
+
+/* ---------- glass hint pill (hover / tap) ---------- */
+.rv-tip, .rv-nudge {
+  background: color-mix(in srgb, var(--panel, #fff) 70%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid color-mix(in srgb, var(--border, #e4e7ec) 75%, transparent);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, .14), 0 1px 2px rgba(16, 24, 40, .06), inset 0 1px 0 rgba(255, 255, 255, .45);
+  color: var(--text, #1d2939);
+  font: 500 12.5px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.rv-tip {
+  position: fixed; z-index: 10000; max-width: min(300px, 84vw); padding: 9px 15px; border-radius: 18px; text-align: center;
+  opacity: 0; transform: translateY(4px) scale(.98); transition: opacity .16s ease, transform .16s ease; pointer-events: none;
+}
+.rv-tip.on { opacity: 1; transform: none; }
+
+/* ---------- nudge pill (any screen) ---------- */
+.rv-nudge {
+  position: fixed; left: 50%; bottom: 26px; z-index: 9000; display: flex; align-items: center; gap: 10px;
+  max-width: min(520px, 92vw); padding: 7px 8px 7px 16px; border-radius: 999px;
+  opacity: 0; transform: translate(-50%, 14px); transition: opacity .25s ease, transform .25s ease; pointer-events: none;
+}
+.rv-nudge.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.rv-nudge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent, #1877F2); flex: none; }
+.rv-nudge .tx { font-size: 13px; font-weight: 500; }
+.rv-nudge .go { border: 0; background: var(--accent, #1877F2); color: #fff; border-radius: 999px; padding: 6px 13px; font: 600 12.5px Inter, system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.rv-nudge .x { border: 0; background: transparent; color: var(--text2, #667085); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1; }
+.rv-nudge .x:hover { background: color-mix(in srgb, var(--text2, #667085) 14%, transparent); }
+.setup-slim { display: none !important; } /* the nudge pill replaces the old "Next:" strip */
+@media (max-width: 760px) { .rv-nudge { bottom: calc(80px + env(safe-area-inset-bottom)); } }
+
+/* ---------- Settings navigation: grouped, line icons ---------- */
+.set-nav { min-width: 236px; gap: 1px; }
+.set-grp { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--text2, #667085); opacity: .8; padding: 16px 12px 6px; }
+.set-grp:first-child { padding-top: 2px; }
+.set-nav-btn { height: 38px; padding: 0 12px; gap: 11px; border-radius: 10px; font-weight: 500; font-size: 13.5px; color: var(--text2, #667085); transition: background .12s, color .12s; }
+.set-nav-btn:hover { background: var(--panel2, #f2f4f7); color: var(--text, #1d2939); }
+.set-nav-btn.active { background: var(--accentBg, #eaf2ff); color: var(--accent, #1877F2); font-weight: 600; }
+.set-nav-btn span { display: inline-flex; width: 18px; height: 18px; flex: none; align-items: center; justify-content: center; }
+.set-nav-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.set-nav-btn .ext { margin-left: auto; width: 14px; height: 14px; opacity: .45; }
+
+/* ---------- Settings panels: quieter cards, one clear title ---------- */
+.set-body .panel { border-radius: 16px; padding: 20px 22px; border: 1px solid var(--border, #e4e7ec); background: var(--panel, #fff); box-shadow: 0 1px 2px rgba(16, 24, 40, .04); margin-bottom: 16px; }
+.set-body .panel .ph { border-bottom: 0; padding-bottom: 0; margin-bottom: 14px; align-items: center; }
+.set-body .panel .ph-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 650; letter-spacing: -.015em; color: var(--text, #1d2939); }
+.set-body .set-card { border-radius: 14px; box-shadow: none; }
+.set-body .set-ic { background: var(--panel2, #f2f4f7) !important; filter: grayscale(1); opacity: .85; border-radius: 9px; }
+.set-body .set-lbl { font-size: 11px; letter-spacing: .07em; opacity: .8; }
+.rv-i { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border, #e4e7ec); background: var(--panel2, #f2f4f7); color: var(--text2, #667085); font: 600 11px/1 Inter, system-ui, sans-serif; display: inline-grid; place-items: center; cursor: help; padding: 0; flex: none; }
+.rv-i:hover { color: var(--accent, #1877F2); border-color: var(--accentBdr, #b2d0ff); }
+details.rv-how { border: 1px solid var(--border, #e4e7ec); border-radius: 12px; margin: 0 0 14px; background: var(--panel2, #f9fafb); }
+details.rv-how > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--text, #1d2939); list-style: none; display: flex; align-items: center; justify-content: space-between; }
+details.rv-how > summary::-webkit-details-marker { display: none; }
+details.rv-how > summary::after { content: '+'; color: var(--text2, #667085); font-weight: 500; }
+details.rv-how[open] > summary::after { content: '–'; }
+details.rv-how > .set-steps { margin: 0; border-radius: 0 0 12px 12px; background: transparent; padding-top: 2px; }
+
+/* phone: the Settings list */
+@media (max-width: 760px) {
+  .set-wrap:not([data-m="list"]) .set-grp { display: none; }
+  .set-wrap[data-m="list"] .set-nav { gap: 0; }
+  .set-wrap[data-m="list"] .set-grp { padding: 22px 18px 8px; }
+  .set-wrap[data-m="list"] .set-nav .set-nav-btn { height: 56px; padding: 0 16px; gap: 14px; border-radius: 0; background: var(--panel, #fff); color: var(--text, #1d2939); font-size: 15px; font-weight: 500; border-bottom: 1px solid var(--border, #e4e7ec); }
+  .set-wrap[data-m="list"] .set-nav .set-grp + .set-nav-btn { border-top-left-radius: 14px; border-top-right-radius: 14px; }
+  .set-wrap[data-m="list"] .set-nav .set-nav-btn:has(+ .set-grp), .set-wrap[data-m="list"] .set-nav .set-nav-btn:last-child { border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; border-bottom: 0; }
+  .set-wrap[data-m="list"] .set-nav .set-nav-btn span { width: 34px; height: 34px; border-radius: 10px; background: var(--accentBg, #eaf2ff); color: var(--accent, #1877F2); }
+  .set-wrap[data-m="list"] .set-nav .set-nav-btn svg { width: 19px; height: 19px; }
+  .set-wrap[data-m="list"] .set-nav .set-nav-btn .ext { display: none; }
+}
