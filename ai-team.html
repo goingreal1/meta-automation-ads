@@ -93,12 +93,15 @@ button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:d
 
   <div class="card"><b>Settings</b>
     <div class="set" style="margin-top:10px">
-      <label><input type="checkbox" id="sAuto"> Let the media buyer launch without my approval <span class="note">(off = it waits for you)</span></label>
-      <label>Daily spend cap (₦) <input type="number" id="sCap" min="0" style="width:130px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit"></label>
+      <label><input type="checkbox" id="sDaily"> Hold a meeting by itself every day</label>
+      <label>at <select id="sHour" style="padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit"></select> Lagos time</label>
+      <label><input type="checkbox" id="sAuto"> Fully automatic <span class="note">(off = I approve images and launches myself)</span></label>
+      <label>Daily spend cap (&#8358;) <input type="number" id="sCap" min="0" style="width:130px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit"></label>
     </div>
+    <div class="note" style="margin-top:8px">Fully automatic means that after the daily meeting the team makes the images, approves them, and schedules the launches for 12:05 AM, with nobody clicking. It always stays within the spend cap and your kill switches, runs under your account, and tells you what it did. Keep it off until you trust the results.</div>
     <div style="margin-top:10px"><button id="sSave">Save settings</button> <span class="note" id="sMsg"></span></div>
     <div class="note" id="claimsNote" style="margin-top:8px"></div>
-    <div class="note" style="margin-top:8px">The team meets and decides, Zara makes the images, and Tobi schedules the approved launches for 12:05 AM.</div>
+    <div class="note" style="margin-top:8px">Meetings, images and launches are described above.</div>
   </div>
 
   <div class="card"><b>Past meetings</b><div id="past" style="margin-top:6px"><div class="note">None yet.</div></div></div>
@@ -109,6 +112,7 @@ button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:d
 var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
 var sb = window.supabase.createClient(SUPA_URL, ANON);
 var $ = function (id) { return document.getElementById(id); };
+(function () { var h = document.getElementById("sHour"), o = ""; for (var i = 0; i < 24; i++) o += '<option value="' + i + '">' + (i % 12 || 12) + ':00 ' + (i < 12 ? "AM" : "PM") + "</option>"; h.innerHTML = o; })();
 var NAMES = { team_lead: ["Ada", "Team Lead", "tl"], creative: ["Zara", "Creative", "cr"], media_buyer: ["Tobi", "Media Buyer", "mb"], customer_service: ["Ife", "Customer Service", "cs"], you: ["You", "", "you"] };
 var S = { launches: [], images: [], imagesReady: false, claims: false, meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false };
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -172,7 +176,7 @@ async function loadPast() {
   S.ready = !!o.ai_ready; S.canManage = !!o.can_manage; S.images = o.images || []; S.launches = o.launches || []; S.imagesReady = !!o.images_ready; S.claims = !!o.claims_verified;
   $("claimsNote").textContent = S.claims ? "Claims: your business is verified. The team may use only the approved claims you list on each product." : "Claims: your business is not verified yet, so the team makes no product claims beyond the plain description. Revora verifies businesses and can then switch approved claims on.";
   var rd = $("ready"); rd.className = "chip " + (S.ready ? "live" : "off"); rd.innerHTML = S.ready ? '<span class="dot"></span> AI on' : "Needs OpenAI key";
-  if (o.team) { $("sAuto").checked = !!o.team.auto_launch; $("sCap").value = Number(o.team.daily_budget_cap_naira || 0); }
+  if (o.team) { $("sDaily").checked = !!o.team.daily_meeting; $("sHour").value = String(o.team.meeting_hour_lagos == null ? 22 : o.team.meeting_hour_lagos); $("sAuto").checked = !!o.team.auto_launch; $("sCap").value = Number(o.team.daily_budget_cap_naira || 0); }
   $("sSave").disabled = !S.canManage; $("start").disabled = !S.canManage || (S.meeting && S.meeting.status === "running");
   var ms = o.meetings || [];
   $("past").innerHTML = ms.length ? ms.map(function (m) { return '<div class="past" data-id="' + m.id + '"><span class="chip ' + (m.status === "running" ? "live" : (m.status === "failed" ? "off" : "")) + '">' + esc(m.status) + '</span><div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(m.topic || "Meeting") + '</div><div class="note">' + new Date(m.started_at).toLocaleString() + "</div></div></div>"; }).join("") : '<div class="note">None yet.</div>';
@@ -251,8 +255,9 @@ async function say() {
 }
 $("sayb").onclick = say; $("say").onkeydown = function (e) { if (e.key === "Enter") say(); };
 $("sSave").onclick = async function () {
+  if ($("sAuto").checked && !(Number($("sCap").value) > 0)) { $("sMsg").textContent = "Set a daily spend cap above 0 first, or the team may not spend anything."; return; }
   $("sMsg").textContent = "Saving…";
-  var o = await api({ action: "settings", auto_launch: $("sAuto").checked, daily_budget_cap_naira: Number($("sCap").value) || 0 });
+  var o = await api({ action: "settings", auto_launch: $("sAuto").checked, daily_meeting: $("sDaily").checked, meeting_hour_lagos: Number($("sHour").value), daily_budget_cap_naira: Number($("sCap").value) || 0 });
   $("sMsg").textContent = o.error ? o.error : "Saved.";
 };
 (async function () {
