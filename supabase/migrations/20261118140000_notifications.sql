@@ -200,6 +200,30 @@ end $$;
 drop trigger if exists notify_topup on wallet_topups;
 create trigger notify_topup after insert or update of status on wallet_topups for each row execute function trg_notify_topup();
 
+-- A customer messages you on WhatsApp: show it in the bell. The phone push for this already
+-- exists (handle-whatsapp-reply), so p_push = false. One entry per chat per 10 minutes, so a
+-- customer sending five messages in a row is one line, not five.
+create or replace function trg_notify_inbound_message() returns trigger language plpgsql security definer set search_path = public as $$
+declare c record; snippet text;
+begin
+  if new.direction <> 'inbound' then return new; end if;
+  select company_id, media_buyer_id, coalesce(nullif(trim(whatsapp_name), ''), phone) as who into c from conversations where id = new.conversation_id;
+  if c.company_id is null then return new; end if;
+  snippet := case when new.message_type in ('text', 'button', 'interactive') then left(coalesce(new.content, ''), 120)
+                  when new.message_type = 'audio' then 'Sent a voice note'
+                  when new.message_type = 'image' then 'Sent a photo'
+                  when new.message_type = 'video' then 'Sent a video'
+                  when new.message_type = 'document' then 'Sent a document'
+                  else 'New message' end;
+  perform rv_notify(c.company_id, 'messages', 'message_new', '💬 ' || coalesce(c.who, 'New message'), snippet,
+    '/dashboard_new.html?open=conv:' || new.conversation_id, 'info', jsonb_build_object('conversation_id', new.conversation_id),
+    'msg:' || new.conversation_id || ':' || floor(extract(epoch from now()) / 600)::bigint, c.media_buyer_id, null, false);
+  return new;
+exception when others then return new;
+end $$;
+drop trigger if exists notify_inbound_message on messages;
+create trigger notify_inbound_message after insert on messages for each row when (new.direction = 'inbound') execute function trg_notify_inbound_message();
+
 -- ───────────────────────── Revora's own visibility ─────────────────────────
 create table if not exists site_visits (
   id bigint generated always as identity primary key,

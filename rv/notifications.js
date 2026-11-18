@@ -13,6 +13,7 @@
   var FILTERS = [
     { k: "all", label: "All" },
     { k: "orders", label: "Orders", cats: ["orders", "leads"] },
+    { k: "chats", label: "Chats", cats: ["messages"] },
     { k: "reports", label: "Reports", cats: ["reports"] },
     { k: "money", label: "Money", cats: ["money"] },
   ];
