@@ -567,9 +567,7 @@ function bvOpenCampaignBuilder(presetObjective) {
           </div>
 
           <div class="bv-builder-section" id="bvSection-ad">
-            <div style="font-size:11.5px;color:var(--muted);margin:0 0 14px;line-height:1.5;">
-              This is <b style="color:var(--text2);">ad content for Meta</b> — the video/image people see in the Facebook/Instagram feed. It's not the product's own photo; upload that on the <b style="color:var(--text2);">Products</b> tab instead.
-            </div>
+            <div class="cs-lead">Upload what people will see in their feed. <button type="button" class="rv-i" aria-label="About this" data-hint="This is the video or image shown in the Facebook and Instagram feed. It is not the product's own photo: upload that on the Products tab instead.">i</button></div>
 
             <div class="bv-section-card" data-ms="media">
               <div class="bv-section-card-title"><span class="bv-ico">👤</span> Identity</div>
@@ -588,15 +586,15 @@ function bvOpenCampaignBuilder(presetObjective) {
             <div class="bv-section-card ms-split" data-ms="media copy adv">
               <div class="bv-section-card-title"><span class="bv-ico">🎬</span> Ad creative</div>
               <div class="dz" data-ms="media" id="dropZone" onclick="document.getElementById('f_file').click()">
-                <div class="dz-ico">🎬</div>
-                <div class="dz-txt">Drag & drop your ad video or image here</div>
-                <div class="dz-hint">MP4, MOV, JPG, PNG — max 100MB</div>
+                <div class="dz-ico">${icon("upload", 24)}</div>
+                <div class="dz-txt">Drop a video or image here, or tap to upload</div>
+                <div class="dz-hint">MP4, MOV, JPG, PNG, up to 100MB</div>
                 <div class="dz-prev" id="dzPrev"></div>
                 <input type="file" id="f_file" accept="video/*,image/*" style="display:none" onchange="handleFilePick(this)">
-                <div style="margin-top:8px;font-size:11px;"><button type="button" class="btn btn-a" style="width:auto;padding:8px 16px;font-size:12px;" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()">📁 Choose from creative vault ▾</button></div>
+                <div style="margin-top:8px;font-size:11px;"><button type="button" class="btn btn-a" style="width:auto;padding:8px 16px;font-size:12px;" onclick="event.stopPropagation(); bvOpenReuseCreativeModal()">Choose from your vault</button></div>
               </div>
               <div id="dzFit" data-ms="media"></div>
-              <button type="button" data-ms="media" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:10px;" onclick="bvOpenAdPreview()">👁 Preview on phone &amp; laptop</button>
+              <button type="button" data-ms="media" class="btn btn-g" style="width:auto;padding:6px 12px;font-size:12px;margin-top:10px;" onclick="bvOpenAdPreview()">Preview</button>
               <div class="fg" data-ms="copy adv" style="margin-top:14px;">
                 <div class="field" data-ms="adv"><label>Mechanism</label>
                   <select id="f_mechanism">
@@ -693,6 +691,7 @@ function bvOpenCampaignBuilder(presetObjective) {
   bvLoadBuilderIdentity();
   bvRenderBuilderSummary();
   bvWzGo("goal");
+  try { bvMsDestCards(); document.getElementById("f_objective")?.addEventListener("change", () => { try { bvMsDestCards(); } catch (e) {} }); } catch (e) {}
   bvDraftStart();
 
   // Drag-and-drop
