@@ -21,6 +21,7 @@
 | 11-18 | catalog, orders, delivery, forms, websites, conversations, media, approvals, leaderboard, wallet |
 | 19-22 | wallet (continued), settings, HQ, AI chat |
 | 23 | **Overview** (rebuilt) |
-| 24 | chat cards and the startup code (must stay last) |
+| 24 | **Campaigns** (rebuilt: list on the left, details on the right) |
+| 25 | chat cards and the startup code (must stay last) |
 
 Caching: `vercel.json` serves `/app/*` with `max-age=0, must-revalidate`; the service worker (`sw.js`) keeps the last copy for offline use.

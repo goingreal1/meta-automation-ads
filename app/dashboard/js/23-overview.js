@@ -1,4 +1,4 @@
-// Revora dashboard, part 23 of 24: OVERVIEW (rebuilt). One screen for everyone; what it shows depends on the role and on what data exists.
+// Revora dashboard, part 23 of 25: OVERVIEW (rebuilt). One screen for everyone; what it shows depends on the role and on what data exists.
 //   - People with ad accounts see live Meta numbers (spend, cost per order, page views ...) next to their orders.
 //   - Everyone sees orders, the order pipeline and what needs attention. Admins also see the media buyers table.
 // Nothing here is invented: a number that the system does not have is left out, not guessed.
@@ -12,6 +12,9 @@ const RV_IC = {
   check: '<path d="M20 6L9 17l-5-5"/>',
   refresh: '<path d="M21 12a9 9 0 01-15.5 6.2L3 16M3 12a9 9 0 0115.5-6.2L21 8M21 3v5h-5M3 21v-5h5"/>',
   card: '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  chev: '<path d="M9 6l6 6-6 6"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
 };
 const rvIc = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${RV_IC[n] || ""}</svg>`;
