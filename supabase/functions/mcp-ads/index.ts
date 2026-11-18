@@ -1,9 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { AwsClient } from "npm:aws4fetch@1.0.20";
+import { withR2, r2KeyFromUrl, r2Delete } from "../_shared/r2storage.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+const admin = withR2(createClient(SUPABASE_URL, SERVICE_KEY));
 const SITE = "https://metaautomationads.vercel.app";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -2982,10 +2982,7 @@ const TOOLS = [
       if (error) return {
         error: error.message
       };
-      if (row.storage_provider === "r2" && row.storage_path && Deno.env.get("R2_ACCOUNT_ID")) {
-        const r2 = new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!, secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!, service: "s3", region: "auto" });
-        await r2.fetch(`https://${Deno.env.get("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com/${Deno.env.get("R2_BUCKET")}/${String(row.storage_path).split("/").map(encodeURIComponent).join("/")}`, { method: "DELETE" }).catch(() => {});
-      }
+      { const rk = r2KeyFromUrl(String(row.public_url)); if (rk) await r2Delete(rk); }
       if (row.public_url.startsWith(VAULT)) await admin.storage.from("creative-vault").remove([
         decodeURIComponent(row.public_url.slice(VAULT.length))
       ]);

@@ -33,15 +33,24 @@ module.exports = async (req, res) => {
   const started = Date.now();
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const id = String((req.body && req.body.asset_id) || "");
-  if (!token || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Missing token or asset_id." });
+  const ticket = String((req.body && req.body.ticket) || "");
+  if ((!token && !ticket) || !/^[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ error: "Missing token or asset_id." });
   const H = { Authorization: `Bearer ${token}`, apikey: ANON };
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tc-"));
   const src = path.join(tmp, "in"), out = path.join(tmp, "out.mp4");
   try {
-    const me = await fetch(`${SUPA}/auth/v1/user`, { headers: H });
-    if (!me.ok) return res.status(401).json({ error: "Please log in again." });
-    const rows = await fetch(`${SUPA}/rest/v1/creative_assets?id=eq.${id}&select=id,public_url,asset_type,file_name`, { headers: H }).then((r) => r.json());
-    const a = Array.isArray(rows) ? rows[0] : null;
+    // Two ways in: the logged-in person's token, or a ticket the server made for this one file (upload links have no login).
+    const adm = (b) => fetch(`${SUPA}/functions/v1/creative-admin`, { method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ ...b, asset_id: id, ticket }) }).then((r) => r.json());
+    let a;
+    if (ticket) {
+      a = await adm({ action: "t_info" });
+      if (a.error) return res.status(403).json({ error: a.error });
+    } else {
+      const me = await fetch(`${SUPA}/auth/v1/user`, { headers: H });
+      if (!me.ok) return res.status(401).json({ error: "Please log in again." });
+      const rows = await fetch(`${SUPA}/rest/v1/creative_assets?id=eq.${id}&select=id,public_url,asset_type,file_name`, { headers: H }).then((r) => r.json());
+      a = Array.isArray(rows) ? rows[0] : null;
+    }
     if (!a || a.asset_type !== "video" || !/^https:\/\//.test(a.public_url || "")) return res.status(404).json({ error: "Video not found." });
 
     const dl = await fetch(a.public_url);
@@ -73,11 +82,11 @@ module.exports = async (req, res) => {
 
     const size = fs.statSync(out).size;
     const base = String(a.file_name || "video").replace(/\.[^.]+$/, "") || "video";
-    const sign = await fetch(`${SUPA}/functions/v1/media`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: base + ".mp4", contentType: "video/mp4", size }) }).then((r) => r.json());
+    const sign = ticket ? await adm({ action: "t_sign" }) : await fetch(`${SUPA}/functions/v1/media`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: base + ".mp4", contentType: "video/mp4", size }) }).then((r) => r.json());
     if (!sign.uploadUrl) return res.status(502).json({ error: sign.error || "Couldn't start the upload." });
     const put = await fetch(sign.uploadUrl, { method: "PUT", headers: { "Content-Type": "video/mp4" }, body: fs.readFileSync(out) });
     if (!put.ok) return res.status(502).json({ error: `Upload failed (${put.status}).` });
-    const done = await fetch(`${SUPA}/functions/v1/creative-admin`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ action: "replace_file", id, key: sign.key, content_type: "video/mp4" }) }).then((r) => r.json());
+    const done = ticket ? await adm({ action: "t_replace" }) : await fetch(`${SUPA}/functions/v1/creative-admin`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ action: "replace_file", id, key: sign.key, content_type: "video/mp4" }) }).then((r) => r.json());
     if (done.error) return res.status(502).json({ error: done.error });
     return res.json({ converted: true, from: `${v}/${au}`, bytes: size, asset: done.asset });
   } catch (e) {

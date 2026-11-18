@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { AwsClient } from "npm:aws4fetch@1.0.20";
+import { r2KeyFromUrl, r2Delete } from "../_shared/r2storage.ts";
 
 // Rename a creative, edit its ad text, or delete it (and its file). Logged-in owners, admins and media buyers, for their own company only.
 //   POST { action: "update", id, name?, primary_text?, headline?, description?, cta_type? }   -> changes every saved copy of that file
@@ -12,7 +13,52 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...cors } });
 const CTAS = new Set(["SHOP_NOW", "LEARN_MORE", "SIGN_UP", "ORDER_NOW", "BUY_NOW", "GET_OFFER", "CONTACT_US", "WHATSAPP_MESSAGE", "SEND_MESSAGE", "BOOK_NOW", "APPLY_NOW", "GET_QUOTE", "DOWNLOAD", "SUBSCRIBE", "NO_BUTTON"]);
 
-export async function removeFile(row: { storage_provider?: string | null; storage_path?: string | null }) {
+async function hmacHex(key: string, msg: string) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg));
+  return [...new Uint8Array(sig)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+async function ticketOk(assetId: string, ticket: string) {
+  const { data } = await db.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+  if (!data?.value || !ticket) return false;
+  const want = await hmacHex(String(data.value), `transcode:${assetId}`);
+  return want.length === ticket.length && want === ticket;
+}
+function r2() {
+  const acc = Deno.env.get("R2_ACCOUNT_ID")!, bucket = Deno.env.get("R2_BUCKET")!;
+  let pub = (Deno.env.get("R2_PUBLIC_URL") ?? "").trim().replace(/\/+$/, ""); if (pub && !/^https?:\/\//.test(pub)) pub = "https://" + pub;
+  const client = new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!, secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!, service: "s3", region: "auto" });
+  const enc = (k: string) => k.split("/").map(encodeURIComponent).join("/");
+  return { client, pub, url: (k: string) => `https://${acc}.r2.cloudflarestorage.com/${bucket}/${enc(k)}`, publicUrl: (k: string) => `${pub}/${enc(k)}` };
+}
+async function ticketAction(b: any) {
+  const id = String(b?.asset_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !(await ticketOk(id, String(b?.ticket ?? "")))) return json({ error: "Not allowed." }, 403);
+  const { data: row } = await db.from("creative_assets").select("id, company_id, public_url, asset_type, file_name, storage_path, storage_provider").eq("id", id).maybeSingle();
+  if (!row) return json({ error: "Creative not found." }, 404);
+  const key = `creative-vault/converted/${id}.mp4`;
+  if (b.action === "t_info") return json({ public_url: row.public_url, asset_type: row.asset_type, file_name: row.file_name });
+  if (b.action === "t_sign") {
+    const R = r2(); const u = new URL(R.url(key)); u.searchParams.set("X-Amz-Expires", "900");
+    const sg = await R.client.sign(new Request(u.toString(), { method: "PUT", headers: { "content-type": "video/mp4" } }), { aws: { signQuery: true } });
+    return json({ uploadUrl: sg.url, key, headers: { "Content-Type": "video/mp4" } });
+  }
+  if (b.action === "t_replace") {
+    const R = r2();
+    const head = await R.client.fetch(R.url(key), { method: "HEAD" });
+    if (!head.ok) return json({ error: "The converted file isn't in storage." }, 409);
+    const oldUrl = row.public_url, oldKey = r2KeyFromUrl(String(oldUrl));
+    const { data: upd, error } = await db.from("creative_assets").update({ public_url: R.publicUrl(key), storage_path: key, storage_provider: "r2" }).eq("company_id", row.company_id).eq("public_url", oldUrl).select("*");
+    if (error) return json({ error: error.message }, 500);
+    if (oldKey && oldKey !== key) await r2Delete(oldKey);
+    return json({ ok: true, asset: (upd ?? []).find((x: any) => x.id === id) ?? upd?.[0] });
+  }
+  return json({ error: "Unknown action." }, 400);
+}
+
+export async function removeFile(row: { storage_provider?: string | null; storage_path?: string | null; public_url?: string | null }) {
+  const urlKey = row.public_url ? r2KeyFromUrl(row.public_url) : null;
+  if (urlKey) { await r2Delete(urlKey); return; }
   if (!row.storage_path) return;
   if (row.storage_provider === "r2") {
     const acc = Deno.env.get("R2_ACCOUNT_ID"), bucket = Deno.env.get("R2_BUCKET");
@@ -27,6 +73,12 @@ export async function removeFile(row: { storage_provider?: string | null; storag
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  // Ticket actions (t_*): the video converter on Vercel has no login. A ticket is HMAC(asset id) made by the server that saved the file,
+  // so it can touch exactly that one creative and nothing else.
+  {
+    const peek = await req.clone().json().catch(() => ({}));
+    if (typeof peek?.action === "string" && peek.action.startsWith("t_")) return await ticketAction(peek);
+  }
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: ud } = await db.auth.getUser(token);
   if (!ud?.user) return json({ error: "Please log in." }, 401);
@@ -99,7 +151,7 @@ Deno.serve(async (req) => {
   }
 
   if (b.action === "delete") {
-    const { data: rows } = await db.from("creative_assets").select("id, storage_provider, storage_path, launch_batch_id, campaign_name").eq("company_id", me.company_id).eq("public_url", src.public_url);
+    const { data: rows } = await db.from("creative_assets").select("id, storage_provider, storage_path, public_url, launch_batch_id, campaign_name").eq("company_id", me.company_id).eq("public_url", src.public_url);
     const used = (rows ?? []).filter((r: any) => r.launch_batch_id || r.campaign_name).length;
     if (used && b.force !== true) return json({ error: `This creative was used in ${used} ad${used > 1 ? "s" : ""}. Deleting it won't stop those ads, but you can't reuse it. Delete anyway?`, used, needs_force: true }, 409);
     const { error } = await db.from("creative_assets").delete().eq("company_id", me.company_id).eq("public_url", src.public_url);
