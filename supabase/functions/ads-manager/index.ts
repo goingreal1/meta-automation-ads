@@ -331,7 +331,11 @@ function readWaMessage(creative) {
 // -- list --
 async function loadAccountObjects(actId, token, range, needLifetimeAds, factor = 1, status = "all") {
   const eff = (level) => { const set = statusSet(status, level); return set ? { effective_status: JSON.stringify(set) } : {}; };
-  const [campaigns, adsets, ads, cIns, sIns, aIns, aLife] = await Promise.all([
+  // In the "Live" view an ad that was paused (by you or the kill rules) after it earned results must still show up under its ad set,
+  // otherwise the ad set says "1 purchase" and no ad shows where it came from. So for ads we read insights for every status,
+  // and add the paused ads that actually have spend in this range.
+  const adInsStatus = status === "live" ? "all" : status;
+  const [campaigns, adsets, liveAds, cIns, sIns, aIns, aLife, pausedAds] = await Promise.all([
     graphGetAll(`act_${actId}/campaigns`, {
       fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time",
       ...eff("campaign")
@@ -346,9 +350,15 @@ async function loadAccountObjects(actId, token, range, needLifetimeAds, factor =
     }, token),
     insightsByLevel(actId, "campaign", range, token, factor, status),
     insightsByLevel(actId, "adset", range, token, factor, status),
-    insightsByLevel(actId, "ad", range, token, factor, status),
-    needLifetimeAds ? insightsByLevel(actId, "ad", "lifetime", token, factor, status) : Promise.resolve(null)
+    insightsByLevel(actId, "ad", range, token, factor, adInsStatus),
+    needLifetimeAds ? insightsByLevel(actId, "ad", "lifetime", token, factor, adInsStatus) : Promise.resolve(null),
+    status === "live" ? graphGetAll(`act_${actId}/ads`, {
+      fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,thumbnail_url,object_story_spec}",
+      effective_status: JSON.stringify(STATUS_SETS.paused.ad)
+    }, token) : Promise.resolve([])
   ]);
+  const liveAdIds = new Set(liveAds.map((a) => a.id));
+  const ads = [...liveAds, ...pausedAds.filter((a) => !liveAdIds.has(a.id) && (aIns[a.id]?.spend ?? 0) > 0)];
   return {
     campaigns,
     adsets,
