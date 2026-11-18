@@ -2189,7 +2189,7 @@ function renderMore(c) {
     if (el.classList.contains("sidebar-group-lbl")) { close(); pendingLbl = el.textContent.trim(); return; }
     if (!el.classList.contains("tab-btn") || el.style.display === "none" || inBar.has(el.dataset.tab) || el.dataset.tab === "overview") return;
     if (pendingLbl) { close(); html += `<div class="more-lbl">${escH(pendingLbl)}</div><div class="more-list">`; open = true; pendingLbl = ""; }
-    const tab = el.dataset.tab, m = MORE_META[tab] || ["#8e8e93", ""], n = badgeOf(tab);
+    const tab = el.dataset.tab || ("link:" + el.dataset.link), m = MORE_META[tab] || (el.dataset.link ? ["#7c3aed", "Daily team meeting, images and launches"] : ["#8e8e93", ""]), n = badgeOf(tab);
     html += `<button type="button" class="more-row" data-more="${tab}"><span class="more-ic" style="background:${m[0]}">${el.querySelector(".tab-ico")?.innerHTML || ""}</span>
       <span class="more-tx"><b>${escH(tab === "settings" ? "Team, billing & more" : el.querySelector(".tab-label")?.textContent.trim() || tab)}</b>${m[1] ? `<small>${escH(m[1])}</small>` : ""}</span>${n ? `<span class="more-badge">${n > 99 ? "99+" : n}</span>` : ""}${MORE_CHEV}</button>`;
   });
@@ -2223,6 +2223,7 @@ function renderMore(c) {
     if (k === "__theme") { setTheme(theme === "dark" ? "light" : "dark"); render(); return; }
     if (k === "__logout") { document.getElementById("logoutBtnMobile").click(); return; }
     if (k.startsWith("adx:")) { bvAdxOpen(k.slice(4)); return; }
+    if (k.startsWith("link:")) { location.href = k.slice(5); return; }
     if (k === "__acct") { document.getElementById("hdrMenuBtn").click(); window.scrollTo(0, 0); return; }
     document.querySelector(`#tabsBar [data-tab="${k}"]`)?.click();
     window.scrollTo(0, 0);
@@ -2564,35 +2565,11 @@ async function adxLink(root) {
       <button type="button" class="adx-btn" onclick="bvFbStart('${sel}')">${conn ? "Reconnect Facebook" : "Continue with Facebook"}</button>
       ${avail.length ? `<div class="adx-h" style="margin-top:16px;">Found on your Facebook — tap to add</div>${avail.map(a => `<div class="adx-found"><div><b>${escH(a.name || a.account_id)}</b><small>${escH(a.account_id)}</small></div><button type="button" class="adx-btn small" onclick="bvAdxAddFound(this,'${conn.id}','${sel}','${escH(a.account_id)}','${escH(String(a.name || "").replace(/'/g, ""))}')">Add</button></div>`).join("")}` : ""}
     </div>
-    <div class="adx-opt"><h3>Or share with a Business ID</h3>
-      <ol class="adx-steps">
-        <li><b>Copy Revora's Business ID</b><div class="adx-copy"><code>${escH(bizId || "unavailable")}</code>${bizId ? `<button type="button" class="adx-btn small ghost" onclick="navigator.clipboard?.writeText('${escH(bizId)}');bvToast('Copied')">Copy</button>` : ""}</div></li>
-        <li><b>In Meta Business Settings</b>, open Users, then Partners, and tap <i>Add</i>. Choose <i>Give a partner access to your assets</i> and paste the ID.
-          <div class="adx-share"><span>Share all three in this one step:</span><div>✓ <b>Ad account</b> with <i>Manage ad account</i></div><div>✓ <b>Page</b> with <i>Create ads</i></div><div>✓ <b>Dataset (pixel)</b> with <i>Manage dataset</i></div></div></li>
-        <li><b>Paste your own Business ID</b> (Business Settings, then Business info) and save it.
-          <div class="adx-copy"><input id="adxBiz" inputmode="numeric" placeholder="e.g. 123456789012345" value="${escH(buyer?.meta_partner_business_id || "")}"><button type="button" class="adx-btn small" id="adxBizSave">Save</button></div></li>
-        <li><b>Check and import</b> your ad account.<button type="button" class="adx-btn ghost" id="adxSync" style="margin-top:8px;">Check and import</button><div id="adxSyncMsg"></div></li>
-      </ol></div>
+    <div class="adx-opt"><h3>Or share with a Business ID</h3><div id="bvBmHost"></div></div>
     ${(() => { const todo = (accountsList || []).filter(a => !a.meta_pixel_id || !a.fb_page_id); return todo.length ? `<div class="adx-h">Still to finish</div>${todo.map(a => `<button type="button" class="adx-step" onclick="bvAdxGo('acct','${a.id}')"><span class="adx-num">!</span><span class="adx-step-tx"><b>${escH(adxName(a))}</b><small>${[a.meta_pixel_id ? "" : "Needs a dataset", a.fb_page_id ? "" : "Needs a Page"].filter(Boolean).join(" · ")}</small></span>${ADX_CHEV}</button>`).join("")}` : ""; })()}
     <p class="adx-help" style="padding:0 4px;">To add an ad account by its ID instead, use the desktop version of Settings.</p>`;
   root.querySelector("#adxBuyer")?.addEventListener("change", e => { window.bvAdxBuyer = e.target.value; render(); });
-  root.querySelector("#adxBizSave").addEventListener("click", async e => {
-    const v = root.querySelector("#adxBiz").value.trim(); if (!v) { bvToast("Enter your Business ID first.", "err"); return; }
-    const b = e.currentTarget; b.disabled = true; b.textContent = "Saving…";
-    try { await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "register", business_id: v, media_buyer_id: sel }); bvToast("Business ID saved"); } catch (err) { bvToast("Could not save: " + err.message, "err"); }
-    b.disabled = false; b.textContent = "Save";
-  });
-  root.querySelector("#adxSync").addEventListener("click", async e => {
-    const b = e.currentTarget, out = root.querySelector("#adxSyncMsg"); b.disabled = true; b.textContent = "Checking…";
-    try {
-      const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
-      const mine = (r.results || []).find(x => x.media_buyer === buyer?.name) || r.results?.[0];
-      if (!mine) out.innerHTML = `<div class="adx-note">Save your Business ID first.</div>`;
-      else if (mine.status === "confirmed") { out.innerHTML = `<div class="adx-note ok">✓ Confirmed. ${mine.imported} ad account${mine.imported === 1 ? "" : "s"} imported.</div><button type="button" class="adx-btn" onclick="bvAdxOpen('list')">See my ad accounts and finish setup</button>`; await loadAccounts(); bvAdx.fresh = false; }
-      else out.innerHTML = `<div class="adx-note">Not confirmed yet. Make sure you shared the ad account and that the share was approved in Meta Business Settings.</div>`;
-    } catch (err) { out.innerHTML = bvAdxErr(err.message); }
-    b.disabled = false; b.textContent = "Check and import";
-  });
+  bvBmMount(root.querySelector("#bvBmHost"), { buyerId: sel });
 }
 async function bvAdxAddFound(btn, connId, buyerId, actId, name) {
   btn.disabled = true; btn.textContent = "Adding…";
@@ -13318,21 +13295,8 @@ async function renderSettings(el) {
       const myBuyer = (buyers || []).find(b => b.id === myId);
       return `
     <div class="panel" data-sec="accounts">
-      <div class="ph"><div class="ph-title">Share your ad account with us</div></div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">In your own Meta Business Settings -&gt; Partners -&gt; "Give a partner access to your assets", paste the Business ID below and share your ad account. We'll pick it up automatically once it's approved -- no login here needed.</div>
-      <div style="font-size:11.5px;color:var(--accent);background:var(--accentBg);border:1px solid var(--accentBdr);border-radius:8px;padding:8px 10px;margin-bottom:14px;">When Meta asks what access to grant: choose <strong>"View performance"/Analyst</strong> access, not "Manage campaigns." We only ever read spend and metrics -- view-only access is all we need, and it means we can't touch your budgets or campaigns even by accident.</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-        <div style="font-size:12.5px;">Our Business ID: <code style="background:var(--panel2);padding:2px 6px;border-radius:4px;">${escH(partnerBizId || "unavailable right now")}</code></div>
-        ${partnerBizId ? `<button type="button" class="btn btn-g" style="padding:2px 6px;font-size:10px;" onclick="navigator.clipboard.writeText('${escH(partnerBizId)}')">Copy</button>` : ""}
-      </div>
-      <div class="field"><label>Your own Meta Business ID (so we know which share is yours)</label>
-        <div style="display:flex;gap:6px;">
-          <input type="text" id="myPartnerBizId" value="${escH(myBuyer?.meta_partner_business_id || "")}" placeholder="e.g. 123456789012345" style="flex:1;">
-          <button type="button" class="btn btn-g" id="savePartnerBizBtn" style="padding:4px 10px;font-size:10px;">Save</button>
-        </div>
-      </div>
-      <button type="button" class="btn btn-a" style="margin-top:10px;padding:4px 10px;font-size:10px;" id="checkPartnerStatusBtn" ${myBuyer?.meta_partner_business_id ? "" : "disabled"}>Check status</button>
-      <div id="partnerStatusResult" style="margin-top:10px;"></div>
+      <div class="ph"><div class="ph-title">Your Business Managers</div></div>
+      <div id="bvBmHost"></div>
     </div>`;
     })()}
 
@@ -13352,22 +13316,8 @@ async function renderSettings(el) {
     </div>
 
     <div class="panel" data-sec="accounts">
-      <div class="ph"><div class="ph-title">Use your own ad account</div><button class="btn btn-g" style="padding:3px 8px;font-size:10px;" onclick="bvSyncPartnerAccounts()" id="syncPartnerBtn">↻ Sync</button></div>
-      <div class="biz-steps">
-        <div class="biz-step"><b>1</b><div>Copy Revora's Business ID<br><span class="biz-id" id="revBizId">${escH(partnerBizId || "unavailable")}</span> <button type="button" class="btn btn-g" style="padding:2px 9px;font-size:10.5px;" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('revBizId').textContent);bvToast('Copied')">Copy</button></div></div>
-        <div class="biz-step"><b>2</b><div>In Meta Business Settings, open <i>Accounts</i> → <i>Ad accounts</i>, pick your account, tap <i>Add partner</i>, paste the ID and allow <i>Manage ad account</i>.</div></div>
-        <div class="biz-step"><b>3</b><div>Paste <i>your</i> Business ID below (Business Settings → <i>Business info</i>), tap Save, then Sync.</div></div>
-      </div>
-      ${!buyers?.length ? `<div class="empty"><div class="empty-ico">🔌</div>Add a buyer above first.</div>` : `
-      <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Their Business ID</th><th></th></tr>
-        ${buyers.map(b => `<tr>
-          <td class="s n">${escH(b.name)} <span style="color:var(--muted)">[${escH(b.code)}]</span></td>
-          <td class="n"><input type="text" class="buyerBizIdInput" data-id="${b.id}" value="${escH(b.meta_partner_business_id || "")}" placeholder="not set yet" style="width:100%;"></td>
-          <td><button type="button" class="btn btn-g savePartnerBizBtn" data-id="${b.id}" style="padding:3px 8px;font-size:10px;">Save</button></td>
-        </tr>`).join("")}
-      </table></div>`}
-      <div id="partnerSyncResult" style="margin-top:12px;"></div>
+      <div class="ph"><div class="ph-title">Business Managers and their ad accounts</div></div>
+      <div id="bvBmHost"></div>
     </div>`}
 
     ${(isAdmin || window.myProfile?.media_buyer_id) ? `
@@ -13659,6 +13609,7 @@ async function bvSaveAdAccountConnection(accountId) {
     renderSettings(el);
   }));
 
+  bvBmMount(document.getElementById("bvBmHost"), {});
   // Self-service buyer: save their own Business ID, or check its status.
   document.getElementById("savePartnerBizBtn")?.addEventListener("click", (e) => {
     bvSavePartnerBizId(window.myProfile.media_buyer_id, document.getElementById("myPartnerBizId").value.trim(), e.target);
@@ -13682,6 +13633,73 @@ async function bvSaveAdAccountConnection(accountId) {
   if (isAdmin && document.getElementById("syncPartnerBtn") && (buyers || []).some(b => b.meta_partner_business_id)) {
     bvSyncPartnerAccounts(false);
   }
+}
+
+/* ---------- Business Managers: link several by ID and see every ad account each one shared ---------- */
+async function bvBmMount(host, opts) {
+  if (!host) return;
+  opts = opts || {};
+  if (!document.getElementById("bvBmCss")) {
+    const st = document.createElement("style"); st.id = "bvBmCss";
+    st.textContent = ".bm-steps{margin:0 0 12px;padding-left:18px;font-size:12.5px;line-height:1.55;color:var(--muted)}.bm-steps b{color:var(--text,inherit)}.bm-copy{display:flex;gap:8px;align-items:center;margin:6px 0}.bm-copy code{background:var(--panel2,#f2f4f7);padding:3px 8px;border-radius:6px;font-size:12.5px}" +
+      ".bm-card{border:1px solid var(--border,#e4e7ec);border-radius:12px;padding:12px;margin:10px 0;background:var(--panel,transparent)}.bm-h{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}.bm-h small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}" +
+      ".bm-row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border,#e4e7ec);flex-wrap:wrap}.bm-row:first-of-type{border-top:0}.bm-row .n{min-width:0;flex:1}.bm-row .n b{display:block;font-size:13px}.bm-row .n small{color:var(--muted);font-size:11.5px}" +
+      ".bm-chip{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--panel2,#f2f4f7);color:var(--muted);margin-left:4px}.bm-chip.ok{background:#e8f7f0;color:#12805c}.bm-chip.warn{background:#fff3e6;color:#b54708}" +
+      ".bm-empty{font-size:12px;color:var(--muted);padding:8px 0}.bm-form{display:grid;gap:8px;margin-top:10px}.bm-form input,.bm-form select{width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border,#d0d5dd);background:var(--panel,#fff);color:inherit;font:inherit}.bm-msg{font-size:12.5px;margin-top:8px}.bm-msg.err{color:#c0261d}.bm-msg.ok{color:#12805c}";
+    document.head.appendChild(st);
+  }
+  const isAdmin = ["owner", "admin"].includes(window.myProfile?.role);
+  host.innerHTML = '<div class="bm-empty">Loading your Business Managers…</div>';
+  let data;
+  try { data = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "list" }); }
+  catch (e) { host.innerHTML = `<div class="bm-msg err">Could not load: ${escH(e.message)}</div>`; return; }
+  const buyers = isAdmin ? ((await sbQuery("media_buyers", "select=id,name,code&order=code.asc").catch(() => [])) || []) : [];
+  const biz = data.platform_business_id || "";
+  const ago = (d) => { if (!d) return "not checked yet"; const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; };
+  const rows = (a) => a.length ? a.map(x => `<div class="bm-row"><div class="n"><b>${escH(x.name || "Ad account")}</b><small>${escH(x.account_id)}${x.assigned_to ? " · " + escH(x.assigned_to) : ""}</small></div><div><span class="bm-chip ${x.status === "Active" ? "ok" : "warn"}">${escH(x.status)}</span><span class="bm-chip ${x.imported ? "ok" : "warn"}">${x.imported ? "In Revora" : "Not imported yet"}</span></div></div>`).join("") : `<div class="bm-empty">No ad account from this Business is shared with Revora yet. Share one in Meta Business Settings, then press Check and import.</div>`;
+  const cards = (data.items || []).map(it => `<div class="bm-card"><div class="bm-h"><div><b>Business ${escH(it.business_id)}</b><small>${it.buyer ? "Buyer: " + escH(it.buyer) + " · " : ""}${it.accounts.length} ad account${it.accounts.length === 1 ? "" : "s"} shared · checked ${ago(it.last_synced_at)}</small></div><button type="button" class="btn btn-g bm-rm" data-id="${it.id}" style="padding:3px 8px;font-size:10.5px;">Unlink</button></div>${rows(it.accounts)}</div>`).join("");
+  host.innerHTML = `
+    <ol class="bm-steps">
+      <li><b>Copy Revora's Business ID</b><div class="bm-copy"><code>${escH(biz || "unavailable")}</code>${biz ? `<button type="button" class="btn btn-g bm-cp" style="padding:3px 9px;font-size:10.5px;">Copy</button>` : ""}</div></li>
+      <li><b>In Meta Business Settings</b> open <i>Accounts → Ad accounts</i>, pick an ad account, tap <i>Add partner</i>, paste that ID and allow <i>Manage ad account</i>. Do the same for its Page and pixel (dataset). Repeat for every ad account you want in Revora.</li>
+      <li><b>Link your Business below.</b> Enter your own Business ID and the ID of <b>one</b> ad account you shared. Every other account that Business shares with Revora comes in automatically, now and later.</li>
+    </ol>
+    <div class="bm-form">
+      <input class="bm-biz" inputmode="numeric" placeholder="Your Business ID">
+      <input class="bm-acct" inputmode="numeric" placeholder="One ad account ID you shared">
+      ${isAdmin && buyers.length ? `<select class="bm-buyer">${buyers.map(b => `<option value="${b.id}" ${b.id === opts.buyerId ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}</select>` : ""}
+      <button type="button" class="btn btn-a bm-link">Link this Business</button>
+    </div>
+    <div class="bm-msg"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px"><b style="font-size:13.5px">Your Business Managers</b>${(data.items || []).length ? `<button type="button" class="btn btn-g bm-sync" style="padding:3px 9px;font-size:10.5px;">Check and import all</button>` : ""}</div>
+    ${cards || `<div class="bm-empty">None linked yet. Link one above and every ad account it shares with Revora appears here.</div>`}`;
+  const msg = (t, cls) => { const m = host.querySelector(".bm-msg"); m.className = "bm-msg " + (cls || ""); m.textContent = t; };
+  host.querySelector(".bm-cp")?.addEventListener("click", () => { navigator.clipboard?.writeText(biz); bvToast("Copied"); });
+  host.querySelector(".bm-link").addEventListener("click", async (e) => {
+    const b = e.currentTarget, v = host.querySelector(".bm-biz").value.trim(), p = host.querySelector(".bm-acct").value.trim();
+    if (!v || !p) { msg("Enter your Business ID and one shared ad account ID.", "err"); return; }
+    b.disabled = true; b.textContent = "Linking…"; msg("");
+    try {
+      const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "register", business_id: v, proof_account_id: p, media_buyer_id: host.querySelector(".bm-buyer")?.value || opts.buyerId || undefined });
+      bvToast(`Linked. ${r.imported || 0} ad account${r.imported === 1 ? "" : "s"} imported.`);
+      try { if (typeof loadAccounts === "function") await loadAccounts(); } catch {}
+      await bvBmMount(host, opts);
+    } catch (err) { msg(err.message, "err"); b.disabled = false; b.textContent = "Link this Business"; }
+  });
+  host.querySelector(".bm-sync")?.addEventListener("click", async (e) => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = "Checking…";
+    try {
+      const r = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "sync" });
+      const n = (r.results || []).reduce((a, x) => a + (x.imported || 0), 0);
+      bvToast(n ? `${n} new ad account${n === 1 ? "" : "s"} imported` : "Nothing new to import");
+      try { if (n && typeof loadAccounts === "function") await loadAccounts(); } catch {}
+      await bvBmMount(host, opts);
+    } catch (err) { msg(err.message, "err"); b.disabled = false; b.textContent = "Check and import all"; }
+  });
+  host.querySelectorAll(".bm-rm").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Unlink this Business? Ad accounts already imported stay in Revora.")) return;
+    try { await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "remove", link_id: btn.dataset.id }); await bvBmMount(host, opts); } catch (err) { msg(err.message, "err"); }
+  }));
 }
 
 async function bvCheckMyPartnerStatus(btn, announce) {
