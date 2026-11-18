@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { purgeSiteCache } from "../_shared/cfpurge.ts";
 
 // Backend for the dashboard's site IDE. It runs the same file tools the AI assistants use (mcp-code), for the logged-in person,
 // so every save keeps versions, is checked by the same safety rules, and rebuilds the live pages exactly as before.
@@ -12,6 +13,8 @@ const db = createClient(SUPABASE_URL, SERVICE);
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...cors } });
 const TOOLS = new Set(["site_new", "site_list_files", "site_search", "site_write_file", "site_patch_file", "site_delete_file", "site_history", "site_rollback", "site_set_live", "site_import_zip"]);
+// Tools that change what visitors see; after one of these succeeds the site's cached pages are cleared.
+const WRITES = new Set(["site_write_file", "site_patch_file", "site_delete_file", "site_rollback", "site_set_live", "site_import_zip"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
@@ -31,6 +34,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ action: "call", tool: b.tool, args: b.args && typeof b.args === "object" ? b.args : {}, ctx }),
     });
     const o = await r.json().catch(() => ({}));
+    if (r.ok && b?.args?.site_id && WRITES.has(String(b.tool))) await purgeSiteCache(db, String(b.args.site_id));
     return json(o?.out ?? o, r.ok ? 200 : 502);
   }
 
@@ -50,6 +54,7 @@ Deno.serve(async (req) => {
     const call = imported ? { tool: "site_set_live", args: { site_id: siteId, live } } : { tool: "publish_sales_page", args: { site_id: siteId, unpublish: !live, confirmed: true } };
     const r = await fetch(`${SUPABASE_URL}/functions/v1/${group}`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", ...call, ctx }) });
     const o = await r.json().catch(() => ({}));
+    if (r.ok) await purgeSiteCache(db, siteId);
     return json(o?.out ?? o, r.ok ? 200 : 502);
   }
 
