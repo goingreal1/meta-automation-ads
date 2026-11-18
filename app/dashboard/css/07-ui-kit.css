@@ -237,3 +237,62 @@
   .rv-ui .ox-flag-r { flex-wrap: wrap; }
 }
 .rv-ui .ox-t td:nth-child(2) { white-space: nowrap; } .rv-ui .ox-prod { max-width: 120px; } .rv-ui .ox-t td { padding-top: 10px; padding-bottom: 10px; }
+
+/* ---- Wallet + ad wallet card ---- */
+.rv-ui .wl-top { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin-bottom: 18px; }
+.rv-ui .wl-bal { position: relative; overflow: hidden; border-radius: 20px; padding: 26px 28px 24px; color: #fff; background: radial-gradient(120% 140% at 100% 0%, #2f6df6 0%, #1740b8 38%, #0d1f5c 100%); box-shadow: 0 18px 40px -20px rgba(23, 64, 184, .65); }
+.rv-ui .wl-bal.neg { background: radial-gradient(120% 140% at 100% 0%, #e0405a 0%, #a3182f 45%, #5c0d1a 100%); }
+.rv-ui .wl-bal::after { content: ""; position: absolute; right: -60px; bottom: -90px; width: 260px; height: 260px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .14); box-shadow: 0 0 0 38px rgba(255, 255, 255, .04), 0 0 0 80px rgba(255, 255, 255, .03); pointer-events: none; }
+.rv-ui .wl-bl { display: flex; align-items: center; gap: 8px; font-size: 13.5px; opacity: .88; font-weight: 500; }
+.rv-ui .wl-ba { font-size: 46px; font-weight: 700; letter-spacing: -.035em; margin: 8px 0 4px; line-height: 1.05; } .rv-ui .wl-ba small { font-size: 26px; opacity: .7; font-weight: 600; margin-right: 2px; }
+.rv-ui .wl-bs { font-size: 13px; opacity: .82; max-width: 520px; }
+.rv-ui .wl-acts { display: flex; gap: 14px; margin-top: 22px; position: relative; z-index: 1; flex-wrap: wrap; }
+.rv-ui .wl-act { display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: #fff; background: none; border: 0; padding: 0; width: 74px; cursor: pointer; font-family: inherit; }
+.rv-ui .wl-act i { width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, .16); display: grid; place-items: center; border: 1px solid rgba(255, 255, 255, .22); }
+.rv-ui .wl-act.p i { background: #fff; color: #1740b8; } .rv-ui .wl-act svg.i { width: 20px; height: 20px; }
+.rv-ui .wl-rev { padding: 22px 24px; display: flex; flex-direction: column; }
+.rv-ui .wl-rl { display: flex; gap: 8px; align-items: center; color: var(--c-ink2); font-weight: 500; }
+.rv-ui .wl-ra { font-size: 30px; font-weight: 700; letter-spacing: -.03em; margin: 6px 0 2px; }
+.rv-ui .wl-sp { width: 100%; height: 74px; margin-top: auto; color: var(--c-brand); padding-top: 10px; }
+.rv-ui .wl-foot2 { color: var(--c-ink3); font-size: 12.5px; margin-top: 8px; }
+.rv-ui .wl-ah h3 { margin: 0 0 10px; font-size: 16px; }
+.rv-ui .wl-adc { margin-bottom: 18px; }
+.rv-ui .wl-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; align-items: start; } .rv-ui .wl-col { display: grid; gap: 16px; min-width: 0; }
+.rv-ui .wl-sec { padding: 0; } .rv-ui .wl-hd { display: flex; align-items: center; gap: 10px; padding: 16px 20px 10px; flex-wrap: wrap; } .rv-ui .wl-hd h3 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+.rv-ui .wl-r { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--c-line); }
+.rv-ui .wl-ico { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--c-hover); color: var(--c-ink2); }
+.rv-ui .wl-ico.in { background: var(--c-okbg); color: var(--c-ok); } .rv-ui .wl-ico.w { background: var(--c-warnbg); color: var(--c-warn); } .rv-ui .wl-ico.b { background: var(--c-brandbg); color: var(--c-brand); }
+.rv-ui .wl-mid { flex: 1; min-width: 0; } .rv-ui .wl-mid b { display: block; font-weight: 600; } .rv-ui .wl-mid small { display: block; color: var(--c-ink3); font-size: 12.5px; overflow-wrap: anywhere; }
+.rv-ui .wl-mid small.bad, .rv-ui .wl-r .neg { color: var(--c-bad); } .rv-ui .wl-mid small.warn { color: var(--c-warn); } .rv-ui .wl-mid small.ok { color: var(--c-ok); }
+.rv-ui .wl-am { font-weight: 650; white-space: nowrap; } .rv-ui .wl-am.in { color: var(--c-ok); }
+.rv-ui .wl-att { align-items: flex-start; } .rv-ui .wl-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.rv-ui .wl-day { padding: 8px 20px 6px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-ink3); border-top: 1px solid var(--c-line); background: var(--c-hover); }
+.rv-ui .wl-more { padding: 14px 20px; border-top: 1px solid var(--c-line); text-align: center; }
+.rv-ui .wl-foot { padding: 12px 20px 16px; border-top: 1px solid var(--c-line); color: var(--c-ink3); font-size: 12.5px; }
+.rv-ui .wl-sub { padding: 10px 20px 4px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--c-ink3); border-top: 1px solid var(--c-line); }
+.rv-ui .wl-mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 600; letter-spacing: .02em; } .rv-ui .wl-mono.big { font-size: 18px; }
+.rv-ui .wl-big { font-size: 30px; font-weight: 700; letter-spacing: -.03em; } .rv-ui .wl-big.neg { color: var(--c-bad); }
+.rv-ui .wl-bar { height: 5px; border-radius: 9px; background: var(--c-hover); margin: 6px 0 4px; overflow: hidden; } .rv-ui .wl-bar i { display: block; height: 100%; background: var(--c-brand); border-radius: 9px; }
+.rv-ui .wl-r .rv-menu .rv-pop { right: 0; left: auto; top: 38px; }
+
+.rv-ui .awcs { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+.rv-ui .awc { position: relative; overflow: hidden; border-radius: 18px; padding: 18px 20px 16px; color: #fff; background: linear-gradient(135deg, #0e9aa7 0%, #0b6f86 55%, #0a4a63 100%); box-shadow: 0 14px 30px -20px rgba(10, 74, 99, .8); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rv-ui .awc::after { content: ""; position: absolute; right: -40px; top: -50px; width: 170px; height: 170px; border-radius: 50%; background: rgba(255, 255, 255, .07); pointer-events: none; }
+.rv-ui .awc.low { background: linear-gradient(135deg, #d9892b 0%, #b0601a 55%, #6b3410 100%); } .rv-ui .awc.bad { background: linear-gradient(135deg, #d6455d 0%, #a3182f 55%, #5c0d1a 100%); }
+.rv-ui .awc-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: relative; z-index: 1; }
+.rv-ui .awc-n { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 14.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-ui .awc-c { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: rgba(255, 255, 255, .2); white-space: nowrap; }
+.rv-ui .awc-id { font-size: 12.5px; opacity: .72; min-height: 18px; position: relative; z-index: 1; }
+.rv-ui .awc-a { font-size: 30px; font-weight: 700; letter-spacing: -.03em; margin-top: 8px; position: relative; z-index: 1; line-height: 1.1; }
+.rv-ui .awc-s { font-size: 13px; opacity: .85; position: relative; z-index: 1; }
+.rv-ui .awc-f { margin-top: 12px; position: relative; z-index: 1; }
+.rv-ui .awc-b { background: #fff; color: #0a4a63; border: 0; border-radius: 99px; padding: 7px 16px; font: 700 13px/1 inherit; font-family: inherit; cursor: pointer; }
+.rv-ui .awc.cmp { flex-direction: row; align-items: center; gap: 18px; padding: 14px 20px; flex-wrap: wrap; margin-bottom: 14px; border-radius: 16px; }
+.rv-ui .awc.cmp .awc-t { flex-direction: column; align-items: flex-start; gap: 4px; min-width: 150px; } .rv-ui .awc.cmp .awc-a { margin: 0; font-size: 24px; } .rv-ui .awc.cmp .awc-s { flex: 1; min-width: 160px; } .rv-ui .awc.cmp .awc-f { margin: 0; }
+@media (max-width: 1100px) { .rv-ui .wl-top, .rv-ui .wl-grid { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+  .rv-ui .wl-bal { border-radius: 18px; padding: 22px 20px; } .rv-ui .wl-ba { font-size: 38px; } .rv-ui .wl-acts { justify-content: space-between; gap: 6px; } .rv-ui .wl-act { flex: 1; width: auto; }
+  .rv-ui .wl-hd, .rv-ui .wl-r, .rv-ui .wl-day, .rv-ui .wl-foot, .rv-ui .wl-sub { padding-left: 14px; padding-right: 14px; } .rv-ui .wl-rev { padding: 18px; }
+  .rv-ui .wl-r { flex-wrap: wrap; } .rv-ui .wl-att .wl-mid { flex-basis: calc(100% - 52px); } .rv-ui .wl-att .wl-btns { margin-left: 50px; justify-content: flex-start; }
+  .rv-ui .awcs { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; margin: 0 -14px; padding: 0 14px 6px; } .rv-ui .awcs .awc { min-width: 82%; scroll-snap-align: center; }
+}
