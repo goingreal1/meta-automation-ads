@@ -1,0 +1,93 @@
+/* Campaign setup (the "New campaign" flow on desktop and phone). Same fields and handlers as before; this file only changes how it looks
+   and is laid out. Loaded last so it wins over the older builder rules. */
+
+/* ---------- shared: fields, cards, destination choice ---------- */
+#bvBuilderOverlay .field label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px; display: block; letter-spacing: -.005em; }
+#bvBuilderOverlay .field label span:not(.ms-opt-ic):not(.ms-opt-tx) { font-weight: 400; color: var(--muted); }
+#bvBuilderOverlay input:not([type=checkbox]):not([type=radio]):not([type=file]),
+#bvBuilderOverlay select, #bvBuilderOverlay textarea {
+  border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); transition: border-color .12s, box-shadow .12s;
+}
+#bvBuilderOverlay input:not([type=checkbox]):not([type=radio]):not([type=file]):focus, #bvBuilderOverlay select:focus, #bvBuilderOverlay textarea:focus {
+  outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accentBg);
+}
+#bvBuilderOverlay .bv-section-card { border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: none; }
+#bvBuilderOverlay .bv-section-card-title { font-size: 15px; font-weight: 650; letter-spacing: -.01em; margin-bottom: 16px; }
+#bvBuilderOverlay .bv-section-card-title .bv-ico { display: none; } /* emoji out */
+#bvBuilderOverlay .rv-i { width: 18px; height: 18px; margin-left: 7px; font-size: 10.5px; vertical-align: middle; }
+
+/* destination: five clear cards instead of a row of radio buttons */
+#bvBuilderOverlay .ms-opt { display: flex !important; align-items: center; gap: 14px; padding: 14px 16px; margin: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); cursor: pointer; font-weight: 400; transition: border-color .12s, background .12s, box-shadow .12s; }
+#bvBuilderOverlay .ms-opt[hidden] { display: none !important; }
+#bvBuilderOverlay .ms-opt:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+#bvBuilderOverlay .ms-opt input { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; }
+#bvBuilderOverlay .ms-opt:has(input:checked) { border-color: var(--accent); background: var(--accentBg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+#bvBuilderOverlay .ms-opt-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex: none; font-size: 0; background: var(--panel2); color: var(--text2); }
+#bvBuilderOverlay .ms-opt:has(input:checked) .ms-opt-ic { background: var(--accent); color: #fff; }
+#bvBuilderOverlay .ms-opt-tx b { display: block; font-size: 14.5px; font-weight: 650; color: var(--text); letter-spacing: -.005em; }
+#bvBuilderOverlay .ms-opt-tx small { display: block; font-size: 12.5px; color: var(--text2); margin-top: 2px; line-height: 1.4; }
+
+/* ---------- desktop ---------- */
+@media (min-width: 761px) {
+  #bvBuilderOverlay .bv-modal-xl { border-radius: 20px; border: 1px solid var(--border); box-shadow: 0 24px 80px rgba(16, 24, 40, .28); }
+  #bvBuilderOverlay .bv-builder-head { padding: 24px 32px 18px; border-bottom: 1px solid var(--border); }
+  #bvBuilderOverlay .bv-builder-head .ph-title { font-size: 21px; font-weight: 700; letter-spacing: -.02em; }
+  #bvBuilderOverlay .wz-sub { font-size: 13px; color: var(--text2); margin-bottom: 18px; }
+  #bvBuilderOverlay .bv-builder-body { padding: 24px 32px; }
+
+  /* progress: numbered dots joined by a thin line */
+  #bvBuilderOverlay .wz-steps { display: flex; align-items: center; gap: 0; overflow: visible; margin: 0 0 18px; padding: 0; }
+  #bvBuilderOverlay .wz-step { border: 0; background: transparent; box-shadow: none; padding: 4px 0; gap: 8px; border-radius: 0; font-size: 13px; font-weight: 500; color: var(--text2); display: inline-flex; align-items: center; }
+  #bvBuilderOverlay .wz-step::after { content: ""; width: 30px; height: 1.5px; background: var(--border); margin: 0 12px; flex: none; }
+  #bvBuilderOverlay .wz-step:last-child::after { display: none; }
+  #bvBuilderOverlay .wz-n { width: 24px; height: 24px; border: 1.5px solid var(--border); background: var(--panel); color: var(--text2); font-size: 11.5px; font-weight: 600; }
+  #bvBuilderOverlay .wz-step.on { color: var(--text); font-weight: 650; box-shadow: none; border: 0; }
+  #bvBuilderOverlay .wz-step.on .wz-n { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #bvBuilderOverlay .wz-step.done .wz-n { background: var(--accentBg); border-color: var(--accent); color: var(--accent); }
+  #bvBuilderOverlay .wz-step.done::after { background: var(--accent); }
+
+  /* destination cards sit in a tidy grid */
+  #bvBuilderOverlay .field[data-ms="dest"] > div { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); gap: 10px !important; margin-top: 10px !important; }
+  #bvBuilderOverlay .field[data-ms="dest"] > label { font-size: 14px; }
+
+  /* right-hand preview + score */
+  #bvBuilderOverlay .bv-builder-summary { width: 330px; background: var(--panel2); border-left: 1px solid var(--border); padding: 22px 20px; }
+  #bvBuilderOverlay .bv-builder-summary-card { border: 1px solid var(--border); border-radius: 16px; background: var(--panel); padding: 16px; }
+  #bvBuilderOverlay .bv-builder-summary-title { font-size: 13px; font-weight: 650; }
+
+  /* footer: Back on the left; the main action is Next, Review & Launch is the quieter shortcut */
+  #bvBuilderOverlay .bv-builder-foot { padding: 14px 32px; border-top: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; gap: 10px; }
+  #bvBuilderOverlay .bv-builder-foot > div { display: contents !important; }
+  #bvBuilderOverlay #bvTabBackBtn { order: 1; }
+  #bvBuilderOverlay #bvDraftStatus { order: 2; margin-right: auto; }
+  #bvBuilderOverlay #uploadBtn { order: 3; }
+  #bvBuilderOverlay #bvTabNextBtn { order: 4; }
+  #bvBuilderOverlay .bv-builder-foot .btn { height: 42px; padding: 0 20px !important; border-radius: 11px; font-size: 13.5px !important; font-weight: 650; width: auto !important; }
+  #bvBuilderOverlay #bvTabNextBtn { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #bvBuilderOverlay #bvTabBackBtn { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+  #bvBuilderOverlay[data-wz]:not([data-wz="review"]) #uploadBtn { background: var(--panel); color: var(--accent); border: 1px solid var(--border); }
+  #bvBuilderOverlay[data-wz="review"] #uploadBtn { background: var(--accent); color: #fff; border-color: var(--accent); }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 760px) {
+  #bvBuilderOverlay .ms-opt { padding: 14px; margin: 0 0 10px; border-radius: 16px; }
+  #bvBuilderOverlay .ms-opt-tx b { font-size: 16px; }
+  #bvBuilderOverlay .ms-opt-tx small { font-size: 13px; }
+  #bvBuilderOverlay .bv-section-card { border-radius: 16px; padding: 16px; }
+}
+
+/* ---------- creative step: calm upload tile ---------- */
+#bvBuilderOverlay .cs-lead { font-size: 13px; color: var(--text2); margin: 0 0 14px; display: flex; align-items: center; gap: 6px; }
+#bvBuilderOverlay .cs-lead .rv-i { margin-left: 0; }
+#bvBuilderOverlay .dz { border: 1.5px dashed color-mix(in srgb, var(--text2) 35%, var(--border)); border-radius: 16px; background: var(--panel2); padding: 30px 20px; text-align: center; cursor: pointer; transition: border-color .12s, background .12s; }
+#bvBuilderOverlay .dz:hover, #bvBuilderOverlay .dz.drag { border-color: var(--accent); background: var(--accentBg); }
+#bvBuilderOverlay .dz-ico { width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 14px; display: grid; place-items: center; background: var(--panel); border: 1px solid var(--border); color: var(--accent); font-size: 0; }
+#bvBuilderOverlay .dz-txt { font-size: 14px; font-weight: 600; color: var(--text); }
+#bvBuilderOverlay .dz-hint { font-size: 12px; color: var(--text2); margin-top: 3px; }
+#bvBuilderOverlay .dz .btn { margin-top: 12px; border-radius: 10px; }
+#bvBuilderOverlay #f_identityValue, #bvBuilderOverlay #f_identityWhatsappValue { border-radius: 10px; padding: 10px 12px; font-size: 13px; background: var(--panel2); border: 1px solid var(--border); }
+
+@media (max-width: 760px) {
+  #bvBuilderOverlay .bv-builder-foot #bvTabNextBtn { flex: 1 1 auto !important; }
+}

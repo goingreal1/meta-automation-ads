@@ -1,7 +1,7 @@
 /* Revora service worker: lets the dashboard install as an app, load when the
    network is flaky, and show push notifications (new customer messages etc.).
    Bump CACHE_VERSION when the precache list changes. */
-const CACHE_VERSION = "revora-v1";
+const CACHE_VERSION = "revora-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const PRECACHE = [
@@ -44,6 +44,17 @@ self.addEventListener("fetch", (event) => {
           return res;
         })
         .catch(() => caches.match(url.pathname).then((hit) => hit || caches.match("/dashboard_new.html")))
+    );
+    return;
+  }
+
+  // The dashboard is split into many script/style files under /app/. Fresh from the network when online, last copy when offline.
+  if (url.origin === self.location.origin && url.pathname.startsWith("/app/")) {
+    event.respondWith(
+      fetch(req).then((res) => {
+        if (res.ok) { const copy = res.clone(); caches.open(STATIC_CACHE).then((c) => c.put(req, copy)); }
+        return res;
+      }).catch(() => caches.match(req))
     );
     return;
   }

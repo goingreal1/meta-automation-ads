@@ -104,6 +104,15 @@
           "value": "public, max-age=604800, immutable"
         }
       ]
+    },
+    {
+      "source": "/app/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -358,5 +367,11 @@
       "destination": "https://metaautomationads.vercel.app/$1.html",
       "permanent": false
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "claude/meta-dashboard-mobile-redesign-r9yva2": false,
+      "claude/elegant-newton-1hvf2l": false
+    }
+  }
 }
