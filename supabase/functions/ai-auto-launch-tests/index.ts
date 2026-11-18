@@ -188,7 +188,7 @@ async function waitForVideoThumbnail(videoId, maxWaitMs = 90 * 1e3) {
     error: `Meta has not finished processing video ${videoId} (status: ${lastStatus}) so no thumbnail is available yet. Try again in a minute.`
   };
 }
-async function ensureMetaMedia(supabase, accountId, creative) {
+async function ensureMetaMedia(supabase, accountId, creative, maxWaitMs = 90 * 1e3) {
   const isVideo = creative.asset_type === "video";
   let videoId = creative.meta_video_id || null;
   if (!videoId) {
@@ -224,7 +224,7 @@ async function ensureMetaMedia(supabase, accountId, creative) {
       };
     }
   }
-  const thumb = await waitForVideoThumbnail(videoId);
+  const thumb = await waitForVideoThumbnail(videoId, maxWaitMs);
   if (thumb.error) return {
     error: thumb.error
   };
@@ -993,6 +993,7 @@ function buildAdSetPayload(opts) {
   return payload;
 }
 async function launchAdSetGroup(supabase, creativeGroup) {
+  const launchStartedAt = Date.now(); // the whole launch must finish inside the platform's ~150 s limit: see the media step below
   const creative = creativeGroup[0];
   try {
     const rawAccountId = creative.ad_accounts?.meta_ad_account_id || "";
@@ -1274,16 +1275,31 @@ async function launchAdSetGroup(supabase, creativeGroup) {
       };
     };
     const localCreatives = [];
-    for (const copy of creativeGroup){
-      const media = await ensureMetaMedia(supabase, accountId, copy);
-      if (!media || media.error) {
-        return await abortAndCleanup(`Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`);
-      }
+    // Prepare every ad's media and Meta creative AT THE SAME TIME. One after the other, three videos each waiting up to 90 s for Meta
+    // to process them ran past the ~150 s limit and the launch was killed half way (campaign made, no ads). Now the wait is that of the
+    // slowest video, and it is capped so the launch can still finish and clean up after itself.
+    const mediaBudgetMs = Math.max(15e3, 95e3 - (Date.now() - launchStartedAt));
+    const prepared = await Promise.all(creativeGroup.map(async (copy)=>{
+      const media = await ensureMetaMedia(supabase, accountId, copy, mediaBudgetMs);
+      if (!media || media.error) return {
+        copy,
+        error: `Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`
+      };
       const adCreativeRes = await createAdCreative(accountId, pageId, igUserId, copy, media, destinationLink, ctaType, destinationType, creative.products?.product_name || "");
       const adCreativeId = adCreativeRes?.id;
-      if (!adCreativeId) {
-        return await abortAndCleanup(`Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}): ${adCreativeRes?.error || "no reason given"}`);
-      }
+      if (!adCreativeId) return {
+        copy,
+        error: `Failed to create ad creative on Meta for creative ${copy.id} (${copy.file_name}): ${adCreativeRes?.error || "no reason given"}`
+      };
+      return {
+        copy,
+        media,
+        adCreativeId
+      };
+    }));
+    const failedPrep = prepared.find((x)=>x.error);
+    if (failedPrep) return await abortAndCleanup(failedPrep.error + (prepared.length > 1 ? " Nothing went live. Your videos stay uploaded to Meta, so launching again is faster." : ""));
+    for (const { copy, media, adCreativeId } of prepared){
       const { data: localCreativeRow, error: localCreativeErr } = await supabase.from("creatives").insert({
         creative_name: String(copy.ad_name ?? "").trim() || `${productName}-${copy.file_name}`,
         format: copy.format || "customer_review",

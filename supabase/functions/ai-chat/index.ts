@@ -1011,9 +1011,15 @@ async function planAction(body, p) {
       })
     };
   }
-  const claim = await supabase.from("ai_plans").update({
-    status: "launching"
+  let claim = await supabase.from("ai_plans").update({
+    status: "launching",
+    launching_at: new Date().toISOString()
   }).eq("id", row.id).eq("status", "draft").select("id");
+  // A launch that was cut off by the platform's time limit leaves the plan "launching" for ever. After 5 minutes nothing can still be running, so take it over.
+  if (!claim.data?.length) claim = await supabase.from("ai_plans").update({
+    status: "launching",
+    launching_at: new Date().toISOString()
+  }).eq("id", row.id).eq("status", "launching").or(`launching_at.is.null,launching_at.lt.${new Date(Date.now() - 5 * 60_000).toISOString()}`).select("id");
   if (!claim.data?.length) throw new Error("This plan is already being launched.");
   try {
     const { data: srcs } = await supabase.from("creative_assets").select("id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format").eq("company_id", p.companyId).in("id", plan.asset_ids);
