@@ -14,10 +14,13 @@
 | Part | Contents |
 |---|---|
 | 01-03 | config, auth, phone screens, billing, PWA, API helpers, shell, router, overview |
-| css/06 | campaign setup look (loaded last) |
+| css/06 | campaign setup look |
+| css/07 | UI kit for the rebuilt screens (`.rv-ui`, used by Overview and the screens after it) |
 | 04-07 | admin overview, creative vault, **campaign builder**, review and launch, ad set builder, audience and placements |
 | 08-10 | ad detail and previews, Ads Manager, live ad edits, campaign lists, performance |
 | 11-18 | catalog, orders, delivery, forms, websites, conversations, media, approvals, leaderboard, wallet |
-| 19-23 | wallet (continued), settings, HQ, AI chat |
+| 19-22 | wallet (continued), settings, HQ, AI chat |
+| 23 | **Overview** (rebuilt) |
+| 24 | chat cards and the startup code (must stay last) |
 
 Caching: `vercel.json` serves `/app/*` with `max-age=0, must-revalidate`; the service worker (`sw.js`) keeps the last copy for offline use.

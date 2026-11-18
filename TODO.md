@@ -28,3 +28,9 @@
 - [ ] Save clean screenshots as images/landing/ai-chat-ads.png and ai-chat-website.png (crop status bar, keyboard, message box).
 - [x] Pixel "Revora Website" (2286908208516633) created in the Business and shared with Muse; added to ai.html, start.html and guide pages. Still to do: link a Facebook Page to Muse.
 - [ ] Post the 5-person pilot invite in the media buyers group; collect quotes for the hidden testimonials section on /ai.
+
+## Backlog: ChatGPT / Claude (MCP) must report ALL ad metrics (asked 2026-11-18)
+When an AI app checks live results through the MCP tools (`get_live_ads`, `get_account_performance` in `supabase/functions/mcp-ads`, which call `ai-chat` run_tool), it only mentions link clicks and CTR. It leaves out page views and cost. Nothing should be left out.
+- Return, at account / campaign / ad set / ad level and for any range (today, yesterday, last 3/7/30, lifetime, custom): spend, impressions, reach, frequency, CPM, link clicks, CTR (link), CPC (link), **landing page views, cost per landing page view, landing page view rate (views / link clicks)**, results (orders / conversations / leads / purchases), cost per result, purchase value and ROAS, and each metric's change versus the previous period.
+- The numbers already exist: `ads-manager` computes `landing_page_views` and `cost_per_landing_page_view` (see `ads-manager/index.ts` around the insights mapping) and `daily_metrics` stores `landing_page_views`; the MCP tool output just does not include them.
+- Also make the tool descriptions list every metric so the AI app knows to quote them, and add the kill-rule state per ad (cost per result limit and the landing page view limit) so the AI explains why an ad is flagged.
