@@ -287,8 +287,6 @@
 .rv-ui .awc-s { font-size: 13px; opacity: .85; position: relative; z-index: 1; }
 .rv-ui .awc-f { margin-top: 12px; position: relative; z-index: 1; }
 .rv-ui .awc-b { background: #fff; color: #0a4a63; border: 0; border-radius: 99px; padding: 7px 16px; font: 700 13px/1 inherit; font-family: inherit; cursor: pointer; }
-.rv-ui .awc.cmp { flex-direction: row; align-items: center; gap: 18px; padding: 14px 20px; flex-wrap: wrap; margin-bottom: 14px; border-radius: 16px; }
-.rv-ui .awc.cmp .awc-t { flex-direction: column; align-items: flex-start; gap: 4px; min-width: 150px; } .rv-ui .awc.cmp .awc-a { margin: 0; font-size: 24px; } .rv-ui .awc.cmp .awc-s { flex: 1; min-width: 160px; } .rv-ui .awc.cmp .awc-f { margin: 0; }
 @media (max-width: 1100px) { .rv-ui .wl-top, .rv-ui .wl-grid { grid-template-columns: 1fr; } }
 @media (max-width: 860px) {
   .rv-ui .wl-bal { border-radius: 18px; padding: 22px 20px; } .rv-ui .wl-ba { font-size: 38px; } .rv-ui .wl-acts { justify-content: space-between; gap: 6px; } .rv-ui .wl-act { flex: 1; width: auto; }
@@ -311,9 +309,23 @@
 @media (max-width: 860px) { .rv-ui .rv-split .rv-tree { display: none !important; } .rv-ui .rv-split:not(.m-detail) .rv-mlist { display: block; } .rv-ui .rv-split.m-detail .rv-mlist { display: none; } }
 @media (max-width: 860px) {
   .rv-ui .rv-sum > div:nth-child(n+5) { display: none; } .rv-ui .rv-sum > div { padding: 10px 14px; }
-  .rv-ui .awc.cmp { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 16px; } .rv-ui .awc.cmp .awc-t { flex-direction: row; align-items: center; grid-column: 1 / -1; }
-  .rv-ui .awc.cmp .awc-a { font-size: 22px; } .rv-ui .awc.cmp .awc-s { min-width: 0; grid-column: 1; font-size: 12px; } .rv-ui .awc.cmp .awc-f { grid-row: 2 / span 2; grid-column: 2; }
 }
 .rv-ui .rv-reach { display: flex; align-items: center; gap: 14px; margin: 12px 20px 4px; padding: 14px 16px; border-radius: 14px; background: linear-gradient(135deg, var(--c-brandbg), color-mix(in srgb, var(--c-brand) 5%, var(--c-card))); }
 .rv-ui .rv-reach .rv-ico { flex: none; } .rv-ui .rv-reach b { font-size: 16px; letter-spacing: -.01em; }
 @media (max-width: 860px) { .rv-ui .rv-reach { margin: 12px 14px 4px; } }
+
+/* ---- Campaigns: the wallet card as the page header, with the counts inside ---- */
+.rv-ui .awc.hero { padding: 0; margin-bottom: 14px; border-radius: 20px; display: block; }
+.rv-ui .awc.hero .hr-a { display: flex; align-items: center; gap: 20px; padding: 20px 24px 16px; position: relative; z-index: 1; flex-wrap: wrap; }
+.rv-ui .awc.hero .awc-n { margin-bottom: 8px; } .rv-ui .awc.hero .awc-a { margin: 0; font-size: 34px; } .rv-ui .awc.hero .awc-f { margin: 0 0 0 auto; } .rv-ui .awc.hero .awc-b { padding: 9px 18px; font-size: 13.5px; }
+.rv-ui .awc.hero .hr-b { display: flex; border-top: 1px solid rgba(255, 255, 255, .18); background: rgba(0, 0, 0, .12); position: relative; z-index: 1; }
+.rv-ui .awc.hero .hr-b > div { flex: 1; padding: 12px 24px; border-left: 1px solid rgba(255, 255, 255, .14); } .rv-ui .awc.hero .hr-b > div:first-child { border-left: 0; }
+.rv-ui .awc.hero .hr-b b { display: block; font-size: 20px; font-weight: 700; letter-spacing: -.02em; } .rv-ui .awc.hero .hr-b small { opacity: .8; font-size: 12.5px; }
+.rv-ui .awc.hero .hr-b .upd { flex: 1.2; display: flex; align-items: center; justify-content: flex-end; opacity: .85; font-size: 12.5px; }
+.rv-ui .cp-tools { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+@media (max-width: 860px) {
+  .rv-ui .awc.hero { border-radius: 18px; } .rv-ui .awc.hero .hr-a { padding: 16px 16px 12px; gap: 10px 12px; } .rv-ui .awc.hero .awc-n { flex-basis: 100%; }
+  .rv-ui .awc.hero .awc-a { font-size: 30px; } .rv-ui .awc.hero .awc-b { padding: 8px 14px; }
+  .rv-ui .awc.hero .hr-b > div { padding: 10px 8px; text-align: center; } .rv-ui .awc.hero .hr-b b { font-size: 18px; } .rv-ui .awc.hero .hr-b .upd { display: none; }
+  .rv-ui .cp-tools .rv-seg { width: 100%; } .rv-ui .cp-tools .rv-seg button { flex: 1; } .rv-ui .cp-tools .rv-sel { display: none; }
+}

@@ -37,7 +37,14 @@ function rvAdWalletCard(b, o = {}) {
   }
   const fund = !b.error && (prepay || managed) && !bad
     ? (managed ? `<button type="button" class="awc-b" onclick="bvTopUpModal('${o.isAdmin ? "company" : "me"}')">Top up</button>` : `<button type="button" class="awc-b" onclick="bvShowRequestFundsModal()">Fund account</button>`) : "";
-  return `<div class="awc${o.compact ? " cmp" : ""}${chip[1] === "bad" ? " bad" : chip[1] === "warn" ? " low" : ""}">
+  const tone = chip[1] === "bad" ? " bad" : chip[1] === "warn" ? " low" : "";
+  if (o.hero) {
+    // The Campaigns header: balance on top, the counts (and when it was updated) in a band along the bottom.
+    return `<div class="awc hero${tone}"><div class="hr-a"><div><div class="awc-n">${rvIc("mega")}${escH(b.name || "Ad account")}<span class="awc-c ${b.loading ? "" : chip[1]}">${b.loading ? "Checking…" : escH(chip[0])}</span></div>
+      <div class="awc-a">${b.loading ? "…" : amt}</div><div class="awc-s">${b.loading ? "Reading the balance from Meta" : sub}</div></div>${fund && !b.loading ? `<div class="awc-f">${fund}</div>` : ""}</div>
+      <div class="hr-b">${(o.stats || []).map((x) => `<div><b>${x[0]}</b><small>${x[1]}</small></div>`).join("")}${o.foot ? `<div class="upd">${escH(o.foot)}</div>` : ""}</div></div>`;
+  }
+  return `<div class="awc${tone}">
     <div class="awc-t"><span class="awc-n">${rvIc("mega")}${escH(b.name || "Ad account")}</span><span class="awc-c ${chip[1]}">${escH(chip[0])}</span></div>
     ${o.compact ? "" : `<div class="awc-id">${escH(idTail)}${b.funding_label && !managed && prepay ? (idTail ? " · " : "") + escH(String(b.funding_label).slice(0, 40)) : ""}</div>`}
     <div class="awc-a">${amt}</div><div class="awc-s">${sub}</div>${fund ? `<div class="awc-f">${fund}</div>` : ""}</div>`;

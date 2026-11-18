@@ -210,15 +210,14 @@ function amDraw() {
   root.classList.add("rv-ui");
   const d = am.data;
   const SEG = [["today", "Today"], ["last7", "7 days"], ["last30", "30 days"]], more = AM_RANGES.filter(([k]) => !SEG.some((x) => x[0] === k));
-  const synced = am.at ? `Updated ${ago(new Date(am.at).toISOString())}` : "";
-  const head = `<div class="rv-head rv-head2"><div><h1>Campaigns</h1><p>${d ? `${d.campaigns.filter(cpAlive).length} campaigns · ${d.adsets.filter(cpAlive).length} ad sets · ${d.ads.filter(cpAlive).length} ads${d.account?.name ? " on " + escH(d.account.name) : ""}${synced ? " · " + synced : ""}` : "Loading live numbers from Meta…"}</p></div><div class="rv-sp"></div>
-    <div class="rv-seg rv-hm2">${SEG.map(([k, l]) => `<button type="button" class="${am.range === k ? "on" : ""}" onclick="amSetRange('${k}')">${l}</button>`).join("")}</div>
-    <select class="rv-sel rv-hm2" onchange="amSetRange(this.value)" aria-label="More date ranges"><option value="">More…</option>${more.map(([k, l]) => `<option value="${k}" ${am.range === k ? "selected" : ""}>${l}</option>`).join("")}</select>
-    <button type="button" class="rv-btn" onclick="bvOpenDraftsModal()">Drafts</button>
+  const head = `<div class="rv-head rv-head2"><div><h1>Campaigns</h1></div><div class="rv-sp"></div>
+    <button type="button" class="rv-btn rv-hm" onclick="bvOpenDraftsModal()">Drafts</button>
     <button type="button" class="rv-btn" id="amRefresh" onclick="amFetch()" ${am.loading ? "disabled" : ""} aria-label="Refresh">${am.loading ? '<span class="spin"></span>' : rvIc("refresh")}</button>
     <button type="button" class="rv-btn p" onclick="bvOpenObjectiveGateModal()">${rvIc("plus")}New campaign</button></div>`;
+  const tools = `<div class="cp-tools"><div class="rv-seg">${SEG.map(([k, l]) => `<button type="button" class="${am.range === k ? "on" : ""}" onclick="amSetRange('${k}')">${l}</button>`).join("")}</div>
+    <select class="rv-sel" onchange="amSetRange(this.value)" aria-label="More date ranges"><option value="">More…</option>${more.map(([k, l]) => `<option value="${k}" ${am.range === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>`;
   if (am.error && !d) { root.innerHTML = head + `<div class="rv-note">${rvIc("alert")}<span>${escH(am.error)}</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="amFetch()">Try again</button></div>`; return; }
-  if (!d) { root.innerHTML = head + `<div class="rv-note"><span class="spin"></span><span>Loading live numbers from Meta…</span></div>`; return; }
+  if (!d) { root.innerHTML = head + tools + `<div class="rv-note"><span class="spin"></span><span>Loading live numbers from Meta…</span></div>`; return; }
 
   // keep a valid selection
   if (CP.sel && !cpFindSel()) CP.sel = null;
@@ -227,7 +226,10 @@ function amDraw() {
   const flaggedAds = d.ads.filter((a) => a.status === "ACTIVE" && a.suggestion?.kill);
   const b = am.balKey === activeAccountId ? am.bal : null;
   const T0 = amTotals(d.campaigns.filter(cpAlive));
-  const bal = b && (b.error ? true : true) ? (() => { const dys = { today: 1, last3: 3, last7: 7, last30: 30 }[am.range]; return rvAdWalletCard(b, { compact: true, daily: dys && T0.spend > 0 ? T0.spend / dys : null, isAdmin: window.myProfile?.role === "owner" || window.myProfile?.role === "admin" }); })() : "";
+  const nCamp0 = d.campaigns.filter(cpAlive).length;
+  const bal = (() => { const dys = { today: 1, last3: 3, last7: 7, last30: 30 }[am.range]; const synced = am.at ? "Live from Meta · updated " + ago(new Date(am.at).toISOString()) : "Live from Meta";
+    return rvAdWalletCard(b || { loading: true, name: d.account?.name || "Ad account" }, { hero: true, daily: dys && T0.spend > 0 ? T0.spend / dys : null, isAdmin: window.myProfile?.role === "owner" || window.myProfile?.role === "admin",
+      stats: [[nCamp0, nCamp0 === 1 ? "campaign" : "campaigns"], [d.adsets.filter(cpAlive).length, "ad sets"], [d.ads.filter(cpAlive).length, "ads"]], foot: synced }); })();
   const nCamp = d.campaigns.filter(cpAlive).length;
   const T = amTotals(d.campaigns.filter(cpAlive)), liveAds = d.ads.filter((a) => a.status === "ACTIVE" && a.effective_status === "ACTIVE" && !amScheduled(a)).length;
   const rangeLbl = (AM_RANGES.find((x) => x[0] === am.range) || [])[1] || "";
@@ -239,7 +241,7 @@ function amDraw() {
     tile("Ads delivering", `${liveAds} <span class="of">of ${d.ads.filter(cpAlive).length}</span>`, ""),
     ...(T.hasWeb ? [tile("Page views", ovNum(T.lpv), "website ads"), tile("Cost / page view", T.cpl != null ? fN2(T.cpl) : "—", "website spend ÷ page views"), tile("Page view rate", T.lpvRate != null ? T.lpvRate.toFixed(0) + "%" : "—", "page views ÷ link clicks")] : []),
   ].join("")}</div>`;
-  root.innerHTML = head + summary + bal + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
+  root.innerHTML = head + bal + tools + summary + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
     <div class="rv-split ${CP.mDetail ? "m-detail" : ""}">
       <section class="rv-card rv-mlist">${cpMobileHtml()}</section>
       <section class="rv-card rv-tree"><div class="tb"><div class="rv-fld">${rvIc("search")}<input type="search" placeholder="Search campaigns, ad sets, ads" value="${escH(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search"></div>
