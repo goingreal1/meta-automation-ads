@@ -6444,9 +6444,23 @@ function amKids(r) {
   const d = am.data; if (!d || !d.ads || r.adset_id) return null; // an ad has nothing inside it
   return r.campaign_id ? d.ads.filter(a => a.adset_id === r.id) : d.ads.filter(a => a.campaign_id === r.id);
 }
+// Meta marks a campaign, ad set or ad ACTIVE even before its start time. Ads Manager shows that as "Scheduled", so this does too.
+function amScheduled(r) {
+  const d = am.data; if (!d) return null;
+  const now = Date.now(), future = (x) => x && x.start_time && new Date(x.start_time).getTime() > now;
+  if (r.adset_id) { const set = (d.adsets || []).find(x => x.id === r.adset_id); return future(set) ? new Date(set.start_time) : null; }
+  if ("start_time" in r) return future(r) ? new Date(r.start_time) : null;
+  const sets = (d.adsets || []).filter(x => x.campaign_id === r.id);
+  if (sets.length && sets.every(future)) return new Date(Math.min(...sets.map(x => new Date(x.start_time).getTime())));
+  return null;
+}
 function amDelivery(r) {
   const e = r.effective_status || r.status;
   let [label, cls] = amStatusWord(e), note = "";
+  if (e === "ACTIVE") {
+    const sd = amScheduled(r);
+    if (sd) return `<span class="pill pending">Scheduled</span><span class="am-sub" style="display:block">Starts ${escH(sd.toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" }))}</span>`;
+  }
   const kids = e === "ACTIVE" ? amKids(r) : null;
   if (kids && kids.length) {
     const live = kids.filter(k => k.effective_status === "ACTIVE").length;
@@ -6637,7 +6651,7 @@ function amDraw() {
     </div>` : "";
 
   const t = amTotals(d.campaigns);
-  const liveAds = d.ads.filter(a => a.status === "ACTIVE" && a.effective_status === "ACTIVE").length;
+  const liveAds = d.ads.filter(a => a.status === "ACTIVE" && a.effective_status === "ACTIVE" && !amScheduled(a)).length;
   const kpis = `
     <div class="g4 am-kpis">
       <div class="kc"><div class="kc-lbl">Spent</div><div class="kc-val">${fN(t.spend)}</div><div class="kc-sub">${(AM_RANGES.find(x => x[0] === am.range) || [])[1] || ""}</div></div>
