@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { withR2 } from "../_shared/r2storage.ts";
+import { withR2, R2_ON } from "../_shared/r2storage.ts";
 
 // AI Team: a team lead, a creative agent, a media buyer and customer service hold a LIVE daily meeting about the business.
 // The meeting runs in the background and writes into ai_meeting_messages word by word; the page watches it with Realtime.
@@ -176,7 +176,9 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
 async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
   const { data: l } = await db.from("ai_launches").select("*").eq("id", launchId).maybeSingle();
   if (!l || l.company_id !== ctx.companyId) return { error: "Launch not found." };
-  if (l.status !== "proposed") return { error: "This launch is not waiting for approval." };
+  // Claim it first (proposed -> launching) so two runs can never create the same campaign twice.
+  const { data: claimed } = await db.from("ai_launches").update({ status: "launching", updated_at: new Date().toISOString() }).eq("id", l.id).eq("status", "proposed").select("id");
+  if (!claimed?.length) return { error: "This launch is not waiting for approval." };
   const { data: team } = await db.from("ai_teams").select("launch_hour_lagos").eq("company_id", l.company_id).maybeSingle();
   const start = nextStart(Number(team?.launch_hour_lagos ?? 0));
   const call = async (tool: string, args: Record<string, unknown>) => {
@@ -200,7 +202,122 @@ async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
   return { ok: true, start_at: start.toISOString() };
 }
 
-async function runMeeting(meetingId: string, companyId: string, topic: string, demo: boolean) {
+// ---- shared steps (used by the buttons and by the automatic daily flow) ----
+async function makeImages(meetingId: string, companyId: string): Promise<{ error?: string; started?: number }> {
+  const { data: m } = await db.from("ai_meetings").select("id, company_id, status, decision").eq("id", meetingId).maybeSingle();
+  if (!m || m.company_id !== companyId) return { error: "Meeting not found." };
+  // deno-lint-ignore no-explicit-any
+  const briefs: any[] = Array.isArray((m.decision as any)?.creative_briefs) ? (m.decision as any).creative_briefs.slice(0, 5) : [];
+  if (m.status !== "done" || !briefs.length) return { error: "This meeting has no image briefs yet." };
+  const { data: already } = await db.from("ai_team_images").select("id").eq("meeting_id", m.id).limit(1);
+  if (already?.length) return { error: "Images for this meeting were already requested." };
+  const rows = [];
+  for (const [bi, br0] of briefs.entries()) {
+    const br = { ...br0, _i: bi };
+    const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, no text, no logos, no watermarks.`;
+    const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
+    if (r) rows.push(r.id);
+  }
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil(Promise.all(rows.map((id) => generateImage(id, companyId))));
+  return { started: rows.length };
+}
+
+// Approving an image puts it in the Creative Vault (creative_assets), the same place uploaded creatives live, tied to its product.
+// deno-lint-ignore no-explicit-any
+async function approveImage(im: any, companyId: string, userId: string | null): Promise<{ error?: string; creative_id?: string }> {
+  if (im.status !== "ready" || !im.image_url) return { error: "This image is not ready to approve." };
+  const br = im.brief ?? {};
+  const { data: prods } = await db.from("products").select("id, product_name, ad_account_id").eq("company_id", companyId).eq("is_active", true);
+  const prod = (prods ?? []).find((p) => normName(p.product_name) === normName(br.product));
+  const { data: cr, error } = await db.from("creative_assets").insert({
+    company_id: companyId, file_name: `${im.id}.png`, storage_path: `creative-vault/ai-team/${companyId}/${im.id}.png`, public_url: im.image_url, asset_type: "image",
+    storage_provider: R2_ON ? "r2" : "supabase", product_id: prod?.id ?? null, ad_account_id: prod?.ad_account_id ?? null,
+    primary_text: br.primary_text ?? null, headline: br.headline_on_image ?? null, display_name: `AI Team · ${String(br.product ?? "Image").slice(0, 50)} · ${String(br.angle ?? "").slice(0, 40)}`.trim(), uploaded_by: userId,
+  }).select("id").single();
+  if (error || !cr) return { error: error?.message ?? "Could not add it to the vault." };
+  await db.from("ai_team_images").update({ status: "approved", creative_id: cr.id, updated_at: new Date().toISOString() }).eq("id", im.id);
+  return { creative_id: cr.id };
+}
+
+const notify = (companyId: string, kind: string, key: string, title: string, body: string, severity = "info") =>
+  db.rpc("rv_notify", { p_company: companyId, p_category: "ads", p_kind: kind, p_title: title, p_body: body, p_url: "/ai-team.html", p_severity: severity, p_dedupe: `${kind}:${key}` });
+
+// A short-lived sign-in for the owner who switched automatic mode on, so a launch runs with that person's own permissions.
+async function mintToken(userId: string): Promise<string | null> {
+  try {
+    const { data: u } = await db.auth.admin.getUserById(userId);
+    const email = u?.user?.email; if (!email) return null;
+    const { data: gl } = await db.auth.admin.generateLink({ type: "magiclink", email });
+    const th = gl?.properties?.hashed_token; if (!th) return null;
+    const tmp = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY") ?? "", { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: v } = await tmp.auth.verifyOtp({ token_hash: th, type: "magiclink" });
+    return v?.session?.access_token ?? null;
+  } catch { return null; }
+}
+
+// Runs every 5 minutes (pg_cron). Starts a due daily meeting; moves automatic meetings through images -> launches, one safe step at a time.
+async function tick() {
+  const log: string[] = [];
+  const nowL = new Date(Date.now() + 3600_000), lagosHour = nowL.getUTCHours();
+  const dayStart = Date.UTC(nowL.getUTCFullYear(), nowL.getUTCMonth(), nowL.getUTCDate()) - 3600_000;
+  const { data: teams } = await db.from("ai_teams").select("*").eq("enabled", true).eq("daily_meeting", true);
+  for (const t of teams ?? []) {
+    if (lagosHour < Number(t.meeting_hour_lagos)) continue;
+    const since = new Date(dayStart + Number(t.meeting_hour_lagos) * 3600_000).toISOString();
+    const { data: had } = await db.from("ai_meetings").select("id").eq("company_id", t.company_id).eq("trigger", "daily").gte("started_at", since).limit(1);
+    if (had?.length) continue;
+    if (!OPENAI) { log.push(`${t.company_id}: no OpenAI key`); continue; }
+    const topic = "Daily strategy: what is selling, how to position it, what to make and launch tonight.";
+    const { data: m } = await db.from("ai_meetings").insert({ company_id: t.company_id, topic, trigger: "daily", started_by: t.auto_launch_by ?? null, auto_stage: t.auto_launch ? "images" : null }).select("id").single();
+    if (m) { // deno-lint-ignore no-explicit-any
+      (globalThis as any).EdgeRuntime?.waitUntil(runMeeting(m.id, t.company_id, topic, false, true, !!t.auto_launch)); log.push(`${t.company_id}: meeting started`); }
+  }
+  const { data: ms } = await db.from("ai_meetings").select("id, company_id, status, decision, auto_stage, started_at").eq("trigger", "daily").in("auto_stage", ["images", "launch"]).gt("started_at", new Date(Date.now() - 14 * 3600_000).toISOString());
+  for (const m of ms ?? []) {
+    if (m.status === "running") continue;
+    const done = async (note: string, sev = "info") => { await db.from("ai_meetings").update({ auto_stage: "done", auto_note: note }).eq("id", m.id); await notify(m.company_id, "ai_team_auto", m.id, "AI Team: automatic run finished", note, sev); };
+    if (m.status === "failed") { await done("The meeting failed, so nothing was made or launched.", "warn"); continue; }
+    const { data: t } = await db.from("ai_teams").select("auto_launch, auto_launch_by").eq("company_id", m.company_id).maybeSingle();
+    if (!t?.auto_launch || !t.auto_launch_by) { await db.from("ai_meetings").update({ auto_stage: "done", auto_note: "Automatic mode was switched off." }).eq("id", m.id); continue; }
+    const by = t.auto_launch_by as string;
+    if (m.auto_stage === "images") {
+      const { data: imgs } = await db.from("ai_team_images").select("*").eq("meeting_id", m.id);
+      if (!imgs?.length) {
+        // deno-lint-ignore no-explicit-any
+        const hasBriefs = Array.isArray((m.decision as any)?.creative_briefs) && (m.decision as any).creative_briefs.length;
+        if (!RUNWAY || !hasBriefs) { await done("The meeting is ready, but images could not be made automatically (" + (!RUNWAY ? "no Runway key" : "no image briefs") + "). Open the AI Team page to continue.", "warn"); continue; }
+        const r = await makeImages(m.id, m.company_id); log.push(`${m.id}: images ${r.error ?? r.started}`); if (r.error) await done(r.error, "warn"); continue;
+      }
+      // a worker that died leaves an image "generating" forever; give up on those after 8 minutes
+      for (const i of imgs) if (i.status === "generating" && Date.now() - new Date(i.updated_at).getTime() > 8 * 60_000) await db.from("ai_team_images").update({ status: "failed", error: "Timed out." }).eq("id", i.id);
+      if (imgs.some((i) => i.status === "generating" && Date.now() - new Date(i.updated_at).getTime() <= 8 * 60_000)) continue;
+      let n = 0; for (const i of imgs) if (i.status === "ready") { const r = await approveImage(i, m.company_id, by); if (!r.error) n++; }
+      if (!n && !imgs.some((i) => i.status === "approved")) { await done("No image could be made, so nothing was launched.", "warn"); continue; }
+      await db.from("ai_meetings").update({ auto_stage: "launch" }).eq("id", m.id); log.push(`${m.id}: ${n} images approved`); continue;
+    }
+    if (m.auto_stage === "launch") {
+      const { data: had } = await db.from("ai_launches").select("id").eq("meeting_id", m.id).limit(1);
+      if (!had?.length) { const r = await proposeLaunches(m.id, m.company_id, by); if ("error" in r) { await done(String(r.error), "warn"); } continue; }
+      const { data: next } = await db.from("ai_launches").select("id").eq("meeting_id", m.id).eq("status", "proposed").order("created_at").limit(1);
+      if (next?.length) { // one launch per run keeps each run well inside the time limit
+        const token = await mintToken(by);
+        if (!token) { await done("Could not sign in as the owner to launch. Open the AI Team page to approve the launches.", "warn"); continue; }
+        const { data: prof } = await db.from("profiles").select("role").eq("id", by).maybeSingle();
+        if (!["owner", "admin"].includes(String(prof?.role ?? ""))) { await done("The person who switched automatic mode on is no longer an owner or admin, so nothing was launched.", "warn"); continue; }
+        const r = await approveLaunch(next[0].id, { token, userId: by, email: null, companyId: m.company_id, role: prof?.role ?? "", mediaBuyerId: null, displayName: "" });
+        log.push(`${m.id}: launch ${next[0].id} ${"error" in r ? "failed" : "scheduled"}`); continue;
+      }
+      const { data: ls } = await db.from("ai_launches").select("status, daily_budget_naira, product_name").eq("meeting_id", m.id);
+      const ok = (ls ?? []).filter((l) => l.status === "scheduled"), bad = (ls ?? []).filter((l) => l.status === "failed");
+      const spend = ok.reduce((a, l) => a + Number(l.daily_budget_naira || 0), 0);
+      await done(ok.length ? `Scheduled ${ok.length} campaign${ok.length > 1 ? "s" : ""} (₦${spend.toLocaleString()}/day) to start at 12:05 AM: ${ok.map((l) => l.product_name).join(", ")}.${bad.length ? ` ${bad.length} could not be launched.` : ""}` : `Nothing was launched${bad.length ? ` (${bad.length} failed)` : ""}. Open the AI Team page to see why.`, ok.length ? "success" : "warn");
+    }
+  }
+  return log;
+}
+
+async function runMeeting(meetingId: string, companyId: string, topic: string, demo: boolean, daily = false, auto = false) {
   try {
     const { data: brief } = await db.rpc("rv_team_briefing", { p_company: companyId });
     const briefing = JSON.stringify(brief ?? {}).slice(0, 9000);
@@ -232,6 +349,7 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
       try { decision = JSON.parse(raw); } catch { decision = { summary: raw.slice(0, 600) }; }
     }
     await db.from("ai_meetings").update({ status: "done", decision, ended_at: new Date().toISOString() }).eq("id", meetingId);
+    if (daily && !auto) await notify(companyId, "ai_team_ready", meetingId, "AI Team: today's meeting is ready", "The team made today's plan. Open the AI Team page to make the images and approve the launches.");
   } catch (e) {
     await db.from("ai_meetings").update({ status: "failed", error: String((e as Error)?.message ?? e).slice(0, 400), ended_at: new Date().toISOString() }).eq("id", meetingId);
   }
@@ -240,6 +358,12 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
+  const cron = req.headers.get("x-cron-secret");
+  if (cron) {
+    const { data: sec } = await db.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+    if (!sec?.value || sec.value !== cron) return json({ error: "Not allowed." }, 401);
+    return json({ ok: true, log: await tick() });
+  }
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: ud } = await db.auth.getUser(token);
   if (!ud?.user) return json({ error: "Please log in." }, 401);
@@ -262,6 +386,9 @@ Deno.serve(async (req) => {
     const patch: Record<string, unknown> = { company_id: companyId, updated_at: new Date().toISOString() };
     if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
     if (typeof b.auto_launch === "boolean") patch.auto_launch = b.auto_launch;
+    if (typeof b.daily_meeting === "boolean") patch.daily_meeting = b.daily_meeting;
+    if (b.meeting_hour_lagos != null) patch.meeting_hour_lagos = Math.min(23, Math.max(0, Math.round(Number(b.meeting_hour_lagos) || 0)));
+    if (typeof b.auto_launch === "boolean") patch.auto_launch_by = b.auto_launch ? ud.user.id : null;
     if (b.daily_budget_cap_naira != null) patch.daily_budget_cap_naira = Math.max(0, Number(b.daily_budget_cap_naira) || 0);
     const { error } = await db.from("ai_teams").upsert(patch, { onConflict: "company_id" });
     return error ? json({ error: error.message }, 400) : json({ ok: true });
@@ -284,23 +411,8 @@ Deno.serve(async (req) => {
   if (b?.action === "make_images") {
     if (!isOwner) return json({ error: "Only the owner or an admin can ask the creative agent to make images." }, 403);
     if (!RUNWAY) return json({ error: "Image generation is not switched on yet: it needs the Runway key (RUNWAY_API_KEY)." }, 503);
-    const { data: m } = await db.from("ai_meetings").select("id, company_id, status, decision").eq("id", String(b?.meeting_id ?? "")).maybeSingle();
-    if (!m || m.company_id !== companyId) return json({ error: "Meeting not found." }, 404);
-    // deno-lint-ignore no-explicit-any
-    const briefs: any[] = Array.isArray((m.decision as any)?.creative_briefs) ? (m.decision as any).creative_briefs.slice(0, 5) : [];
-    if (m.status !== "done" || !briefs.length) return json({ error: "This meeting has no image briefs yet." }, 409);
-    const { data: already } = await db.from("ai_team_images").select("id").eq("meeting_id", m.id).limit(1);
-    if (already?.length) return json({ error: "Images for this meeting were already requested." }, 409);
-    const rows = [];
-    for (const [bi, br0] of briefs.entries()) {
-      const br = { ...br0, _i: bi };
-      const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, no text, no logos, no watermarks.`;
-      const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
-      if (r) rows.push(r.id);
-    }
-    // deno-lint-ignore no-explicit-any
-    (globalThis as any).EdgeRuntime?.waitUntil(Promise.all(rows.map((id) => generateImage(id, companyId))));
-    return json({ ok: true, started: rows.length });
+    const r = await makeImages(String(b?.meeting_id ?? ""), companyId);
+    return json(r.error ? { error: r.error } : { ok: true, started: r.started }, r.error ? 409 : 200);
   }
 
   if (b?.action === "approve_image" || b?.action === "reject_image") {
@@ -308,15 +420,8 @@ Deno.serve(async (req) => {
     const { data: im } = await db.from("ai_team_images").select("*").eq("id", String(b?.image_id ?? "")).maybeSingle();
     if (!im || im.company_id !== companyId) return json({ error: "Image not found." }, 404);
     if (b.action === "reject_image") { await db.from("ai_team_images").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", im.id); return json({ ok: true }); }
-    if (im.status !== "ready" || !im.image_url) return json({ error: "This image is not ready to approve." }, 409);
-    const br = im.brief ?? {};
-    const { data: cr, error: ce } = await db.from("creatives").insert({
-      company_id: companyId, creative_name: `AI Team · ${String(br.product ?? "Image").slice(0, 60)} · ${String(br.angle ?? "").slice(0, 40)}`.trim(), image_url: im.image_url, status: "testing",
-      hook: br.angle ?? null, headline: br.headline_on_image ?? null, primary_text: br.primary_text ?? null,
-    }).select("id").single();
-    if (ce || !cr) return json({ error: ce?.message ?? "Could not add it to the vault." }, 500);
-    await db.from("ai_team_images").update({ status: "approved", creative_id: cr.id, updated_at: new Date().toISOString() }).eq("id", im.id);
-    return json({ ok: true, creative_id: cr.id });
+    const r = await approveImage(im, companyId, ud.user.id);
+    return json(r.error ? { error: r.error } : { ok: true, creative_id: r.creative_id }, r.error ? 409 : 200);
   }
 
   if (b?.action === "propose_launches") {
