@@ -1,4 +1,4 @@
-// Revora dashboard, part 26 of 26: CHAT CARDS
+// Revora dashboard, part 27 of 27: CHAT CARDS
 
 // ── CHAT CARDS ────────────────────────────────────────────────────────────────
 // The assistant returns cards next to its text. Cards are plain UI: answering one just sends a normal message,

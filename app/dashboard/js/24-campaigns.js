@@ -199,7 +199,7 @@ function amDraw() {
   const flaggedAds = d.ads.filter((a) => a.status === "ACTIVE" && a.suggestion?.kill);
   const b = am.balKey === activeAccountId ? am.bal : null;
   const T0 = amTotals(d.campaigns.filter(cpAlive));
-  const bal = b && !b.error && b.available != null ? `<div class="rv-note ${b.low_threshold != null && b.available <= b.low_threshold ? "warn" : ""}">${rvIc("wallet")}<span>${escH(b.name || "Ad account")} prepaid balance <b>${fN2(b.available)}</b>${b.low_threshold != null && b.available <= b.low_threshold ? " · low, top up soon" : ""}${(() => { const dys = { last3: 3, last7: 7, last30: 30 }[am.range], per = dys && T0.spend > 0 ? T0.spend / dys : 0; return per > 0 ? ` · at your ${dys}-day average (${fN(per)}/day) it lasts about ${Math.max(0, b.available / per).toFixed(1)} days` : ""; })()}${b.account_status && b.account_status !== 1 ? ` · ${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}` : ""}</span></div>` : (b && !b.error && b.account_status && b.account_status !== 1 ? `<div class="rv-note warn">${rvIc("alert")}<span>${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}</span></div>` : "");
+  const bal = b && (b.error ? true : true) ? (() => { const dys = { today: 1, last3: 3, last7: 7, last30: 30 }[am.range]; return rvAdWalletCard(b, { compact: true, daily: dys && T0.spend > 0 ? T0.spend / dys : null, isAdmin: window.myProfile?.role === "owner" || window.myProfile?.role === "admin" }); })() : "";
   const nCamp = d.campaigns.filter(cpAlive).length;
   const T = amTotals(d.campaigns.filter(cpAlive)), liveAds = d.ads.filter((a) => a.status === "ACTIVE" && a.effective_status === "ACTIVE" && !amScheduled(a)).length;
   const rangeLbl = (AM_RANGES.find((x) => x[0] === am.range) || [])[1] || "";

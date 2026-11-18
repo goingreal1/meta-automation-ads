@@ -23,6 +23,7 @@
 | 23 | **Overview** (rebuilt) |
 | 24 | **Campaigns** (rebuilt: list on the left, details on the right) |
 | 25 | **Orders** (rebuilt: list on the left, the order on the right) |
-| 26 | chat cards and the startup code (must stay last) |
+| 26 | **Wallet** (rebuilt) and the ad wallet card shared with Campaigns |
+| 27 | chat cards and the startup code (must stay last) |
 
 Caching: `vercel.json` serves `/app/*` with `max-age=0, must-revalidate`; the service worker (`sw.js`) keeps the last copy for offline use.
