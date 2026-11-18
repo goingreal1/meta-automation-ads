@@ -9520,9 +9520,9 @@ async function bvDeleteCreative(id) {
 }
 
 // ── Delivery (Shipbubble) ───────────────────────────────────────────────────────────────
-// Shipbubble picks the courier, collects the parcel and reports every step by webhook, so this view only shows
-// what is happening and lets the team fix a failed booking. No riders to assign.
-const BV_SHIP_STAGES = [["booked", "Booked"], ["picked_up", "Picked up"], ["in_transit", "On the way"], ["delivered", "Delivered"]];
+// Shipbubble picks the courier, collects the parcel and reports every step by webhook, so this view shows what is happening,
+// explains a failed booking in plain words, and lets the team fix the order and book again. No riders to assign.
+const SD_STEPS = [["booked", "Booked"], ["picked_up", "Picked up"], ["in_transit", "On the way"], ["delivered", "Delivered"]];
 function bvShipStage(o) {
   if (o.order_status === "delivered") return "delivered";
   if (o.order_status === "cancelled") return "cancelled";
@@ -9533,65 +9533,184 @@ function bvShipStage(o) {
   if (/pick/.test(st)) return "picked_up";
   return "booked";
 }
+// Turns Shipbubble's technical error into a title, the reason and what to do next.
+function bvShipExplain(o) {
+  const raw = String(o.shipbubble_error || "");
+  const clean = raw.replace(/^Shipbubble\s+[A-Z]+\s+\S+\s+\d{3}:\s*/i, "").replace(/;.*$/, "").trim();
+  if (/insufficient wallet|fund your wallet/i.test(raw)) return { kind: "wallet", title: "Shipbubble wallet is low", why: "There isn't enough money in your Shipbubble wallet to pay for this delivery.", fix: "Top up the wallet, then book again." };
+  if (/full name|numbers and symbols|first name|last name/i.test(raw)) return { kind: "name", title: "Customer name needs fixing", why: "Shipbubble needs a first and last name, letters only (for example John Doe).", fix: "Correct the name, then book again." };
+  if (/phone/i.test(raw)) return { kind: "phone", title: "Phone number needs fixing", why: "Shipbubble could not use this phone number.", fix: "Correct the number, then book again." };
+  if (/validate|address|couldn't validate|could not validate/i.test(raw)) return { kind: "address", title: "Address could not be verified", why: "Shipbubble needs a clear street address with the city and state.", fix: "Add the street, city and state, then book again." };
+  if (/no courier|rates?\b.*(not|no)|not available|couriers?/i.test(raw)) return { kind: "courier", title: "No courier available", why: "No courier serves this address right now.", fix: "Check the address or try again later." };
+  return { kind: "other", title: "Booking did not go through", why: clean.slice(0, 140) || "Shipbubble did not accept this booking.", fix: "Check the details and book again." };
+}
+const SD_PILL = { waiting: ["Booking…", "mute"], failed: ["Needs attention", "bad"], booked: ["Booked", "info"], picked_up: ["Picked up", "info"], in_transit: ["On the way", "go"], delivered: ["Delivered", "ok"], cancelled: ["Cancelled", "mute"] };
+function bvShipCss() {
+  if (document.getElementById("sdCss")) return;
+  const st = document.createElement("style"); st.id = "sdCss";
+  st.textContent = `
+.sd{max-width:980px;margin:0 auto}
+.sd-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.sd-head h2{font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:600;letter-spacing:-.01em;line-height:1.15}
+.sd-head p{color:var(--muted);font-size:13px;margin-top:3px}
+.sd-search{position:relative;min-width:210px;flex:1;max-width:320px}
+.sd-search input{width:100%;border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:9px 12px 9px 34px;font:inherit;font-size:13.5px;color:var(--text);outline:none}
+.sd-search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accentBg)}
+.sd-search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round}
+.sd-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.sd-kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 15px;position:relative;overflow:hidden;box-shadow:var(--shadow-sm)}
+.sd-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kc,var(--borderStrong))}
+.sd-kpi span{display:block;font-size:11.5px;color:var(--muted);font-weight:500;letter-spacing:.02em}
+.sd-kpi b{display:block;font-family:'Fraunces',Georgia,serif;font-size:28px;font-weight:600;line-height:1.15;margin-top:4px;color:var(--text)}
+.sd-kpi.warn b{color:var(--danger)}
+.sd-sum{color:var(--text2);font-size:12.5px;line-height:1.5;margin:-2px 0 14px}.sd-sum b{color:var(--text)}
+.sd-alert{display:flex;gap:12px;align-items:flex-start;background:var(--warnBg);border:1px solid var(--warnBdr);border-radius:14px;padding:13px 15px;margin-bottom:14px}
+.sd-alert .ic{width:32px;height:32px;border-radius:9px;background:#fff;border:1px solid var(--warnBdr);display:flex;align-items:center;justify-content:center;flex:none;font-size:16px}
+.sd-alert b{display:block;font-size:14px;color:var(--warn)}
+.sd-alert p{font-size:12.5px;color:var(--text2);margin-top:2px;line-height:1.5}
+.sd-alert .tx{flex:1;min-width:0}.sd-alert .go{margin-left:auto;flex:none;align-self:center}
+.sd-seg{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;margin-bottom:14px;scrollbar-width:none}
+.sd-seg::-webkit-scrollbar{display:none}
+.sd-chip{border:1px solid var(--border);background:var(--panel);color:var(--text2);border-radius:999px;padding:7px 13px;font:inherit;font-size:13px;font-weight:500;white-space:nowrap;cursor:pointer}
+.sd-chip em{font-style:normal;color:var(--muted);margin-left:5px;font-size:12px}
+.sd-chip.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.sd-chip.on em{color:inherit;opacity:.7}
+.sd-list{display:grid;gap:12px}
+@media(min-width:900px){.sd-list{grid-template-columns:1fr 1fr}}
+.sd-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:15px 16px;box-shadow:var(--shadow-sm)}
+.sd-hd{display:flex;gap:12px;align-items:flex-start}
+.sd-av{width:40px;height:40px;border-radius:12px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:var(--text2);flex:none;letter-spacing:.02em}
+.sd-who{min-width:0;flex:1}
+.sd-who b{display:block;font-size:15px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-who>span{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;line-height:1.5}
+.sd-amt{font-weight:600;color:var(--text)}
+.sd-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:600;white-space:nowrap;flex:none;background:var(--panel2);color:var(--text2)}
+.sd-pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.sd-pill.ok{background:#e8f6ee;color:#16784a}.sd-pill.go{background:#fdf1de;color:#a35f0a}.sd-pill.info{background:var(--blueBg);color:var(--blue)}
+.sd-pill.bad{background:var(--dangerBg);color:var(--danger)}.sd-pill.mute{background:var(--panel2);color:var(--muted)}
+.sd-cod{display:inline-block;border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:11px;color:var(--text2);margin-left:6px;vertical-align:1px;white-space:nowrap}
+.sd-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:14px}
+.sd-steps i{display:block;height:4px;border-radius:2px;background:var(--border)}
+.sd-steps i.on{background:var(--accent)}
+.sd-steps div{font-size:10.5px;color:var(--muted);margin-top:6px;text-align:left}
+.sd-steps div.on{color:var(--text);font-weight:600}
+.sd-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:12px;font-size:12.5px;color:var(--text2)}
+.sd-meta span{display:inline-flex;align-items:center;gap:5px}
+.sd-issue{margin-top:12px;border-radius:12px;background:var(--dangerBg);border:1px solid var(--dangerBdr);padding:11px 13px}
+.sd-issue.warnx{background:var(--warnBg);border-color:var(--warnBdr)}
+.sd-issue b{display:block;font-size:13.5px;color:var(--danger)}
+.sd-issue.warnx b{color:var(--warn)}
+.sd-issue p{font-size:12.5px;color:var(--text2);margin-top:3px;line-height:1.5}
+.sd-issue small{display:block;margin-top:6px;font-size:12px;color:var(--text);font-weight:500}
+.sd-try{font-size:11.5px;color:var(--muted);margin-top:6px}
+.sd-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.sd-btn{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:10px;padding:8px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;line-height:1.2}
+.sd-btn:hover{border-color:var(--borderStrong);background:var(--panel2)}
+.sd-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.sd-btn.pri:hover{background:var(--accentDk)}
+.sd-btn:disabled{opacity:.55;cursor:default}
+.sd-link{background:none;border:0;color:var(--text2);font:inherit;font-size:12.5px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px}
+.sd-empty{background:var(--panel);border:1px dashed var(--borderStrong);border-radius:16px;padding:34px 20px;text-align:center;color:var(--text2)}
+.sd-empty b{display:block;font-size:15px;color:var(--text);margin-bottom:4px}
+.sd-skel{height:128px;border-radius:16px;background:linear-gradient(90deg,var(--panel2),var(--border),var(--panel2));background-size:200% 100%;animation:sdsh 1.2s infinite}
+@keyframes sdsh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.sd-fx label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+@media(max-width:700px){.sd-kpis{grid-template-columns:repeat(2,1fr)}.sd-kpi b{font-size:24px}.sd-head h2{font-size:23px}.sd-search{max-width:none;min-width:100%}.sd-alert{flex-wrap:wrap}.sd-alert .tx{flex:1 1 calc(100% - 50px)}.sd-alert .go{flex:1 1 100%;margin:8px 0 0;justify-content:center;align-self:stretch}}
+`;
+  document.head.appendChild(st);
+}
 async function renderShipDelivery(el) {
+  bvShipCss();
+  if (!el.querySelector(".sd")) el.innerHTML = `<div class="sd"><div class="sd-head"><div><h2>Deliveries</h2><p>Loading…</p></div></div><div class="sd-list"><div class="sd-skel"></div><div class="sd-skel"></div></div></div>`;
   const orders = await sbQuery("orders", "select=id,customer_name,customer_phone,customer_city,customer_state,customer_address,order_value_naira,order_status,delivery_stage,payment_method,ordered_at,delivered_at,shipbubble_order_id,shipbubble_status,shipbubble_courier,shipbubble_tracking_code,shipbubble_tracking_url,shipbubble_error,shipbubble_attempts,shipbubble_mode,shipping_fee_naira,cod_amount_naira,cod_remitted_at&order_status=in.(valid,delivered)&order=ordered_at.desc&limit=200") || [];
-  const rows = orders.map(o => ({ o, st: bvShipStage(o) }));
+  window.bvShipOrders = orders;
+  const rows = orders.map(o => ({ o, st: bvShipStage(o), ex: bvShipStage(o) === "failed" ? bvShipExplain(o) : null }));
   const n = (st) => rows.filter(r => r.st === st).length;
+  const inTransit = n("in_transit") + n("picked_up"), attention = n("failed");
   const active = rows.filter(r => !["delivered", "cancelled"].includes(r.st));
-  const tab = window.bvShipFilter || "active";
-  const shown = tab === "all" ? rows : tab === "delivered" ? rows.filter(r => r.st === "delivered") : tab === "problem" ? rows.filter(r => r.st === "failed") : active;
-  const pill = (st) => {
-    const m = { waiting: ["Booking…", "#8e8e93"], failed: ["Needs attention", "#ff3b30"], booked: ["Booked", "#0a84ff"], picked_up: ["Picked up", "#5856d6"], in_transit: ["On the way", "#ff9f0a"], delivered: ["Delivered", "#34c759"], cancelled: ["Cancelled", "#8e8e93"] }[st] || [st, "#8e8e93"];
-    return `<span style="display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:600;color:#fff;background:${m[1]};">${m[0]}</span>`;
-  };
-  const steps = (st) => {
-    const idx = BV_SHIP_STAGES.findIndex(x => x[0] === st);
-    return `<div style="display:flex;gap:4px;margin-top:6px;">${BV_SHIP_STAGES.map((x, i) => `<div title="${x[1]}" style="flex:1;height:4px;border-radius:2px;background:${idx >= i ? "var(--accent)" : "var(--border)"};"></div>`).join("")}</div>`;
-  };
-  const card = ({ o, st }) => {
+  const tab = window.bvShipFilter || "active", q = (window.bvShipQ || "").trim().toLowerCase();
+  let shown = tab === "all" ? rows : tab === "delivered" ? rows.filter(r => r.st === "delivered") : tab === "problem" ? rows.filter(r => r.st === "failed") : active;
+  if (q) shown = shown.filter(r => [r.o.customer_name, r.o.customer_phone, r.o.customer_city, r.o.customer_state, r.o.shipbubble_tracking_code].join(" ").toLowerCase().includes(q));
+  shown = [...shown].sort((a, b) => (b.st === "failed") - (a.st === "failed"));
+  const awaiting = rows.filter(r => r.st === "delivered" && /pay on delivery|cash on delivery|\bcod\b/i.test(r.o.payment_method || "") && !r.o.cod_remitted_at).reduce((s, r) => s + Number(r.o.cod_amount_naira || r.o.order_value_naira || 0), 0);
+  const walletN = rows.filter(r => r.ex && r.ex.kind === "wallet").length;
+  const initials = (nm) => String(nm || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0] || "").join("").toUpperCase() || "?";
+  const ago = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 60 ? `${Math.max(m, 1)} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+  const card = ({ o, st, ex }) => {
     const cod = /pay on delivery|cash on delivery|\bcod\b/i.test(o.payment_method || "");
-    const test = o.shipbubble_order_id && o.shipbubble_mode && o.shipbubble_mode !== "live";
-    return `<div class="set-card" style="padding:12px 14px;margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
-        <div style="min-width:0;"><b>${escH(o.customer_name || "Customer")}</b>
-          <div style="font-size:12px;color:var(--text2);">${escH([o.customer_city, o.customer_state].filter(Boolean).join(", ") || "No address")} · ${fN(o.order_value_naira)}${cod ? " · Pay on delivery" : ""}</div></div>
-        <div style="text-align:right;">${pill(st)}${test ? `<div style="font-size:10px;color:var(--text2);margin-top:3px;">test shipment</div>` : ""}</div>
-      </div>
-      ${["booked", "picked_up", "in_transit", "delivered"].includes(st) ? steps(st) : ""}
-      ${o.shipbubble_courier ? `<div style="font-size:12px;color:var(--text2);margin-top:8px;">🚚 ${escH(o.shipbubble_courier)}${o.shipping_fee_naira ? ` · delivery fee ${fN(o.shipping_fee_naira)}` : ""}${o.shipbubble_tracking_code ? ` · #${escH(o.shipbubble_tracking_code)}` : ""}</div>` : ""}
-      ${st === "failed" || (st === "waiting" && o.shipbubble_error) ? `<div style="font-size:12px;color:var(--danger);margin-top:8px;">${escH(o.shipbubble_error || "Booking failed")}</div>` : ""}
-      ${cod && st === "delivered" ? `<div style="font-size:12px;color:var(--text2);margin-top:6px;">${o.cod_remitted_at ? "💰 Cash remitted by Shipbubble" : "⏳ Cash not yet remitted by Shipbubble"}</div>` : ""}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
-        ${o.shipbubble_tracking_url ? `<a class="btn btn-g" style="padding:4px 10px;font-size:12px;" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
-        ${o.customer_phone ? `<a class="btn btn-g" style="padding:4px 10px;font-size:12px;" href="https://wa.me/${escH(String(o.customer_phone).replace(/\D/g, "").replace(/^0/, "234"))}" target="_blank" rel="noopener">WhatsApp customer</a>` : ""}
-        ${["failed", "waiting"].includes(st) && o.order_status === "valid" ? `<button class="btn btn-a" style="padding:4px 10px;font-size:12px;" onclick="bvShipAct('${o.id}','retry',this)">Book delivery now</button><button class="btn btn-g" style="padding:4px 10px;font-size:12px;" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}
-      </div></div>`;
+    const [pl, pc] = SD_PILL[st] || [st, "mute"];
+    const idx = SD_STEPS.findIndex(x => x[0] === st);
+    const loc = [o.customer_city, o.customer_state].filter(Boolean).join(", ") || "No address";
+    const steps = idx >= 0 ? `<div class="sd-steps">${SD_STEPS.map((x, i) => `<div><i class="${idx >= i ? "on" : ""}"></i><div class="${idx === i ? "on" : ""}">${x[1]}</div></div>`).join("")}</div>` : "";
+    const issue = ex ? `<div class="sd-issue ${ex.kind === "wallet" ? "warnx" : ""}"><b>${escH(ex.title)}</b><p>${escH(ex.why)}</p><small>${escH(ex.fix)}</small>${o.shipbubble_attempts ? `<div class="sd-try">Tried ${o.shipbubble_attempts} time${o.shipbubble_attempts > 1 ? "s" : ""}</div>` : ""}</div>` : "";
+    const meta = o.shipbubble_courier ? `<div class="sd-meta"><span>🚚 ${escH(o.shipbubble_courier)}</span>${o.shipping_fee_naira ? `<span>Fee ${fN(o.shipping_fee_naira)}</span>` : ""}${o.shipbubble_tracking_code ? `<span>#${escH(o.shipbubble_tracking_code)}</span>` : ""}${o.shipbubble_mode && o.shipbubble_mode !== "live" ? `<span>Test shipment</span>` : ""}</div>` : "";
+    const codLine = cod && st === "delivered" ? `<div class="sd-meta"><span>${o.cod_remitted_at ? "✓ Cash paid out by Shipbubble" : "⏳ Cash not yet paid out by Shipbubble"}</span></div>` : "";
+    const wa = o.customer_phone ? `https://wa.me/${escH(String(o.customer_phone).replace(/\D/g, "").replace(/^0/, "234"))}` : "";
+    const canBook = ["failed", "waiting"].includes(st) && o.order_status === "valid";
+    const needsFix = ex && ["name", "phone", "address"].includes(ex.kind);
+    const acts = `<div class="sd-act">
+      ${canBook ? (needsFix ? `<button class="sd-btn pri" onclick="bvShipFix('${o.id}')">Fix details</button><button class="sd-btn" onclick="bvShipAct('${o.id}','retry',this)">Book again</button>` : `<button class="sd-btn pri" onclick="bvShipAct('${o.id}','retry',this)">Book delivery</button>`) : ""}
+      ${o.shipbubble_tracking_url ? `<a class="sd-btn" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
+      ${wa ? `<a class="sd-btn" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+      ${canBook ? `<button class="sd-link" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}</div>`;
+    return `<div class="sd-card"><div class="sd-hd"><div class="sd-av">${escH(initials(o.customer_name))}</div><div class="sd-who"><b>${escH(o.customer_name || "Customer")}</b><span>${escH(loc)}<br><span class="sd-amt">${fN(o.order_value_naira)}</span>${cod ? '<span class="sd-cod">Pay on delivery</span>' : ""}${o.ordered_at ? ` <span style="white-space:nowrap">· ${escH(ago(o.ordered_at))}</span>` : ""}</span></div><span class="sd-pill ${pc}">${pl}</span></div>${issue || steps}${issue ? "" : meta}${codLine}${acts}</div>`;
   };
-  const chip = (id, label, count) => `<button class="bv-preset ${tab === id ? "on" : ""}" onclick="window.bvShipFilter='${id}';renderRiders(document.getElementById('mainContent'))">${label}${count != null ? ` (${count})` : ""}</button>`;
-  el.innerHTML = `
-    <div class="panel"><div class="ph"><div class="ph-title">Deliveries</div></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:12px;">
-        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:var(--text2);">On the way</div><b style="font-size:20px;">${n("in_transit") + n("picked_up")}</b></div>
-        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:var(--text2);">Booked</div><b style="font-size:20px;">${n("booked")}</b></div>
-        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:var(--text2);">Delivered</div><b style="font-size:20px;">${n("delivered")}</b></div>
-        <div class="set-card" style="padding:10px 12px;"><div style="font-size:11px;color:${n("failed") ? "var(--danger)" : "var(--text2)"};">Need attention</div><b style="font-size:20px;">${n("failed")}</b></div>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${chip("active", "In progress", active.length)}${chip("problem", "Needs attention", n("failed"))}${chip("delivered", "Delivered", n("delivered"))}${chip("all", "All", rows.length)}</div>
-      ${shown.length ? shown.map(card).join("") : `<div style="padding:24px;text-align:center;color:var(--text2);">Nothing here yet. When an order is confirmed, Shipbubble books the courier automatically and the steps show up here.</div>`}
-    </div>`;
+  const chip = (id, label, count) => `<button class="sd-chip ${tab === id ? "on" : ""}" onclick="window.bvShipFilter='${id}';renderShipDelivery(document.getElementById('mainContent'))">${label}<em>${count}</em></button>`;
+  const kpi = (label, val, color, cls = "") => `<div class="sd-kpi ${cls}" style="--kc:${color}"><span>${label}</span><b>${val}</b></div>`;
+  el.innerHTML = `<div class="sd">
+    <div class="sd-head"><div><h2>Deliveries</h2><p>Live from Shipbubble. ${rows.length} order${rows.length === 1 ? "" : "s"} in the last 200.</p></div>
+      <div class="sd-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="sdQ" value="${escH(window.bvShipQ || "")}" placeholder="Search name, phone, city or tracking number" autocomplete="off"></div></div>
+    <div class="sd-kpis">${kpi("On the way", inTransit, "#d98a1f")}${kpi("Booked", n("booked"), "#2f6fc4")}${kpi("Delivered", n("delivered"), "#1f9a5f")}${kpi("Need attention", attention, attention ? "#c0392b" : "#cfcabd", attention ? "warn" : "")}</div>
+    ${awaiting ? `<div class="sd-sum">💰 <b>${fN(awaiting)}</b> in cash on delivery is waiting to be paid out by Shipbubble.</div>` : ""}
+    ${walletN ? `<div class="sd-alert"><div class="ic">💳</div><div class="tx"><b>Shipbubble wallet is low</b><p>${walletN} order${walletN > 1 ? "s are" : " is"} waiting because the wallet can't cover the delivery fee. Top up the wallet in Shipbubble, then book them all again.</p></div><button class="sd-btn pri go" onclick="bvShipRetryWallet(this)">Book ${walletN} again</button></div>` : ""}
+    <div class="sd-seg">${chip("active", "In progress", active.length)}${chip("problem", "Needs attention", attention)}${chip("delivered", "Delivered", n("delivered"))}${chip("all", "All", rows.length)}</div>
+    ${shown.length ? `<div class="sd-list">${shown.map(card).join("")}</div>` : `<div class="sd-empty"><b>${q ? "No orders match your search" : tab === "problem" ? "Nothing needs attention" : "No deliveries here yet"}</b>${q ? "Try a different name, phone or city." : tab === "problem" ? "Every confirmed order has been booked with a courier." : "When an order is confirmed, Shipbubble books a courier automatically and the steps show up here."}</div>`}
+  </div>`;
+  const inp = document.getElementById("sdQ");
+  if (inp) { let t; inp.oninput = () => { window.bvShipQ = inp.value; clearTimeout(t); t = setTimeout(() => { renderShipDelivery(el).then(() => { const i2 = document.getElementById("sdQ"); if (i2) { i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); } }); }, 250); }; }
 }
 async function bvShipAct(orderId, action, btn) {
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; btn.dataset.t = btn.textContent; btn.textContent = action === "rates" ? "Checking…" : "Booking…"; }
   try {
     const out = await sbFn("delivery-admin", { action, order_id: orderId });
     if (out?.error) throw new Error(out.error);
     if (action === "rates") {
       const r = out?.rates || out?.couriers || out?.quotes || out;
       alert("Courier prices:\n\n" + (Array.isArray(r) ? r.map(x => `${x.courier_name || x.name || "Courier"}: ₦${Number(x.total || x.amount || x.fee || 0).toLocaleString()}`).join("\n") : JSON.stringify(r, null, 2).slice(0, 700)));
-    } else bvToast(out?.skipped || out?.error || "Delivery booked.");
-  } catch (e) { bvToast(e.message || "That didn't work.", "err"); }
-  if (btn) btn.disabled = false;
-  document.querySelector('[data-tab="riders"]')?.click();
+    } else bvToast(out?.skipped || "Delivery booked.");
+  } catch (e) { bvToast(String(e.message || "That didn't work.").replace(/^Shipbubble\s+[A-Z]+\s+\S+\s+\d{3}:\s*/i, ""), "err"); }
+  if (btn) { btn.disabled = false; btn.textContent = btn.dataset.t || btn.textContent; }
+  renderShipDelivery(document.getElementById("mainContent"));
+}
+async function bvShipRetryWallet(btn) {
+  const list = (window.bvShipOrders || []).filter(o => o.order_status === "valid" && !o.shipbubble_order_id && bvShipExplain(o).kind === "wallet");
+  if (!list.length) return;
+  if (!confirm(`Book ${list.length} order${list.length > 1 ? "s" : ""} again? Make sure your Shipbubble wallet has been topped up first.`)) return;
+  btn.disabled = true; let ok = 0, fail = 0;
+  for (const o of list) { btn.textContent = `Booking ${ok + fail + 1} of ${list.length}…`; const r = await sbFn("delivery-admin", { action: "retry", order_id: o.id }); (r?.error ? fail++ : ok++); }
+  bvToast(fail ? `${ok} booked, ${fail} still need attention.` : `${ok} deliveries booked.`, fail ? "err" : "ok");
+  renderShipDelivery(document.getElementById("mainContent"));
+}
+function bvShipFix(orderId) {
+  const o = (window.bvShipOrders || []).find(x => x.id === orderId); if (!o) return;
+  const ex = bvShipExplain(o);
+  const ov = bvOpenSheet("sdFix", `<button class="bv-modal-close" data-sheet-close onclick="bvCloseSheet('sdFix')">✕</button>
+    <div class="sd-fx"><h3 style="margin:0 0 2px;font-size:18px">Fix delivery details</h3><div style="color:var(--text2);font-size:13px;margin-bottom:4px">${escH(ex.why)}</div>
+    <label>Full name (first and last, letters only)</label><input class="cat-in" id="sfN" value="${escH(o.customer_name || "")}" autocomplete="off">
+    <label>Phone number</label><input class="cat-in" id="sfP" value="${escH(o.customer_phone || "")}" inputmode="tel" autocomplete="off">
+    <label>Street address</label><input class="cat-in" id="sfA" value="${escH(o.customer_address || "")}" placeholder="House number, street, area" autocomplete="off">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label>City</label><input class="cat-in" id="sfC" value="${escH(o.customer_city || "")}" autocomplete="off"></div><div><label>State</label><input class="cat-in" id="sfS" value="${escH(o.customer_state || "")}" autocomplete="off"></div></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button class="sd-btn" onclick="bvCloseSheet('sdFix')">Cancel</button><button class="sd-btn pri" id="sfGo">Save and book</button></div></div>`, 460);
+  ov.querySelector("#sfGo").onclick = async () => {
+    const v = id => ov.querySelector(id).value.trim();
+    const name = v("#sfN");
+    if (!/^[A-Za-z][A-Za-z'.\-]*(\s+[A-Za-z][A-Za-z'.\-]*)+$/.test(name)) return bvToast("Enter a first and last name using letters only, for example John Doe.", "err");
+    const b = ov.querySelector("#sfGo"); b.disabled = true; b.textContent = "Saving…";
+    const { error } = await supabaseClient.from("orders").update({ customer_name: name, customer_phone: v("#sfP"), customer_address: v("#sfA"), customer_city: v("#sfC"), customer_state: v("#sfS") }).eq("id", orderId);
+    if (error) { b.disabled = false; b.textContent = "Save and book"; return bvToast("Couldn't save: " + error.message, "err"); }
+    bvCloseSheet("sdFix");
+    await bvShipAct(orderId, "retry", null);
+  };
 }
 
 async function renderRiders(el) {
