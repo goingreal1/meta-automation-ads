@@ -111,6 +111,95 @@ async function generateImage(id: string, companyId: string) {
   } catch (e) { await fail(String((e as Error)?.message ?? e)); }
 }
 
+// ---- Phase 3: the media buyer ----
+const normName = (t: unknown) => String(t ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// The next launch moment in Lagos time (UTC+1, no daylight saving), at least 20 minutes away so Meta accepts it as a scheduled start.
+function nextStart(hour: number): Date {
+  const now = new Date(), lagosNow = new Date(now.getTime() + 3600_000);
+  const d = new Date(Date.UTC(lagosNow.getUTCFullYear(), lagosNow.getUTCMonth(), lagosNow.getUTCDate(), hour, 5) - 3600_000);
+  while (d.getTime() < now.getTime() + 20 * 60_000) d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+const lagosIso = (d: Date) => new Date(d.getTime() + 3600_000).toISOString().replace(/\.\d+Z$/, "+01:00");
+
+async function proposeLaunches(meetingId: string, companyId: string, userId: string) {
+  const { data: m } = await db.from("ai_meetings").select("id, company_id, status, decision").eq("id", meetingId).maybeSingle();
+  // deno-lint-ignore no-explicit-any
+  const plan: any[] = Array.isArray((m?.decision as any)?.launch_plan) ? (m!.decision as any).launch_plan.slice(0, 8) : [];
+  if (!m || m.company_id !== companyId || m.status !== "done" || !plan.length) return { error: "This meeting has no launch plan yet." };
+  const { data: had } = await db.from("ai_launches").select("id").eq("meeting_id", meetingId).limit(1);
+  if (had?.length) return { error: "Launches for this meeting were already prepared." };
+  const { data: team } = await db.from("ai_teams").select("daily_budget_cap_naira, launch_hour_lagos").eq("company_id", companyId).maybeSingle();
+  const cap = Number(team?.daily_budget_cap_naira ?? 0), hour = Number(team?.launch_hour_lagos ?? 0);
+  const startAt = nextStart(hour);
+  const { data: imgs } = await db.from("ai_team_images").select("brief, creative_id").eq("meeting_id", meetingId).eq("status", "approved");
+  const { data: prods } = await db.from("products").select("id, product_name, destination_type, landing_page_url, ad_account_id, is_active").eq("company_id", companyId).eq("is_active", true);
+  const todayStart = new Date(Math.floor((Date.now() + 3600_000) / 86400_000) * 86400_000 - 3600_000).toISOString();
+  const { data: today } = await db.from("ai_launches").select("daily_budget_naira").eq("company_id", companyId).in("status", ["proposed", "scheduled"]).gte("created_at", todayStart);
+  let committed = (today ?? []).reduce((a, r) => a + Number(r.daily_budget_naira || 0), 0);
+  const out = [];
+  for (const it of plan) {
+    const name = String(it?.product ?? "").slice(0, 120), budget = Math.max(0, Math.round(Number(it?.daily_budget_naira) || 0));
+    const base = { company_id: companyId, meeting_id: meetingId, product_name: name, daily_budget_naira: budget, kill_rule: it?.kill_rule ? String(it.kill_rule).slice(0, 300) : null, start_at: startAt.toISOString(), created_by: userId };
+    const skip = async (why: string) => { const { data } = await db.from("ai_launches").insert({ ...base, status: "skipped", note: why }).select("*").single(); out.push(data); };
+    const prod = (prods ?? []).filter((p) => normName(p.product_name) === normName(name)).sort((a, b) => Number(!!b.landing_page_url) - Number(!!a.landing_page_url))[0];
+    if (!prod) { await skip("Could not match this to one of your active products."); continue; }
+    if (!prod.ad_account_id) { await skip("This product has no ad account assigned."); continue; }
+    // deno-lint-ignore no-explicit-any
+    const mine = (imgs ?? []).filter((i: any) => i.creative_id && (i.brief?._i === it?.creative_brief_index || normName(i.brief?.product) === normName(name))).slice(0, 3);
+    if (!mine.length) { await skip("No approved image for this product yet. Approve at least one image first."); continue; }
+    if (!budget) { await skip("No daily budget in the plan."); continue; }
+    if (!cap) { await skip("Set a daily spend cap in Settings first (it is ₦0, so the media buyer may not spend)."); continue; }
+    if (committed + budget > cap) { await skip(`Over today's spend cap (₦${cap.toLocaleString()}); ₦${committed.toLocaleString()} is already committed.`); continue; }
+    const { data: acct } = await db.from("ad_accounts").select("id, name, nickname, media_buyer_id, status").eq("id", prod.ad_account_id).maybeSingle();
+    if (!acct || String(acct.status ?? "active").toLowerCase() !== "active") { await skip("The product's ad account is not active."); continue; }
+    const { data: buyer } = acct.media_buyer_id ? await db.from("media_buyers").select("name").eq("id", acct.media_buyer_id).maybeSingle() : { data: null };
+    let url = prod.landing_page_url as string | null;
+    if (!url && prod.destination_type !== "whatsapp") {
+      const { data: s } = await db.from("sites").select("id, slug").eq("product_id", prod.id).eq("status", "published").limit(1).maybeSingle();
+      if (s) { const { data: d } = await db.from("site_domains").select("hostname").eq("site_id", s.id).eq("status", "active").limit(1).maybeSingle(); url = d ? `https://${d.hostname}/` : null; }
+    }
+    if (prod.destination_type !== "whatsapp" && !url) { await skip("No landing page link for this product."); continue; }
+    // deno-lint-ignore no-explicit-any
+    const copies = mine.map((i: any) => ({ primary_text: String(i.brief?.primary_text ?? "").slice(0, 500) || name, headline: String(i.brief?.headline_on_image ?? "").slice(0, 80) }));
+    const { data } = await db.from("ai_launches").insert({
+      ...base, status: "proposed", product_id: prod.id, ad_account_id: acct.id, account_name: acct.nickname || acct.name, media_buyer_id: acct.media_buyer_id, buyer_name: buyer?.name ?? null,
+      // deno-lint-ignore no-explicit-any
+      creative_ids: mine.map((i: any) => i.creative_id), destination: prod.destination_type ?? "website", landing_url: url, copies,
+    }).select("*").single();
+    committed += budget; out.push(data);
+  }
+  return { ok: true, launches: out };
+}
+
+// Runs as the person who approved it: plans the campaign with the same tools ChatGPT/Claude use, then launches it SCHEDULED to start at 12AM.
+async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
+  const { data: l } = await db.from("ai_launches").select("*").eq("id", launchId).maybeSingle();
+  if (!l || l.company_id !== ctx.companyId) return { error: "Launch not found." };
+  if (l.status !== "proposed") return { error: "This launch is not waiting for approval." };
+  const { data: team } = await db.from("ai_teams").select("launch_hour_lagos").eq("company_id", l.company_id).maybeSingle();
+  const start = nextStart(Number(team?.launch_hour_lagos ?? 0));
+  const call = async (tool: string, args: Record<string, unknown>) => {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/mcp-ads`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool, args, ctx }) });
+    const o = await r.json().catch(() => ({})); return o?.out ?? o;
+  };
+  const fail = async (why: string) => { await db.from("ai_launches").update({ status: "failed", note: why.slice(0, 400), updated_at: new Date().toISOString() }).eq("id", l.id); return { error: why }; };
+  const copies = (l.copies as { primary_text: string; headline?: string }[]) ?? [];
+  const planned = await call("plan_campaign", {
+    ad_account_id: l.ad_account_id, product_name: l.product_name, destination: l.destination ?? "website", objective: "sales", budget_type: "abo",
+    ...(l.landing_url ? { landing_url: l.landing_url } : {}), campaign_name: `AI Team · ${l.product_name} · ${new Date(start.getTime() + 3600_000).toISOString().slice(0, 10)}`,
+    asset_ids: l.creative_ids, copies, ads: (l.creative_ids as string[]).map((id, i) => ({ asset_id: id, copy_index: Math.min(i, copies.length - 1) })),
+    adsets: [{ label: "AI Team", budget_naira: Number(l.daily_budget_naira) }], person_confirmed: true, start_time: lagosIso(start),
+  });
+  const planId = planned?.plan_id ?? planned?.plan?.id ?? planned?.id;
+  if (!planId) return await fail(String(planned?.message ?? planned?.error ?? "The campaign plan could not be made.").slice(0, 300));
+  await db.from("ai_launches").update({ plan_id: String(planId) }).eq("id", l.id);
+  const launched = await call("launch_plan", { plan_id: String(planId), person_approved: true });
+  if (launched?.error) return await fail(String(launched.error));
+  await db.from("ai_launches").update({ status: "scheduled", start_at: start.toISOString(), note: "Scheduled on Meta. It starts at the time shown.", updated_at: new Date().toISOString() }).eq("id", l.id);
+  return { ok: true, start_at: start.toISOString() };
+}
+
 async function runMeeting(meetingId: string, companyId: string, topic: string, demo: boolean) {
   try {
     const { data: brief } = await db.rpc("rv_team_briefing", { p_company: companyId });
@@ -164,7 +253,8 @@ Deno.serve(async (req) => {
     const { data: team } = await db.from("ai_teams").select("*").eq("company_id", companyId).maybeSingle();
     const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
     const { data: images } = await db.from("ai_team_images").select("id, meeting_id, brief, status, image_url, error, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
-    return json({ team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!RUNWAY, claims_verified: !!team?.claims_verified_at, can_manage: isOwner });
+    const { data: launches } = await db.from("ai_launches").select("id, meeting_id, product_name, account_name, buyer_name, daily_budget_naira, status, note, start_at, kill_rule, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
+    return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!RUNWAY, claims_verified: !!team?.claims_verified_at, can_manage: isOwner });
   }
 
   if (b?.action === "settings") {
@@ -202,7 +292,8 @@ Deno.serve(async (req) => {
     const { data: already } = await db.from("ai_team_images").select("id").eq("meeting_id", m.id).limit(1);
     if (already?.length) return json({ error: "Images for this meeting were already requested." }, 409);
     const rows = [];
-    for (const br of briefs) {
+    for (const [bi, br0] of briefs.entries()) {
+      const br = { ...br0, _i: bi };
       const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, no text, no logos, no watermarks.`;
       const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
       if (r) rows.push(r.id);
@@ -226,6 +317,23 @@ Deno.serve(async (req) => {
     if (ce || !cr) return json({ error: ce?.message ?? "Could not add it to the vault." }, 500);
     await db.from("ai_team_images").update({ status: "approved", creative_id: cr.id, updated_at: new Date().toISOString() }).eq("id", im.id);
     return json({ ok: true, creative_id: cr.id });
+  }
+
+  if (b?.action === "propose_launches") {
+    if (!isOwner) return json({ error: "Only the owner or an admin can prepare launches." }, 403);
+    const r = await proposeLaunches(String(b?.meeting_id ?? ""), companyId, ud.user.id);
+    return json(r, "error" in r ? 409 : 200);
+  }
+  if (b?.action === "approve_launch") {
+    if (!isOwner) return json({ error: "Only the owner or an admin can approve a launch." }, 403);
+    const ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId, role: p.role ?? "", mediaBuyerId: null, displayName: "" };
+    const r = await approveLaunch(String(b?.launch_id ?? ""), ctx);
+    return json(r, "error" in r ? 409 : 200);
+  }
+  if (b?.action === "cancel_launch") {
+    if (!isOwner) return json({ error: "Only the owner or an admin can cancel a launch." }, 403);
+    await db.from("ai_launches").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", String(b?.launch_id ?? "")).eq("company_id", companyId).eq("status", "proposed");
+    return json({ ok: true });
   }
 
   if (b?.action === "say") {
