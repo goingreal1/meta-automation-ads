@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withR2 } from "../_shared/r2storage.ts";
 // Lets a human agent send an image, video, or voice note to a Beoliv WhatsApp
 // customer from the dashboard's Conversations tab. Uploads to the same
 // creative-vault Storage bucket upload-creative already uses, then sends the
@@ -86,7 +87,7 @@ Deno.serve(async (req)=>{
         error: "File is too large (WhatsApp's limit is 16 MB)."
       }, 400);
     }
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = withR2(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
     const caller = await getCaller(req, supabase);
     if (!caller) return json({
       error: "Not signed in"

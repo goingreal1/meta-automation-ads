@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { withR2 } from "../_shared/r2storage.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
@@ -528,7 +529,7 @@ Deno.serve(async (req)=>{
     });
   }
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = withR2(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
     const payload = await req.json();
     const entry = payload.entry?.[0];
     const change = entry?.changes?.[0];

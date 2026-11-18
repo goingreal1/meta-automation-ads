@@ -2,9 +2,10 @@
 // Generated from the original single-file mcp function; see mcp/index.ts for the router that calls this.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withR2 } from "../_shared/r2storage.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+const admin = withR2(createClient(SUPABASE_URL, SERVICE_KEY));
 const SITE = "https://metaautomationads.vercel.app";
 const CORS = {
   "Access-Control-Allow-Origin": "*",

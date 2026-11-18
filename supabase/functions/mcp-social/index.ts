@@ -13,11 +13,12 @@
 // Tokens are stored only as hashes (tables upload_links, edit_links, plan_edit_links), expire, and are limited to one product / one site / one plan.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withR2 } from "../_shared/r2storage.ts";
 import { AwsClient } from "npm:aws4fetch@1.0.20";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+const admin = withR2(createClient(SUPABASE_URL, SERVICE_KEY));
 const SITE = "https://metaautomationads.vercel.app";
 const BUCKET = "creative-vault";
 // Ad pictures and videos live on Cloudflare R2 (not Supabase Storage). If R2 is not configured the old bucket is used.
@@ -427,6 +428,22 @@ async function publicUpload(b) {
     await admin.from("upload_links").update({
       files_added: Number(l.files_added) + 1
     }).eq("id", l.id);
+    // Phone videos (.mov, HEVC) do not play in Chrome: have the converter make an .mp4 in the background (it can only touch this one file).
+    if (isVideo && l.purpose !== "website") {
+      try {
+        const [{ data: sec }, { data: arow }] = await Promise.all([
+          admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle(),
+          admin.from("creative_assets").select("id").eq("company_id", l.company_id).eq("public_url", publicUrl).limit(1).maybeSingle()
+        ]);
+        if (sec?.value && arow?.id) {
+          const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(sec.value)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+          const sig = await crypto.subtle.sign("HMAC", km, new TextEncoder().encode(`transcode:${arow.id}`));
+          const ticket = [...new Uint8Array(sig)].map((x)=>x.toString(16).padStart(2, "0")).join("");
+          // @ts-ignore EdgeRuntime is provided by Supabase
+          EdgeRuntime.waitUntil(fetch(`${SITE}/api/transcode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: arow.id, ticket }) }).catch(()=>{}));
+        }
+      } catch (_e) { /* the original file is kept */ }
+    }
     return jres({
       ok: true,
       saved: true,

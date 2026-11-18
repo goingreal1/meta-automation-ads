@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withR2 } from "../_shared/r2storage.ts";
 // Uploads a product's own real photo (jar/bottle/package) -- distinct from
 // upload-creative, which is ad content meant for Meta ads. This is the image
 // the WhatsApp bot shows/sends to customers (warm-up message, order details).
@@ -45,7 +46,7 @@ Deno.serve(async (req)=>{
     });
   }
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = withR2(createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
     const caller = await getCaller(req, supabase);
     if (!caller) return json({
       error: "Not signed in"
