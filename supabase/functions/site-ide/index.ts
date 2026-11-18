@@ -40,6 +40,19 @@ Deno.serve(async (req) => {
     return json(o, r.ok ? 200 : r.status);
   }
 
+  // Publish or take offline. Sites made from a .zip use mcp-code's site_set_live; every other file site goes through the same publish step the AI assistants use.
+  if (b?.action === "publish") {
+    const siteId = String(b?.site_id ?? ""), live = b?.live !== false;
+    const { data: site } = await db.from("sites").select("id, company_id, settings").eq("id", siteId).maybeSingle();
+    if (!site || site.company_id !== ctx.companyId) return json({ error: "Site not found." }, 404);
+    const imported = site.settings?.imported === true;
+    const group = imported ? "mcp-code" : "mcp-studio";
+    const call = imported ? { tool: "site_set_live", args: { site_id: siteId, live } } : { tool: "publish_sales_page", args: { site_id: siteId, unpublish: !live, confirmed: true } };
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/${group}`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", ...call, ctx }) });
+    const o = await r.json().catch(() => ({}));
+    return json(o?.out ?? o, r.ok ? 200 : 502);
+  }
+
   if (b?.action === "get" || b?.action === "get_many") {
     const siteId = String(b?.site_id ?? "");
     const { data: site } = await db.from("sites").select("id, company_id").eq("id", siteId).maybeSingle();

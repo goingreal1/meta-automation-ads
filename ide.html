@@ -341,9 +341,8 @@ async function openSite(id) {
   renderTree(); renderTabs(); renderAssets();
   var first = S.files.find(function (f) { return f.path === "index.html"; }) || S.files[0];
   if (first) await openFile(first.path); else { showWelcome(true); }
-  $("bLive").disabled = false; $("bTest").disabled = false;
+  $("bLive").disabled = false; $("bTest").disabled = false; liveBtn();
   status("Opened " + (r.name || "site") + " · " + S.files.length + " files");
-  $("stver").textContent = r.status === "published" ? "Live" : "Draft";
   refreshPreview();
 }
 function showWelcome(on) { $("welcome").classList.toggle("on", !!on); if (S.ed) $("ed").querySelector(".monaco-editor") && ($("ed").querySelector(".monaco-editor").style.visibility = on ? "hidden" : "visible"); }
@@ -573,11 +572,26 @@ async function history() {
     var p = S.current; closeTab(p, true); await refreshFiles(); await openFile(p); status("Restored " + p + " to version " + pick); refreshPreview(true);
   } catch (x) { status(x.message, "err"); toast(x.message); }
 }
+function liveBtn() {
+  var live = S.meta && S.meta.status === "published";
+  $("bLive").textContent = live ? "Live ✓" : "Publish";
+  $("bLive").title = live ? "Your site is live. Every save already shows to customers." : "Make this site visible to customers";
+  $("bLive").classList.toggle("pri", !live);
+  $("stver").textContent = live ? "Live" : "Draft";
+}
 $("bLive").onclick = async function () {
   await saveAll();
-  if (!await askConfirm("Publish this site?", "Customers will see it at once, and every save after this shows to them too. History can undo any change.", "Publish")) return;
-  try { var r = await tool("site_set_live", { site_id: S.site, live: true }); if (r.error) throw new Error(r.error); status(r.next || "The site is live.", ""); $("stver").textContent = "Live"; toast2("Published. " + (r.live_link || "")); }
-  catch (x) { status(x.message, "err"); toast(x.message); }
+  var live = S.meta && S.meta.status === "published";
+  var ok = live
+    ? await askConfirm("Your site is live", "Every save is already visible to customers (pages can take up to 2 minutes to refresh on the fast network). Do you want to take the site offline?", "Take offline")
+    : await askConfirm("Publish this site?", "Customers will see it at once, and every save after this shows to them too. History can undo any change.", "Publish");
+  if (!ok) return;
+  status(live ? "Taking the site offline…" : "Publishing…", "busy");
+  try {
+    var r = await call({ action: "publish", site_id: S.site, live: !live }); if (r.error) throw new Error(r.error);
+    S.meta.status = live ? "draft" : "published"; liveBtn();
+    status(live ? "The site is offline (draft)." : "The site is live.", ""); toast2(live ? "Site taken offline." : "Published. " + (r.live_link || r.url || ""));
+  } catch (x) { status(x.message, "err"); toast(x.message); }
 };
 function toast2(m) { var b = document.createElement("div"); b.textContent = m; b.style.cssText = "position:fixed;bottom:36px;right:16px;max-width:420px;background:#1f4d2c;color:#fff;padding:10px 14px;border-radius:6px;z-index:60"; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 5000); }
 $("bTest").onclick = function () { if (S.meta.live_link && S.meta.status === "published") window.open(S.meta.live_link, "_blank"); else if (S.meta.test_link) window.open(S.meta.test_link, "_blank"); };
