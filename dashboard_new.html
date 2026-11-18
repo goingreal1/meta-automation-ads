@@ -6902,11 +6902,11 @@ async function amQuietRefresh() {
 // ── KILL RULES (Settings) ───────────────────────────────────────────────────
 const KR_KINDS = [
   { kind: "messaging", icon: "💬", title: "WhatsApp message ads", unit: "conversation", defaults: { max: 100, spend: 150, hours: 6 } },
-  { kind: "purchase", icon: "🛒", title: "Website purchase ads", unit: "purchase", defaults: { max: 2500, spend: 3000, hours: 48 } },
+  { kind: "purchase", icon: "🛒", title: "Website purchase ads", unit: "purchase", lpv: true, defaults: { max: 2500, spend: 3000, hours: 48, lpv: 0 } },
 ];
 
-function krSummary(unit, max, spend, hours, auto) {
-  return `An ad is flagged once it has spent at least ${fN(spend)} and run for ${hours}+ hours, and it either got no ${unit}s or costs more than ${fN(max)} per ${unit}. ${auto ? "It is then paused automatically within 15 minutes." : "You get a warning in Campaigns and pause it yourself."}`;
+function krSummary(unit, max, spend, hours, auto, lpv) {
+  return `An ad is flagged once it has spent at least ${fN(spend)} and run for ${hours}+ hours, and it either got no ${unit}s or costs more than ${fN(max)} per ${unit}${Number(lpv) > 0 ? `, or each landing page view costs more than ${fN(lpv)} (or it got none)` : ""}. ${auto ? "It is then paused automatically within 15 minutes." : "You get a warning in Campaigns and pause it yourself."}`;
 }
 
 
@@ -7267,7 +7267,8 @@ async function bvRenderKillRules() {
           <div class="field"><label>Judge after it spent (₦)</label><input type="number" min="0" class="kr-spend" value="${Number(v.min_spend)}"></div>
           <div class="field"><label>Judge after running (hours)</label><input type="number" min="0" class="kr-hours" value="${Number(v.min_hours)}"></div>
         </div>
-        <div class="kr-sum" style="font-size:11.5px;color:var(--muted);margin:8px 0 10px;">${krSummary(k.unit, v.max_cost_per_result, v.min_spend, v.min_hours, v.auto_kill)}</div>
+        ${k.lpv ? `<div class="fg" style="grid-template-columns:minmax(0,1fr);margin-top:10px;"><div class="field"><label>Max cost per landing page view (₦) <span style="color:var(--muted);font-weight:400">· leave empty or 0 to switch this off</span></label><input type="number" min="0" class="kr-lpv" value="${Number(v.max_cost_per_lpv || 0) || ""}" placeholder="e.g. 150"></div></div>` : ""}
+        <div class="kr-sum" style="font-size:11.5px;color:var(--muted);margin:8px 0 10px;">${krSummary(k.unit, v.max_cost_per_result, v.min_spend, v.min_hours, v.auto_kill, k.lpv ? v.max_cost_per_lpv : 0)}</div>
         <button type="button" class="btn btn-a" style="padding:6px 14px;" onclick="bvSaveKillRule('${k.kind}')">Save ${k.kind === "messaging" ? "message" : "purchase"} rule</button>
         <span class="kr-msg" id="krMsg_${k.kind}"></span>
       </div>`;
@@ -7282,7 +7283,7 @@ async function bvRenderKillRules() {
     const box = document.getElementById(`kr_${k.kind}`);
     box?.querySelectorAll("input").forEach(i => i.addEventListener("input", () => {
       const g = c => box.querySelector(c);
-      g(".kr-sum").textContent = krSummary(k.unit, g(".kr-max").value || 0, g(".kr-spend").value || 0, g(".kr-hours").value || 0, g(".kr-auto").checked);
+      g(".kr-sum").textContent = krSummary(k.unit, g(".kr-max").value || 0, g(".kr-spend").value || 0, g(".kr-hours").value || 0, g(".kr-auto").checked, k.lpv && g(".kr-lpv") ? g(".kr-lpv").value || 0 : 0);
     }));
   }
 }
@@ -7293,11 +7294,13 @@ async function bvSaveKillRule(kind) {
   const g = c => box.querySelector(c);
   const max = Number(g(".kr-max").value), spend = Number(g(".kr-spend").value), hours = Number(g(".kr-hours").value);
   if (!(max > 0) || !(spend >= 0) || !(hours >= 0)) { msg.innerHTML = `<span style="color:var(--danger);">Enter valid numbers (max cost must be above 0).</span>`; return; }
+  const lpvEl = g(".kr-lpv"), lpv = lpvEl ? Number(lpvEl.value || 0) : null;
+  if (lpv != null && !(lpv >= 0)) { msg.innerHTML = `<span style="color:var(--danger);">The landing page view limit must be a number.</span>`; return; }
   const auto = g(".kr-auto").checked, enabled = g(".kr-enabled").checked;
   if (auto && enabled && !confirm("Turn on automatic pausing? Ads that break this rule will be paused on Meta for you, without asking.")) return;
   const { error } = await supabaseClient.from("kill_rules").upsert({
     profile_id: sessionData.user.id, company_id: window.myProfile.company_id, kind,
-    enabled, auto_kill: auto, max_cost_per_result: max, min_spend: spend, min_hours: hours, updated_at: new Date().toISOString(),
+    enabled, auto_kill: auto, max_cost_per_result: max, min_spend: spend, min_hours: hours, ...(lpv != null ? { max_cost_per_lpv: lpv > 0 ? lpv : null } : {}), updated_at: new Date().toISOString(),
   }, { onConflict: "profile_id,kind" });
   msg.innerHTML = error ? `<span style="color:var(--danger);">❌ ${escH(error.message)}</span>` : `<span style="color:var(--accent);">✅ Saved</span>`;
   if (!error) { am.at = 0; setTimeout(() => { if (msg) msg.innerHTML = ""; }, 2500); }
@@ -7773,7 +7776,7 @@ function bvMergeLiveSpend(roas, liveRows) {
   }
   const list = roas.list.map(r => ({ ...r, spend: live.get(r.id)?.spend ?? 0, conversations: live.get(r.id)?.conversations ?? 0 }));
   for (const [k, a] of live) if (!list.some(r => r.id === k)) list.push({ id: k, buyer: undefined, orders: 0, revenue: 0, delivered: 0, confirmed: 0, spend: a.spend, conversations: a.conversations });
-  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, confirmed: t.confirmed + r.confirmed, orders: t.orders + r.orders, conversations: t.conversations + r.conversations }), { spend: 0, revenue: 0, delivered: 0, confirmed: 0, orders: 0, conversations: 0 });
+  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, confirmed: t.confirmed + r.confirmed, orders: t.orders + r.orders, conversations: t.conversations + r.conversations, awaiting: t.awaiting + (r.awaiting || 0), awaitingOrders: t.awaitingOrders + (r.awaitingOrders || 0), fees: t.fees + (r.fees || 0), unassigned: t.unassigned + (r.unassigned || 0) }), { spend: 0, revenue: 0, delivered: 0, confirmed: 0, orders: 0, conversations: 0, awaiting: 0, awaitingOrders: 0, fees: 0, unassigned: 0 });
   return { list, tot };
 }
 
@@ -7820,14 +7823,21 @@ async function renderPerformance(el, fromDate, toDate, force = false) {
       <div class="kc"><div class="kc-lbl">Order revenue</div><div class="kc-val">${fN(buyerTot.revenue)}</div><div class="kc-sub">excl. cancelled/returned</div></div>
       <div class="kc"><div class="kc-lbl">ROAS (orders)</div><div class="kc-val a">${roasFmt(buyerTot.revenue, buyerTot.spend)}</div></div>
       <div class="kc"><div class="kc-lbl">ROAS (delivered)</div><div class="kc-val w">${roasFmt(buyerTot.delivered, buyerTot.spend)}</div><div class="kc-sub">marked delivered -- not a payment confirmation</div></div>
-      <div class="kc"><div class="kc-lbl">Real ROAS</div><div class="kc-val a">${roasFmt(buyerTot.confirmed, buyerTot.spend)}</div><div class="kc-sub">confirmed Paystack payments -- actual cash in hand</div></div>
+      <div class="kc"><div class="kc-lbl">Real ROAS</div><div class="kc-val a">${roasFmt(buyerTot.confirmed, buyerTot.spend)}</div><div class="kc-sub">cash in hand: transfers + cash on delivery already paid out</div></div>
+    </div>
+
+    <div class="g4">
+      <div class="kc"><div class="kc-lbl">Awaiting payout</div><div class="kc-val w">${fN(buyerTot.awaiting)}</div><div class="kc-sub">${buyerTot.awaitingOrders} delivered cash-on-delivery order${buyerTot.awaitingOrders === 1 ? "" : "s"} · Shipbubble has the cash</div></div>
+      <div class="kc"><div class="kc-lbl">ROAS incl. awaiting payout</div><div class="kc-val a">${roasFmt(buyerTot.confirmed + buyerTot.awaiting, buyerTot.spend)}</div><div class="kc-sub">cash in hand + delivered cash on delivery</div></div>
+      <div class="kc"><div class="kc-lbl">Net ROAS</div><div class="kc-val a">${roasFmt(buyerTot.confirmed + buyerTot.awaiting - buyerTot.fees, buyerTot.spend)}</div><div class="kc-sub">after ${fN(buyerTot.fees)} Shipbubble delivery + cash-on-delivery fees</div></div>
+      <div class="kc"><div class="kc-lbl">Unassigned orders</div><div class="kc-val ${buyerTot.unassigned ? "w" : ""}">${buyerTot.unassigned}</div><div class="kc-sub">${buyerTot.unassigned ? "no media buyer could be found for these" : "every order belongs to the buyer who ran the ads"}</div></div>
     </div>
 
     <div class="panel">
       <div class="ph"><div class="ph-title">Spend &amp; ROAS by media buyer</div><div class="ph-count">Spend is each buyer's own ad accounts, live from Meta</div></div>
       ${!buyerList.some(r => r.spend || r.orders) ? `<div class="empty"><div class="empty-ico">📊</div>No spend or orders in this range yet.</div>` : `
       <div class="tbl-wrap"><table>
-        <tr><th>Buyer</th><th>Spend</th><th>Conversations</th><th>Cost / conversation</th><th>Orders</th><th>Cost / order</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th></tr>
+        <tr><th>Buyer</th><th>Spend</th><th>Conversations</th><th>Cost / conversation</th><th>Orders</th><th>Cost / order</th><th>Revenue</th><th>ROAS</th><th>Delivered ROAS</th><th>Real ROAS</th><th>Awaiting payout</th><th>ROAS incl. awaiting</th><th>Net ROAS</th></tr>
         ${buyerList.filter(r => r.spend || r.orders).sort((a, b) => b.spend - a.spend).map(r => `<tr>
           <td class="s">${r.buyer ? `${escH(r.buyer.name)} <span style="color:var(--muted)">[${escH(r.buyer.code)}]</span>` : `<span style="color:var(--muted)">Unattributed</span>`}</td>
           <td>${fN(r.spend)}</td>
@@ -7838,7 +7848,10 @@ async function renderPerformance(el, fromDate, toDate, force = false) {
           <td>${fN(r.revenue)}</td>
           <td class="${roasCls(r.revenue, r.spend)}">${roasFmt(r.revenue, r.spend)}</td>
           <td class="${roasCls(r.delivered, r.spend)}">${roasFmt(r.delivered, r.spend)}</td>
-          <td class="${roasCls(r.confirmed, r.spend)}" title="Based on confirmed Paystack payments only.">${roasFmt(r.confirmed, r.spend)}</td>
+          <td class="${roasCls(r.confirmed, r.spend)}" title="Confirmed payments only: transfers and cash on delivery that Shipbubble has already paid out.">${roasFmt(r.confirmed, r.spend)}</td>
+          <td>${r.awaiting ? fN(r.awaiting) : dash}</td>
+          <td class="${roasCls(r.confirmed + (r.awaiting || 0), r.spend)}">${roasFmt(r.confirmed + (r.awaiting || 0), r.spend)}</td>
+          <td class="${roasCls(r.confirmed + (r.awaiting || 0) - (r.fees || 0), r.spend)}" title="After Shipbubble delivery and cash-on-delivery fees on delivered orders.">${roasFmt(r.confirmed + (r.awaiting || 0) - (r.fees || 0), r.spend)}</td>
         </tr>`).join("")}
       </table></div>`}
     </div>
@@ -9629,9 +9642,12 @@ function bvShipCss() {
 async function renderShipDelivery(el) {
   bvShipCss();
   if (!el.querySelector(".sd")) el.innerHTML = `<div class="sd"><div class="sd-head"><div><h2>Deliveries</h2><p>Loading…</p></div></div><div class="sd-list"><div class="sd-skel"></div><div class="sd-skel"></div></div></div>`;
-  const orders = await sbQuery("orders", "select=id,customer_name,customer_phone,customer_city,customer_state,customer_address,order_value_naira,order_status,delivery_stage,payment_method,ordered_at,delivered_at,shipbubble_order_id,shipbubble_status,shipbubble_courier,shipbubble_tracking_code,shipbubble_tracking_url,shipbubble_error,shipbubble_attempts,shipbubble_mode,shipping_fee_naira,cod_amount_naira,cod_remitted_at&order_status=in.(valid,delivered)&order=ordered_at.desc&limit=200") || [];
+  const orders = await sbQuery("orders", "select=id,customer_name,customer_phone,customer_city,customer_state,customer_address,order_value_naira,order_status,delivery_stage,payment_method,ordered_at,delivered_at,shipbubble_order_id,shipbubble_status,shipbubble_courier,shipbubble_tracking_code,shipbubble_tracking_url,shipbubble_error,shipbubble_attempts,shipbubble_mode,shipping_fee_naira,cod_amount_naira,cod_collected_at,cod_remitted_amount_naira,cod_remitted_at&order_status=in.(valid,delivered)&order=ordered_at.desc&limit=200") || [];
   window.bvShipOrders = orders;
-  const rows = orders.map(o => ({ o, st: bvShipStage(o), ex: bvShipStage(o) === "failed" ? bvShipExplain(o) : null }));
+  // A customer who already paid by transfer while Shipbubble is still set to collect cash: the courier may collect twice.
+  const pays = await sbQuery("payments", "select=order_id,channel&status=eq.confirmed&order_id=not.is.null&order=paid_at.desc&limit=1000").catch(() => []);
+  const paidByTransfer = new Set((pays || []).filter(p => p.channel !== "shipbubble_cod").map(p => p.order_id));
+  const rows = orders.map(o => ({ o, st: bvShipStage(o), ex: bvShipStage(o) === "failed" ? bvShipExplain(o) : null, risk: !!(o.shipbubble_order_id && Number(o.cod_amount_naira || 0) > 0 && !o.cod_remitted_at && o.order_status === "valid" && paidByTransfer.has(o.id)) }));
   const n = (st) => rows.filter(r => r.st === st).length;
   const inTransit = n("in_transit") + n("picked_up"), attention = n("failed");
   const active = rows.filter(r => !["delivered", "cancelled"].includes(r.st));
@@ -9643,7 +9659,7 @@ async function renderShipDelivery(el) {
   const walletN = rows.filter(r => r.ex && r.ex.kind === "wallet").length;
   const initials = (nm) => String(nm || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0] || "").join("").toUpperCase() || "?";
   const ago = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 60 ? `${Math.max(m, 1)} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
-  const card = ({ o, st, ex }) => {
+  const card = ({ o, st, ex, risk }) => {
     const cod = /pay on delivery|cash on delivery|\bcod\b/i.test(o.payment_method || "");
     const [pl, pc] = SD_PILL[st] || [st, "mute"];
     const idx = SD_STEPS.findIndex(x => x[0] === st);
@@ -9651,7 +9667,9 @@ async function renderShipDelivery(el) {
     const steps = idx >= 0 ? `<div class="sd-steps">${SD_STEPS.map((x, i) => `<div><i class="${idx >= i ? "on" : ""}"></i><div class="${idx === i ? "on" : ""}">${x[1]}</div></div>`).join("")}</div>` : "";
     const issue = ex ? `<div class="sd-issue ${ex.kind === "wallet" ? "warnx" : ""}"><b>${escH(ex.title)}</b><p>${escH(ex.why)}</p><small>${escH(ex.fix)}</small>${o.shipbubble_attempts ? `<div class="sd-try">Tried ${o.shipbubble_attempts} time${o.shipbubble_attempts > 1 ? "s" : ""}</div>` : ""}</div>` : "";
     const meta = o.shipbubble_courier ? `<div class="sd-meta"><span>🚚 ${escH(o.shipbubble_courier)}</span>${o.shipping_fee_naira ? `<span>Fee ${fN(o.shipping_fee_naira)}</span>` : ""}${o.shipbubble_tracking_code ? `<span>#${escH(o.shipbubble_tracking_code)}</span>` : ""}${o.shipbubble_mode && o.shipbubble_mode !== "live" ? `<span>Test shipment</span>` : ""}</div>` : "";
-    const codLine = cod && st === "delivered" ? `<div class="sd-meta"><span>${o.cod_remitted_at ? "✓ Cash paid out by Shipbubble" : "⏳ Cash not yet paid out by Shipbubble"}</span></div>` : "";
+    const codAmt = Number(o.cod_remitted_amount_naira || o.cod_amount_naira || o.order_value_naira || 0);
+    const codLine = (cod || o.cod_amount_naira) && st === "delivered" ? `<div class="sd-meta"><span>${o.cod_remitted_at ? `✓ Shipbubble paid out ${fN(codAmt)}` : `⏳ Courier collected ${fN(codAmt)}${o.cod_collected_at ? " on " + escH(new Date(o.cod_collected_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })) : ""}. Awaiting payout from Shipbubble.`}</span></div>` : "";
+    const riskBox = risk ? `<div class="sd-issue warnx"><b>Customer already paid by transfer</b><p>Shipbubble is still set to collect ${fN(Number(o.cod_amount_naira || 0))} in cash on delivery.</p><small>Tell the courier not to collect, or cancel the shipment in Shipbubble.</small></div>` : "";
     const wa = o.customer_phone ? `https://wa.me/${escH(String(o.customer_phone).replace(/\D/g, "").replace(/^0/, "234"))}` : "";
     const canBook = ["failed", "waiting"].includes(st) && o.order_status === "valid";
     const needsFix = ex && ["name", "phone", "address"].includes(ex.kind);
@@ -9660,7 +9678,7 @@ async function renderShipDelivery(el) {
       ${o.shipbubble_tracking_url ? `<a class="sd-btn" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
       ${wa ? `<a class="sd-btn" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
       ${canBook ? `<button class="sd-link" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}</div>`;
-    return `<div class="sd-card"><div class="sd-hd"><div class="sd-av">${escH(initials(o.customer_name))}</div><div class="sd-who"><b>${escH(o.customer_name || "Customer")}</b><span>${escH(loc)}<br><span class="sd-amt">${fN(o.order_value_naira)}</span>${cod ? '<span class="sd-cod">Pay on delivery</span>' : ""}${o.ordered_at ? ` <span style="white-space:nowrap">· ${escH(ago(o.ordered_at))}</span>` : ""}</span></div><span class="sd-pill ${pc}">${pl}</span></div>${issue || steps}${issue ? "" : meta}${codLine}${acts}</div>`;
+    return `<div class="sd-card"><div class="sd-hd"><div class="sd-av">${escH(initials(o.customer_name))}</div><div class="sd-who"><b>${escH(o.customer_name || "Customer")}</b><span>${escH(loc)}<br><span class="sd-amt">${fN(o.order_value_naira)}</span>${cod ? '<span class="sd-cod">Pay on delivery</span>' : ""}${o.ordered_at ? ` <span style="white-space:nowrap">· ${escH(ago(o.ordered_at))}</span>` : ""}</span></div><span class="sd-pill ${pc}">${pl}</span></div>${riskBox}${issue || steps}${issue ? "" : meta}${codLine}${acts}</div>`;
   };
   const chip = (id, label, count) => `<button class="sd-chip ${tab === id ? "on" : ""}" onclick="window.bvShipFilter='${id}';renderShipDelivery(document.getElementById('mainContent'))">${label}<em>${count}</em></button>`;
   const kpi = (label, val, color, cls = "") => `<div class="sd-kpi ${cls}" style="--kc:${color}"><span>${label}</span><b>${val}</b></div>`;
@@ -9669,6 +9687,7 @@ async function renderShipDelivery(el) {
       <div class="sd-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="sdQ" value="${escH(window.bvShipQ || "")}" placeholder="Search name, phone, city or tracking number" autocomplete="off"></div></div>
     <div class="sd-kpis">${kpi("On the way", inTransit, "#d98a1f")}${kpi("Booked", n("booked"), "#2f6fc4")}${kpi("Delivered", n("delivered"), "#1f9a5f")}${kpi("Need attention", attention, attention ? "#c0392b" : "#cfcabd", attention ? "warn" : "")}</div>
     ${awaiting ? `<div class="sd-sum">💰 <b>${fN(awaiting)}</b> in cash on delivery is waiting to be paid out by Shipbubble.</div>` : ""}
+    ${rows.some(r => r.risk) ? `<div class="sd-alert"><div class="ic">⚠️</div><div class="tx"><b>${rows.filter(r => r.risk).length} customer${rows.filter(r => r.risk).length > 1 ? "s" : ""} paid by transfer after cash on delivery was booked</b><p>The courier may still collect cash. Check the orders marked below.</p></div></div>` : ""}
     ${walletN ? `<div class="sd-alert"><div class="ic">💳</div><div class="tx"><b>Shipbubble wallet is low</b><p>${walletN} order${walletN > 1 ? "s are" : " is"} waiting because the wallet can't cover the delivery fee. Top up the wallet in Shipbubble, then book them all again.</p></div><button class="sd-btn pri go" onclick="bvShipRetryWallet(this)">Book ${walletN} again</button></div>` : ""}
     <div class="sd-seg">${chip("active", "In progress", active.length)}${chip("problem", "Needs attention", attention)}${chip("delivered", "Delivered", n("delivered"))}${chip("all", "All", rows.length)}</div>
     ${shown.length ? `<div class="sd-list">${shown.map(card).join("")}</div>` : `<div class="sd-empty"><b>${q ? "No orders match your search" : tab === "problem" ? "Nothing needs attention" : "No deliveries here yet"}</b>${q ? "Try a different name, phone or city." : tab === "problem" ? "Every confirmed order has been booked with a courier." : "When an order is confirmed, Shipbubble books a courier automatically and the steps show up here."}</div>`}
@@ -11840,6 +11859,8 @@ async function fetchBuyerRoas(fromDateStr, toDateStr, companyWide = false) {
     // their own numbers there.
     sbRpc("media_buyer_daily_roas_agg_v2", { from_date: fromDateStr || null, to_date: toDateStr || null, company_wide: companyWide }).catch(() => []),
   ]);
+  const extraRows = await sbRpc("media_buyer_roas_extra", { from_date: fromDateStr || null, to_date: toDateStr || null, company_wide: companyWide }).catch(() => []);
+  const extra = new Map((extraRows || []).map(r => [r.media_buyer_id ?? "none", r]));
   const agg = new Map();
   for (const r of rows || []) {
     const k = r.media_buyer_id ?? "none";
@@ -11850,9 +11871,10 @@ async function fetchBuyerRoas(fromDateStr, toDateStr, companyWide = false) {
     agg.set(k, a);
   }
   const byId = new Map((buyers || []).map(b => [b.id, b]));
-  const list = [...agg.entries()].map(([id, a]) => ({ id, buyer: byId.get(id), ...a }));
-  for (const b of buyers || []) if (!agg.has(b.id)) list.push({ id: b.id, buyer: b, spend: 0, orders: 0, revenue: 0, delivered: 0, confirmed: 0 });
-  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, confirmed: t.confirmed + r.confirmed, orders: t.orders + r.orders }), { spend: 0, revenue: 0, delivered: 0, confirmed: 0, orders: 0 });
+  const ex = k => { const e = extra.get(k) || {}; return { awaiting: Number(e.cod_awaiting_naira || 0), awaitingOrders: Number(e.cod_awaiting_orders || 0), fees: Number(e.delivery_fees_naira || 0) + Number(e.cod_fees_naira || 0), unassigned: Number(e.unattributed_orders || 0) }; };
+  const list = [...agg.entries()].map(([id, a]) => ({ id, buyer: byId.get(id), ...a, ...ex(id) }));
+  for (const b of buyers || []) if (!agg.has(b.id)) list.push({ id: b.id, buyer: b, spend: 0, orders: 0, revenue: 0, delivered: 0, confirmed: 0, ...ex(b.id) });
+  const tot = list.reduce((t, r) => ({ spend: t.spend + r.spend, revenue: t.revenue + r.revenue, delivered: t.delivered + r.delivered, confirmed: t.confirmed + r.confirmed, orders: t.orders + r.orders, awaiting: t.awaiting + (r.awaiting || 0), awaitingOrders: t.awaitingOrders + (r.awaitingOrders || 0), fees: t.fees + (r.fees || 0), unassigned: t.unassigned + (r.unassigned || 0) }), { spend: 0, revenue: 0, delivered: 0, confirmed: 0, orders: 0, awaiting: 0, awaitingOrders: 0, fees: 0, unassigned: 0 });
   return { list, tot };
 }
 

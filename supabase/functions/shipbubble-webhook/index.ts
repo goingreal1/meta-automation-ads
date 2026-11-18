@@ -140,7 +140,7 @@ Deno.serve(async (req)=>{
   try {
     let order = null;
     if (sbOrderId) {
-      const { data, error: lookErr } = await supabase.from("orders").select("id, company_id, media_buyer_id, payment_method, order_status, delivery_stage, shipbubble_status, shipbubble_mode, cod_amount_naira, cod_remitted_at").eq("shipbubble_order_id", sbOrderId).maybeSingle();
+      const { data, error: lookErr } = await supabase.from("orders").select("id, company_id, media_buyer_id, payment_method, order_status, delivery_stage, shipbubble_status, shipbubble_mode, cod_amount_naira, cod_collected_at, cod_remitted_at").eq("shipbubble_order_id", sbOrderId).maybeSingle();
       if (lookErr) throw lookErr;
       order = data;
     }
@@ -206,6 +206,8 @@ Deno.serve(async (req)=>{
     } else if (kind === "delivered" && live && order.order_status === "valid") {
       patch.order_status = "delivered";
       patch.delivered_at = now;
+      // The courier has the customer's cash from this moment: count it as collected (awaiting payout) until Shipbubble pays it out.
+      if (order.cod_amount_naira != null) patch.cod_collected_at = now;
     } else if (kind === "cancelled") {
       patch.shipbubble_order_id = null;
       patch.shipbubble_error = `Shipbubble shipment ${sbOrderId} was cancelled`;
@@ -240,6 +242,7 @@ Deno.serve(async (req)=>{
     }
     if (remitNow) {
       patch.cod_remitted_at = now;
+      patch.cod_collected_at = order.cod_collected_at ?? now;
       if (remitted != null) patch.cod_remitted_amount_naira = remitted;
     }
     const { error: updErr } = await supabase.from("orders").update(patch).eq("id", order.id);
