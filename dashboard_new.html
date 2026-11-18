@@ -13295,7 +13295,6 @@ async function renderSettings(el) {
       const myBuyer = (buyers || []).find(b => b.id === myId);
       return `
     <div class="panel" data-sec="accounts">
-      <div class="ph"><div class="ph-title">Your Business Managers</div></div>
       <div id="bvBmHost"></div>
     </div>`;
     })()}
@@ -13316,7 +13315,6 @@ async function renderSettings(el) {
     </div>
 
     <div class="panel" data-sec="accounts">
-      <div class="ph"><div class="ph-title">Business Managers and their ad accounts</div></div>
       <div id="bvBmHost"></div>
     </div>`}
 
@@ -13641,41 +13639,49 @@ async function bvBmMount(host, opts) {
   opts = opts || {};
   if (!document.getElementById("bvBmCss")) {
     const st = document.createElement("style"); st.id = "bvBmCss";
-    st.textContent = ".bm-steps{margin:0 0 12px;padding-left:18px;font-size:12.5px;line-height:1.55;color:var(--muted)}.bm-steps b{color:var(--text,inherit)}.bm-copy{display:flex;gap:8px;align-items:center;margin:6px 0}.bm-copy code{background:var(--panel2,#f2f4f7);padding:3px 8px;border-radius:6px;font-size:12.5px}" +
-      ".bm-card{border:1px solid var(--border,#e4e7ec);border-radius:12px;padding:12px;margin:10px 0;background:var(--panel,transparent)}.bm-h{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}.bm-h small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}" +
-      ".bm-row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border,#e4e7ec);flex-wrap:wrap}.bm-row:first-of-type{border-top:0}.bm-row .n{min-width:0;flex:1}.bm-row .n b{display:block;font-size:13px}.bm-row .n small{color:var(--muted);font-size:11.5px}" +
-      ".bm-chip{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--panel2,#f2f4f7);color:var(--muted);margin-left:4px}.bm-chip.ok{background:#e8f7f0;color:#12805c}.bm-chip.warn{background:#fff3e6;color:#b54708}" +
-      ".bm-empty{font-size:12px;color:var(--muted);padding:8px 0}.bm-form{display:grid;gap:8px;margin-top:10px}.bm-form input,.bm-form select{width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border,#d0d5dd);background:var(--panel,#fff);color:inherit;font:inherit}.bm-msg{font-size:12.5px;margin-top:8px}.bm-msg.err{color:#c0261d}.bm-msg.ok{color:#12805c}";
+    st.textContent =
+      ".bm-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}.bm-top h4{margin:0;font-size:15px}.bm-top .sp{flex:1}.bm-count{font-size:11.5px;color:var(--muted);background:var(--panel2,#f2f4f7);border-radius:99px;padding:2px 9px}" +
+      ".bm-how{border:1px solid var(--border,#e4e7ec);border-radius:10px;margin-bottom:10px;font-size:12.5px;color:var(--muted)}.bm-how summary{cursor:pointer;padding:9px 12px;font-weight:600;color:inherit;list-style:none}.bm-how summary::-webkit-details-marker{display:none}.bm-how summary:after{content:'+';float:right}.bm-how[open] summary:after{content:'–'}" +
+      ".bm-how ol{margin:0;padding:0 12px 12px 30px;line-height:1.6}.bm-how code{background:var(--panel2,#f2f4f7);padding:1px 6px;border-radius:5px;color:inherit}.bm-how button{margin-left:6px}" +
+      ".bm-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 12px}.bm-form input,.bm-form select{width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;border:1px solid var(--border,#d0d5dd);background:var(--panel,#fff);color:inherit;font:inherit;min-width:0}.bm-form .full{grid-column:1/-1}" +
+      ".bm-card{border:1px solid var(--border,#e4e7ec);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--panel,transparent)}.bm-h{display:flex;gap:10px;align-items:center;padding:11px 12px}.bm-ico{width:34px;height:34px;border-radius:9px;background:#eaf2ff;color:#1877F2;display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}" +
+      ".bm-h .t{flex:1;min-width:0}.bm-h .t b{display:block;font-size:13.5px}.bm-h .t small{color:var(--muted);font-size:11.5px}.bm-link{background:none;border:0;color:var(--muted);font-size:12px;cursor:pointer;padding:4px 6px}.bm-link:hover{color:#c0261d}" +
+      ".bm-acc{display:flex;gap:8px;align-items:center;padding:9px 12px;border-top:1px solid var(--border,#eef0f3)}.bm-acc .n{flex:1;min-width:0}.bm-acc .n b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bm-acc .n small{color:var(--muted);font-size:11.5px}" +
+      ".bm-chip{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--panel2,#f2f4f7);color:var(--muted);white-space:nowrap}.bm-chip.ok{background:#e8f7f0;color:#12805c}.bm-chip.warn{background:#fff3e6;color:#b54708}" +
+      ".bm-empty{font-size:12.5px;color:var(--muted);padding:10px 12px;border-top:1px solid var(--border,#eef0f3)}.bm-msg{font-size:12.5px;margin:0 0 8px}.bm-msg.err{color:#c0261d}.bm-msg.ok{color:#12805c}" +
+      "@media(max-width:560px){.bm-form{grid-template-columns:1fr}}";
     document.head.appendChild(st);
   }
   const isAdmin = ["owner", "admin"].includes(window.myProfile?.role);
-  host.innerHTML = '<div class="bm-empty">Loading your Business Managers…</div>';
+  host.innerHTML = '<div class="bm-empty" style="border:0">Loading…</div>';
   let data;
   try { data = await sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "list" }); }
   catch (e) { host.innerHTML = `<div class="bm-msg err">Could not load: ${escH(e.message)}</div>`; return; }
   const buyers = isAdmin ? ((await sbQuery("media_buyers", "select=id,name,code&order=code.asc").catch(() => [])) || []) : [];
-  const biz = data.platform_business_id || "";
+  const biz = data.platform_business_id || "", items = data.items || [];
   const ago = (d) => { if (!d) return "not checked yet"; const m = Math.round((Date.now() - new Date(d).getTime()) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : Math.round(m / 1440) + " d ago"; };
-  const rows = (a) => a.length ? a.map(x => `<div class="bm-row"><div class="n"><b>${escH(x.name || "Ad account")}</b><small>${escH(x.account_id)}${x.assigned_to ? " · " + escH(x.assigned_to) : ""}</small></div><div><span class="bm-chip ${x.status === "Active" ? "ok" : "warn"}">${escH(x.status)}</span><span class="bm-chip ${x.imported ? "ok" : "warn"}">${x.imported ? "In Revora" : "Not imported yet"}</span></div></div>`).join("") : `<div class="bm-empty">No ad account from this Business is shared with Revora yet. Share one in Meta Business Settings, then press Check and import.</div>`;
-  const cards = (data.items || []).map(it => `<div class="bm-card"><div class="bm-h"><div><b>Business ${escH(it.business_id)}</b><small>${it.buyer ? "Buyer: " + escH(it.buyer) + " · " : ""}${it.accounts.length} ad account${it.accounts.length === 1 ? "" : "s"} shared · checked ${ago(it.last_synced_at)}</small></div><button type="button" class="btn btn-g bm-rm" data-id="${it.id}" style="padding:3px 8px;font-size:10.5px;">Unlink</button></div>${rows(it.accounts)}</div>`).join("");
+  const acc = (a) => `<div class="bm-acc"><div class="n"><b>${escH(a.name || "Ad account")}</b><small>${escH(a.account_id)}${a.assigned_to ? " · " + escH(a.assigned_to) : ""}</small></div><span class="bm-chip ${a.status === "Active" ? "ok" : "warn"}">${escH(a.status)}</span>${a.imported ? "" : '<span class="bm-chip warn">Not imported</span>'}</div>`;
+  const cards = items.map(it => `<div class="bm-card"><div class="bm-h"><div class="bm-ico">BM</div><div class="t"><b>Business ${escH(it.business_id)}</b><small>${it.buyer ? escH(it.buyer) + " · " : ""}${it.accounts.length} ad account${it.accounts.length === 1 ? "" : "s"} · checked ${ago(it.last_synced_at)}</small></div><button type="button" class="bm-link bm-rm" data-id="${it.id}">Unlink</button></div>${it.accounts.length ? it.accounts.map(acc).join("") : '<div class="bm-empty">Nothing shared from this Business yet.</div>'}</div>`).join("");
   host.innerHTML = `
-    <ol class="bm-steps">
-      <li><b>Copy Revora's Business ID</b><div class="bm-copy"><code>${escH(biz || "unavailable")}</code>${biz ? `<button type="button" class="btn btn-g bm-cp" style="padding:3px 9px;font-size:10.5px;">Copy</button>` : ""}</div></li>
-      <li><b>In Meta Business Settings</b> open <i>Accounts → Ad accounts</i>, pick an ad account, tap <i>Add partner</i>, paste that ID and allow <i>Manage ad account</i>. Do the same for its Page and pixel (dataset). Repeat for every ad account you want in Revora.</li>
-      <li><b>Link your Business below.</b> Enter your own Business ID and the ID of <b>one</b> ad account you shared. Every other account that Business shares with Revora comes in automatically, now and later.</li>
-    </ol>
-    <div class="bm-form">
-      <input class="bm-biz" inputmode="numeric" placeholder="Your Business ID">
-      <input class="bm-acct" inputmode="numeric" placeholder="One ad account ID you shared">
-      ${isAdmin && buyers.length ? `<select class="bm-buyer">${buyers.map(b => `<option value="${b.id}" ${b.id === opts.buyerId ? "selected" : ""}>${escH(b.name)} [${escH(b.code)}]</option>`).join("")}</select>` : ""}
-      <button type="button" class="btn btn-a bm-link">Link this Business</button>
-    </div>
+    <div class="bm-top"><h4>Business Managers</h4><span class="bm-count">${items.length}</span><div class="sp"></div>${items.length ? '<button type="button" class="btn btn-g bm-sync" style="padding:5px 10px;font-size:11.5px;">Check for new accounts</button>' : ""}</div>
     <div class="bm-msg"></div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px"><b style="font-size:13.5px">Your Business Managers</b>${(data.items || []).length ? `<button type="button" class="btn btn-g bm-sync" style="padding:3px 9px;font-size:10.5px;">Check and import all</button>` : ""}</div>
-    ${cards || `<div class="bm-empty">None linked yet. Link one above and every ad account it shares with Revora appears here.</div>`}`;
+    ${cards}
+    <details class="bm-how" ${items.length ? "" : "open"}>
+      <summary>Link a Business Manager</summary>
+      <ol>
+        <li>In Meta Business Settings → Accounts → Ad accounts, tap <i>Add partner</i> and paste Revora's Business ID <code>${escH(biz || "unavailable")}</code>${biz ? '<button type="button" class="btn btn-g bm-cp" style="padding:2px 8px;font-size:11px;">Copy</button>' : ""} with <i>Manage ad account</i>.</li>
+        <li>Enter your Business ID and one ad account you shared. Every other account from that Business comes in on its own.</li>
+      </ol>
+      <div class="bm-form">
+        <input class="bm-biz" inputmode="numeric" placeholder="Your Business ID">
+        <input class="bm-acct" inputmode="numeric" placeholder="One shared ad account ID">
+        ${isAdmin && buyers.length ? `<select class="bm-buyer full">${buyers.map(b => `<option value="${b.id}" ${b.id === opts.buyerId ? "selected" : ""}>For ${escH(b.name)} [${escH(b.code)}]</option>`).join("")}</select>` : ""}
+        <button type="button" class="btn btn-a bm-add full">Link Business</button>
+      </div>
+    </details>`;
   const msg = (t, cls) => { const m = host.querySelector(".bm-msg"); m.className = "bm-msg " + (cls || ""); m.textContent = t; };
   host.querySelector(".bm-cp")?.addEventListener("click", () => { navigator.clipboard?.writeText(biz); bvToast("Copied"); });
-  host.querySelector(".bm-link").addEventListener("click", async (e) => {
+  host.querySelector(".bm-add").addEventListener("click", async (e) => {
     const b = e.currentTarget, v = host.querySelector(".bm-biz").value.trim(), p = host.querySelector(".bm-acct").value.trim();
     if (!v || !p) { msg("Enter your Business ID and one shared ad account ID.", "err"); return; }
     b.disabled = true; b.textContent = "Linking…"; msg("");
@@ -13684,7 +13690,7 @@ async function bvBmMount(host, opts) {
       bvToast(`Linked. ${r.imported || 0} ad account${r.imported === 1 ? "" : "s"} imported.`);
       try { if (typeof loadAccounts === "function") await loadAccounts(); } catch {}
       await bvBmMount(host, opts);
-    } catch (err) { msg(err.message, "err"); b.disabled = false; b.textContent = "Link this Business"; }
+    } catch (err) { msg(err.message, "err"); b.disabled = false; b.textContent = "Link Business"; }
   });
   host.querySelector(".bm-sync")?.addEventListener("click", async (e) => {
     const b = e.currentTarget; b.disabled = true; b.textContent = "Checking…";
@@ -13694,7 +13700,7 @@ async function bvBmMount(host, opts) {
       bvToast(n ? `${n} new ad account${n === 1 ? "" : "s"} imported` : "Nothing new to import");
       try { if (n && typeof loadAccounts === "function") await loadAccounts(); } catch {}
       await bvBmMount(host, opts);
-    } catch (err) { msg(err.message, "err"); b.disabled = false; b.textContent = "Check and import all"; }
+    } catch (err) { msg(err.message, "err"); b.disabled = false; b.textContent = "Check for new accounts"; }
   });
   host.querySelectorAll(".bm-rm").forEach(btn => btn.addEventListener("click", async () => {
     if (!confirm("Unlink this Business? Ad accounts already imported stay in Revora.")) return;
