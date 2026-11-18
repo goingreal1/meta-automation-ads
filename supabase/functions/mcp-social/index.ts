@@ -13,12 +13,23 @@
 // Tokens are stored only as hashes (tables upload_links, edit_links, plan_edit_links), expire, and are limited to one product / one site / one plan.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AwsClient } from "npm:aws4fetch@1.0.20";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 const SITE = "https://metaautomationads.vercel.app";
 const BUCKET = "creative-vault";
+// Ad pictures and videos live on Cloudflare R2 (not Supabase Storage). If R2 is not configured the old bucket is used.
+const R2A = Deno.env.get("R2_ACCOUNT_ID") ?? "", R2B = Deno.env.get("R2_BUCKET") ?? "";
+let R2P = (Deno.env.get("R2_PUBLIC_URL") ?? "").trim().replace(/\/+$/, "");
+if (R2P && !/^https?:\/\//.test(R2P)) R2P = "https://" + R2P;
+const R2_ON = !!(R2A && R2B && R2P && Deno.env.get("R2_ACCESS_KEY_ID"));
+const r2c = R2_ON ? new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!, secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!, service: "s3", region: "auto" }) : null;
+const r2enc = (k: string) => k.split("/").map(encodeURIComponent).join("/");
+const r2url = (k: string) => `https://${R2A}.r2.cloudflarestorage.com/${R2B}/${r2enc(k)}`;
+const CT_BY_EXT: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp", mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" };
+const rmFile = async (path: string) => { if (R2_ON) await r2c!.fetch(r2url(path), { method: "DELETE" }).catch(() => {}); else await admin.storage.from(BUCKET).remove([path]); };
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -97,7 +108,7 @@ const VIDEO_EXT = new Set([
   "webm"
 ]);
 const IMAGE_MAX = 20 * 1024 * 1024;
-const VIDEO_MAX = 50 * 1024 * 1024;
+const VIDEO_MAX = (R2_ON ? 200 : 50) * 1024 * 1024;
 const LINK_MINUTES = 60;
 const EDIT_HOURS = 24;
 const ZIP_MAX = 50 * 1024 * 1024;
@@ -302,6 +313,13 @@ async function publicUpload(b) {
       error: `That file is too big. The limit is ${cap / 1048576} MB for ${isVideo ? "videos" : "images"}.`
     }, 413);
     const path = `${folderOf(l.purpose)}/${l.company_id}/${crypto.randomUUID()}.${ext}`;
+    if (R2_ON) {
+      const u = new URL(r2url(path));
+      u.searchParams.set("X-Amz-Expires", "900");
+      const ct = CT_BY_EXT[ext] ?? "application/octet-stream";
+      const sg = await r2c!.sign(new Request(u.toString(), { method: "PUT", headers: { "content-type": ct } }), { aws: { signQuery: true } });
+      return jres({ path, upload_url: sg.url, r2: true, content_type: ct, key: ANON_KEY });
+    }
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
     if (error || !data?.token) return jres({
       error: "Could not prepare the upload. Try again."
@@ -326,26 +344,33 @@ async function publicUpload(b) {
     const isVideo = VIDEO_EXT.has(ext);
     const dir = path.slice(0, path.lastIndexOf("/"));
     const fileName = path.slice(path.lastIndexOf("/") + 1);
-    const { data: found } = await admin.storage.from(BUCKET).list(dir, {
-      limit: 5,
-      search: fileName
-    });
-    const obj = (found ?? []).find((o)=>o.name === fileName);
-    if (!obj) return jres({
-      error: "The upload did not arrive. Please try that file again."
-    }, 404);
+    let obj: any;
+    if (R2_ON) {
+      const h = await r2c!.fetch(r2url(path), { method: "HEAD" });
+      if (!h.ok) return jres({
+        error: "The upload did not arrive. Please try that file again."
+      }, 404);
+      obj = { metadata: { size: Number(h.headers.get("content-length") ?? 0), mimetype: h.headers.get("content-type") ?? "" } };
+    } else {
+      const { data: found } = await admin.storage.from(BUCKET).list(dir, {
+        limit: 5,
+        search: fileName
+      });
+      obj = (found ?? []).find((o)=>o.name === fileName);
+      if (!obj) return jres({
+        error: "The upload did not arrive. Please try that file again."
+      }, 404);
+    }
     const size = Number(obj.metadata?.size ?? 0);
     const mime = String(obj.metadata?.mimetype ?? "").toLowerCase();
     const cap = isVideo ? VIDEO_MAX : IMAGE_MAX;
     if (!size || size > cap || mime && !EXT_BY_MIME[mime]) {
-      await admin.storage.from(BUCKET).remove([
-        path
-      ]);
+      await rmFile(path);
       return jres({
         error: size > cap ? `That file is too big. The limit is ${cap / 1048576} MB for ${isVideo ? "videos" : "images"}.` : "That file type is not allowed. It was removed."
       }, 400);
     }
-    const publicUrl = admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+    const publicUrl = R2_ON ? `${R2P}/${r2enc(path)}` : admin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
     const original = String(b?.name ?? "").replace(/[^\w .()\-]/g, "").trim().slice(0, 100);
     const label = original || `${product.product_name} ${l.purpose === "website" ? "site image" : isVideo ? "ad video" : "ad image"} ${new Date().toISOString().slice(0, 10)}`;
     const name = /\.\w{2,5}$/.test(label) ? label : `${label}.${ext}`;
@@ -374,9 +399,7 @@ async function publicUpload(b) {
         created_by: l.user_id
       });
       if (error) {
-        await admin.storage.from(BUCKET).remove([
-          path
-        ]);
+        await rmFile(path);
         return jres({
           error: "Could not save the picture. Try again."
         }, 500);
@@ -386,6 +409,7 @@ async function publicUpload(b) {
         company_id: l.company_id,
         file_name: name,
         storage_path: path,
+        storage_provider: R2_ON ? "r2" : "supabase",
         public_url: publicUrl,
         asset_type: isVideo ? "video" : "image",
         product_id: product.id,
@@ -394,9 +418,7 @@ async function publicUpload(b) {
         uploaded_at: new Date().toISOString()
       });
       if (error) {
-        await admin.storage.from(BUCKET).remove([
-          path
-        ]);
+        await rmFile(path);
         return jres({
           error: "Could not save the file. Try again."
         }, 500);

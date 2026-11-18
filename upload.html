@@ -134,15 +134,16 @@ li{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;
     d.style.display = oks && !pending ? "block" : "none";
   }
 
-  function put(url, key, f, onProgress) {
+  function put(url, key, f, onProgress, r2) {
     return new Promise(function (resolve, reject) {
       var x = new XMLHttpRequest(), fd = new FormData();
-      fd.append("cacheControl", "3600"); fd.append("", f);
-      x.open("PUT", url); x.setRequestHeader("apikey", key); x.setRequestHeader("x-upsert", "false");
+      if (r2) { x.open("PUT", url); x.setRequestHeader("Content-Type", r2); }
+      else { fd.append("cacheControl", "3600"); fd.append("", f);
+      x.open("PUT", url); x.setRequestHeader("apikey", key); x.setRequestHeader("x-upsert", "false"); }
       x.upload.onprogress = function (e) { if (e.lengthComputable) onProgress(e.loaded / e.total); };
       x.onload = function () { x.status >= 200 && x.status < 300 ? resolve() : reject(new Error("Upload failed (" + x.status + ")")); };
       x.onerror = function () { reject(new Error("Network problem during upload.")); };
-      x.send(fd);
+      x.send(r2 ? f : fd);
     });
   }
 
@@ -153,7 +154,7 @@ li{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;
     var s = await call({ action: "upload_sign", name: f.name, content_type: mime(f), size: f.size });
     if (!s.ok || !s.j.upload_url) { if (s.j && /limit|expired|valid/i.test(s.j.error || "")) job.retryable = false; return setErr(job, s.j.error || "Could not start the upload."); }
     job.st.textContent = "Uploading…";
-    try { await put(s.j.upload_url, s.j.key, f, function (p) { job.bar.style.width = Math.round(p * 92) + "%"; job.st.textContent = "Uploading… " + Math.round(p * 100) + "%"; }); }
+    try { await put(s.j.upload_url, s.j.key, f, function (p) { job.bar.style.width = Math.round(p * 92) + "%"; job.st.textContent = "Uploading… " + Math.round(p * 100) + "%"; }, s.j.r2 ? (s.j.content_type || f.type || "application/octet-stream") : null); }
     catch (e) { return setErr(job, e.message); }
     job.st.textContent = "Saving…"; job.bar.style.width = "96%";
     var r = await call({ action: "upload_finish", path: s.j.path, name: f.name });

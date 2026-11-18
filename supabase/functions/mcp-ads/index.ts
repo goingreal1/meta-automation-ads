@@ -2782,7 +2782,7 @@ const TOOLS = [
       const f = await findProduct(a?.product_name, c, false);
       if ("error" in f) return f;
       const key = normName(f.p.product_name);
-      const { data } = await admin.from("creative_library").select("library_id, product_key, kind, url, name, times_used, first_uploaded").eq("company_id", c.companyId).eq("source", "vault").limit(1e3);
+      const { data } = await admin.from("creative_library").select("library_id, product_key, kind, url, name, times_used, first_uploaded, primary_text, headline, description, cta_type").eq("company_id", c.companyId).eq("source", "vault").limit(1e3);
       const seen = new Set();
       const all = (data ?? []).filter((r)=>/^https:\/\//.test(r.url) && !seen.has(r.url) && seen.add(r.url));
       const loose = all.filter((r)=>!r.product_key).length;
@@ -2816,7 +2816,11 @@ const TOOLS = [
           times_used: r.times_used || 0,
           last_campaign: lastUse[r.url]?.campaign ?? null,
           recommended: !used,
-          preview_url: r.url
+          preview_url: r.url,
+          primary_text: r.primary_text || null,
+          headline: r.headline || null,
+          description: r.description || null,
+          button: r.cta_type || null
         };
       });
       const table = [
