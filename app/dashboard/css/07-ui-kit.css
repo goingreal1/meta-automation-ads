@@ -170,3 +170,10 @@
   .rv-ui .rv-head2 .rv-seg { order: 4; } .rv-ui .rv-head2 .rv-btn.p { flex: 1; justify-content: center; }
   .rv-ui:has(.rv-split.m-detail) .rv-head, .rv-ui:has(.rv-split.m-detail) .rv-note { display: none; }
 }
+
+.rv-ui .rv-sum { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-bottom: 14px; overflow: hidden; }
+.rv-ui .rv-sum > div { padding: 14px 16px; border-left: 1px solid var(--c-line); } .rv-ui .rv-sum > div:first-child { border-left: 0; }
+.rv-ui .rv-sum .l { font-size: 12px; color: var(--c-ink3); font-weight: 500; white-space: nowrap; } .rv-ui .rv-sum .v { font-size: 20px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; white-space: nowrap; } .rv-ui .rv-sum .v .of { font-size: 13px; color: var(--c-ink3); font-weight: 500; }
+.rv-ui .rv-sum .sub { font-size: 11.5px; color: var(--c-ink3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1280px) { .rv-ui .rv-sum { grid-template-columns: repeat(4, minmax(0, 1fr)); } .rv-ui .rv-sum > div:nth-child(4n+1) { border-left: 0; } .rv-ui .rv-sum > div:nth-child(n+5) { border-top: 1px solid var(--c-line); } }
+@media (max-width: 860px) { .rv-ui .rv-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rv-ui .rv-sum > div:nth-child(n) { border-left: 1px solid var(--c-line); border-top: 1px solid var(--c-line); } .rv-ui .rv-sum > div:nth-child(2n+1) { border-left: 0; } .rv-ui .rv-sum > div:nth-child(-n+2) { border-top: 0; } .rv-ui:has(.rv-split.m-detail) .rv-sum { display: none; } }
