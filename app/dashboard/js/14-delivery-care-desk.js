@@ -68,7 +68,7 @@ async function bvCreUpload(fd) {
   try {
     if (!file) throw new Error("No file chosen.");
     const hdr = { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json", apikey: ANON };
-    const sign = await fetch(`${SUPA_URL}/functions/v1/media`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: file.name, contentType: file.type, size: file.size }) }).then(r => r.json());
+    const sign = await fetch(`${SUPA_URL}/functions/v1/media`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: String(file.name || "file").replace(/\.{2,}/g, "."), contentType: file.type, size: file.size }) }).then(r => r.json());
     if (!sign.uploadUrl) throw new Error(sign.error || "Couldn't start the upload.");
     const put = await fetch(sign.uploadUrl, { method: "PUT", headers: sign.headers || { "Content-Type": file.type }, body: file });
     if (!put.ok) throw new Error(`Upload to storage failed (${put.status}).`);

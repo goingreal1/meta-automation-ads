@@ -82,7 +82,7 @@ module.exports = async (req, res) => {
 
     const size = fs.statSync(out).size;
     const base = String(a.file_name || "video").replace(/\.[^.]+$/, "") || "video";
-    const sign = ticket ? await adm({ action: "t_sign" }) : await fetch(`${SUPA}/functions/v1/media`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: base + ".mp4", contentType: "video/mp4", size }) }).then((r) => r.json());
+    const sign = ticket ? await adm({ action: "t_sign" }) : await fetch(`${SUPA}/functions/v1/media`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: (base + ".mp4").replace(/\.{2,}/g, "."), contentType: "video/mp4", size }) }).then((r) => r.json());
     if (!sign.uploadUrl) return res.status(502).json({ error: sign.error || "Couldn't start the upload." });
     const put = await fetch(sign.uploadUrl, { method: "PUT", headers: { "Content-Type": "video/mp4" }, body: fs.readFileSync(out) });
     if (!put.ok) return res.status(502).json({ error: `Upload failed (${put.status}).` });
