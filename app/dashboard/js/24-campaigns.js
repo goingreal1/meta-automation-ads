@@ -176,6 +176,34 @@ async function cpDoDuplicate(l, id) {
   if (res && res.ok) { bvToast("Duplicated on Meta" + (live ? "." : " (paused).")); amFetch(); } else bvToast(res?.error || "Meta did not accept the copy.", "err");
 }
 
+
+// ---- phone: the flat list (campaigns / ad sets / ads tabs, on-off switch, key numbers on every row). Tapping a row opens the details. ----
+CP.mlevel = "campaigns";
+function cpMLevel(l) { CP.mlevel = l; amDraw(); }
+function cpMRow(level, r) {
+  const d = am.data, on = r.status === "ACTIVE", busy = am.busy.has(r.id);
+  let sub = "";
+  if (level === "adsets") sub = d.campaigns.find((c) => c.id === r.campaign_id)?.name || "";
+  if (level === "ads") sub = d.adsets.find((x) => x.id === r.adset_id)?.name || "";
+  if (level !== "ads" && r.daily_budget) sub += (sub ? " · " : "") + fN(r.daily_budget) + "/day";
+  const flag = level === "ads" && on && r.suggestion?.kill;
+  const thumb = level === "ads" && r.thumbnail_url ? `<img class="cp-mth" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
+  const cl = r.kind === "messaging" ? "Cost / chat" : r.kind === "purchase" ? "Cost / purchase" : "Cost / result";
+  return `<div class="cp-mr${on ? "" : " off"}${flag ? " flag" : ""}" onclick="cpSelect('${level}','${r.id}')">
+    <div class="cp-mt"><label class="switch" onclick="event.stopPropagation()"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)" aria-label="${on ? "Pause" : "Turn on"}"><span class="sw-track"></span></label>
+      ${thumb}<div class="cp-mn"><b>${escH(r.name)}</b>${sub ? `<small>${escH(sub)}</small>` : ""}</div><div class="cp-md">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div></div>
+    <div class="cp-mm"><div><small>${escH(r.result_label || "Results")}</small><b>${r.results != null ? r.results : "—"}</b></div><div><small>${cl}</small><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div><div><small>Spent</small><b>${fN(r.spend)}</b></div></div>
+    ${flag ? `<div class="cp-mf" onclick="event.stopPropagation()">${rvIc("alert")}<span>${escH(r.suggestion.reason)}</span><button type="button" class="rv-btn s" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause</button></div>` : ""}</div>`;
+}
+function cpMobileHtml() {
+  const lvl = CP.mlevel, counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
+  const rows = amRows(lvl), tot = amTotals(rows), word = lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad";
+  return `<div class="tb"><div class="rv-fld">${rvIc("search")}<input type="search" placeholder="Search" value="${escH(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search"></div>
+    <div class="rv-seg rv-w100">${[["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]].map(([k, l]) => `<button type="button" class="${lvl === k ? "on" : ""}" onclick="cpMLevel('${k}')">${l}<em>${counts[k]}</em></button>`).join("")}</div>
+    <div class="rv-seg rv-w100" style="margin-top:8px">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}</button>`).join("")}</div></div>
+    ${rows.length ? rows.map((r) => cpMRow(lvl, r)).join("") + `<div class="cp-mtot"><b>Total · ${rows.length} ${word}${rows.length === 1 ? "" : "s"}</b><span>${fN(tot.spend)} spent${tot.label ? ` · ${tot.results.toLocaleString("en-NG")} ${tot.label.toLowerCase()}` : ""}</span></div>` : `<div class="rv-empty" style="padding:20px 14px">${am.q ? "Nothing matches your search." : "Nothing here for this filter."}</div>`}`;
+}
+
 // ---- the whole screen ----
 function amDraw() {
   const root = amEl(); if (!root) return;
@@ -213,6 +241,7 @@ function amDraw() {
   ].join("")}</div>`;
   root.innerHTML = head + summary + bal + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
     <div class="rv-split ${CP.mDetail ? "m-detail" : ""}">
+      <section class="rv-card rv-mlist">${cpMobileHtml()}</section>
       <section class="rv-card rv-tree"><div class="tb"><div class="rv-fld">${rvIc("search")}<input type="search" placeholder="Search campaigns, ad sets, ads" value="${escH(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search"></div>
         <div class="rv-seg rv-w100">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}${am.filter === k ? `<em>${nCamp}</em>` : ""}</button>`).join("")}</div>
         <div class="rv-row" style="margin-top:10px">${CP.selectMode ? `<b style="font-size:13px">${am.sel.campaigns.size} selected</b><div class="rv-sp"></div><button type="button" class="rv-btn s" ${am.sel.campaigns.size ? "" : "disabled"} onclick="amBulk('PAUSED')">Pause</button><button type="button" class="rv-btn s" ${am.sel.campaigns.size ? "" : "disabled"} onclick="amBulk('ACTIVE')">Turn on</button><button type="button" class="rv-btn s" onclick="cpSelectMode(false)">Done</button>` : `<span class="rv-mut3" style="font-size:12.5px">${nCamp} campaign${nCamp === 1 ? "" : "s"}</span><div class="rv-sp"></div><button type="button" class="rv-lnk" onclick="cpSelectMode(true)">Select several</button>`}</div></div>

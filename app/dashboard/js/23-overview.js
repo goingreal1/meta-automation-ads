@@ -60,7 +60,7 @@ async function renderOverview(el) {
   const canAds = ["owner", "admin", "buyer"].includes(role);
   const n = OV.range, until = watDate(0), since = watDate(-(n - 1)), pUntil = watDate(-n), pSince = watDate(-(2 * n - 1));
   el.innerHTML = `<div class="rv-ui"><div class="rv-note">Loading your overview…</div></div>`;
-  const [orders, buyers, wallet, setup, live, bals, aiReady, aiTeam] = await Promise.all([
+  const [orders, buyers, wallet, setup, live, bals, aiReady, aiTeam, rcCur, rcPrev] = await Promise.all([
     sbQuery("orders", `select=order_status,order_value_naira,media_buyer_id,ordered_at,delivery_stage&ordered_at=gte.${pSince}T00:00:00%2B01:00&order=ordered_at.desc&limit=5000`).catch(() => []),
     isAdmin ? sbQuery("media_buyers", "select=id,code,name&order=code.asc").catch(() => []) : Promise.resolve([]),
     fetchWalletBalances().catch(() => ({ walletBalances: {}, fundingWalletBalance: null })),
@@ -69,11 +69,14 @@ async function renderOverview(el) {
     canAds ? amCall({ action: "balances" }) : Promise.resolve(null),
     canAds ? sbCount("ai_team_images", "status=eq.ready").catch(() => 0) : Promise.resolve(0),
     canAds ? sbQuery("ai_teams", "select=daily_meeting,meeting_hour_lagos,auto_launch&limit=1").then((r) => r?.[0] || null).catch(() => null) : Promise.resolve(null),
+    canAds ? amCall({ action: "reach", since, until }).catch(() => null) : Promise.resolve(null),
+    canAds ? amCall({ action: "reach", since: pSince, until: pUntil }).catch(() => null) : Promise.resolve(null),
   ]);
 
   const inCur = (d) => d >= since && d <= until, inPrev = (d) => d >= pSince && d <= pUntil;
   const rows = live.rows || [], curRows = rows.filter((r) => inCur(r.date)), prevRows = rows.filter((r) => inPrev(r.date));
   const C = liveSum(curRows), P = liveSum(prevRows);
+  const RC = rcCur && rcCur.ok ? rcCur : null, RP = rcPrev && rcPrev.ok ? rcPrev : null;
   const cur = [], old = [];
   (orders || []).forEach((o) => (inCur(ovWat(o.ordered_at)) ? cur : old).push(o));
   const sumV = (a) => a.reduce((t, o) => t + Number(o.order_value_naira || 0), 0);
@@ -142,7 +145,10 @@ async function renderOverview(el) {
     ["Page views", ovNum(C.lpv), ovDelta(C.lpv, P.lpv, false), 1], ["Cost per page view", C.costPerLpv == null ? "—" : fN2(C.costPerLpv), ovDelta(C.costPerLpv, P.costPerLpv, true), 1],
     ["Page view rate", C.lpvRate == null ? "—" : C.lpvRate.toFixed(1) + "%", ovDelta(C.lpvRate, P.lpvRate, false), 1], ["Messages started", ovNum(C.conversations), ovDelta(C.conversations, P.conversations, false)],
     ["Cost per message", C.costPerConv == null ? "—" : fN(C.costPerConv), ovDelta(C.costPerConv, P.costPerConv, true)], ["Order value", fN(sumV(cur)), ovDelta(sumV(cur), sumV(old), false)],
+    ...(RC ? [["People reached", ovNum(RC.reach), ovDelta(RC.reach, RP?.reach, false), 1], ["Frequency", RC.frequency == null ? "—" : RC.frequency.toFixed(2) + "×", ovDelta(RC.frequency, RP?.frequency, false)]] : []),
   ] : [];
+  const rangeWord = n === 1 ? "today" : `in the last ${n} days`;
+  const reachMsg = RC && RC.reach > 0 ? `<div class="rv-reach"><div class="rv-ico">${rvIc("users")}</div><div><b>You reached ${ovNum(RC.reach)} people ${rangeWord}.</b><div class="rv-mut" style="margin-top:2px">${RC.frequency != null ? `On average each one saw your ads ${RC.frequency.toFixed(1)} time${RC.frequency.toFixed(1) === "1.0" ? "" : "s"}.` : ""}${RP && RP.reach > 0 ? ` Your reach is ${RC.reach >= RP.reach ? "up" : "down"} ${Math.abs(Math.round((RC.reach - RP.reach) / RP.reach * 100))}% on the period before.` : ""}</div></div></div>` : "";
 
   const hour = new Date(Date.now() + 3600000).getUTCHours(), first = String(window.myProfile?.display_name || "").split(" ")[0];
   const greet = (hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening") + (first ? ", " + escH(first) : "");
@@ -194,8 +200,9 @@ async function renderOverview(el) {
     </div>
 
     ${mx.length ? `<section class="rv-card" style="margin-top:16px"><div class="rv-cp" style="padding-bottom:6px"><div class="rv-ct" style="margin-bottom:0"><h3>All metrics</h3><span class="rv-mut3 rv-hm" style="font-size:13px">Every number from Meta for this period.</span></div></div>
+      ${reachMsg}
       <div class="rv-mx" style="margin-top:10px">${mx.map((m) => `<div class="${m[3] ? "hi" : ""}"><div class="l">${m[0]}</div><div class="v">${m[1]}</div><div>${dd(m[2])}</div></div>`).join("")}</div>
-      <div class="rv-mut3" style="font-size:12px;padding:10px 20px 14px">Reach and frequency are not added up here because Meta cannot sum them across ad sets.</div></section>` : ""}
+      <div class="rv-mut3" style="font-size:12px;padding:10px 20px 14px">${RC ? "People reached is asked of Meta for the whole period, so nobody is counted twice. If you run more than one ad account, a person seen in two of them is counted in both." : "People reached could not be loaded from Meta just now."}</div></section>` : ""}
   </div>`;
   requestAnimationFrame(ovDrawChart);
 }
