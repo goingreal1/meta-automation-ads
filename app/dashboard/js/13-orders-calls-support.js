@@ -4,7 +4,7 @@
 
 // Which statuses a role may set on an order. "Delivered" is proof of payment or handover: it comes from a matched
 // Paystack payment (the webhook) or from the delivery agent, never from a media buyer (the database enforces this too).
-function bvOrderStatusSelect(o) {
+function bvOrderStatusOptions(o) {
   const role = window.myProfile?.role;
   const all = [["pending", "Pending"], ["valid", "Valid"], ["delivered", "Delivered"], ["returned", "Returned"], ["cancelled", "Cancelled"]];
   const allowed = role === "owner" || role === "admin" || role === "delivery_agent" ? all.map(x => x[0])
@@ -12,149 +12,17 @@ function bvOrderStatusSelect(o) {
     : ["pending", "valid", "cancelled"];
   const cur = o.order_status || "pending";
   const locked = cur === "delivered" ? !(role === "owner" || role === "admin") : false;
-  const opts = all.filter(x => allowed.includes(x[0]) || x[0] === cur);
+  const opts = all.filter(x => allowed.includes(x[0]) || x[0] === cur).map(x => ({ v: x[0], l: x[1], ok: allowed.includes(x[0]) }));
+  return { opts, locked, cur };
+}
+function bvOrderStatusSelect(o) {
+  const { opts, locked, cur } = bvOrderStatusOptions(o);
   return `<select data-oid="${o.id}" class="oSel" style="padding:3px 7px;font-size:11px;width:auto;" ${locked ? "disabled title=\"Delivered orders can only be changed by an admin\"" : ""}>
-    ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""} ${allowed.includes(v) ? "" : "disabled"}>${l}</option>`).join("")}
+    ${opts.map(x => `<option value="${x.v}" ${cur === x.v ? "selected" : ""} ${x.ok ? "" : "disabled"}>${x.l}</option>`).join("")}
   </select>`;
 }
 
-async function renderOrders(el) {
-  // Stats and pagination need exact full-table counts separate from the one
-  // page of rows actually rendered -- sbCount reads Content-Range instead of
-  // fetching every row, so paging doesn't skew "Total orders"/"Delivery rate"
-  // and large tables don't get silently under-counted by PostgREST's row cap.
-  const [tot, deliv, ret, pend, orders, flagged, siteRows] = await Promise.all([
-    sbCount("orders"),
-    sbCount("orders", "order_status=eq.delivered"),
-    sbCount("orders", "order_status=eq.returned"),
-    sbCount("orders", "order_status=eq.pending"),
-    sbQuery("orders", `select=*,media_buyers(code,name),voice_calls(status,summary,needs_human,human_resolved_at,created_at),payments(status,amount_naira,paid_at)&order=ordered_at.desc&limit=${ORDERS_PAGE_SIZE}&offset=${ordersPage * ORDERS_PAGE_SIZE}`),
-    sbQuery("voice_calls", "select=*,orders(customer_name,customer_phone,product_name)&needs_human=is.true&human_resolved_at=is.null&order=created_at.desc&limit=50").catch(() => []),
-    sbQuery("sites", "select=id,name", { allAccounts: true }).catch(() => []),
-  ]);
-  window.bvOrdersCache = orders || [];
-  const siteNameById = Object.fromEntries((siteRows || []).map(x => [x.id, x.name]));
-  (orders || []).forEach(o => {
-    // voice_calls comes back as an array (reverse FK) -- there's at most one
-    // call per order in practice, but take the most recent if that ever changes.
-    o.voice_call = (o.voice_calls || []).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))[0] || null;
-    // payments.order_id is unique, so at most one row -- whether it's already
-    // confirmed is exactly what a delivery agent needs before deciding to
-    // collect cash on delivery, and what customer care needs to answer "did
-    // my payment go through" without guessing from order_status alone.
-    o.payment = (o.payments || [])[0] || null;
-  });
-
-  // Same definition as the Home screen: delivered out of the orders that have finished (delivered + returned).
-  const rate  = (deliv + ret) ? (deliv / (deliv + ret) * 100).toFixed(1) : "0";
-  const rC    = parseFloat(rate) >= 70 ? "a" : parseFloat(rate) >= 50 ? "w" : "d";
-  const pageCount = Math.max(1, Math.ceil(tot / ORDERS_PAGE_SIZE));
-  const pageStart = tot ? ordersPage * ORDERS_PAGE_SIZE + 1 : 0;
-  const pageEnd = Math.min(tot, (ordersPage + 1) * ORDERS_PAGE_SIZE);
-
-  el.innerHTML = `
-    <div class="sh"><div class="sh-title">Orders</div><div class="sh-actions"><button class="btn btn-g" id="ordersExportBtn" onclick="bvExportOrdersCsv(this)">⬇ Download CSV</button><button class="btn btn-g" onclick="render()">↺ Refresh</button></div></div>
-
-    <div class="g4">
-      <div class="kc"><div class="kc-lbl">Total orders</div><div class="kc-val">${tot}</div><div class="kc-sub">all time</div></div>
-      <div class="kc"><div class="kc-lbl">Delivered</div><div class="kc-val a">${deliv}</div><div class="kc-sub">all time</div></div>
-      <div class="kc"><div class="kc-lbl">Returned</div><div class="kc-val d">${ret}</div><div class="kc-sub">all time</div></div>
-      <div class="kc"><div class="kc-lbl">Delivery rate</div><div class="kc-val ${rC}">${rate}%</div><div class="kc-sub">of delivered + returned · ${pend} still pending</div></div>
-    </div>
-
-    ${flagged?.length ? `
-    <div class="panel">
-      <div class="ph"><div class="ph-title">⚠️ AI calls needing a human</div><div class="ph-count">${flagged.length} open</div></div>
-      <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Why</th><th>AI summary</th><th>When</th><th></th></tr>
-        ${flagged.map(c => `<tr>
-          <td class="s n">${escH(c.orders?.customer_name ?? "—")}</td>
-          <td class="n"><a href="tel:${escH(c.to_number)}" style="color:var(--accent);text-decoration:none;">${escH(c.to_number)}</a></td>
-          <td class="n">${escH(c.orders?.product_name ?? "—")}</td>
-          <td>${(c.red_flags || []).map(f => `<span class="pill returned">${escH(f.replace(/_/g, " "))}</span>`).join(" ")}</td>
-          <td class="n" style="max-width:260px;color:var(--muted);">${escH(c.summary ?? "")}</td>
-          <td>${ago(c.created_at)}</td>
-          <td><button class="btn btn-g callResolve" data-cid="${escH(c.id)}">Mark handled</button></td>
-        </tr>`).join("")}
-      </table></div>
-    </div>` : ""}
-
-    <div class="panel">
-      <div class="ph"><div class="ph-title">All orders</div><div class="ph-count">${pend} pending</div></div>
-      ${!tot ? `<div class="empty"><div class="empty-ico">📦</div>No orders yet.</div>` : `
-      <div class="tbl-wrap"><table>
-        <tr><th>Customer</th><th>Phone</th><th>Product</th><th>Value</th><th>Buyer</th><th>AI call</th><th>Payment</th><th>Status</th><th>Ordered</th><th>Update</th></tr>
-        ${orders.map(o => `<tr class="bv-clickable-row" data-order-row="${o.id}">
-          <td class="s n">${o.customer_id
-            ? `<a href="javascript:void(0)" onclick="bvShowCustomerModal('${o.customer_id}')" style="color:var(--accent);text-decoration:none;">${escH(o.customer_name ?? "—")}</a>`
-            : escH(o.customer_name ?? "—")}${o.form_data && typeof o.form_data === "object" ? `<div style="font-size:10.5px;color:var(--muted);font-weight:400;max-width:220px;">${Object.entries(o.form_data).map(([k, v]) => `${escH(k)}: ${escH(v)}`).join(" · ")}</div>` : ""}</td>
-          <td class="n">${o.customer_phone
-            ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${o.customer_phone}</a>`
-            : "—"}</td>
-          <td class="n">${o.product_name ?? "—"}${o.site_id ? `<div style="font-size:10.5px;color:var(--muted);">🌐 ${escH(siteNameById[o.site_id] || "Website")}</div>` : ""}</td>
-          <td>${fN(o.order_value_naira)}</td>
-          <td class="n">${o.media_buyers ? `${escH(o.media_buyers.code)}` : `<span style="color:var(--muted);">—</span>`}</td>
-          <td>${bvOrderCallCell(o)}</td>
-          <td>${bvPaymentCell(o)}</td>
-          <td><span class="pill ${o.order_status ?? "pending"}">${o.order_status ?? "pending"}</span>${o.possible_duplicate ? ` <span class="pill returned" title="Same customer, same address, within the last hour">⚠️ Possible dup</span>` : ""} <a href="javascript:void(0)" onclick="bvShowOrderHistoryModal('${o.id}')" title="Change history" style="color:var(--muted);text-decoration:none;">🕘</a></td>
-          <td>${ago(o.ordered_at)}</td>
-          <td>
-            ${bvOrderStatusSelect(o)}
-          </td>
-        </tr>`).join("")}
-      </table></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--muted);">
-        <div>${tot ? `Showing ${pageStart}–${pageEnd} of ${tot}` : ""}</div>
-        <div style="display:flex;gap:8px;">
-          <button type="button" class="btn btn-g" id="ordersPrevBtn" ${ordersPage === 0 ? "disabled" : ""}>← Prev</button>
-          <div style="padding:6px 4px;">Page ${ordersPage + 1} of ${pageCount}</div>
-          <button type="button" class="btn btn-g" id="ordersNextBtn" ${ordersPage >= pageCount - 1 ? "disabled" : ""}>Next →</button>
-        </div>
-      </div>`}
-    </div>`;
-
-  document.getElementById("ordersPrevBtn")?.addEventListener("click", () => {
-    if (ordersPage > 0) { ordersPage--; renderOrders(el); }
-  });
-  document.getElementById("ordersNextBtn")?.addEventListener("click", () => {
-    if (ordersPage < pageCount - 1) { ordersPage++; renderOrders(el); }
-  });
-
-  document.querySelectorAll(".oSel").forEach(sel => {
-    sel.addEventListener("change", async e => {
-      const id = e.target.dataset.oid;
-      const ns = e.target.value;
-      try {
-        const body = { order_status: ns };
-        if (ns === "delivered") body.delivered_at = new Date().toISOString();
-        const { error } = await supabaseClient.from('orders').update(body).eq('id', id);
-        if (error) throw error;
-      } catch(err) { alert("Update failed: " + err.message); renderOrders(el); }
-    });
-  });
-
-  document.querySelectorAll(".callNowBtn").forEach(btn => btn.addEventListener("click", async e => {
-    const oid = e.target.dataset.oid;
-    e.target.disabled = true;
-    e.target.textContent = "Calling…";
-    try {
-      const r = await sbFn("place-order-call", { order_id: oid, force: true });
-      if (r.error) throw new Error(r.error);
-    } catch (err) {
-      alert("Could not place call: " + err.message);
-    } finally {
-      renderOrders(el);
-    }
-  }));
-
-  document.querySelectorAll(".callResolve").forEach(btn => btn.addEventListener("click", async e => {
-    const { error } = await supabaseClient.from("voice_calls")
-      .update({ human_resolved_at: new Date().toISOString() }).eq("id", e.target.dataset.cid);
-    if (error) { alert("Update failed: " + error.message); return; }
-    loadCallFlagCount();
-    renderOrders(el);
-  }));
-}
+// renderOrders now lives in 25-orders.js (rebuilt screen).
 
 // Small status cell for the AI confirmation call tied to an order -- lets a
 // human see at a glance whether the call happened, went fine, or needs
