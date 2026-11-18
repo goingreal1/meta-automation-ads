@@ -257,6 +257,19 @@ function evaluateRule(rule, ad, life) {
   const hours = since ? (Date.now() - new Date(since).getTime()) / 3600_000 : Infinity;
   if (hours < 0 || hours < Number(rule.min_hours)) return null;
   if (life.spend < Number(rule.min_spend)) return null;
+  // Landing page views (website ads only): kill when each view costs more than the limit, or when money was spent and nobody landed on the page.
+  const lpvLimit = Number(rule.max_cost_per_lpv);
+  if (lpvLimit > 0 && ad.kind !== "messaging") {
+    const lpv = Number(life.landing_page_views ?? 0), n = (v)=>"₦" + Math.round(v).toLocaleString("en-NG");
+    if (lpv === 0) return {
+      kill: true,
+      reason: `Spent ${n(life.spend)} over ${Math.round(hours)}h with 0 landing page views (rule: kill after ${n(Number(rule.min_spend))}).`
+    };
+    if (life.spend / lpv > lpvLimit) return {
+      kill: true,
+      reason: `${n(life.spend / lpv)} per landing page view is above your ${n(lpvLimit)} limit (${lpv} view${lpv === 1 ? "" : "s"}, ${n(life.spend)} spent).`
+    };
+  }
   const results = ad.kind === "messaging" ? life.conversations : life.purchases;
   const label = ad.kind === "messaging" ? "conversation" : "purchase";
   const cost = results > 0 ? life.spend / results : null;
