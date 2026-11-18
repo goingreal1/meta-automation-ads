@@ -45,7 +45,14 @@ button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:d
 .set{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .set label{display:flex;gap:8px;align-items:center;font-size:14px}
 .err{color:var(--err);font-size:13.5px;margin-top:8px}.note{color:var(--dim);font-size:12.5px}
-@media(max-width:640px){.team{grid-template-columns:repeat(4,1fr);gap:6px}.ag{padding:8px 2px}.ag .av{width:36px;height:36px;font-size:14px}.ag span{display:none}.set{grid-template-columns:1fr}}
+.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:10px}
+.im{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg)}
+.im .ph{aspect-ratio:1;display:grid;place-items:center;color:var(--dim);font-size:13px;background:var(--soft);text-align:center;padding:10px}
+.im img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.im .bd{padding:9px 10px;font-size:12.5px}.im .bd b{display:block;font-size:13px}
+.im .ac{display:flex;gap:6px;padding:0 10px 10px}.im .ac button{flex:1;padding:7px 8px;font-size:13px}
+.spin{width:22px;height:22px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--brand);animation:sp 1s linear infinite;margin:0 auto 8px}@keyframes sp{to{transform:rotate(360deg)}}
+@media(max-width:640px){.team{grid-template-columns:repeat(4,1fr);gap:6px}.ag{padding:8px 2px}.ag .av{width:36px;height:36px;font-size:14px}.ag span{display:none}.set{grid-template-columns:1fr}.imgs{grid-template-columns:1fr 1fr;gap:8px}}
 </style>
 </head>
 <body>
@@ -72,13 +79,20 @@ button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:d
 
   <div class="card dec" id="decCard" style="display:none"></div>
 
+  <div class="card" id="imgCard" style="display:none">
+    <div style="display:flex;align-items:center;gap:8px"><b>Creative agent: images</b><div class="sp"></div><button class="pri" id="mkImg" style="display:none">Make these images</button></div>
+    <div class="note" id="imgNote" style="margin-top:4px">Zara makes one image per brief. Approve the ones you like and they go into your creative vault, ready to launch.</div>
+    <div class="imgs" id="imgs"></div>
+  </div>
+
   <div class="card"><b>Settings</b>
     <div class="set" style="margin-top:10px">
       <label><input type="checkbox" id="sAuto"> Let the media buyer launch without my approval <span class="note">(off = it waits for you)</span></label>
       <label>Daily spend cap (₦) <input type="number" id="sCap" min="0" style="width:130px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit"></label>
     </div>
     <div style="margin-top:10px"><button id="sSave">Save settings</button> <span class="note" id="sMsg"></span></div>
-    <div class="note" style="margin-top:8px">Phase 1: the team meets and writes the decision. Image generation and midnight launching are switched on in the next phases.</div>
+    <div class="note" id="claimsNote" style="margin-top:8px"></div>
+    <div class="note" style="margin-top:8px">The team meets and writes the decision, and Zara makes the images. Midnight launching by the media buyer comes next.</div>
   </div>
 
   <div class="card"><b>Past meetings</b><div id="past" style="margin-top:6px"><div class="note">None yet.</div></div></div>
@@ -90,7 +104,7 @@ var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIU
 var sb = window.supabase.createClient(SUPA_URL, ANON);
 var $ = function (id) { return document.getElementById(id); };
 var NAMES = { team_lead: ["Ada", "Team Lead", "tl"], creative: ["Zara", "Creative", "cr"], media_buyer: ["Tobi", "Media Buyer", "mb"], customer_service: ["Ife", "Customer Service", "cs"], you: ["You", "", "you"] };
-var S = { meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false };
+var S = { images: [], imagesReady: false, claims: false, meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false };
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 async function api(body) {
   var s = (await sb.auth.getSession()).data.session;
@@ -115,7 +129,7 @@ function render() {
   $("say").disabled = !running; $("sayb").disabled = !running; $("start").disabled = !!running;
   var st = $("mstat");
   if (S.meeting) { st.style.display = ""; st.className = "chip " + (running ? "live" : (S.meeting.status === "failed" ? "off" : "")); st.innerHTML = running ? '<span class="dot"></span> Live' : (S.meeting.status === "failed" ? "Failed" : "Finished"); $("mtopic").textContent = S.meeting.topic || ""; }
-  renderDecision();
+  renderDecision(); renderImages();
 }
 function renderDecision() {
   var c = $("decCard"), d = S.meeting && S.meeting.decision;
@@ -149,7 +163,8 @@ async function openMeeting(id) {
 }
 async function loadPast() {
   var o = await api({ action: "state" });
-  S.ready = !!o.ai_ready; S.canManage = !!o.can_manage;
+  S.ready = !!o.ai_ready; S.canManage = !!o.can_manage; S.images = o.images || []; S.imagesReady = !!o.images_ready; S.claims = !!o.claims_verified;
+  $("claimsNote").textContent = S.claims ? "Claims: your business is verified. The team may use only the approved claims you list on each product." : "Claims: your business is not verified yet, so the team makes no product claims beyond the plain description. Revora verifies businesses and can then switch approved claims on.";
   var rd = $("ready"); rd.className = "chip " + (S.ready ? "live" : "off"); rd.innerHTML = S.ready ? '<span class="dot"></span> AI on' : "Needs OpenAI key";
   if (o.team) { $("sAuto").checked = !!o.team.auto_launch; $("sCap").value = Number(o.team.daily_budget_cap_naira || 0); }
   $("sSave").disabled = !S.canManage; $("start").disabled = !S.canManage || (S.meeting && S.meeting.status === "running");
@@ -158,6 +173,35 @@ async function loadPast() {
   document.querySelectorAll(".past").forEach(function (el) { el.onclick = function () { openMeeting(el.dataset.id); window.scrollTo({ top: 0, behavior: "smooth" }); }; });
   return ms;
 }
+
+
+function imgsForMeeting() { return (S.images || []).filter(function (i) { return S.meeting && i.meeting_id === S.meeting.id; }); }
+function renderImages() {
+  var c = $("imgCard"), d = S.meeting && S.meeting.decision, briefs = d && d.creative_briefs ? d.creative_briefs.length : 0, list = imgsForMeeting();
+  if (!briefs && !list.length) { c.style.display = "none"; return; }
+  c.style.display = "";
+  var mk = $("mkImg"); mk.style.display = (!list.length && briefs && S.canManage) ? "" : "none"; mk.disabled = !S.imagesReady;
+  $("imgNote").textContent = S.imagesReady ? "Zara makes one image per brief. Approve the ones you like and they go into your creative vault, ready to launch." : "Image generation needs the Runway key (RUNWAY_API_KEY). Until it is added, the briefs above are ready and waiting.";
+  $("imgs").innerHTML = list.map(function (i) {
+    var br = i.brief || {}, top;
+    if (i.status === "generating") top = '<div class="ph"><div><div class="spin"></div>Zara is drawing…</div></div>';
+    else if (i.status === "failed") top = '<div class="ph" style="color:var(--err)">Could not make this one.<br>' + esc(i.error || "") + "</div>";
+    else top = '<img src="' + esc(i.image_url) + '" alt="" loading="lazy">';
+    var ac = i.status === "ready" ? '<div class="ac"><button class="pri" data-ap="' + i.id + '">Approve</button><button data-rj="' + i.id + '">Reject</button></div>' : "";
+    var tag = { approved: "In your vault ✓", rejected: "Rejected", ready: "Ready for review", generating: "Generating", failed: "Failed" }[i.status] || i.status;
+    return '<div class="im">' + top + '<div class="bd"><b>' + esc(br.product || "Image") + "</b>" + esc(br.angle || "") + '<div class="note">' + tag + "</div></div>" + ac + "</div>";
+  }).join("");
+  document.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { imgAct("approve_image", b.dataset.ap, b); }; });
+  document.querySelectorAll("[data-rj]").forEach(function (b) { b.onclick = function () { imgAct("reject_image", b.dataset.rj, b); }; });
+  clearTimeout(S.imgT); if (list.some(function (i) { return i.status === "generating"; })) S.imgT = setTimeout(function () { loadPast().then(renderImages); }, 4000);
+}
+async function imgAct(action, id, btn) { btn.disabled = true; var o = await api({ action: action, image_id: id }); if (o.error) err(o.error); await loadPast(); renderImages(); }
+$("mkImg").onclick = async function () {
+  err(""); this.disabled = true;
+  var o = await api({ action: "make_images", meeting_id: S.meeting.id });
+  if (o.error) { err(o.error); this.disabled = false; return; }
+  await loadPast(); renderImages();
+};
 
 $("start").onclick = async function () {
   err(""); this.disabled = true;

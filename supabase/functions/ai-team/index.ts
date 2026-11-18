@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withR2 } from "../_shared/r2storage.ts";
 
 // AI Team: a team lead, a creative agent, a media buyer and customer service hold a LIVE daily meeting about the business.
 // The meeting runs in the background and writes into ai_meeting_messages word by word; the page watches it with Realtime.
@@ -11,7 +12,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
 const MODEL = Deno.env.get("AI_TEAM_MODEL") ?? "gpt-4o-mini";
-const db = createClient(SUPABASE_URL, SERVICE);
+const RUNWAY = Deno.env.get("RUNWAY_API_KEY") ?? "";
+const db = withR2(createClient(SUPABASE_URL, SERVICE));
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...cors } });
 
@@ -22,11 +24,14 @@ const AGENTS: Record<Speaker, { name: string; role: string; brief: string }> = {
   media_buyer: { name: "Tobi", role: "Media Buyer", brief: "You launch the campaigns at midnight from creatives that are already made. You say what to test, which products and how much budget, what you would kill early, and what worries you in the numbers." },
   customer_service: { name: "Ife", role: "Customer Service", brief: "You talk to the customers. You only report what the numbers show (cancellations, deliveries, stock). If there is no customer feedback in the data, say so plainly; never invent customer quotes." },
 };
-const RULES = `Rules for everyone:
+const rules = (verified: boolean) => `Rules for everyone:
 - Speak like a real teammate in a meeting: 2 to 4 short sentences, plain words, no bullet lists, no headings, no emojis.
 - Use ONLY the numbers in the briefing. If a number is missing, say it is missing. Never invent sales, quotes or results.
-- Respect each product's own notes. Never claim a product cures, treats or reverses a disease or medical condition; "aggressive" means bold hooks, urgency and strong offers, not false claims.
-- Everything is in Nigerian naira (₦). The team works for one business.`;
+- Everything is in Nigerian naira (₦). The team works for one business.
+- CLAIMS: ${verified
+    ? "This business has been verified by Revora. For each product you may use the claims listed in that product's approved_claims, in those words. Do not state any product claim that is not listed there, and never promise a cure or guaranteed result. If approved_claims is empty for a product, treat it as having no claims."
+    : "This business is not verified yet, so make no product claims beyond the plain product description (what it is, the price, the offer, delivery and payment options). Never say a product cures, treats or fixes a condition. Bold hooks, urgency and strong offers are fine."}
+- Respect each product's own safety notes.`;
 
 async function openaiStream(messages: { role: string; content: string }[], onText: (t: string) => Promise<void>, json_mode = false): Promise<string> {
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -78,6 +83,34 @@ async function addMessage(meetingId: string, companyId: string, speaker: string,
   throw new Error("Could not write to the meeting.");
 }
 
+// The creative agent: one Runway image per brief. The picture lands in the company's vault storage (R2) and waits for a person's approval.
+async function generateImage(id: string, companyId: string) {
+  const fail = (e: string) => db.from("ai_team_images").update({ status: "failed", error: e.slice(0, 300), updated_at: new Date().toISOString() }).eq("id", id);
+  try {
+    const { data: im } = await db.from("ai_team_images").select("prompt").eq("id", id).single();
+    const h = { Authorization: `Bearer ${RUNWAY}`, "Content-Type": "application/json", "X-Runway-Version": "2024-11-06" };
+    const r = await fetch("https://api.dev.runwayml.com/v1/text_to_image", { method: "POST", headers: h, body: JSON.stringify({ model: "gen4_image", promptText: String(im?.prompt ?? "").slice(0, 1000), ratio: "1024:1024" }) });
+    const o = await r.json().catch(() => ({}));
+    if (!r.ok || !o?.id) return await fail(`Runway said ${r.status}: ${JSON.stringify(o).slice(0, 160)}`);
+    await db.from("ai_team_images").update({ runway_task: o.id }).eq("id", id);
+    let url = "";
+    for (let i = 0; i < 40; i++) { // up to ~2 minutes
+      await new Promise((res) => setTimeout(res, 3000));
+      const t = await fetch(`https://api.dev.runwayml.com/v1/tasks/${o.id}`, { headers: h }).then((x) => x.json()).catch(() => null);
+      if (t?.status === "SUCCEEDED") { url = String(t.output?.[0] ?? ""); break; }
+      if (t?.status === "FAILED" || t?.status === "CANCELLED") return await fail(String(t.failure ?? "Runway could not make this image."));
+    }
+    if (!url) return await fail("Runway took too long.");
+    const img = await fetch(url); if (!img.ok) return await fail("Could not download the image.");
+    const bytes = new Uint8Array(await img.arrayBuffer());
+    const path = `ai-team/${companyId}/${id}.png`;
+    const up = await db.storage.from("creative-vault").upload(path, bytes, { contentType: "image/png", upsert: true });
+    if (up.error) return await fail(up.error.message);
+    const pub = db.storage.from("creative-vault").getPublicUrl(path).data.publicUrl;
+    await db.from("ai_team_images").update({ status: "ready", image_url: pub, updated_at: new Date().toISOString() }).eq("id", id);
+  } catch (e) { await fail(String((e as Error)?.message ?? e)); }
+}
+
 async function runMeeting(meetingId: string, companyId: string, topic: string, demo: boolean) {
   try {
     const { data: brief } = await db.rpc("rv_team_briefing", { p_company: companyId });
@@ -93,7 +126,7 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
       const push = async (t: string) => { await db.from("ai_meeting_messages").update({ content: t, updated_at: new Date().toISOString() }).eq("id", row.id); };
       const n = count[sp] = (count[sp] ?? -1) + 1;
       const text = demo ? await demoSpeak(sp, n, push) : await openaiStream([
-        { role: "system", content: `You are ${a.name}, the ${a.role} of an AI marketing team for a Nigerian online business. ${a.brief}\n\n${RULES}\n\nMeeting topic: ${topic}\n\nBRIEFING (real data):\n${briefing}` },
+        { role: "system", content: `You are ${a.name}, the ${a.role} of an AI marketing team for a Nigerian online business. ${a.brief}\n\n${rules(!!(brief as { claims_verified?: boolean } | null)?.claims_verified)}\n\nMeeting topic: ${topic}\n\nBRIEFING (real data):\n${briefing}` },
         { role: "user", content: `Meeting so far:\n${transcript || "(nothing yet, you open the meeting)"}\n\nNow it is your turn, ${a.name}. ${sp === "team_lead" && !transcript ? "Open the meeting: say what the numbers show and what today's focus should be." : sp === "team_lead" && (count.team_lead ?? 0) > 1 ? "Close the meeting: state the decisions clearly (which products, which angles, how aggressive, what to launch tonight)." : "Respond to what was said and add your part."}` },
       ], push);
       await db.from("ai_meeting_messages").update({ content: text.trim(), done: true, updated_at: new Date().toISOString() }).eq("id", row.id);
@@ -104,7 +137,7 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
       const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
       const transcript = (msgs ?? []).map((m) => `${AGENTS[m.speaker as Speaker]?.name ?? "BOSS"}: ${m.content}`).join("\n");
       const raw = await openaiStream([
-        { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "kill_rule": string}], "risks": [string]}. Use only products from the briefing. Max 5 creative_briefs. Do not add claims the product notes forbid.\n\nBRIEFING:\n${briefing}` },
+        { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "kill_rule": string}], "risks": [string]}. Use only products from the briefing. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing}` },
         { role: "user", content: `Meeting transcript:\n${transcript}` },
       ], async () => {}, true);
       try { decision = JSON.parse(raw); } catch { decision = { summary: raw.slice(0, 600) }; }
@@ -130,7 +163,8 @@ Deno.serve(async (req) => {
   if (b?.action === "state") {
     const { data: team } = await db.from("ai_teams").select("*").eq("company_id", companyId).maybeSingle();
     const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
-    return json({ team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], ai_ready: !!OPENAI, can_manage: isOwner });
+    const { data: images } = await db.from("ai_team_images").select("id, meeting_id, brief, status, image_url, error, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
+    return json({ team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!RUNWAY, claims_verified: !!team?.claims_verified_at, can_manage: isOwner });
   }
 
   if (b?.action === "settings") {
@@ -155,6 +189,43 @@ Deno.serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil(runMeeting(m.id, companyId, topic, demo));
     return json({ meeting_id: m.id });
+  }
+
+  if (b?.action === "make_images") {
+    if (!isOwner) return json({ error: "Only the owner or an admin can ask the creative agent to make images." }, 403);
+    if (!RUNWAY) return json({ error: "Image generation is not switched on yet: it needs the Runway key (RUNWAY_API_KEY)." }, 503);
+    const { data: m } = await db.from("ai_meetings").select("id, company_id, status, decision").eq("id", String(b?.meeting_id ?? "")).maybeSingle();
+    if (!m || m.company_id !== companyId) return json({ error: "Meeting not found." }, 404);
+    // deno-lint-ignore no-explicit-any
+    const briefs: any[] = Array.isArray((m.decision as any)?.creative_briefs) ? (m.decision as any).creative_briefs.slice(0, 5) : [];
+    if (m.status !== "done" || !briefs.length) return json({ error: "This meeting has no image briefs yet." }, 409);
+    const { data: already } = await db.from("ai_team_images").select("id").eq("meeting_id", m.id).limit(1);
+    if (already?.length) return json({ error: "Images for this meeting were already requested." }, 409);
+    const rows = [];
+    for (const br of briefs) {
+      const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, no text, no logos, no watermarks.`;
+      const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
+      if (r) rows.push(r.id);
+    }
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(Promise.all(rows.map((id) => generateImage(id, companyId))));
+    return json({ ok: true, started: rows.length });
+  }
+
+  if (b?.action === "approve_image" || b?.action === "reject_image") {
+    if (!isOwner) return json({ error: "Only the owner or an admin can approve images." }, 403);
+    const { data: im } = await db.from("ai_team_images").select("*").eq("id", String(b?.image_id ?? "")).maybeSingle();
+    if (!im || im.company_id !== companyId) return json({ error: "Image not found." }, 404);
+    if (b.action === "reject_image") { await db.from("ai_team_images").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", im.id); return json({ ok: true }); }
+    if (im.status !== "ready" || !im.image_url) return json({ error: "This image is not ready to approve." }, 409);
+    const br = im.brief ?? {};
+    const { data: cr, error: ce } = await db.from("creatives").insert({
+      company_id: companyId, creative_name: `AI Team · ${String(br.product ?? "Image").slice(0, 60)} · ${String(br.angle ?? "").slice(0, 40)}`.trim(), image_url: im.image_url, status: "testing",
+      hook: br.angle ?? null, headline: br.headline_on_image ?? null, primary_text: br.primary_text ?? null,
+    }).select("id").single();
+    if (ce || !cr) return json({ error: ce?.message ?? "Could not add it to the vault." }, 500);
+    await db.from("ai_team_images").update({ status: "approved", creative_id: cr.id, updated_at: new Date().toISOString() }).eq("id", im.id);
+    return json({ ok: true, creative_id: cr.id });
   }
 
   if (b?.action === "say") {
