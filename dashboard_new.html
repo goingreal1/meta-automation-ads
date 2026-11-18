@@ -6351,11 +6351,11 @@ const amAdById = id => am.data?.ads?.find(a => a.id === id);
 const AM_SINGULAR = { campaigns: "campaign", adsets: "adset", ads: "ad" };
 let am = {
   data: null, key: "", loading: false, error: null, at: 0, req: 0,
-  level: "campaigns", range: "last7", filter: "all",
+  level: "campaigns", range: "last7", filter: "live",
   sel: { campaigns: new Set(), adsets: new Set() }, busy: new Set(),
   bal: null, balKey: "",
 };
-const amKey = () => `${activeAccountId}|${am.range}`;
+const amKey = () => `${activeAccountId}|${am.range}|${am.filter}`;
 const amEl = () => document.getElementById("amRoot");
 
 async function renderAdsManager(el) {
@@ -6406,7 +6406,7 @@ async function amFetch() {
   am.loading = true; am.error = null;
   amDraw();
   const key = amKey();
-  const r = await sbFn("ads-manager", { action: "list", range: am.range });
+  const r = await sbFn("ads-manager", { action: "list", range: am.range, status: am.filter });
   if (my !== am.req) return; // a newer request (range/account switch) owns the screen
   am.loading = false;
   if (!r || r.ok === false || r.error) {
@@ -6487,8 +6487,6 @@ function amRows(level) {
     else if (am.sel.campaigns.size) rows = rows.filter(a => am.sel.campaigns.has(a.campaign_id));
   }
   rows = rows.filter(r => !["DELETED", "ARCHIVED"].includes(r.effective_status));
-  if (am.filter === "active") rows = rows.filter(r => r.status === "ACTIVE");
-  else if (am.filter === "paused") rows = rows.filter(r => r.status !== "ACTIVE");
   if (am.q) rows = rows.filter(r => String(r.name || "").toLowerCase().includes(am.q.toLowerCase()));
   return [...rows].sort((a, b) => (b.status === "ACTIVE") - (a.status === "ACTIVE") || b.spend - a.spend);
 }
@@ -6625,7 +6623,7 @@ function amDraw() {
     <div class="am-toolbar">
       ${rangeSel}
       <input class="am-search" type="search" placeholder="Search campaigns" value="${escH(am.q || "")}" oninput="amSetQuery(this.value)" aria-label="Search">
-      <select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="all" ${am.filter === "all" ? "selected" : ""}>Status: All</option><option value="active" ${am.filter === "active" ? "selected" : ""}>Active</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option></select>
+      <select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="live" ${am.filter === "live" ? "selected" : ""}>Live: active, in review, preparing</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option><option value="all" ${am.filter === "all" ? "selected" : ""}>All campaigns</option></select>
       <span class="am-grow"></span>
       <button class="btn btn-g" onclick="bvOpenDraftsModal()">Drafts</button>
       <button class="btn btn-g" id="amRefresh" onclick="amFetch()" ${am.loading ? "disabled" : ""}>${am.loading ? '<span class="spin"></span> Loading…' : "Refresh"}</button>
@@ -6814,7 +6812,7 @@ function amBack() {
   else { am.sel = { campaigns: new Set(), adsets: new Set() }; am.level = "campaigns"; }
   amDraw(); window.scrollTo({ top: 0 });
 }
-function amSetFilter(f) { am.filter = f; amDraw(); }
+function amSetFilter(f) { am.filter = f; am.at = 0; amFetch(); }
 function amSetRange(r) { if (!r) return; am.range = r; am.at = 0; amFetch(); }
 function amToggleSel(level, id, on) {
   on ? am.sel[level].add(id) : am.sel[level].delete(id);
@@ -6887,7 +6885,7 @@ async function amSetStatus(level, id, status, reason) {
 async function amQuietRefresh() {
   const my = ++am.req;
   const key = amKey();
-  const r = await sbFn("ads-manager", { action: "list", range: am.range });
+  const r = await sbFn("ads-manager", { action: "list", range: am.range, status: am.filter });
   if (my !== am.req || !r || r.ok === false || r.error) return;
   am.data = r; am.key = key; am.at = Date.now();
   amPruneSelection();

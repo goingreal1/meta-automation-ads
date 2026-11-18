@@ -190,12 +190,29 @@ function latestTime(a, b) {
   if (!b) return a;
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
-async function insightsByLevel(actId, level, range, token, factor = 1) {
+// Which statuses the list asks Meta for. "live" = everything running or about to run (active, in review, preparing, with problems);
+// "paused" = switched off; anything else = everything. Asking Meta for only what is needed keeps big accounts fast.
+const STATUS_SETS = {
+  live: {
+    campaign: ["ACTIVE", "IN_PROCESS", "WITH_ISSUES"],
+    adset: ["ACTIVE", "IN_PROCESS", "WITH_ISSUES"],
+    ad: ["ACTIVE", "IN_PROCESS", "WITH_ISSUES", "PENDING_REVIEW", "PREAPPROVED", "PENDING_BILLING_INFO", "DISAPPROVED"]
+  },
+  paused: {
+    campaign: ["PAUSED"],
+    adset: ["PAUSED", "CAMPAIGN_PAUSED"],
+    ad: ["PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]
+  }
+};
+const statusSet = (status, level) => STATUS_SETS[status]?.[level] ?? null;
+async function insightsByLevel(actId, level, range, token, factor = 1, status = "all") {
   const idField = level === "ad" ? "ad_id" : level === "adset" ? "adset_id" : "campaign_id";
+  const set = statusSet(status, level);
   const rows = await graphGetAll(`act_${actId}/insights`, {
     level,
     fields: `${idField},spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,cpm,actions`,
-    ...rangeParams(range)
+    ...rangeParams(range),
+    ...(set ? { filtering: JSON.stringify([{ field: `${level === "campaign" ? "campaign" : level}.effective_status`, operator: "IN", value: set }]) } : {})
   }, token);
   const map = {};
   for (const r of rows)map[r[idField]] = insightRow(r, factor);
@@ -312,21 +329,25 @@ function readWaMessage(creative) {
   }
 }
 // -- list --
-async function loadAccountObjects(actId, token, range, needLifetimeAds, factor = 1) {
+async function loadAccountObjects(actId, token, range, needLifetimeAds, factor = 1, status = "all") {
+  const eff = (level) => { const set = statusSet(status, level); return set ? { effective_status: JSON.stringify(set) } : {}; };
   const [campaigns, adsets, ads, cIns, sIns, aIns, aLife] = await Promise.all([
     graphGetAll(`act_${actId}/campaigns`, {
-      fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time"
+      fields: "id,name,objective,status,effective_status,daily_budget,lifetime_budget,created_time",
+      ...eff("campaign")
     }, token),
     graphGetAll(`act_${actId}/adsets`, {
-      fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,destination_type,created_time,start_time"
+      fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,destination_type,created_time,start_time",
+      ...eff("adset")
     }, token),
     graphGetAll(`act_${actId}/ads`, {
-      fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,thumbnail_url,object_story_spec}"
+      fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,thumbnail_url,object_story_spec}",
+      ...eff("ad")
     }, token),
-    insightsByLevel(actId, "campaign", range, token, factor),
-    insightsByLevel(actId, "adset", range, token, factor),
-    insightsByLevel(actId, "ad", range, token, factor),
-    needLifetimeAds ? insightsByLevel(actId, "ad", "lifetime", token, factor) : Promise.resolve(null)
+    insightsByLevel(actId, "campaign", range, token, factor, status),
+    insightsByLevel(actId, "adset", range, token, factor, status),
+    insightsByLevel(actId, "ad", range, token, factor, status),
+    needLifetimeAds ? insightsByLevel(actId, "ad", "lifetime", token, factor, status) : Promise.resolve(null)
   ]);
   return {
     campaigns,
@@ -353,7 +374,7 @@ async function handleList(userClient, profile, body) {
   const { data: ruleRows } = await userClient.from("kill_rules").select("*").eq("profile_id", profile.id);
   const rules = {};
   for (const r of ruleRows ?? [])rules[r.kind] = r;
-  const { campaigns, adsets, ads, cIns, sIns, aIns, aLife } = await loadAccountObjects(actId, token, range, range !== "lifetime", factor);
+  const { campaigns, adsets, ads, cIns, sIns, aIns, aLife } = await loadAccountObjects(actId, token, range, range !== "lifetime", factor, ["live", "paused"].includes(String(body.status)) ? String(body.status) : "all");
   const adsetById = {};
   const campKinds = {};
   const adsetRows = adsets.map((a)=>{
