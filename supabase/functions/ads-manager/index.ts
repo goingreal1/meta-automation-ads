@@ -65,20 +65,33 @@ async function graphGet(path, params, token) {
   if (!res.ok || data.error) throw new HttpError(502, data?.error?.message || `Meta error ${res.status}`);
   return data;
 }
+// Meta answers "Please reduce the amount of data you're asking for" when one page is too big (accounts with hundreds of ads and picture details).
+// So a page that is refused is retried with a smaller page size, and the number of pages grows to still cover about 1,200 objects.
 async function graphGetAll(path, params, token, maxPages = 6) {
-  const out = [];
-  let data = await graphGet(path, {
-    limit: "200",
-    ...params
-  }, token);
-  out.push(...data.data ?? []);
-  for(let i = 1; i < maxPages && data.paging?.next; i++){
-    const res = await fetch(data.paging.next);
-    data = await res.json();
-    if (!res.ok || data.error) throw new HttpError(502, data?.error?.message || `Meta error ${res.status}`);
-    out.push(...data.data ?? []);
+  const sizes = [200, 100, 50, 25, 10];
+  let lastErr = null;
+  for (const size of sizes) {
+    const pages = Math.max(maxPages, Math.ceil(1200 / size));
+    try {
+      const out = [];
+      let data = await graphGet(path, {
+        limit: String(size),
+        ...params
+      }, token);
+      out.push(...data.data ?? []);
+      for(let i = 1; i < pages && data.paging?.next; i++){
+        const res = await fetch(data.paging.next);
+        data = await res.json();
+        if (!res.ok || data.error) throw new HttpError(502, data?.error?.message || `Meta error ${res.status}`);
+        out.push(...data.data ?? []);
+      }
+      return out;
+    } catch (e) {
+      lastErr = e;
+      if (!/reduce the amount of data|too much data|request too large/i.test(String(e?.message ?? e))) throw e;
+    }
   }
-  return out;
+  throw lastErr;
 }
 async function resolveToken(admin, account) {
   if (account.meta_connection_id) {
