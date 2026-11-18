@@ -85,6 +85,12 @@ button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:d
     <div class="imgs" id="imgs"></div>
   </div>
 
+  <div class="card" id="lnCard" style="display:none">
+    <div style="display:flex;align-items:center;gap:8px"><b>Media buyer: launch</b><div class="sp"></div><button class="pri" id="mkLn" style="display:none">Prepare launches</button></div>
+    <div class="note" id="lnNote" style="margin-top:4px">Tobi turns the launch plan into campaigns on each product's own ad account (so each runs under its assigned media buyer). Approved launches are scheduled on Meta to start at <b>12:05 AM Lagos time</b>, within your daily spend cap, and your kill switches protect them like any other campaign.</div>
+    <div id="lns" style="margin-top:8px"></div>
+  </div>
+
   <div class="card"><b>Settings</b>
     <div class="set" style="margin-top:10px">
       <label><input type="checkbox" id="sAuto"> Let the media buyer launch without my approval <span class="note">(off = it waits for you)</span></label>
@@ -92,7 +98,7 @@ button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:d
     </div>
     <div style="margin-top:10px"><button id="sSave">Save settings</button> <span class="note" id="sMsg"></span></div>
     <div class="note" id="claimsNote" style="margin-top:8px"></div>
-    <div class="note" style="margin-top:8px">The team meets and writes the decision, and Zara makes the images. Midnight launching by the media buyer comes next.</div>
+    <div class="note" style="margin-top:8px">The team meets and decides, Zara makes the images, and Tobi schedules the approved launches for 12:05 AM.</div>
   </div>
 
   <div class="card"><b>Past meetings</b><div id="past" style="margin-top:6px"><div class="note">None yet.</div></div></div>
@@ -104,7 +110,7 @@ var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIU
 var sb = window.supabase.createClient(SUPA_URL, ANON);
 var $ = function (id) { return document.getElementById(id); };
 var NAMES = { team_lead: ["Ada", "Team Lead", "tl"], creative: ["Zara", "Creative", "cr"], media_buyer: ["Tobi", "Media Buyer", "mb"], customer_service: ["Ife", "Customer Service", "cs"], you: ["You", "", "you"] };
-var S = { images: [], imagesReady: false, claims: false, meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false };
+var S = { launches: [], images: [], imagesReady: false, claims: false, meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false };
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 async function api(body) {
   var s = (await sb.auth.getSession()).data.session;
@@ -129,7 +135,7 @@ function render() {
   $("say").disabled = !running; $("sayb").disabled = !running; $("start").disabled = !!running;
   var st = $("mstat");
   if (S.meeting) { st.style.display = ""; st.className = "chip " + (running ? "live" : (S.meeting.status === "failed" ? "off" : "")); st.innerHTML = running ? '<span class="dot"></span> Live' : (S.meeting.status === "failed" ? "Failed" : "Finished"); $("mtopic").textContent = S.meeting.topic || ""; }
-  renderDecision(); renderImages();
+  renderDecision(); renderImages(); renderLaunches();
 }
 function renderDecision() {
   var c = $("decCard"), d = S.meeting && S.meeting.decision;
@@ -163,7 +169,7 @@ async function openMeeting(id) {
 }
 async function loadPast() {
   var o = await api({ action: "state" });
-  S.ready = !!o.ai_ready; S.canManage = !!o.can_manage; S.images = o.images || []; S.imagesReady = !!o.images_ready; S.claims = !!o.claims_verified;
+  S.ready = !!o.ai_ready; S.canManage = !!o.can_manage; S.images = o.images || []; S.launches = o.launches || []; S.imagesReady = !!o.images_ready; S.claims = !!o.claims_verified;
   $("claimsNote").textContent = S.claims ? "Claims: your business is verified. The team may use only the approved claims you list on each product." : "Claims: your business is not verified yet, so the team makes no product claims beyond the plain description. Revora verifies businesses and can then switch approved claims on.";
   var rd = $("ready"); rd.className = "chip " + (S.ready ? "live" : "off"); rd.innerHTML = S.ready ? '<span class="dot"></span> AI on' : "Needs OpenAI key";
   if (o.team) { $("sAuto").checked = !!o.team.auto_launch; $("sCap").value = Number(o.team.daily_budget_cap_naira || 0); }
@@ -201,6 +207,34 @@ $("mkImg").onclick = async function () {
   var o = await api({ action: "make_images", meeting_id: S.meeting.id });
   if (o.error) { err(o.error); this.disabled = false; return; }
   await loadPast(); renderImages();
+};
+
+function renderLaunches() {
+  var d = S.meeting && S.meeting.decision, plan = d && d.launch_plan ? d.launch_plan.length : 0;
+  var list = (S.launches || []).filter(function (l) { return S.meeting && l.meeting_id === S.meeting.id; }), c = $("lnCard");
+  if (!plan && !list.length) { c.style.display = "none"; return; }
+  c.style.display = "";
+  var mk = $("mkLn"); mk.style.display = (!list.length && plan && S.canManage) ? "" : "none";
+  $("lns").innerHTML = list.map(function (l) {
+    var tag = { proposed: "Waiting for your approval", scheduled: "Scheduled on Meta ✓", failed: "Failed", cancelled: "Cancelled", skipped: "Skipped" }[l.status] || l.status;
+    var when = l.start_at ? new Date(l.start_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "";
+    var ac = l.status === "proposed" && S.canManage ? '<div class="row" style="margin-top:8px"><button class="pri" data-la="' + l.id + '">Approve & schedule for 12:05 AM</button><button data-lc="' + l.id + '" style="flex:none">Cancel</button></div>' : "";
+    return '<div class="im" style="margin-bottom:8px;padding:10px 12px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b style="font-size:14px">' + esc(l.product_name) + '</b><span class="chip ' + (l.status === "scheduled" ? "live" : (l.status === "failed" || l.status === "skipped" ? "off" : "")) + '">' + esc(tag) + "</span></div>" +
+      '<div class="note">₦' + Number(l.daily_budget_naira || 0).toLocaleString() + "/day" + (l.account_name ? " · " + esc(l.account_name) : "") + (l.buyer_name ? " · buyer " + esc(l.buyer_name) : "") + (when && (l.status === "proposed" || l.status === "scheduled") ? " · starts " + esc(when) : "") + "</div>" +
+      (l.note ? '<div class="note" style="color:' + (l.status === "failed" ? "var(--err)" : "var(--dim)") + '">' + esc(l.note) + "</div>" : "") + (l.kill_rule ? '<div class="note">Kill rule from the meeting: ' + esc(l.kill_rule) + "</div>" : "") + ac + "</div>";
+  }).join("");
+  document.querySelectorAll("[data-la]").forEach(function (b) { b.onclick = function () { lnAct("approve_launch", b.dataset.la, b); }; });
+  document.querySelectorAll("[data-lc]").forEach(function (b) { b.onclick = function () { lnAct("cancel_launch", b.dataset.lc, b); }; });
+}
+async function lnAct(action, id, btn) {
+  if (action === "approve_launch" && !confirm("Approve this launch? It will be created on Meta now and scheduled to start at 12:05 AM Lagos time. Real money is spent once it starts.")) return;
+  err(""); btn.disabled = true; btn.textContent = "Working…";
+  var o = await api({ action: action, launch_id: id }); if (o.error) err(o.error);
+  await loadPast(); renderLaunches();
+}
+$("mkLn").onclick = async function () {
+  err(""); this.disabled = true; var o = await api({ action: "propose_launches", meeting_id: S.meeting.id });
+  if (o.error) err(o.error); this.disabled = false; await loadPast(); renderLaunches();
 };
 
 $("start").onclick = async function () {
