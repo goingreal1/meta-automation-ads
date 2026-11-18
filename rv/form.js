@@ -22,6 +22,29 @@
   }
   function cookie(n) { var m = document.cookie.match(new RegExp("(?:^|; )" + n + "=([^;]*)")); return m ? decodeURIComponent(m[1]) : undefined; }
 
+  // Revora's own visit counting (first-party, so it does not depend on Meta or Clarity):
+  // a page view, "started the order form", and "placed an order". Public, insert-only RPC.
+  var VID = null;
+  function visitorId() {
+    if (VID) return VID;
+    try { VID = global.localStorage.getItem("rv_vid"); if (!VID) { VID = uuid(); global.localStorage.setItem("rv_vid", VID); } } catch (e) { VID = VID || uuid(); }
+    return VID;
+  }
+  function track(event, siteId, pageSlug) {
+    try {
+      if (!siteId) return;
+      var ref = ""; try { ref = document.referrer ? new URL(document.referrer).hostname.replace(/^www\./, "") : ""; if (ref === global.location.hostname) ref = ""; } catch (e) {}
+      var ua = navigator.userAgent || "", dev = /ipad|tablet/i.test(ua) ? "tablet" : /mobi|android|iphone/i.test(ua) ? "mobile" : "desktop";
+      fetch(SUPABASE_URL + "/rest/v1/rpc/rv_track", {
+        method: "POST", keepalive: true,
+        headers: { "Content-Type": "application/json", apikey: ANON, Authorization: "Bearer " + ANON },
+        body: JSON.stringify({ p_site: siteId, p_event: event, p_visitor: visitorId(), p_page: pageSlug || null, p_referrer: ref || null,
+          p_utm_source: params.get("utm_source") || null, p_utm_campaign: params.get("utm_campaign") || null, p_fbclid: !!attr("fbclid"), p_device: dev })
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  global.RVTrack = track;
+
   function mountOrderForm(el, d, opts) {
     opts = opts || {};
     var site = d.site, product = d.product;
@@ -91,6 +114,10 @@
       "</form>";
 
     var form = el.querySelector("form"), tot = el.querySelector(".rv-tot");
+    if (!opts.preview && form) {
+      var startedTrack = false;
+      form.addEventListener("focusin", function () { if (startedTrack) return; startedTrack = true; track("form_start", site && site.id, d.page && d.page.slug); });
+    }
     function syncSummary() {
       var t = hasTiers && product.tiers.find(function (x) { return x.id === selectedTier; }), sl = el.querySelector(".rv-sumlabel");
       if (t && sl) sl.textContent = t.label + " \u00b7 " + fmt(t.price_naira, product.currency);
@@ -153,6 +180,7 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
           if (res.error) throw new Error(res.error);
+          track("order", site && site.id, d.page && d.page.slug);
           var pname = tier ? product.product_name + " (" + tier.label + ")" : product.product_name, pqty = tier ? tier.quantity : qty;
           var ref = eventId.slice(0, 8).toUpperCase();
           sset("rv_last_ref", ref); sset("rv_last_value", String(value)); sset("rv_last_payment", payment);
