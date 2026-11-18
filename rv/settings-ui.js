@@ -66,6 +66,42 @@
     });
   };
 
+
+  /* ---------- Campaign setup: long helper lines become hint pills ---------- */
+  function addPill(label, text) {
+    var pill = label.querySelector(".rv-i");
+    if (pill) { pill.setAttribute("data-hint", shorten(pill.getAttribute("data-hint") + " " + text)); return; }
+    var b = document.createElement("button"); b.type = "button"; b.className = "rv-i"; b.textContent = "i"; b.setAttribute("aria-label", "About this");
+    b.setAttribute("data-hint", shorten(text)); label.appendChild(b);
+  }
+  function polishBuilder(ov) {
+    if (!ov) return;
+    ov.querySelectorAll(".field").forEach(function (f) {
+      var lab = f.querySelector(":scope > label"); if (!lab) return;
+      lab.querySelectorAll("span").forEach(function (sp) { // "(shown in Meta Ads Manager)" and similar asides
+        var t = (sp.textContent || "").trim().replace(/^[(\s]+|[)\s]+$/g, "");
+        if (t.length >= 14 && /var\(--muted\)/.test(sp.getAttribute("style") || "") && !sp.querySelector("*")) { addPill(lab, t); sp.parentNode.removeChild(sp); }
+      });
+      Array.prototype.forEach.call(f.children, function (d) { // the grey explanation lines under a field
+        if (d.tagName !== "DIV" || d.id || d.querySelector("input,select,button,textarea,a")) return;
+        if (!/color:\s*var\(--muted\)/.test(d.getAttribute("style") || "")) return;
+        var t = (d.textContent || "").trim(); if (t.length < 30) return;
+        addPill(lab, t); d.parentNode.removeChild(d);
+      });
+    });
+  }
+  (function watchBuilder() {
+    var timer = null, seen = null;
+    var run = function () { clearTimeout(timer); timer = setTimeout(function () { polishBuilder(document.getElementById("bvBuilderOverlay")); }, 120); };
+    var obs = new MutationObserver(function () {
+      var ov = document.getElementById("bvBuilderOverlay");
+      if (ov && ov !== seen) { seen = ov; new MutationObserver(run).observe(ov, { childList: true, subtree: true }); }
+      if (ov) run(); else seen = null;
+    });
+    var start = function () { obs.observe(document.body, { childList: true }); };
+    if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+  })();
+
   /* ---------- Nudge pill: one short suggestion per screen ---------- */
   var TIPS = {
     campaigns: { t: "Tip: set a landing page view limit to stop wasteful spend." },

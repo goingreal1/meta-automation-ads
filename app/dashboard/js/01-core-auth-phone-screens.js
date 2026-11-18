@@ -17,7 +17,11 @@ const ICON_PATHS = {
   form: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
   list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
   link: '<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>',
-  back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  upload: '<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/>',
+  camera: '<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>',
+  msg: '<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>',
+  back: '<line x1="19" y1="12" x2="5" y2="12"/> y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
   plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
 };
 function icon(name, size = 16) {
@@ -362,11 +366,11 @@ const BV_MS_DEST_BY_GOAL = {
   OUTCOME_AWARENESS: ["website"],
 };
 const BV_MS_DEST_COPY = {
-  whatsapp: ["💬", "WhatsApp chat", "Customers message you on WhatsApp. Best for orders in Nigeria."],
-  website: ["🌐", "Your website", "People tap through to a page you choose."],
-  messenger: ["💭", "Messenger chat", "Customers message your Facebook Page."],
-  instagram: ["📸", "Instagram message", "Customers send you an Instagram DM."],
-  form: ["📝", "Instant form", "People fill in a form without leaving Facebook or Instagram."],
+  whatsapp: ["chat", "WhatsApp chat", "Customers message you on WhatsApp. Best for orders in Nigeria."],
+  website: ["globe", "Your website", "People tap through to a page you choose."],
+  messenger: ["msg", "Messenger chat", "Customers message your Facebook Page."],
+  instagram: ["camera", "Instagram message", "Customers send you an Instagram DM."],
+  form: ["form", "Instant form", "People fill in a form without leaving Facebook or Instagram."],
 };
 function bvMsStep(delta) {
   const ov = document.getElementById("bvBuilderOverlay"); if (!ov) return;
@@ -417,7 +421,7 @@ function bvMsDestCards() {
     const lab = r.closest("label"); if (!lab) return;
     lab.hidden = !allowed.includes(r.value);
     const c = BV_MS_DEST_COPY[r.value];
-    if (c && !lab.dataset.msDone) { lab.dataset.msDone = "1"; lab.classList.add("ms-opt"); lab.innerHTML = ""; lab.appendChild(r); lab.insertAdjacentHTML("beforeend", `<span class="ms-opt-ic">${c[0]}</span><span class="ms-opt-tx"><b>${c[1]}</b><small>${c[2]}</small></span>`); }
+    if (c && !lab.dataset.msDone) { lab.dataset.msDone = "1"; lab.classList.add("ms-opt"); lab.innerHTML = ""; lab.appendChild(r); lab.insertAdjacentHTML("beforeend", `<span class="ms-opt-ic">${icon(c[0], 22)}</span><span class="ms-opt-tx"><b>${c[1]}</b><small>${c[2]}</small></span>`); }
   });
   const cur = radios.find(r => r.checked);
   const ov = document.getElementById("bvBuilderOverlay");
