@@ -1,3 +1,4 @@
+import { planCascade, planCaps } from "../_shared/autooff.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 // Ads Manager inside the dashboard: live campaign / ad set / ad rows straight
@@ -5,6 +6,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // switch, and the scheduled auto-kill that applies each profile's kill_rules.
 //
 //   POST { action: "list", ad_account_id, range }            -> rows at all 3 levels
+//   POST { action: "reach", since, until, ad_account_id? }   -> people reached + frequency (asked of Meta at account level)
 //   POST { action: "balances", ad_account_id? }              -> live prepaid balance per ad account
 //   POST { action: "set_ad_message", ad_account_id, ad_ids, greeting, prefill } -> change the WhatsApp greeting + pre-filled message on live ads
 //   POST { action: "set_status", ad_account_id, level, object_id, status, reason? }
@@ -724,6 +726,67 @@ async function handleSetAdMessage(userClient, body) {
     results: out
   };
 }
+const AD_STATES = ["ACTIVE", "PAUSED", "PENDING_REVIEW", "DISAPPROVED", "PREAPPROVED", "PENDING_BILLING_INFO", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "IN_PROCESS", "WITH_ISSUES"];
+// After something is switched off by hand: if it was the last live ad in its ad set, switch the ad set off; if that was the last live
+// ad set in its campaign, switch the campaign off. An ad set with other live ads, or a campaign with other live ad sets, is left alone.
+async function cascadeUp(admin, account, actId, token, level, objectId, actorId) {
+  const done = [];
+  const just = new Set([objectId]);
+  let adsetId = null, campId = null;
+  if (level === "ad") {
+    const o = await graphGet(objectId, { fields: "adset_id,campaign_id" }, token);
+    adsetId = o.adset_id ?? null; campId = o.campaign_id ?? null;
+  } else if (level === "adset") {
+    const o = await graphGet(objectId, { fields: "campaign_id" }, token);
+    campId = o.campaign_id ?? null;
+  }
+  const off = async (lvl, id, reason) => {
+    const r = await pauseOrResume(admin, account, actId, token, lvl, id, "PAUSED");
+    just.add(id);
+    await admin.from("ad_kill_log").insert({ company_id: account.company_id, ad_account_id: account.id, level: lvl, meta_object_id: id, object_name: r.name, action: "paused", source: "auto", actor_profile_id: actorId ?? null, reason });
+    done.push({ level: lvl, id, name: r.name });
+  };
+  if (adsetId) {
+    const kids = await graphGetAll(`${adsetId}/ads`, { fields: "id,status", effective_status: JSON.stringify(AD_STATES) }, token);
+    if (kids.length && !kids.some((k) => k.status === "ACTIVE" && !just.has(k.id))) {
+      const me = await graphGet(adsetId, { fields: "status" }, token);
+      if (me.status === "ACTIVE") await off("adset", adsetId, "Every ad in it is off, so I switched it off too.");
+    }
+  }
+  if (campId) {
+    const kids = await graphGetAll(`${campId}/adsets`, { fields: "id,status", effective_status: JSON.stringify(["ACTIVE", "PAUSED", "WITH_ISSUES", "IN_PROCESS", "CAMPAIGN_PAUSED"]) }, token);
+    if (kids.length && !kids.some((k) => k.status === "ACTIVE" && !just.has(k.id))) {
+      const me = await graphGet(campId, { fields: "status" }, token);
+      if (me.status === "ACTIVE") await off("campaign", campId, "Every ad set in it is off, so I switched it off too.");
+    }
+  }
+  return done;
+}
+// -- reach: people reached and how often they saw the ads, for a date range. Meta counts each person once per account, so this is asked
+// of Meta at account level (adding up campaigns or days would count the same person many times). Accounts are added together. --
+async function handleReach(userClient, body) {
+  const since = String(body.since ?? ""), until = String(body.until ?? "");
+  if (!DATE_RE.test(since) || !DATE_RE.test(until) || since > until) throw new HttpError(400, "since/until must be YYYY-MM-DD dates.");
+  let q = userClient.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, billing_mode, markup_pct").eq("status", "active");
+  if (body.ad_account_id) q = q.eq("id", body.ad_account_id);
+  const { data: accounts } = await q;
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const usable = (accounts ?? []).filter((a)=>/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+  const res = await Promise.allSettled(usable.map(async (a)=>{
+    const token = await resolveToken(admin, a);
+    const rows = await graphGetAll(`act_${String(a.meta_ad_account_id).replace(/^act_/, "")}/insights`, {
+      level: "account",
+      time_range: JSON.stringify({ since, until }),
+      fields: "reach,impressions,frequency"
+    }, token);
+    const r = rows[0] ?? {};
+    return { id: a.id, name: a.nickname, reach: num(r.reach), impressions: num(r.impressions) };
+  }));
+  const accountsOut = res.map((r, i)=>r.status === "fulfilled" ? r.value : { id: usable[i].id, name: usable[i].nickname, error: String(r.reason?.message ?? r.reason) });
+  const ok = accountsOut.filter((x)=>!x.error);
+  const reach = ok.reduce((t, x)=>t + x.reach, 0), impressions = ok.reduce((t, x)=>t + x.impressions, 0);
+  return { ok: true, reach, impressions, frequency: reach > 0 ? impressions / reach : null, accounts: accountsOut };
+}
 // -- set_status --
 async function pauseOrResume(admin, account, actId, token, level, objectId, status) {
   // The object must belong to this ad account -- never trust the id alone.
@@ -788,9 +851,13 @@ async function handleSetStatus(userClient, profile, body) {
     actor_profile_id: profile.id,
     reason: typeof body.reason === "string" ? body.reason.slice(0, 300) : null
   });
+  // Switching the last live ad off must not leave its ad set and campaign running (see cascadeUp).
+  let cascaded = [];
+  if (status === "PAUSED" && body.cascade !== false) cascaded = await cascadeUp(admin, account, actId, token, level, objectId, profile.id).catch((e)=>{ console.error("cascade:", e.message); return []; });
   return {
     ok: true,
-    ...result
+    ...result,
+    cascaded
   };
 }
 // -- set_budget (scale) --
@@ -1344,6 +1411,9 @@ async function handleAutoKill(dryRun = false) {
   const { data: ruleRows } = await admin.from("kill_rules").select("*").eq("enabled", true);
   const rulesByProfile = {};
   for (const r of ruleRows ?? [])(rulesByProfile[r.profile_id] ??= {})[r.kind] = r;
+  const { data: capRows } = await admin.from("spend_caps").select("*").eq("enabled", true);
+  const capsByProfile = {};
+  for (const r of capRows ?? [])(capsByProfile[r.profile_id] ??= {})[r.level] = Number(r.max_spend_naira);
   const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct").eq("status", "active");
   const { data: people } = await admin.from("profiles").select("id, company_id, role, media_buyer_id").in("role", [
     "owner",
@@ -1378,7 +1448,7 @@ async function handleAutoKill(dryRun = false) {
           ])
         }, token),
         graphGetAll(`act_${actId}/adsets`, {
-          fields: "id,name,campaign_id,optimization_goal,destination_type,start_time,effective_status,created_time"
+          fields: "id,name,campaign_id,optimization_goal,destination_type,start_time,status,effective_status,created_time"
         }, token),
         graphGetAll(`act_${actId}/ads`, {
           fields: "id,name,adset_id,campaign_id,status,effective_status,created_time",
@@ -1491,6 +1561,33 @@ async function handleAutoKill(dryRun = false) {
           }
         }
       }
+      // 1b) spend limits (a campaign or ad set that has spent its limit is switched off, all its ads counted together),
+      //     and switching off ad sets / campaigns whose ads / ad sets are all off already
+      {
+        const capWatchers = owners.filter((p)=>capsByProfile[p.id]);
+        const capOf = (lvl)=>{ const v = capWatchers.map((p)=>capsByProfile[p.id][lvl]).filter((n)=>n > 0); return v.length ? Math.min(...v) : null; };
+        const caps = { campaign: capOf("campaign"), adset: capOf("adset") };
+        const [campAll, adsAll] = await Promise.all([
+          graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,status,created_time", effective_status: JSON.stringify(["ACTIVE", "WITH_ISSUES"]) }, token),
+          graphGetAll(`act_${actId}/ads`, { fields: "id,adset_id,campaign_id,status,created_time", effective_status: JSON.stringify(AD_STATES) }, token)
+        ]);
+        const spendOf = async (lvl)=>{ const m = await insightsByLevel(actId, lvl, "lifetime", token, factorOf(account)); return Object.fromEntries(Object.entries(m).map(([k, v])=>[k, Number(v.spend) || 0])); };
+        const spend = { campaign: caps.campaign ? await spendOf("campaign") : {}, adset: caps.adset ? await spendOf("adset") : {} };
+        const seen = new Set();
+        const todo = [...planCaps(caps, campAll, adsets, spend), ...planCascade(campAll, adsets, adsAll)].filter((t)=>!seen.has(t.id) && seen.add(t.id));
+        const tellWho = owners.length ? owners : liveFor;
+        for (const t of todo){
+          if (dryRun) { summary.push({ account: account.nickname, would_pause: `${t.level} ${t.name}`, reason: t.reason }); continue; }
+          if (pauses >= MAX_AUTO_PAUSES_PER_RUN) break;
+          try {
+            const result = await pauseOrResume(admin, account, actId, token, t.level, t.id, "PAUSED");
+            pauses++;
+            await admin.from("ad_kill_log").insert({ company_id: account.company_id, ad_account_id: account.id, level: t.level, meta_object_id: t.id, object_name: result.name, action: "paused", source: "auto", actor_profile_id: tellWho[0]?.id ?? null, reason: t.reason });
+            for (const p of tellWho) await notifyInbox(admin, { company_id: account.company_id, profile_id: p.id, ad_account_id: account.id, kind: "auto_killed", title: `Paused ${t.level === "adset" ? "ad set" : "campaign"} “${result.name}”`, body: `${t.reason} (${account.nickname})`, payload: { level: t.level, object_id: t.id, object_name: result.name, ad_account_id: account.id, reason: t.reason }, dedupe_key: `auto:${t.id}` });
+            summary.push({ account: account.nickname, [t.level]: result.name, reason: t.reason, action: "paused" });
+          } catch (e) { summary.push({ account: account.nickname, [t.level]: t.name, error: String(e.message ?? e) }); }
+        }
+      }
       // 2) campaigns that just went live: announce the campaign with its ad sets and ads, once
       const now = Date.now();
       for (const c of campaigns){
@@ -1562,6 +1659,7 @@ Deno.serve(async (req)=>{
     const { userClient, profile } = await getUserContext(req);
     if (body.action === "list") return json(await handleList(userClient, profile, body));
     if (body.action === "daily") return json(await handleDaily(userClient, body));
+    if (body.action === "reach") return json(await handleReach(userClient, body));
     if (body.action === "balances") return json(await handleBalances(userClient, body));
     if (body.action === "set_ad_message") return json(await handleSetAdMessage(userClient, body));
     if (body.action === "set_status") return json(await handleSetStatus(userClient, profile, body));

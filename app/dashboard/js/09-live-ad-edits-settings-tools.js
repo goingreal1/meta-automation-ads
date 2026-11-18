@@ -134,7 +134,8 @@ async function amSetStatus(level, id, status, reason) {
   am.busy.delete(id);
   if (res && res.ok) {
     r.status = res.status; r.effective_status = res.effective_status;
-    bvToast(`${status === "PAUSED" ? "Paused" : "Turned on"} on Meta: ${r.name}`);
+    const also = (res.cascaded || []).map((c) => (c.level === "adset" ? "ad set " : "campaign ") + c.name);
+    bvToast(`${status === "PAUSED" ? "Paused" : "Turned on"} on Meta: ${r.name}` + (also.length ? `. Also switched off ${also.join(" and ")}, because nothing live was left in ${also.length > 1 ? "them" : "it"}.` : ""));
     amDraw();
     amQuietRefresh();
   } else {
@@ -500,10 +501,12 @@ async function bvRenderKillRules() {
   const el = document.getElementById("killRulesPanel"); if (!el) return;
   if (!["owner", "admin", "buyer"].includes(window.myProfile?.role)) { el.remove(); return; }
   const uid = sessionData?.user?.id;
-  const [rows, logs] = await Promise.all([
+  const [rows, logs, capRows] = await Promise.all([
     sbQuery("kill_rules", `select=*&profile_id=eq.${uid}`).catch(() => []),
     sbQuery("ad_kill_log", "select=*&order=created_at.desc&limit=8").catch(() => []),
+    sbQuery("spend_caps", `select=*&profile_id=eq.${uid}`).catch(() => []),
   ]);
+  const capBy = Object.fromEntries((capRows || []).map((r) => [r.level, r]));
   const byKind = Object.fromEntries((rows || []).map(r => [r.kind, r]));
   el.innerHTML = `
     <div class="ph"><div class="ph-title">Ad kill rules</div></div>
@@ -529,6 +532,15 @@ async function bvRenderKillRules() {
         <span class="kr-msg" id="krMsg_${k.kind}"></span>
       </div>`;
     }).join("")}
+    <div class="kr-block" id="kr_caps">
+      <div class="kr-title">Spend limits</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A campaign is switched off once <b>all its ad sets and ads together</b> have spent its limit, however many there are. An ad set works the same way. Checked every 5 minutes, so a campaign can go a little over before it stops.</div>
+      ${[["campaign", "Campaign limit (₦)", "Switch a campaign off after it has spent"], ["adset", "Ad set limit (₦)", "Switch an ad set off after it has spent"]].map(([lvl, lbl]) => { const c = capBy[lvl]; return `
+      <div class="kr-switches"><label class="kr-sw"><span class="switch"><input type="checkbox" class="cap-on" data-l="${lvl}" ${c?.enabled ? "checked" : ""}><span class="sw-track"></span></span> ${lbl.replace(" (₦)", "")}</label></div>
+      <div class="fg" style="grid-template-columns:minmax(0,1fr);margin-bottom:8px;"><div class="field"><label>${["campaign", "adset"].includes(lvl) ? "Switch off after it has spent (₦)" : ""}</label><input type="number" min="1" class="cap-max" data-l="${lvl}" value="${c ? Number(c.max_spend_naira) : ""}" placeholder="e.g. 10000"></div></div>`; }).join("")}
+      <div style="font-size:11.5px;color:var(--muted);margin:4px 0 10px;">Also on by default: when the last live ad in an ad set is turned off, the ad set is switched off too, and when the last live ad set in a campaign is off, the campaign is too. An ad set with other live ads keeps running.</div>
+      <button type="button" class="btn btn-a" style="padding:6px 14px;" onclick="bvSaveSpendCaps()">Save spend limits</button> <span class="kr-msg" id="krMsg_caps"></span>
+    </div>
     ${logs?.length ? `
       <div class="ph" style="margin-top:18px;"><div class="ph-title" style="font-size:14px;">Recent pauses &amp; restarts</div></div>
       <div class="kr-log">${logs.map(l => `
@@ -542,6 +554,19 @@ async function bvRenderKillRules() {
       g(".kr-sum").textContent = krSummary(k.unit, g(".kr-max").value || 0, g(".kr-spend").value || 0, g(".kr-hours").value || 0, g(".kr-auto").checked, k.lpv && g(".kr-lpv") ? g(".kr-lpv").value || 0 : 0);
     }));
   }
+}
+
+async function bvSaveSpendCaps() {
+  const msg = document.getElementById("krMsg_caps"), rows = [];
+  for (const lvl of ["campaign", "adset"]) {
+    const on = document.querySelector(`.cap-on[data-l="${lvl}"]`).checked, v = Number(document.querySelector(`.cap-max[data-l="${lvl}"]`).value);
+    if (on && !(v > 0)) { msg.innerHTML = `<span style="color:var(--danger);">Enter an amount above 0 for the ${lvl === "adset" ? "ad set" : "campaign"} limit, or switch it off.</span>`; return; }
+    if (v > 0) rows.push({ profile_id: sessionData.user.id, company_id: window.myProfile.company_id, level: lvl, enabled: on, max_spend_naira: v, updated_at: new Date().toISOString() });
+  }
+  if (rows.some((r) => r.enabled) && !confirm("Turn on spend limits? Campaigns and ad sets that reach their limit will be switched off on Meta for you, without asking.")) return;
+  const { error } = rows.length ? await supabaseClient.from("spend_caps").upsert(rows, { onConflict: "profile_id,level" }) : { error: null };
+  msg.innerHTML = error ? `<span style="color:var(--danger);">❌ ${escH(error.message)}</span>` : `<span style="color:var(--accent);">✅ Saved</span>`;
+  if (!error) setTimeout(() => { if (msg) msg.innerHTML = ""; }, 2500);
 }
 
 async function bvSaveKillRule(kind) {
