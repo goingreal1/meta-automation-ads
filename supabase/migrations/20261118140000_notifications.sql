@@ -4,7 +4,7 @@
 --
 --   notifications        the inbox (RLS: you only see what is yours)
 --   rv_notify()          the one place that writes a notification AND sends the phone push
---   triggers             new order, delivered / cancelled, new lead, wallet top-up, AI inbox mirror
+--   triggers             new order, delivered / cancelled, new lead, wallet top-up
 --   site_visits          page views / checkout started / order placed, sent by published sites
 --   rv_track()           the public beacon (anon can call it; it can only insert, never read)
 --   rv_visit_stats()     visitors / abandoned numbers for the dashboard
@@ -199,19 +199,6 @@ exception when others then return new;
 end $$;
 drop trigger if exists notify_topup on wallet_topups;
 create trigger notify_topup after insert or update of status on wallet_topups for each row execute function trg_notify_topup();
-
--- Everything the AI media buyer tells you in chat also shows in the bell.
--- No second push: the functions that write ai_inbox already push.
-create or replace function trg_notify_ai_inbox() returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  perform rv_notify(new.company_id, 'ads', 'ai_' || new.kind, new.title, new.body, '/dashboard_new.html?open=ai',
-    case when new.kind in ('auto_killed', 'spend_no_result', 'kill_suggestion') then 'warn' else 'success' end,
-    '{}'::jsonb, 'inbox:' || new.id, null, new.profile_id, false);
-  return new;
-exception when others then return new;
-end $$;
-drop trigger if exists notify_ai_inbox on ai_inbox;
-create trigger notify_ai_inbox after insert on ai_inbox for each row execute function trg_notify_ai_inbox();
 
 -- ───────────────────────── Revora's own visibility ─────────────────────────
 create table if not exists site_visits (

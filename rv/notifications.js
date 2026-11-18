@@ -14,7 +14,6 @@
     { k: "all", label: "All" },
     { k: "orders", label: "Orders", cats: ["orders", "leads"] },
     { k: "reports", label: "Reports", cats: ["reports"] },
-    { k: "ads", label: "Ads", cats: ["ads"] },
     { k: "money", label: "Money", cats: ["money"] },
   ];
   var ICONS = {
