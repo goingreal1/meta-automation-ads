@@ -198,9 +198,20 @@ function amDraw() {
   const tl0 = document.getElementById("cpTreeList"), st = tl0 ? tl0.scrollTop : 0;
   const flaggedAds = d.ads.filter((a) => a.status === "ACTIVE" && a.suggestion?.kill);
   const b = am.balKey === activeAccountId ? am.bal : null;
-  const bal = b && !b.error && b.available != null ? `<div class="rv-note ${b.low_threshold != null && b.available <= b.low_threshold ? "warn" : ""}">${rvIc("wallet")}<span>${escH(b.name || "Ad account")} prepaid balance <b>${fN2(b.available)}</b>${b.low_threshold != null && b.available <= b.low_threshold ? " · low, top up soon" : ""}${b.account_status && b.account_status !== 1 ? ` · ${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}` : ""}</span></div>` : (b && !b.error && b.account_status && b.account_status !== 1 ? `<div class="rv-note warn">${rvIc("alert")}<span>${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}</span></div>` : "");
+  const T0 = amTotals(d.campaigns.filter(cpAlive));
+  const bal = b && !b.error && b.available != null ? `<div class="rv-note ${b.low_threshold != null && b.available <= b.low_threshold ? "warn" : ""}">${rvIc("wallet")}<span>${escH(b.name || "Ad account")} prepaid balance <b>${fN2(b.available)}</b>${b.low_threshold != null && b.available <= b.low_threshold ? " · low, top up soon" : ""}${(() => { const dys = { last3: 3, last7: 7, last30: 30 }[am.range], per = dys && T0.spend > 0 ? T0.spend / dys : 0; return per > 0 ? ` · at your ${dys}-day average (${fN(per)}/day) it lasts about ${Math.max(0, b.available / per).toFixed(1)} days` : ""; })()}${b.account_status && b.account_status !== 1 ? ` · ${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}` : ""}</span></div>` : (b && !b.error && b.account_status && b.account_status !== 1 ? `<div class="rv-note warn">${rvIc("alert")}<span>${escH(AM_ACCT_STATUS[b.account_status] || "Account issue")}</span></div>` : "");
   const nCamp = d.campaigns.filter(cpAlive).length;
-  root.innerHTML = head + bal + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
+  const T = amTotals(d.campaigns.filter(cpAlive)), liveAds = d.ads.filter((a) => a.status === "ACTIVE" && a.effective_status === "ACTIVE" && !amScheduled(a)).length;
+  const rangeLbl = (AM_RANGES.find((x) => x[0] === am.range) || [])[1] || "";
+  const tile = (l, v, sub) => `<div><div class="l">${l}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  const summary = `<div class="rv-card rv-sum">${[
+    tile("Spent", fN(T.spend), escH(rangeLbl)),
+    tile(escH(T.label || "Results"), ovNum(T.results), T.label === "Conversations" ? "WhatsApp chats started" : ""),
+    tile("Cost per " + (T.label === "Purchases" ? "purchase" : "conversation"), T.cpr != null ? fN(T.cpr) : "—", ""),
+    tile("Ads delivering", `${liveAds} <span class="of">of ${d.ads.filter(cpAlive).length}</span>`, ""),
+    ...(T.hasWeb ? [tile("Page views", ovNum(T.lpv), "website ads"), tile("Cost / page view", T.cpl != null ? fN2(T.cpl) : "—", "website spend ÷ page views"), tile("Page view rate", T.lpvRate != null ? T.lpvRate.toFixed(0) + "%" : "—", "page views ÷ link clicks")] : []),
+  ].join("")}</div>`;
+  root.innerHTML = head + summary + bal + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
     <div class="rv-split ${CP.mDetail ? "m-detail" : ""}">
       <section class="rv-card rv-tree"><div class="tb"><div class="rv-fld">${rvIc("search")}<input type="search" placeholder="Search campaigns, ad sets, ads" value="${escH(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search"></div>
         <div class="rv-seg rv-w100">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}${am.filter === k ? `<em>${nCamp}</em>` : ""}</button>`).join("")}</div>

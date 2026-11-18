@@ -367,5 +367,11 @@
       "destination": "https://metaautomationads.vercel.app/$1.html",
       "permanent": false
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "claude/meta-dashboard-mobile-redesign-r9yva2": false,
+      "claude/elegant-newton-1hvf2l": false
+    }
+  }
 }
