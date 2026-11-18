@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Team · Revora</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f1115">
+<link rel="icon" href="/images/brands/revora-logo-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14171c;--dim:#667085;--line:#e4e7ec;--brand:#1877F2;--ok:#12805c;--warn:#b54708;--err:#c0261d;--soft:#f0f4ff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1115;--card:#171a21;--ink:#eef0f4;--dim:#98a2b3;--line:#262b35;--soft:#1b2433}}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1000px;margin:0 auto;padding:18px 16px 40px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:20px;margin:0;letter-spacing:-.01em}.sub{color:var(--dim);font-size:13px}
+.sp{flex:1}
+a.back{color:var(--dim);text-decoration:none;font-size:13px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 14px;font-weight:600}
+button.pri{background:var(--brand);border-color:var(--brand);color:#fff}button:disabled{opacity:.5;cursor:default}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--soft);color:var(--brand)}
+.chip.off{background:#fff3e6;color:var(--warn)}.chip.live{background:#e8f7f0;color:var(--ok)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}.live .dot{animation:pulse 1.2s infinite}@keyframes pulse{50%{opacity:.25}}
+.team{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.ag{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:12px 8px;text-align:center;transition:.2s}
+.ag .av{width:46px;height:46px;border-radius:50%;margin:0 auto 6px;display:grid;place-items:center;font-weight:700;color:#fff;font-size:17px}
+.ag b{display:block;font-size:13px}.ag span{font-size:11.5px;color:var(--dim)}
+.ag.speaking{border-color:var(--brand);box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 18%,transparent);transform:translateY(-2px)}
+.tl .av{background:#1877F2}.cr .av{background:#9b51e0}.mb .av{background:#12805c}.cs .av{background:#e07b00}.you .av{background:#475467}
+#feed{min-height:220px;max-height:55vh;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:2px}
+.msg{display:flex;gap:10px;align-items:flex-start}
+.msg .av{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px}
+.bub{background:var(--bg);border-radius:12px;padding:8px 12px;max-width:100%}
+.bub .who{font-size:12px;font-weight:700;color:var(--dim);margin-bottom:1px}
+.bub .tx{white-space:pre-wrap;word-break:break-word}
+.typing::after{content:"▍";animation:pulse 1s infinite;color:var(--brand)}
+.empty{color:var(--dim);text-align:center;padding:36px 10px}
+.row{display:flex;gap:8px}.row input{flex:1;font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-width:0}
+.dec h3{margin:0 0 6px;font-size:15px}.dec ul{margin:4px 0 10px 18px;padding:0}.dec li{margin:3px 0}
+.k{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);font-weight:700;margin:12px 0 4px}
+.past{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line);cursor:pointer}.past:first-of-type{border-top:0}
+.set{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.set label{display:flex;gap:8px;align-items:center;font-size:14px}
+.err{color:var(--err);font-size:13.5px;margin-top:8px}.note{color:var(--dim);font-size:12.5px}
+@media(max-width:640px){.team{grid-template-columns:repeat(4,1fr);gap:6px}.ag{padding:8px 2px}.ag .av{width:36px;height:36px;font-size:14px}.ag span{display:none}.set{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><a class="back" href="/dashboard_new.html">← Dashboard</a><h1>AI Team <span id="ready" class="chip off">checking…</span></h1><div class="sub">Your team lead, creative agent, media buyer and customer service meet live and decide what to make and launch.</div></div>
+    <div class="sp"></div>
+    <button class="pri" id="start">Call a meeting</button>
+  </header>
+
+  <div class="team" id="team">
+    <div class="ag tl" data-sp="team_lead"><div class="av">A</div><b>Ada</b><span>Team Lead</span></div>
+    <div class="ag cr" data-sp="creative"><div class="av">Z</div><b>Zara</b><span>Creative</span></div>
+    <div class="ag mb" data-sp="media_buyer"><div class="av">T</div><b>Tobi</b><span>Media Buyer</span></div>
+    <div class="ag cs" data-sp="customer_service"><div class="av">I</div><b>Ife</b><span>Customer Service</span></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><b>Meeting room</b><span id="mstat" class="chip" style="display:none"></span><div class="sp"></div><span class="note" id="mtopic"></span></div>
+    <div id="feed"><div class="empty">No meeting yet. Press <b>Call a meeting</b> and watch the team talk it through.</div></div>
+    <div class="row" style="margin-top:12px"><input id="say" placeholder="Jump in: tell the team what to focus on…" maxlength="600" disabled><button id="sayb" disabled>Send</button></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card dec" id="decCard" style="display:none"></div>
+
+  <div class="card"><b>Settings</b>
+    <div class="set" style="margin-top:10px">
+      <label><input type="checkbox" id="sAuto"> Let the media buyer launch without my approval <span class="note">(off = it waits for you)</span></label>
+      <label>Daily spend cap (₦) <input type="number" id="sCap" min="0" style="width:130px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:inherit"></label>
+    </div>
+    <div style="margin-top:10px"><button id="sSave">Save settings</button> <span class="note" id="sMsg"></span></div>
+    <div class="note" style="margin-top:8px">Phase 1: the team meets and writes the decision. Image generation and midnight launching are switched on in the next phases.</div>
+  </div>
+
+  <div class="card"><b>Past meetings</b><div id="past" style="margin-top:6px"><div class="note">None yet.</div></div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script>
+var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
+var sb = window.supabase.createClient(SUPA_URL, ANON);
+var $ = function (id) { return document.getElementById(id); };
+var NAMES = { team_lead: ["Ada", "Team Lead", "tl"], creative: ["Zara", "Creative", "cr"], media_buyer: ["Tobi", "Media Buyer", "mb"], customer_service: ["Ife", "Customer Service", "cs"], you: ["You", "", "you"] };
+var S = { meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false };
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+async function api(body) {
+  var s = (await sb.auth.getSession()).data.session;
+  if (!s) { location.href = "/login.html?next=" + encodeURIComponent(location.pathname); throw new Error("login"); }
+  var r = await fetch(SUPA_URL + "/functions/v1/ai-team", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token, apikey: ANON }, body: JSON.stringify(body) });
+  var o = await r.json().catch(function () { return {}; }); o._status = r.status; return o;
+}
+function err(t) { $("err").textContent = t || ""; }
+
+function render() {
+  var list = Object.keys(S.msgs).map(function (k) { return S.msgs[k]; }).sort(function (a, b) { return a.seq - b.seq; });
+  var feed = $("feed"), atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+  if (!list.length) { feed.innerHTML = '<div class="empty">' + (S.meeting ? "The team is getting ready…" : "No meeting yet. Press <b>Call a meeting</b> and watch the team talk it through.") + "</div>"; }
+  else feed.innerHTML = list.map(function (m) {
+    var n = NAMES[m.speaker] || [m.speaker, "", "you"];
+    return '<div class="msg ' + n[2] + '"><div class="av">' + esc(n[0][0]) + '</div><div class="bub"><div class="who">' + esc(n[0]) + (n[1] ? " · " + esc(n[1]) : "") + '</div><div class="tx' + (m.done ? "" : " typing") + '">' + esc(m.content || "…") + "</div></div></div>";
+  }).join("");
+  if (atBottom) feed.scrollTop = feed.scrollHeight;
+  var speaking = list.filter(function (m) { return !m.done; }).pop();
+  document.querySelectorAll(".ag").forEach(function (a) { a.classList.toggle("speaking", !!speaking && speaking.speaker === a.dataset.sp); });
+  var running = S.meeting && S.meeting.status === "running";
+  $("say").disabled = !running; $("sayb").disabled = !running; $("start").disabled = !!running;
+  var st = $("mstat");
+  if (S.meeting) { st.style.display = ""; st.className = "chip " + (running ? "live" : (S.meeting.status === "failed" ? "off" : "")); st.innerHTML = running ? '<span class="dot"></span> Live' : (S.meeting.status === "failed" ? "Failed" : "Finished"); $("mtopic").textContent = S.meeting.topic || ""; }
+  renderDecision();
+}
+function renderDecision() {
+  var c = $("decCard"), d = S.meeting && S.meeting.decision;
+  if (S.meeting && S.meeting.status === "failed") { c.style.display = ""; c.innerHTML = "<b>The meeting stopped</b><div class='err'>" + esc(S.meeting.error || "Something went wrong.") + "</div>"; return; }
+  if (!d) { c.style.display = "none"; return; }
+  c.style.display = "";
+  var li = function (a) { return (a || []).map(function (x) { return "<li>" + esc(typeof x === "string" ? x : Object.keys(x).map(function (k) { return k.replace(/_/g, " ") + ": " + x[k]; }).join(" · ")) + "</li>"; }).join(""); };
+  c.innerHTML = "<h3>Decision</h3><div>" + esc(d.summary || "") + "</div>" +
+    (d.angles && d.angles.length ? '<div class="k">Angles</div><ul>' + li(d.angles) + "</ul>" : "") +
+    (d.creative_briefs && d.creative_briefs.length ? '<div class="k">Images to make</div><ul>' + li(d.creative_briefs) + "</ul>" : "") +
+    (d.launch_plan && d.launch_plan.length ? '<div class="k">Launch plan (waits for your approval)</div><ul>' + li(d.launch_plan) + "</ul>" : "") +
+    (d.risks && d.risks.length ? '<div class="k">Risks</div><ul>' + li(d.risks) + "</ul>" : "");
+}
+
+async function loadMessages(id) {
+  var r = await sb.from("ai_meeting_messages").select("id,seq,speaker,content,done").eq("meeting_id", id).order("seq");
+  (r.data || []).forEach(function (m) { S.msgs[m.id] = m; });
+}
+async function refreshMeeting(id) {
+  var r = await sb.from("ai_meetings").select("id,status,topic,decision,error,started_at").eq("id", id).maybeSingle();
+  if (r.data) S.meeting = r.data;
+}
+async function openMeeting(id) {
+  if (S.ch) { sb.removeChannel(S.ch); S.ch = null; } clearInterval(S.poll);
+  S.msgs = {}; S.meeting = { id: id, status: "running" };
+  await Promise.all([loadMessages(id), refreshMeeting(id)]); render();
+  // Live: new words arrive through Realtime; a light poll covers any dropped connection.
+  S.ch = sb.channel("meet-" + id).on("postgres_changes", { event: "*", schema: "public", table: "ai_meeting_messages", filter: "meeting_id=eq." + id }, function (p) { if (p.new && p.new.id) { S.msgs[p.new.id] = p.new; render(); } })
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ai_meetings", filter: "id=eq." + id }, function (p) { if (p.new) { S.meeting = Object.assign(S.meeting || {}, p.new); render(); if (p.new.status !== "running") loadPast(); } }).subscribe();
+  S.poll = setInterval(async function () { if (!S.meeting || S.meeting.status !== "running") return; await Promise.all([loadMessages(id), refreshMeeting(id)]); render(); }, 2500);
+}
+async function loadPast() {
+  var o = await api({ action: "state" });
+  S.ready = !!o.ai_ready; S.canManage = !!o.can_manage;
+  var rd = $("ready"); rd.className = "chip " + (S.ready ? "live" : "off"); rd.innerHTML = S.ready ? '<span class="dot"></span> AI on' : "Needs OpenAI key";
+  if (o.team) { $("sAuto").checked = !!o.team.auto_launch; $("sCap").value = Number(o.team.daily_budget_cap_naira || 0); }
+  $("sSave").disabled = !S.canManage; $("start").disabled = !S.canManage || (S.meeting && S.meeting.status === "running");
+  var ms = o.meetings || [];
+  $("past").innerHTML = ms.length ? ms.map(function (m) { return '<div class="past" data-id="' + m.id + '"><span class="chip ' + (m.status === "running" ? "live" : (m.status === "failed" ? "off" : "")) + '">' + esc(m.status) + '</span><div style="flex:1;min-width:0"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(m.topic || "Meeting") + '</div><div class="note">' + new Date(m.started_at).toLocaleString() + "</div></div></div>"; }).join("") : '<div class="note">None yet.</div>';
+  document.querySelectorAll(".past").forEach(function (el) { el.onclick = function () { openMeeting(el.dataset.id); window.scrollTo({ top: 0, behavior: "smooth" }); }; });
+  return ms;
+}
+
+$("start").onclick = async function () {
+  err(""); this.disabled = true;
+  var demo = !S.ready; // without the OpenAI key a clearly-marked demo shows how the meeting looks
+  if (demo && !confirm("The OpenAI key isn't added yet, so this will run a short DEMO meeting with sample lines (not your real numbers). Continue?")) { this.disabled = false; return; }
+  var o = await api({ action: "start", demo: demo });
+  if (o.meeting_id) { await openMeeting(o.meeting_id); loadPast(); } else { err(o.error || "Could not start the meeting."); this.disabled = false; }
+};
+async function say() {
+  var t = $("say").value.trim(); if (!t || !S.meeting) return; $("say").value = ""; err("");
+  var o = await api({ action: "say", meeting_id: S.meeting.id, text: t });
+  if (o.error) err(o.error); else { await loadMessages(S.meeting.id); render(); }
+}
+$("sayb").onclick = say; $("say").onkeydown = function (e) { if (e.key === "Enter") say(); };
+$("sSave").onclick = async function () {
+  $("sMsg").textContent = "Saving…";
+  var o = await api({ action: "settings", auto_launch: $("sAuto").checked, daily_budget_cap_naira: Number($("sCap").value) || 0 });
+  $("sMsg").textContent = o.error ? o.error : "Saved.";
+};
+(async function () {
+  try {
+    var ms = await loadPast();
+    var run = ms.filter(function (m) { return m.status === "running"; })[0] || ms[0];
+    if (run) await openMeeting(run.id);
+  } catch (e) { if (e.message !== "login") err(e.message); }
+})();
+</script>
+</body>
+</html>
