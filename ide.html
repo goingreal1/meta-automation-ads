@@ -69,6 +69,17 @@ svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke
 .asset img{width:44px;height:44px;object-fit:cover;border-radius:4px;background:#111}
 .asset .a2{min-width:0;flex:1}.asset .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mini{padding:2px 8px;border-radius:4px;background:#3c3c3c;font-size:11px;margin-right:4px}.mini:hover{background:#4a4a4a;color:var(--hi)}
+.plc{margin:8px 10px;padding:10px 12px;background:#2b2b2d;border:1px solid #3c3c3c;border-radius:8px}
+.plc .top{display:flex;gap:10px;align-items:center}
+.plc .top>div:nth-child(2){flex:1;min-width:0}.plc .lg{width:30px;height:30px;border-radius:7px;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none}
+.plc b{color:var(--hi);font-weight:600;display:block}.plc small{color:var(--dim);font-size:11.5px}
+.plc .st{margin-left:6px;flex:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#3c3c3c;color:#bbb;white-space:nowrap}.plc .st.on{background:#1f4d2c;color:#b7f0c4}
+.plc p{color:#a8a8a8;font-size:12px;margin:7px 0 8px;line-height:1.45}
+.plc .row3{display:flex;gap:6px;flex-wrap:wrap}
+.pbtn{padding:4px 10px;border-radius:5px;background:#3c3c3c;font-size:12px}.pbtn:hover{background:#4a4a4a;color:var(--hi)}.pbtn.pri{background:var(--btn);color:#fff}
+.plnote{margin:10px;padding:9px 11px;border-radius:7px;background:#243447;color:#b9d4f0;font-size:12px;line-height:1.5}
+.fld2 label{display:block;color:var(--dim);font-size:11.5px;margin:10px 0 4px}.fld2 small{display:block;color:var(--dim);font-size:11.5px;margin-top:4px;line-height:1.4}
+#qb textarea{width:100%;min-height:120px;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;outline:none;font:12px ui-monospace,Menlo,Consolas,monospace;resize:vertical}
 .rz{width:4px;cursor:col-resize;flex:none;margin:0 -2px;z-index:5;position:relative}.rz:hover,.rz.drag{background:var(--status);opacity:.6}
 
 /* editor */
@@ -183,6 +194,7 @@ svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke
     <button data-p="explorer" class="on" title="Files (Ctrl+Shift+E)"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></button>
     <button data-p="search" title="Search in all files (Ctrl+Shift+F)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/></svg></button>
     <button data-p="assets" title="Images and assets"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></svg></button>
+    <button data-p="plugins" title="Plugins: Meta Pixel, Clarity, analytics"><svg viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v5a5 5 0 0 1-10 0z"/><path d="M12 17v4"/></svg></button>
     <button data-p="ai" title="AI chat"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></svg></button>
   </div>
   <div id="side">
@@ -191,6 +203,9 @@ svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke
       <div id="tree" style="flex:1;overflow:auto"></div>
     </div>
     <div class="panel" id="p-search"><div class="shead"><span>Search</span></div><div class="sbox"><input id="q" placeholder="Search in all files, press Enter"></div><div id="hits"></div></div>
+    <div class="panel" id="p-plugins"><div class="shead"><span>Plugins</span></div>
+      <div class="plnote">Plugins are added by Revora each time a page is shown. They are not part of your files, so they go live right away and stay on when you publish from here. No need to publish again after changing one.</div>
+      <div id="plugins"></div></div>
     <div class="panel" id="p-assets"><div class="shead"><span>Assets</span><span class="ic"><button class="ib" id="aUp" title="Upload"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg></button></span></div><div id="alist"></div></div>
   </div>
   <div class="rz" id="rz1"></div>
@@ -242,6 +257,7 @@ svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
 <script src="/rv/upload.js"></script>
+<script src="/rv/plugins.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
 <script>
 var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
@@ -341,7 +357,7 @@ async function openSite(id) {
   renderTree(); renderTabs(); renderAssets();
   var first = S.files.find(function (f) { return f.path === "index.html"; }) || S.files[0];
   if (first) await openFile(first.path); else { showWelcome(true); }
-  $("bLive").disabled = false; $("bTest").disabled = false; liveBtn();
+  $("bLive").disabled = false; $("bTest").disabled = false; liveBtn(); loadPlugins();
   status("Opened " + (r.name || "site") + " · " + S.files.length + " files");
   refreshPreview();
 }
@@ -633,6 +649,99 @@ $("chatf").onsubmit = async function (e) {
 };
 $("chatin").onkeydown = function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("chatf").requestSubmit(); } };
 
+/* ---------- plugins (Meta Pixel, Clarity, analytics, custom code) ---------- */
+S.snips = []; S.pix = null;
+function pMarker(r) { return window.RV_PLUGIN_MARKER(r.code); }
+function pRows(key) { return S.snips.filter(function (r) { var m = pMarker(r); return m && (m.key === key || m.key === key + "-ns"); }); }
+function pCustom() { return S.snips.filter(function (r) { return !pMarker(r); }); }
+function pHere(r) { return r.scope === "all" || (r.scope === "sites" && (r.site_ids || []).indexOf(S.site) > -1); }
+function pScope(r) { return r.scope === "all" ? "All my websites" : r.scope === "sites" ? ((r.site_ids || []).indexOf(S.site) > -1 ? "This website" : "Other websites") : "One page only"; }
+async function loadPlugins() {
+  if (!S.site) { $("plugins").innerHTML = '<div class="empty">Open a site first.</div>'; return; }
+  try {
+    var r = await sb.from("tracking_snippets").select("*").order("created_at", { ascending: false }); S.snips = r.data || [];
+    var q = await sb.from("sites").select("ad_account_id, products(ad_account_id)").eq("id", S.site).maybeSingle();
+    var aid = (q.data && (q.data.ad_account_id || (q.data.products && q.data.products.ad_account_id))) || null;
+    S.pix = null;
+    if (aid) { var a = await sb.from("ad_accounts").select("nickname, meta_pixel_id, pixel_name").eq("id", aid).maybeSingle(); S.pix = a.data || null; }
+  } catch (e) { S.snips = []; }
+  renderPlugins();
+}
+function renderPlugins() {
+  $("plugins").innerHTML = window.RV_PLUGINS.filter(function (p) { return !p.hidden; }).map(function (p) {
+    var own = p.builtin ? pRows("metapx") : [], ownOn = own.some(function (r) { return r.is_active && pHere(r); });
+    var rows = p.builtin || p.custom ? [] : pRows(p.key), on = rows.some(function (r) { return r.is_active && pHere(r); }), n = p.custom ? pCustom().filter(pHere).length : 0;
+    var st, btns;
+    if (p.key === "meta") {
+      st = ownOn ? '<span class="st on">ON · your own pixel</span>' : (S.pix && S.pix.meta_pixel_id) ? '<span class="st on">ON · ' + esc(S.pix.meta_pixel_id) + "</span>" : '<span class="st">No pixel yet</span>';
+      btns = '<button class="pbtn' + (ownOn || (S.pix && S.pix.meta_pixel_id) ? "" : " pri") + '" data-pl="metapx">' + (own.length ? "Manage my pixel" : "Use my own Pixel ID") + "</button>";
+    } else if (p.custom) {
+      st = n ? '<span class="st on">' + n + " active</span>" : '<span class="st">None</span>'; btns = '<button class="pbtn pri" data-pl="custom">Add or manage code</button>';
+    } else {
+      st = on ? '<span class="st on">ON</span>' : (rows.length ? '<span class="st">Off</span>' : '<span class="st">Not added</span>');
+      btns = '<button class="pbtn' + (rows.length ? "" : " pri") + '" data-pl="' + p.key + '">' + (rows.length ? "Manage" : "Add") + "</button>";
+    }
+    var desc = p.key === "meta" ? (S.pix && S.pix.meta_pixel_id ? "Revora adds the pixel of the linked ad account (" + esc(S.pix.nickname || "ad account") + (S.pix.pixel_name ? ", " + esc(S.pix.pixel_name) : "") + ") to every page and fires Purchase with the price of the package. Nothing to install." : "Link an ad account that has a pixel to this site's product, or add your own Pixel ID below.") : esc(p.desc);
+    return '<div class="plc"><div class="top"><div class="lg" style="background:' + p.color + '">' + esc(p.logo) + "</div><div><b>" + esc(p.name) + "</b><small>" + esc(p.tag) + "</small></div>" + st + "</div><p>" + desc + '</p><div class="row3">' + btns + "</div></div>";
+  }).join("");
+  $("plugins").querySelectorAll("[data-pl]").forEach(function (b) { b.onclick = function () { b.getAttribute("data-pl") === "custom" ? pCustomDialog() : pDialog(b.getAttribute("data-pl")); }; });
+}
+function pScopeSel(cur) { return '<div class="fld2"><label>Where it runs</label><select id="plSc" class="cat-in" style="width:100%;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;color:var(--text)"><option value="sites"' + (cur === "sites" ? " selected" : "") + '>This website (every page)</option><option value="all"' + (cur === "all" ? " selected" : "") + ">All my websites</option></select></div>"; }
+function pRow(sc) { return { scope: sc, site_ids: sc === "sites" ? [S.site] : [], page_ids: [] }; }
+var plCur = null;
+function pDialog(key) {
+  var p = window.RV_PLUGINS.find(function (x) { return x.key === key; }), rows = pRows(key), ex = rows[0], m = ex && pMarker(ex);
+  var pasted = m && m.id === "custom" ? ex.code.replace(/^<!-- rv-plugin:[^>]*-->\n?/, "") : "";
+  plCur = { p: p, rows: rows };
+  Q = { res: function () {} };
+  qopen('<div class="t">' + esc(p.name) + '</div><div style="padding:4px 14px 12px"><div class="fld2"><label>' + esc(p.ask) + '</label><input id="plId" value="' + esc(m && m.id !== "custom" ? m.id : "") + '" placeholder="' + esc(p.ph) + '" autocomplete="off" spellcheck="false" style="width:100%;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;outline:none"><small>' + esc(p.help || "") + "</small></div>" +
+    (p.paste ? '<div class="fld2"><label>Or paste the full pixel code</label><textarea id="plCode" spellcheck="false" placeholder="Paste the Meta Pixel code here">' + esc(pasted) + "</textarea></div>" : "") + pScopeSel(ex ? ex.scope : "sites") +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="plOn" ' + (!ex || ex.is_active ? "checked" : "") + '> Turned on</label></div><div class="btns">' + (rows.length ? '<button id="plDel" style="margin-right:auto;color:#f48771">Remove</button>' : "") + '<button id="plNo">Cancel</button><button class="pri" id="plSave">Save</button></div>', function () {
+      $("plNo").onclick = function () { qclose(null); }; $("plSave").onclick = pSave; if ($("plDel")) $("plDel").onclick = pRemove; setTimeout(function () { $("plId").focus(); }, 40);
+    });
+}
+async function pSave() {
+  var p = plCur.p, id = $("plId").value.trim().replace(p.pat, ""), code = p.paste && $("plCode") ? $("plCode").value.trim() : "";
+  if (code) { if (!/fbq\(/.test(code)) return toast("That doesn't look like a Meta Pixel code (it should contain fbq)"); id = "custom"; }
+  if (!id) return toast("Enter the " + p.ask + " first.");
+  var sc = pRow($("plSc").value), act = $("plOn").checked, now = new Date().toISOString(), btn = $("plSave"); btn.disabled = true;
+  var specs = [{ k: p.key, loc: p.loc, code: code || p.make(id) }]; if (p.extra && !code) specs.push({ k: p.key + "-ns", loc: p.extra.loc, code: p.extra.make(id) });
+  try {
+    for (var i = 0; i < specs.length; i++) {
+      var sp = specs[i], row = Object.assign({ name: "Plugin: " + p.name + (sp.k.slice(-3) === "-ns" ? " (no-script)" : ""), code: "<!-- rv-plugin:" + sp.k + " id=" + id + " -->\n" + sp.code, location: sp.loc, is_active: act, updated_at: now }, sc);
+      var ex = plCur.rows.find(function (r) { return pMarker(r).key === sp.k; });
+      var res = ex ? await sb.from("tracking_snippets").update(row).eq("id", ex.id) : await sb.from("tracking_snippets").insert(row);
+      if (res.error) throw res.error;
+    }
+    qclose(null); await loadPlugins(); toast2(p.name + " saved. It is already on your live pages; no need to publish again.");
+  } catch (e) { toast("Couldn't save: " + (e.message || e)); btn.disabled = false; }
+}
+async function pRemove() {
+  if (!await new Promise(function (r) { r(confirm("Remove " + plCur.p.name + " from your websites?")); })) return;
+  for (var i = 0; i < plCur.rows.length; i++) { var r = await sb.from("tracking_snippets").delete().eq("id", plCur.rows[i].id); if (r.error) return toast("Couldn't remove: " + r.error.message); }
+  qclose(null); await loadPlugins(); toast2(plCur.p.name + " removed.");
+}
+function pCustomDialog(editId) {
+  var rows = pCustom(), ed = editId && S.snips.find(function (r) { return r.id === editId; });
+  Q = { res: function () {} };
+  var list = rows.length ? '<div style="max-height:150px;overflow:auto;margin-bottom:8px">' + rows.map(function (r) { return '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #3c3c3c"><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.name) + '">' + esc(r.name) + '</b><span style="color:var(--dim);font-size:11px">' + esc(window.RV_LOCS[r.location] || r.location) + " · " + esc(pScope(r)) + '</span><input type="checkbox" data-ct="' + r.id + '" ' + (r.is_active ? "checked" : "") + ' title="On / off"><button class="mini" data-ce="' + r.id + '">Edit</button><button class="mini" data-cd="' + r.id + '">Delete</button></div>'; }).join("") + "</div>" : "";
+  qopen('<div class="t">Header &amp; footer code</div><div style="padding:4px 14px 12px">' + list + '<div class="fld2"><label>' + (ed ? "Edit snippet" : "Add a snippet") + '</label><input id="ccName" placeholder="Name, e.g. Chat widget" value="' + esc(ed ? ed.name : "") + '" style="width:100%;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;outline:none"></div><div class="fld2"><textarea id="ccCode" spellcheck="false" placeholder="Paste the script or HTML here">' + esc(ed ? ed.code : "") + '</textarea></div><div class="fld2"><label>Placed in</label><select id="ccLoc" style="width:100%;background:#3c3c3c;border:1px solid #4a4a4a;border-radius:4px;padding:7px 9px;color:var(--text)">' + Object.keys(window.RV_LOCS).map(function (k) { return '<option value="' + k + '"' + (ed && ed.location === k ? " selected" : "") + ">" + esc(window.RV_LOCS[k]) + "</option>"; }).join("") + "</select></div>" + pScopeSel(ed ? ed.scope : "sites") +
+    '<label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="ccOn" ' + (!ed || ed.is_active ? "checked" : "") + '> Turned on</label></div><div class="btns"><button id="ccNo">Close</button><button class="pri" id="ccSave">' + (ed ? "Save changes" : "Add snippet") + "</button></div>", function () {
+      $("ccNo").onclick = function () { qclose(null); };
+      $("qb").querySelectorAll("[data-ce]").forEach(function (b) { b.onclick = function () { pCustomDialog(b.getAttribute("data-ce")); }; });
+      $("qb").querySelectorAll("[data-cd]").forEach(function (b) { b.onclick = async function () { if (!confirm("Delete this snippet?")) return; var r = await sb.from("tracking_snippets").delete().eq("id", b.getAttribute("data-cd")); if (r.error) return toast("Couldn't delete: " + r.error.message); await loadPlugins(); pCustomDialog(); }; });
+      $("qb").querySelectorAll("[data-ct]").forEach(function (b) { b.onchange = async function () { var r = await sb.from("tracking_snippets").update({ is_active: b.checked, updated_at: new Date().toISOString() }).eq("id", b.getAttribute("data-ct")); if (r.error) toast("Couldn't update: " + r.error.message); else await loadPlugins(); }; });
+      $("ccSave").onclick = async function () {
+        var name = $("ccName").value.trim(), code = $("ccCode").value; if (!name) return toast("Give the snippet a name."); if (!code.trim()) return toast("Paste the code first.");
+        if (window.RV_PLUGIN_MARKER(code)) return toast("That code is managed by a plugin above.");
+        var row = Object.assign({ name: name, code: code, location: $("ccLoc").value, is_active: $("ccOn").checked, updated_at: new Date().toISOString() }, pRow($("plSc").value));
+        var res = ed ? await sb.from("tracking_snippets").update(row).eq("id", ed.id) : await sb.from("tracking_snippets").insert(row);
+        if (res.error) return toast("Couldn't save: " + res.error.message);
+        await loadPlugins(); toast2("Saved. It runs on your live pages; no need to publish again."); pCustomDialog();
+      };
+    });
+}
+
 /* ---------- layout controls ---------- */
 function setPanel(p) {
   if (p === "ai") { document.body.classList.remove("noright"); setRight("ai"); return; }
@@ -640,6 +749,7 @@ function setPanel(p) {
   document.querySelectorAll("#act button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-p") === p); });
   document.querySelectorAll("#side .panel").forEach(function (x) { x.classList.toggle("on", x.id === "p-" + p); x.style.display = x.id === "p-" + p ? (x.id === "p-explorer" ? "flex" : "block") : "none"; });
   if (p === "search") $("q").focus();
+  if (p === "plugins") loadPlugins();
   applyLayout();
 }
 function setRight(t) {
