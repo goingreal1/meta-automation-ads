@@ -182,7 +182,13 @@ export function createPush(admin, serviceKey, sender = webpush) {
     if (!body || typeof body !== "object" || !(body.type === "test" || body.audience)) return null;
     try {
       const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-      const isService = token.length > 0 && token === serviceKey;
+      let isService = token.length > 0 && token === serviceKey;
+      // The database (rv_notify) calls this with the same x-cron-secret the cron jobs use.
+      const cron = req.headers.get("x-cron-secret") ?? "";
+      if (!isService && cron) {
+        const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+        isService = !!sec?.value && sec.value === cron;
+      }
       // A signed-in user may only ask for a test push to their own devices.
       if (!isService) {
         const { data: u } = await admin.auth.getUser(token);

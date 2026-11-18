@@ -2052,6 +2052,7 @@ async function init() {
   if (profile.role === "delivery_agent") { window.location.replace("rider.html"); return; }
   if (profile.role === "customer_care") { window.location.replace("care.html"); return; }
   renderChatForRole(profile.role);
+  if (window.rvnInit) rvnInit(); // notifications: bell, inbox, live alerts (rv/notifications.js)
 
   // The header used to hardcode one tenant's own company name ("Quality
   // Herb") for literally every company that ever signed up -- every other
@@ -2837,6 +2838,10 @@ let bvInstallPrompt = null; // Android/desktop Chrome's deferred "install app" p
 const BV_PUSH_CATEGORIES = [
   { key: "messages", label: "New customer messages", sub: "A customer messages you on WhatsApp (text, photo or voice note)." },
   { key: "ads", label: "AI ad alerts", sub: "Your AI says an ad broke your kill rules, paused one for you, or a campaign just went live." },
+  { key: "orders", label: "Orders", sub: "A new order lands, or one is delivered or cancelled. Any time of day." },
+  { key: "reports", label: "End-of-day report", sub: "Orders, visitors, people who left without ordering and ad spend, every evening at 9pm." },
+  { key: "leads", label: "New leads", sub: "Someone fills in a form on your page or a Meta lead form." },
+  { key: "money", label: "Money", sub: "Your funding wallet is topped up." },
 ];
 
 if ("serviceWorker" in navigator) {
@@ -2862,6 +2867,7 @@ function bvApplyOpenParam() {
 function bvSetTarget(target) {
   if (!target) return false;
   if (target === "ai") { window.bvPendingAi = true; return true; }
+  if (target === "notifications") { window.bvPendingBell = true; return true; }
   if (target.startsWith("conv:")) { window.bvPendingConv = target.slice(5); activeTab = "conversations"; }
   else if (target.startsWith("tab:") && document.querySelector(`[data-tab="${target.slice(4)}"]`)) activeTab = target.slice(4);
   else return false;
@@ -2871,6 +2877,7 @@ function bvSetTarget(target) {
 // A notification was tapped while the app was already open.
 function bvOpenTarget(target) {
   if (target === "ai") { toggleChat(true); chLoadInbox(); return; }
+  if (target === "notifications") { if (window.rvnOpen) rvnOpen(); return; }
   if (bvSetTarget(target)) render();
 }
 
@@ -14450,7 +14457,10 @@ function renderChatForRole(role) {
   const extra = ["owner", "admin", "buyer"].includes(role)
     ? [["Write 3 different Facebook ad copies for the product of mine that is most likely to sell. Use my product details and keep to Meta's ad rules.", "Write ad copy for my best product"], ["Suggest 3 new angles I should test next for my products and explain why.", "What should I test next?"]]
     : [];
-  document.getElementById("chSuggs").innerHTML = [...extra, ...preset.suggs]
+  // Smart suggestions (rv/chat-smart.js): a slim row picked from what is happening now + a "More" sheet.
+  // Falls back to the plain list if that file did not load.
+  if (window.rvSmartSuggest) window.rvSmartSuggest(role, extra, preset.suggs);
+  else document.getElementById("chSuggs").innerHTML = [...extra, ...preset.suggs]
     .map(([q, label]) => `<button class="ch-sugg" onclick="askChat('${q.replace(/'/g, "\\'")}')">${escH(label)}</button>`)
     .join("") + (["owner", "admin", "buyer"].includes(role) ? `<button class="ch-sugg" onclick="bvImportAds()">Teach the AI from my past ads</button>` : "");
 }
@@ -15088,5 +15098,7 @@ init().then(() => {
   if (window.bvPendingAi || location.hash === "#ai") { window.bvPendingAi = false; history.replaceState(null, "", location.pathname + location.search); toggleChat(true); }
 });
 </script>
+<script src="/rv/notifications.js"></script>
+<script src="/rv/chat-smart.js"></script>
 </body>
 </html>
