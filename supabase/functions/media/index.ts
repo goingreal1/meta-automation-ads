@@ -25,9 +25,7 @@ const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { sta
 const db = createClient(SUPABASE_URL, SERVICE);
 const r2 = new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID") ?? "", secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY") ?? "", service: "s3", region: "auto" });
 const base = () => `https://${ACCOUNT}.r2.cloudflarestorage.com/${BUCKET}`;
-// Repeated dots are collapsed: a name like "One..mp4" used to produce a key containing "..", which the register step
-// (rightly) rejects as a path-traversal attempt, so the upload failed with "That upload doesn't belong to you."
-const clean = (s: string) => String(s || "file").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/\.{2,}/g, ".").replace(/^[-.]+|[-.]+$/g, "").slice(-60) || "file";
+const clean = (s: string) => String(s || "file").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(-60) || "file";
 const encKey = (k: string) => k.split("/").map(encodeURIComponent).join("/");
 
 async function whoami(req: Request): Promise<string | null> {
