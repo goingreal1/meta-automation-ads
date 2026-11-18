@@ -6307,13 +6307,14 @@ function setFileRaw(file) {
 // sync (sync-meta-structure) only started capturing start_time recently, so
 // older synced rows may not have it -- those just fall back to raw status.
 function bvAdSetLifecycle(a) {
+  // Meta's own delivery status (effective_status, copied by meta-status-refresh). A row Meta has not answered for is never shown as Active.
+  const eff = a.effective_status || a.ad_sets?.effective_status;
   const startTime = a.meta_raw?.start_time ? new Date(a.meta_raw.start_time) : null;
-  const status = (a.status || "").toLowerCase();
-  if (startTime && startTime.getTime() > Date.now()) {
+  if (eff === "ACTIVE" && startTime && startTime.getTime() > Date.now()) {
     return { key: "scheduled", label: `Scheduled — ${startTime.toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })}` };
   }
-  if (status === "active") return { key: "active", label: "Active" };
-  return { key: "off", label: status ? status.replace(/_/g, " ") : "off" };
+  const [label, cls] = amStatusWord(eff);
+  return { key: cls === "active" ? "active" : cls, label };
 }
 
 // Meta Ads Manager-style drill-down: Campaigns list -> one Campaign's Ad
@@ -6425,16 +6426,38 @@ function amPruneSelection() {
   for (const id of [...am.sel.adsets]) if (!setOk.has(id)) am.sel.adsets.delete(id);
 }
 
+// Delivery pill: Meta's own words for each status, never a guess. A campaign or ad set that Meta marks ACTIVE is only shown as "Active"
+// while at least one ad inside it is really delivering; otherwise the pill shows what the ads inside are doing (In review, Preparing, ...).
+const AM_STATUS = {
+  ACTIVE: ["Active", "active"], PAUSED: ["Paused", "paused"], CAMPAIGN_PAUSED: ["Campaign paused", "paused"], ADSET_PAUSED: ["Ad set paused", "paused"],
+  PENDING_REVIEW: ["In review", "pending"], IN_PROCESS: ["Preparing", "pending"], PREAPPROVED: ["Preparing", "pending"],
+  DISAPPROVED: ["Rejected", "rejected"], WITH_ISSUES: ["Has issues", "watch"], PENDING_BILLING_INFO: ["Billing issue", "watch"],
+  ARCHIVED: ["Archived", "off"], DELETED: ["Deleted", "off"],
+};
+const AM_WORST = ["DISAPPROVED", "WITH_ISSUES", "PENDING_BILLING_INFO", "PENDING_REVIEW", "IN_PROCESS", "PREAPPROVED"]; // what to show when nothing inside delivers
+function amStatusWord(e) {
+  if (AM_STATUS[e]) return AM_STATUS[e];
+  if (!e) return ["Checking with Meta…", "pending"];
+  const w = String(e).replace(/_/g, " ").toLowerCase(); return [w.charAt(0).toUpperCase() + w.slice(1), "watch"]; // an unknown Meta word is shown as Meta wrote it
+}
+function amKids(r) {
+  const d = am.data; if (!d || !d.ads || r.adset_id) return null; // an ad has nothing inside it
+  return r.campaign_id ? d.ads.filter(a => a.adset_id === r.id) : d.ads.filter(a => a.campaign_id === r.id);
+}
 function amDelivery(r) {
   const e = r.effective_status || r.status;
-  const map = {
-    ACTIVE: ["Active", "active"], PAUSED: ["Paused", "paused"], CAMPAIGN_PAUSED: ["Campaign paused", "paused"],
-    ADSET_PAUSED: ["Ad set paused", "paused"], PENDING_REVIEW: ["In review", "pending"], IN_PROCESS: ["Processing", "pending"],
-    DISAPPROVED: ["Rejected", "rejected"], WITH_ISSUES: ["Has issues", "watch"], PENDING_BILLING_INFO: ["Billing issue", "watch"],
-    ARCHIVED: ["Archived", "off"], DELETED: ["Deleted", "off"],
-  };
-  const [label, cls] = map[e] || [String(e || "—").replace(/_/g, " ").toLowerCase(), "off"];
-  return `<span class="pill ${cls}">${escH(label)}</span>`;
+  let [label, cls] = amStatusWord(e), note = "";
+  const kids = e === "ACTIVE" ? amKids(r) : null;
+  if (kids && kids.length) {
+    const live = kids.filter(k => k.effective_status === "ACTIVE").length;
+    if (live === 0) {
+      const have = kids.map(k => k.effective_status);
+      const worst = AM_WORST.find(w => have.includes(w));
+      if (worst) { [label, cls] = amStatusWord(worst); note = `${kids.filter(k => k.effective_status === worst).length} of ${kids.length} ads`; }
+      else { [label, cls] = ["No ads running", "paused"]; }
+    } else if (live < kids.length) note = `${live} of ${kids.length} ads delivering`;
+  }
+  return `<span class="pill ${cls}">${escH(label)}</span>${note ? `<span class="am-sub" style="display:block">${escH(note)}</span>` : ""}`;
 }
 
 function amRows(level) {
@@ -7392,8 +7415,8 @@ async function renderCampaignsList(el) {
   });
 
   const filtered = rows.filter(r => {
-    if (campaignsStatusFilter === "active") return r.campaign.status === "active";
-    if (campaignsStatusFilter === "paused") return r.campaign.status !== "active";
+    if (campaignsStatusFilter === "active") return r.campaign.effective_status === "ACTIVE";
+    if (campaignsStatusFilter === "paused") return r.campaign.effective_status !== "ACTIVE";
     return true;
   });
 
@@ -7412,7 +7435,7 @@ async function renderCampaignsList(el) {
           ${filtered.map(r => `<tr class="bv-clickable-row" onclick="bvOpenCampaign('${r.campaign.id}')">
             <td class="s n" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escH(r.campaign.campaign_name)}">${escH(r.campaign.campaign_name)}</td>
             <td class="n" style="color:var(--muted);">${escH(r.campaign.ad_accounts?.nickname || r.campaign.ad_accounts?.name || "—")}</td>
-            <td><span class="pill ${r.anyActive ? "active" : r.campaign.status}">${r.anyActive ? "Active" : escH((r.campaign.status || "—").replace(/_/g, " "))}</span></td>
+            <td>${(() => { const [l, c] = amStatusWord(r.campaign.effective_status); return `<span class="pill ${c}">${escH(l)}</span>`; })()}</td>
             <td>${r.adSetCount}</td>
             <td>${r.adCount}</td>
             <td>${fN(r.campaign.daily_budget_naira)}</td>
@@ -7466,7 +7489,7 @@ async function renderAdsFlat(el, counts) {
 
   const adSetAds = await sbQuery(
     "ad_set_ads",
-    "select=*,ad_sets(adset_name,status,meta_raw,campaign_id,campaigns(campaign_name)),creatives(creative_name,image_url,video_id,headline,cta_type,launch_batch_id,created_at),daily_metrics(spend_naira,ctr,orders,cost_per_order_naira,metric_date)&order=created_at.desc&limit=1000"
+    "select=*,ad_sets(adset_name,status,effective_status,meta_raw,campaign_id,campaigns(campaign_name)),creatives(creative_name,image_url,video_id,headline,cta_type,launch_batch_id,created_at),daily_metrics(spend_naira,ctr,orders,cost_per_order_naira,metric_date)&order=created_at.desc&limit=1000"
   );
 
   const rows = (adSetAds || []).map(r => {
@@ -7477,7 +7500,7 @@ async function renderAdsFlat(el, counts) {
       ctr_latest: latest?.ctr ?? null,
       orders_latest: Number(latest?.orders || 0),
       cpa_latest: latest?.cost_per_order_naira ?? null,
-      lifecycle: bvAdSetLifecycle({ status: r.ad_sets?.status, meta_raw: r.ad_sets?.meta_raw }),
+      lifecycle: bvAdSetLifecycle({ effective_status: r.effective_status || r.ad_sets?.effective_status, meta_raw: r.ad_sets?.meta_raw }),
     };
   });
 
