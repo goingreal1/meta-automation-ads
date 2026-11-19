@@ -939,6 +939,57 @@ function reviewCardTool(args, ctx) {
     note: "The review card is on screen. Do not repeat its contents. Write the one-sentence answer and a short plain-words explanation of what the numbers mean (what you wrote as headline, total spend, results and cost per result against their target), then stop."
   };
 }
+// Meta's own /copies refuses ads whose creative still carries the retired "standard enhancements" field. Rebuild the ad by hand
+// without that field: same name (+ Copy), same ad set (or a new one), same creative content.
+async function graphJson(method, path, params, token) {
+  const f = new URLSearchParams({
+    ...params,
+    access_token: token
+  });
+  const res = method === "GET" ? await fetch(`${GRAPH}/${path}?${f}`) : await fetch(`${GRAPH}/${path}`, {
+    method: "POST",
+    body: f
+  });
+  const j = await res.json().catch(()=>null);
+  if (!j || j.error) throw new Error("Meta: " + String(j?.error?.error_user_msg || j?.error?.message || "request failed").slice(0, 200));
+  return j;
+}
+async function copyAdByHand(adId, targetAdsetId, token, status) {
+  const ad = await graphJson("GET", adId, {
+    fields: "name,adset_id,account_id,creative{id}"
+  }, token);
+  const cr = await graphJson("GET", ad.creative.id, {
+    fields: "name,object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags,object_story_id,effective_object_story_id,instagram_user_id,call_to_action_type"
+  }, token);
+  const dfs = cr.degrees_of_freedom_spec;
+  if (dfs?.creative_features_spec) {
+    delete dfs.creative_features_spec.standard_enhancements;
+    if (!Object.keys(dfs.creative_features_spec).length) delete dfs.creative_features_spec;
+  }
+  const params = {
+    name: `${cr.name || ad.name} copy ${Date.now() % 1e6}`
+  };
+  if (cr.object_story_spec) {
+    params.object_story_spec = JSON.stringify(cr.object_story_spec);
+    if (cr.asset_feed_spec) params.asset_feed_spec = JSON.stringify(cr.asset_feed_spec);
+  } else if (cr.asset_feed_spec) params.asset_feed_spec = JSON.stringify(cr.asset_feed_spec);
+  else if (cr.object_story_id || cr.effective_object_story_id) params.object_story_id = cr.object_story_id || cr.effective_object_story_id;
+  else throw new Error("This ad's creative type cannot be copied automatically. Copy it in Ads Manager.");
+  if (dfs && Object.keys(dfs).length) params.degrees_of_freedom_spec = JSON.stringify(dfs);
+  if (cr.url_tags) params.url_tags = cr.url_tags;
+  const act = String(ad.account_id).replace(/^act_/, "");
+  const nc = await graphJson("POST", `act_${act}/adcreatives`, params, token);
+  const na = await graphJson("POST", `act_${act}/ads`, {
+    name: `${ad.name} - Copy`.slice(0, 400),
+    adset_id: targetAdsetId || ad.adset_id,
+    creative: JSON.stringify({
+      creative_id: nc.id
+    }),
+    status
+  }, token);
+  return na.id;
+}
+const isEnhancementError = (r)=>/standard.?enhancement|deprecat/i.test(String(r?.error?.error_user_msg || "") + " " + String(r?.error?.message || ""));
 async function duplicateObject(body, p) {
   const level = body?.level === "adset" ? "adset" : "ad";
   const objectId = String(body?.object_id ?? "");
@@ -957,8 +1008,36 @@ async function duplicateObject(body, p) {
     method: "POST",
     body: form
   }).then((x)=>x.json()).catch(()=>null);
-  if (!r || r.error) throw new Error("Meta: " + (r?.error?.error_user_msg || r?.error?.message || "could not duplicate").slice(0, 200));
-  const newId = r.copied_ad_id || r.copied_adset_id || r.ad_object_ids?.[0]?.copied_id || null;
+  let newId = null;
+  const status = body?.start_paused === false ? "ACTIVE" : "PAUSED";
+  if (r && isEnhancementError(r)) {
+    // Fallback: copy by hand without the retired field.
+    if (level === "ad") newId = await copyAdByHand(objectId, null, token, status);
+    else {
+      const sf = new URLSearchParams({
+        access_token: token,
+        status_option: "PAUSED",
+        deep_copy: "false"
+      });
+      const sr = await fetch(`${GRAPH}/${objectId}/copies`, {
+        method: "POST",
+        body: sf
+      }).then((x)=>x.json()).catch(()=>null);
+      newId = sr?.copied_adset_id || sr?.ad_object_ids?.[0]?.copied_id || null;
+      if (!newId) throw new Error("Meta: " + String(sr?.error?.error_user_msg || sr?.error?.message || "could not duplicate").slice(0, 200));
+      const ads = await graphJson("GET", `${objectId}/ads`, {
+        fields: "id",
+        limit: "50"
+      }, token);
+      for (const a of ads.data ?? [])await copyAdByHand(a.id, newId, token, status);
+      if (status === "ACTIVE") await graphJson("POST", newId, {
+        status: "ACTIVE"
+      }, token).catch(()=>{});
+    }
+  } else {
+    if (!r || r.error) throw new Error("Meta: " + (r?.error?.error_user_msg || r?.error?.message || "could not duplicate").slice(0, 200));
+    newId = r.copied_ad_id || r.copied_adset_id || r.ad_object_ids?.[0]?.copied_id || null;
+  }
   await supabase.from("ad_kill_log").insert({
     company_id: p.companyId,
     ad_account_id: acct.id,
