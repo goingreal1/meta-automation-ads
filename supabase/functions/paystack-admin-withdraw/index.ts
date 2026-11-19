@@ -54,7 +54,7 @@ Deno.serve(async (req)=>{
     error: "PAYSTACK_SECRET_KEY isn't configured yet."
   }, 500);
   try {
-    const { access_token, amount_naira, account_number, bank_code, reference, source, approved_with, on_behalf_of } = await req.json();
+    const { access_token, amount_naira, account_number, bank_code, reference, source, approved_with, on_behalf_of, mode: body_mode } = await req.json();
     // Optional caller-chosen reference: Paystack refuses a second transfer with the same one, so a retry can never pay twice.
     const ref = typeof reference === "string" && /^[a-z0-9_-]{16,50}$/.test(reference) ? reference : undefined;
     if (!amount_naira || !account_number || !bank_code) {
@@ -74,35 +74,63 @@ Deno.serve(async (req)=>{
     if (!uid) return json({
       error: "Unauthorized"
     }, 401);
-    const { data: profile } = await supabase.from("profiles").select("role, company_id").eq("id", uid).maybeSingle();
-    if (!profile || ![
-      "owner",
-      "admin"
-    ].includes(profile.role)) return json({
+    const { data: profile } = await supabase.from("profiles").select("role, company_id, media_buyer_id, display_name").eq("id", uid).maybeSingle();
+    const isAdmin = !!profile && ["owner", "admin"].includes(profile.role);
+    const isBuyer = !!profile && profile.role === "buyer" && !!profile.media_buyer_id;
+    if (!isAdmin && !isBuyer) return json({
       error: "Unauthorized"
     }, 401);
+    const mode = body_mode === "meta" ? "meta" : "bank";
+    // A media buyer can only pay out to a bank account in their own name; Meta is reached through the buyer's Send to Meta flow.
+    if (isBuyer && !isAdmin && mode === "meta") return json({ error: "Use Send to Meta." }, 403);
     const resolved = await paystackFetch(`/bank/resolve?account_number=${encodeURIComponent(account_number)}&bank_code=${encodeURIComponent(bank_code)}`);
     const accountName = resolved?.data?.account_name ?? "";
     if (!accountName) return json({
       error: "Could not verify this account. Double-check the account number and bank."
     }, 400);
+    const norm = (v)=>String(v ?? "").toLowerCase().replace(/[^a-z\s]/g, "").trim();
+    const sameName = (a, b)=>{
+      if (!a || !b) return false;
+      const ta = a.split(/\s+/).filter(Boolean), tb = b.split(/\s+/).filter(Boolean), [small, big] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+      const shared = small.filter((w)=>big.includes(w)).length;
+      return shared === small.length && (shared >= 2 || small.length === 1);
+    };
+    if (isBuyer && !isAdmin) {
+      const { data: mb } = await supabase.from("media_buyers").select("name").eq("id", profile.media_buyer_id).maybeSingle();
+      const mine = [norm(profile.display_name), norm(mb?.name)].filter(Boolean);
+      if (!mine.some((m)=>sameName(norm(accountName), m))) return json({
+        error: `That account is in the name "${accountName}". You can only withdraw to a bank account in your own name (${profile.display_name || mb?.name || "your profile name"}).`
+      }, 403);
+    }
+    if (mode === "meta") {
+      const { data: allowedRows } = await supabase.from("transfer_allowed_names").select("name_key").eq("company_id", profile.company_id);
+      const hasList = (allowedRows ?? []).length > 0, key = accountName.trim().toLowerCase().replace(/\s+/g, " ");
+      const okName = hasList ? (allowedRows ?? []).some((x)=>x.name_key === key) : /(facebook|meta)/i.test(accountName);
+      if (!okName) return json({ error: `The bank says this account belongs to "${accountName}", which is not Meta or Facebook.` }, 403);
+    }
     const bankList = await paystackFetch("/bank?country=nigeria").catch(()=>({
         data: []
       }));
     const bankName = (bankList?.data ?? []).find((b)=>b.code === bank_code)?.name ?? bank_code;
-    const recipient = await paystackFetch("/transferrecipient", {
-      method: "POST",
-      body: JSON.stringify({
-        type: "nuban",
-        name: accountName,
-        account_number,
-        bank_code,
-        currency: "NGN",
-        description: "Admin withdrawal"
-      })
-    });
-    let withdrawalRow;
+    // Reserve the money (and Revora's transfer fee) first, so a second tap cannot spend it again.
+    const { data: feeData } = await supabase.rpc("rv_fee", { p_kind: "transfer", p_amount: Number(amount_naira) });
+    const fee = Number(feeData ?? 0);
+    const { data: wid, error: resErr } = await supabase.rpc("rv_withdraw_reserve", { p_user: uid, p_amount: Number(amount_naira), p_fee: fee, p_acct: account_number, p_bank_code: bank_code, p_bank_name: bankName, p_acct_name: accountName });
+    if (resErr || !wid) return json({
+      error: String(resErr?.message ?? "Could not reserve the money.").replace(/^.*?:\s*/, "")
+    }, 400);
     try {
+      const recipient = await paystackFetch("/transferrecipient", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "nuban",
+          name: accountName,
+          account_number,
+          bank_code,
+          currency: "NGN",
+          description: mode === "meta" ? "Meta ads top-up" : "Withdrawal"
+        })
+      });
       const transfer = await paystackFetch("/transfer", {
         method: "POST",
         body: JSON.stringify({
@@ -112,30 +140,24 @@ Deno.serve(async (req)=>{
           ...ref ? {
             reference: ref
           } : {},
-          reason: `Admin withdrawal for ${profile.company_id}`
+          reason: `${mode === "meta" ? "Meta top-up" : "Withdrawal"} for ${profile.company_id}`
         })
       });
       // Paystack answers status "otp" when the account still asks for a one-time code on every transfer: the money does NOT move.
       if (transfer?.data?.status === "otp") throw new Error("Paystack is waiting for an OTP, so the money was not sent. Turn off OTP for transfers in Paystack (Settings, Preferences, Transfers), then try again.");
-      const { data } = await supabase.from("admin_withdrawals").insert({
-        company_id: profile.company_id,
-        amount_naira,
-        destination_account_number: account_number,
-        destination_bank_code: bank_code,
-        destination_bank_name: bankName,
-        destination_account_name: accountName,
+      await supabase.from("admin_withdrawals").update({
         status: "sent",
         paystack_transfer_code: transfer?.data?.transfer_code ?? null,
         paystack_transfer_reference: transfer?.data?.reference ?? null,
-        created_by: uid,
         sent_at: new Date().toISOString()
-      }).select().single();
-      withdrawalRow = data;
+      }).eq("id", wid);
+      // Revora's transfer fee comes off the wallet the money left.
+      if (fee > 0) await supabase.rpc("rv_take_fee", { p_kind: "transfer", p_company: profile.company_id, p_buyer: isBuyer && !isAdmin ? profile.media_buyer_id : null, p_user: uid, p_amount: Number(amount_naira), p_fee: fee, p_ref: String(wid), p_note: mode === "meta" ? "Transfer fee on send to Meta" : "Transfer fee on withdrawal" });
       // One receipt per transfer. The webhook moves it to delivered or failed when the bank confirms.
       await supabase.from("transfer_receipts").insert({
         company_id: profile.company_id,
         user_id: uid,
-        kind: "transfer",
+        kind: mode === "meta" ? "meta" : "transfer",
         source: source === "assistant" ? "assistant" : "dashboard",
         amount_naira,
         account_name: accountName,
@@ -153,21 +175,13 @@ Deno.serve(async (req)=>{
         reference: transfer?.data?.reference,
         account_name: accountName,
         bank_name: bankName,
-        withdrawal_id: withdrawalRow?.id,
+        withdrawal_id: wid,
+        fee,
         receipt: rc ?? null
       });
     } catch (transferErr) {
-      await supabase.from("admin_withdrawals").insert({
-        company_id: profile.company_id,
-        amount_naira,
-        destination_account_number: account_number,
-        destination_bank_code: bank_code,
-        destination_bank_name: bankName,
-        destination_account_name: accountName,
-        status: "failed",
-        transfer_error: transferErr.message,
-        created_by: uid
-      });
+      // The bank was not paid: release the reserved money.
+      await supabase.from("admin_withdrawals").update({ status: "failed", transfer_error: transferErr.message }).eq("id", wid);
       return json({
         error: `Transfer failed: ${transferErr.message}`
       }, 502);

@@ -373,7 +373,7 @@ Object.assign(RV_IC, {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5.1L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.5-6.9A2 2 0 0016.8 4H7.2a2 2 0 00-1.7 1.1z"/>',
 });
 
-const W2 = { view: "home", ov: null, fees: null, acc: null, acts: null, filter: "all", sel: null, send: {}, meta: {}, msg: "", hide: false, role: "", mb: null };
+const W2 = { wd: {}, view: "home", ov: null, fees: null, acc: null, acts: null, filter: "all", sel: null, send: {}, meta: {}, msg: "", hide: false, role: "", mb: null };
 try { W2.hide = localStorage.getItem("rv_wl_hide") === "1"; } catch {}
 
 // ---- fee maths, the same as the database (rv_fee) and Paystack's card charge ----
@@ -399,7 +399,7 @@ const w2FeeText = (kind) => {
 
 async function renderWallet(el) {
   W2.el = document.getElementById("mainContent") || el;
-  if (!document.getElementById("wlRoot2")) { W2.view = "home"; W2.send = {}; W2.meta = {}; W2.legacy = undefined; }
+  if (!document.getElementById("wlRoot2")) { W2.view = "home"; W2.send = {}; W2.meta = {}; W2.wd = {}; W2.legacy = undefined; }
   W2.role = window.myProfile?.role || ""; W2.mb = window.myProfile?.media_buyer_id || null;
   if (!W2.ov) W2.el.innerHTML = `<div class="rv-ui"><div class="rv-note"><span class="spin"></span><span>Opening your wallet…</span></div></div>`;
   const [ov, fees] = await Promise.all([sbFn("wallet-topup", { action: "overview" }).catch((e) => ({ error: e.message })), sbFn("wallet-topup", { action: "fees" }).catch(() => null)]);
@@ -451,15 +451,14 @@ function w2Home() {
       <div class="w2-cs"><span>In ad accounts <b>${W2.acc == null ? "…" : amt(inMeta)}</b></span><span>Total <b>${W2.acc == null ? "…" : amt(mine + inMeta)}</b></span></div></div>
     <div class="w2-acts">
       <button type="button" class="w2-act p" onclick="w2Go('add')"><i>${rvIc("plus")}</i>Add money</button>
-      ${admin ? `<button type="button" class="w2-act" onclick="w2Go('requests')"><i>${rvIc("inbox")}</i>Requests${pend ? `<em>${pend}</em>` : ""}</button>` : `<button type="button" class="w2-act" onclick="w2Go('request')"><i>${rvIc("arrdn")}</i>Request</button>`}
-      <button type="button" class="w2-act" onclick="w2Go('send')"><i>${rvIc("send")}</i>Send</button>
-      ${admin ? `<button type="button" class="w2-act" onclick="w2Go('team')"><i>${rvIc("users")}</i>Team</button>` : `<button type="button" class="w2-act" onclick="w2Go('meta')"><i>${rvIc("arrup")}</i>To Meta</button>`}
+      ${admin ? `<button type="button" class="w2-act" onclick="w2Go('send')"><i>${rvIc("send")}</i>Send</button><button type="button" class="w2-act" onclick="w2Go('withdraw')"><i>${rvIc("bank")}</i>Withdraw</button><button type="button" class="w2-act" onclick="w2Go('requests')"><i>${rvIc("inbox")}</i>Requests${pend ? `<em>${pend}</em>` : ""}</button>`
+        : `<button type="button" class="w2-act" onclick="w2Go('request')"><i>${rvIc("arrdn")}</i>Request</button><button type="button" class="w2-act" onclick="w2Go('send')"><i>${rvIc("send")}</i>Send</button><button type="button" class="w2-act" onclick="w2Go('meta')"><i>${rvIc("arrup")}</i>To Meta</button>`}
     </div>
     <div class="w2-sec"><h3>Ad accounts</h3></div><div class="w2-strip">${accs}</div>
     <div class="w2-sec"><h3>Recent</h3><button type="button" class="w2-lnk" onclick="w2Go('activity')">See all</button></div><div class="w2-list">${recent}</div>
     <div class="w2-tiles">
       <button type="button" class="w2-tile" onclick="w2Go('activity')"><i>${rvIc("list")}</i><span>Transactions<small>Everything in and out</small></span></button>
-      ${admin ? "" : `<button type="button" class="w2-tile" onclick="w2Go('requests')"><i>${rvIc("inbox")}</i><span>Requests${pend ? ` · ${pend}` : ""}<small>Asked of your admin</small></span></button>`}
+      ${admin ? `<button type="button" class="w2-tile" onclick="w2Go('team')"><i>${rvIc("users")}</i><span>Team wallets<small>Give or take back funds</small></span></button>` : `<button type="button" class="w2-tile" onclick="w2Go('withdraw')"><i>${rvIc("bank")}</i><span>Withdraw<small>To my own bank account</small></span></button><button type="button" class="w2-tile" onclick="w2Go('requests')"><i>${rvIc("inbox")}</i><span>Requests${pend ? ` · ${pend}` : ""}<small>Asked of your admin</small></span></button>`}
       <button type="button" class="w2-tile" onclick="w2Go('fees')"><i>${rvIc("tag")}</i><span>Fees<small>What Revora charges</small></span></button>
       <button type="button" class="w2-tile" onclick="w2Statement()"><i>${rvIc("dl")}</i><span>Statement<small>Download as CSV</small></span></button>
       ${admin ? `<button type="button" class="w2-tile" onclick="w2Go('old')"><i>${rvIc("bank")}</i><span>More tools<small>Collection accounts, auto-approve</small></span></button>` : ""}
@@ -705,6 +704,7 @@ function w2Pane() {
     case "send": return w2Send();
     case "request": return w2Request();
     case "meta": return w2Meta();
+    case "withdraw": return w2Withdraw();
     case "requests": return w2Requests();
     case "fees": return w2Fees();
     case "team": return w2Team();
@@ -717,6 +717,7 @@ function w2Draw() {
   const el = W2.el; if (!el) return;
   const keep = { k: document.getElementById("w2Key")?.value, a: document.getElementById("w2SAmt")?.value };
   el.innerHTML = `<div class="rv-ui wl2" id="wlRoot2" data-w2="${W2.view === "home" ? "home" : "pane"}"><div class="wl2-home">${w2Home()}</div><div class="wl2-pane">${w2Pane()}</div></div>`;
+  if (W2.view === "withdraw") { const sel = document.getElementById("w2WBank"); if (sel) { Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.wd.bank) sel.value = W2.wd.bank; }); sel.onchange = () => { W2.wd.bank = sel.value; }; } }
   if (W2.view === "meta") { const sel = document.getElementById("w2MBank"); if (sel) { sel.innerHTML = `<option value="">Loading banks…</option>`; Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.meta.bank) sel.value = W2.meta.bank; }); sel.onchange = () => { W2.meta.bank = sel.value; }; } }
   if (W2.view === "requests" && W2.legacy === undefined) w2LoadLegacy();
   if (W2.view === "add" && W2.addMode === "bank" && W2.dva === undefined && !W2.dvaBusy) { W2.dvaBusy = true; w2LoadDva().finally(() => { W2.dvaBusy = false; }); }
@@ -726,4 +727,38 @@ function w2Draw() {
 function w2ApproveLegacy(id) {
   const f = (W2.legacy || []).find((x) => x.id === id); if (!f) return;
   bvShowSendPinModal(id, `<b>${fN(f.amount_naira)}</b> to <b>${escH(f.req_account_name || "Meta")}</b> · ${escH(f.req_bank_name || "")} ${escH(f.req_account_number || "")}`);
+}
+
+// ---- Withdraw: an owner/admin to any bank account or to Meta; a media buyer to a bank account in their own name ----
+function w2Withdraw() {
+  const d = W2.wd, admin = w2Admin(), mine = Number(W2.ov?.me_wallet || 0), amt = Number(d.amount || 0), fee = w2Fee("transfer", amt), total = amt + fee, short = total > mine, meta = admin && d.mode === "meta";
+  if (d.done) return `${w2Nav("Withdrawal sent", "home")}<div class="w2-rcpt"><div class="w2-ok">${rvIc("check", 26)}</div><small>Sent to ${escH(d.done.account_name || "")}</small><div class="n">${w2Money(d.done.amount)}</div></div>
+    ${w2Lines([["To", escH(d.done.account_name || "")], ["Bank", escH(d.done.bank_name || "")], ["Amount", w2Money(d.done.amount)], ["Transfer fee", w2Money(d.done.fee), "fee"], ["Total from your wallet", w2Money(d.done.amount + d.done.fee), "tot"]])}<button type="button" class="w2-cta" onclick="W2.wd={};w2Go('home');renderWallet(W2.el)">Done</button>`;
+  return `${w2Nav("Withdraw")}${admin ? `<div class="w2-seg"><button type="button" class="${meta ? "" : "on"}" onclick="W2.wd.mode='bank';w2Draw()">Bank account</button><button type="button" class="${meta ? "on" : ""}" onclick="W2.wd.mode='meta';w2Draw()">To Meta</button></div>` : ""}
+    <div class="w2-hint">${meta ? "Send to Meta's bank account from the funding wallet. In Ads Manager open Billing → Add funds → Bank transfer for the account number and bank. Only a Meta account is accepted." : admin ? "Pay out to any Nigerian bank account. Revora checks the account name with the bank first." : "Pay out to a bank account in your own name. Revora checks that the name on the account matches yours, and refuses any other account."}</div>
+    <div class="w2-big"><small>Amount · available ${w2Money(mine)}</small><input id="w2WAmt" type="number" inputmode="numeric" min="100" step="100" placeholder="0" value="${amt || ""}" oninput="W2.wd.amount=this.value;w2WdUpdate()"></div>
+    <label class="w2-f">Bank<select id="w2WBank"><option value="">Loading banks…</option></select></label>
+    <label class="w2-f">Account number<input id="w2WAcct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${escH(d.acct || "")}" oninput="W2.wd.acct=this.value"></label>
+    <div id="w2WSum">${w2WdSum(amt, fee, total, short, mine)}</div>
+    <div id="w2Msg" class="w2-msg"></div><button type="button" class="w2-cta" id="w2WGo" ${amt >= 100 && !short ? "" : "disabled"} onclick="w2WdGo()">Withdraw ${amt > 0 ? w2Money(amt) : ""}</button>`;
+}
+function w2WdSum(amt, fee, total, short, mine) {
+  return w2Lines([["They receive", w2Money(amt)], ["Transfer fee", "+" + w2Money(fee), "fee"], ["Total from your wallet", w2Money(total), "tot"], ["Wallet after", w2Money(Math.max(0, mine - total))]]) + (short ? `<div class="w2-hint bad">Not enough in your wallet. Add ${w2Money(total - mine)} or withdraw less.</div>` : "");
+}
+function w2WdUpdate() {
+  const amt = Number(W2.wd.amount || 0), fee = w2Fee("transfer", amt), total = amt + fee, mine = Number(W2.ov?.me_wallet || 0), short = total > mine;
+  const box = document.getElementById("w2WSum"); if (box) box.innerHTML = w2WdSum(amt, fee, total, short, mine);
+  const go = document.getElementById("w2WGo"); if (go) { go.disabled = !(amt >= 100 && !short); go.textContent = "Withdraw " + (amt > 0 ? w2Money(amt) : ""); }
+}
+function w2WdGo() {
+  const d = W2.wd, amt = Math.round(Number(d.amount || 0)), bank = document.getElementById("w2WBank")?.value, acct = (document.getElementById("w2WAcct")?.value || "").replace(/\s+/g, ""), msg = document.getElementById("w2Msg");
+  if (!bank) { msg.textContent = "Pick the bank."; return; }
+  if (!/^\d{10}$/.test(acct)) { msg.textContent = "The account number is 10 digits."; return; }
+  if (!(amt >= 100)) return;
+  w2Pin(`Withdraw ${w2Money(amt)}`, async (pin) => {
+    const r = await sbFn("wallet-topup", { action: "withdraw", amount: amt, bank_code: bank, account_number: acct, mode: w2Admin() && d.mode === "meta" ? "meta" : "bank", pin }).catch((e) => ({ error: e.message }));
+    if (r.error) return r.error;
+    W2.wd.done = { amount: amt, fee: Number(r.fee || 0), account_name: r.account_name, bank_name: r.bank_name }; if (W2.ov) W2.ov.me_wallet = Number(W2.ov.me_wallet || 0) - amt - Number(r.fee || 0);
+    w2Draw(); w2LoadActs(); if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank"); return "";
+  });
 }

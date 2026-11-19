@@ -419,8 +419,33 @@ Deno.serve(async (req)=>{
       const { data: tfl } = frIds.length ? await admin.from("fee_ledger").select("ref, fee_naira").in("ref", frIds).eq("kind", "transfer") : { data: [] };
       const tfBy = Object.fromEntries((tfl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
       for (const x of frs ?? []) rows.push({ id: x.id, kind: "to_meta", title: "Sent to Meta", sub: x.destination_account_name || x.req_account_name || "", amount: -Number(x.amount_naira), fee: tfBy[x.id] || 0, at: x.transferred_at ?? x.requested_at, ref: x.id, dir: "out" });
+      let wdQ = admin.from("admin_withdrawals").select("id, amount_naira, status, created_at, sent_at, destination_account_name, destination_bank_name").eq("company_id", me.company_id).in("status", ["pending", "sent"]);
+      wdQ = mb ? wdQ.eq("media_buyer_id", mb) : wdQ.is("media_buyer_id", null);
+      const { data: wds } = await lim(wdQ).order("created_at", { ascending: false }).limit(60);
+      const wIds = (wds ?? []).map((x)=>x.id);
+      const { data: wfl } = wIds.length ? await admin.from("fee_ledger").select("ref, fee_naira").in("ref", wIds).eq("kind", "transfer") : { data: [] };
+      const wfBy = Object.fromEntries((wfl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
+      for (const x of wds ?? []) rows.push({ id: x.id, kind: "withdrawal", title: "Withdrawal", sub: [x.destination_account_name, x.destination_bank_name].filter(Boolean).join(" · "), amount: -Number(x.amount_naira), fee: wfBy[x.id] || 0, at: x.sent_at ?? x.created_at, ref: x.id, dir: "out" });
       rows.sort((x, y)=>new Date(y.at).getTime() - new Date(x.at).getTime());
       return json({ ok: true, items: rows.slice(0, limit), more: rows.length > limit });
+    }
+    if (action === "withdraw") {
+      // Take money out of my wallet: an owner/admin to any Nigerian bank account or to Meta; a media buyer to a bank account in their own name.
+      const amount = Math.round(Number(b?.amount));
+      if (!Number.isFinite(amount) || amount < 100 || amount > 5_000_000) return json({ error: "Withdraw between ₦100 and ₦5,000,000." }, 400);
+      const acct = String(b?.account_number ?? "").replace(/\s+/g, ""), bank = String(b?.bank_code ?? "").trim();
+      if (!/^\d{10}$/.test(acct)) return json({ error: "An account number is 10 digits." }, 400);
+      if (!bank) return json({ error: "Pick the bank." }, 400);
+      const pin = String(b?.pin ?? "");
+      if (!/^\d{4,6}$/.test(pin)) return json({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+      const mode = b?.mode === "meta" ? "meta" : "bank";
+      if (mode === "meta" && !isAdmin) return json({ error: "Use Send to Meta." }, 403);
+      const p = await checkPin(me.id, pin);
+      if (!p.ok) return json({ error: p.error }, 403);
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-admin-withdraw`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, "x-internal-key": SERVICE_KEY },
+        body: JSON.stringify({ on_behalf_of: me.id, amount_naira: amount, account_number: acct, bank_code: bank, approved_with: "pin", source: "dashboard", mode }) });
+      const j = await r.json().catch(()=>({ error: "No answer from the payment service." }));
+      return json(j, r.ok ? 200 : r.status === 401 ? 500 : r.status);
     }
     if (action === "request") {
       if (me.role !== "buyer" || !me.media_buyer_id) return json({
