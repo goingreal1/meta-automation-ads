@@ -27,13 +27,17 @@ const AGENTS: Record<Speaker, { name: string; role: string; brief: string }> = {
 const rules = (verified: boolean) => `Rules for everyone:
 - Speak like a real teammate in a meeting: 2 to 4 short sentences, plain words, no bullet lists, no headings, no emojis.
 - Use ONLY the numbers in the briefing. If a number is missing, say it is missing. Never invent sales, quotes or results.
+- THE REAL PICTURE IS live_meta_from_ads_manager (straight from Meta). For every campaign it has numbers for today, yesterday, the last 2 days (yesterday + today), the last 7 days and the last 30 days. Before you say anything is winning, losing or "performing well", look at those windows and name the campaign, the window and the numbers (spend, purchases or conversations, cost per purchase or conversation). A campaign is winning only if the live numbers say so. Never call a product a winner from orders alone, and never say "interest but no sales" unless you checked the purchases in those windows.
+- If live_meta_note says the live numbers could not be read, say that plainly and do not guess results.
+- LEARN FROM THE WINNERS: live_meta_from_ads_manager.accounts[].winners shows, for the best campaigns, how each ad set was set up (countries, ages, gender, interests, placements, budget, optimisation) and the ad copy, headline and picture of their best ads. When you propose new ads, say what you are copying from a winner (the hook, the angle, the audience) and what you are changing.
+- COUNTRY: every launch runs in a named country. If the product's market is not clear from the briefing or the winning campaigns, the Media Buyer asks the BOSS which country before the launch is decided.
 - Everything is in Nigerian naira (₦). The team works for one business.
 - CLAIMS: ${verified
     ? "This business has been verified by Revora. For each product you may use the claims listed in that product's approved_claims, in those words. Do not state any product claim that is not listed there, and never promise a cure or guaranteed result. If approved_claims is empty for a product, treat it as having no claims."
     : "This business is not verified yet, so make no product claims beyond the plain product description (what it is, the price, the offer, delivery and payment options). Never say a product cures, treats or fixes a condition. Bold hooks, urgency and strong offers are fine."}
 - Respect each product's own safety notes.`;
 
-async function openaiStream(messages: { role: string; content: string }[], onText: (t: string) => Promise<void>, json_mode = false): Promise<string> {
+async function openaiStream(messages: { role: string; content: unknown }[], onText: (t: string) => Promise<void>, json_mode = false): Promise<string> {
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: MODEL, messages, stream: !json_mode, temperature: 0.8, ...(json_mode ? { response_format: { type: "json_object" } } : {}) }),
@@ -154,7 +158,7 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
   const cap = Number(team?.daily_budget_cap_naira ?? 0), hour = Number(team?.launch_hour_lagos ?? 0);
   const startAt = nextStart(hour);
   const { data: imgs } = await db.from("ai_team_images").select("brief, creative_id").eq("meeting_id", meetingId).eq("status", "approved");
-  const { data: prods } = await db.from("products").select("id, product_name, destination_type, landing_page_url, ad_account_id, is_active").eq("company_id", companyId).eq("is_active", true);
+  const { data: prods } = await db.from("products").select("id, product_name, destination_type, landing_page_url, ad_account_id, is_active, target_countries").eq("company_id", companyId).eq("is_active", true);
   const todayStart = new Date(Math.floor((Date.now() + 3600_000) / 86400_000) * 86400_000 - 3600_000).toISOString();
   const { data: today } = await db.from("ai_launches").select("daily_budget_naira").eq("company_id", companyId).in("status", ["proposed", "scheduled"]).gte("created_at", todayStart);
   let committed = (today ?? []).reduce((a, r) => a + Number(r.daily_budget_naira || 0), 0);
@@ -172,6 +176,9 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
     if (!budget) { await skip("No daily budget in the plan."); continue; }
     if (!cap) { await skip("Set a daily spend cap in Settings first (it is ₦0, so the media buyer may not spend)."); continue; }
     if (committed + budget > cap) { await skip(`Over today's spend cap (₦${cap.toLocaleString()}); ₦${committed.toLocaleString()} is already committed.`); continue; }
+    // Which country: what the meeting decided, else the product's own market, else Nigeria (the business default).
+    const cc = (v: unknown) => (Array.isArray(v) ? v : []).map((x) => String(x).trim().toUpperCase()).filter((x) => /^[A-Z]{2}$/.test(x)).slice(0, 5);
+    const countries = cc(it?.countries).length ? cc(it?.countries) : cc(prod.target_countries).length ? cc(prod.target_countries) : ["NG"];
     const { data: acct } = await db.from("ad_accounts").select("id, name, nickname, media_buyer_id, status").eq("id", prod.ad_account_id).maybeSingle();
     if (!acct || String(acct.status ?? "active").toLowerCase() !== "active") { await skip("The product's ad account is not active."); continue; }
     const { data: buyer } = acct.media_buyer_id ? await db.from("media_buyers").select("name").eq("id", acct.media_buyer_id).maybeSingle() : { data: null };
@@ -186,7 +193,7 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
     const { data } = await db.from("ai_launches").insert({
       ...base, status: "proposed", product_id: prod.id, ad_account_id: acct.id, account_name: acct.nickname || acct.name, media_buyer_id: acct.media_buyer_id, buyer_name: buyer?.name ?? null,
       // deno-lint-ignore no-explicit-any
-      creative_ids: mine.map((i: any) => i.creative_id), destination: prod.destination_type ?? "website", landing_url: url, copies,
+      creative_ids: mine.map((i: any) => i.creative_id), destination: prod.destination_type ?? "website", landing_url: url, copies, countries,
     }).select("*").single();
     committed += budget; out.push(data);
   }
@@ -212,7 +219,7 @@ async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
     ad_account_id: l.ad_account_id, product_name: l.product_name, destination: l.destination ?? "website", objective: "sales", budget_type: "abo",
     ...(l.landing_url ? { landing_url: l.landing_url } : {}), campaign_name: `AI Team · ${l.product_name} · ${new Date(start.getTime() + 3600_000).toISOString().slice(0, 10)}`,
     asset_ids: l.creative_ids, copies, ads: (l.creative_ids as string[]).map((id, i) => ({ asset_id: id, copy_index: Math.min(i, copies.length - 1) })),
-    adsets: [{ label: "AI Team", budget_naira: Number(l.daily_budget_naira) }], person_confirmed: true, start_time: lagosIso(start),
+    adsets: [{ label: "AI Team", budget_naira: Number(l.daily_budget_naira), ...(Array.isArray(l.countries) && l.countries.length ? { countries: l.countries } : {}) }], person_confirmed: true, start_time: lagosIso(start),
   });
   const planId = planned?.plan_id ?? planned?.plan?.id ?? planned?.id;
   if (!planId) return await fail(String(planned?.message ?? planned?.error ?? "The campaign plan could not be made.").slice(0, 300));
@@ -338,10 +345,30 @@ async function tick() {
   return log;
 }
 
+// The real, live numbers from Meta (not the stored daily table): every campaign today / yesterday / last 2 days / last 7 / last 30 days,
+// plus how the winning campaigns were built and what their ads say. Read through ads-manager with the internal key.
+async function liveMeta(companyId: string): Promise<{ data?: unknown; images: string[]; note?: string }> {
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 55_000);
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/ads-manager`, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "team_snapshot", company_id: companyId }) });
+    clearTimeout(t);
+    const o = await r.json().catch(() => null);
+    if (!r.ok || !o?.ok) return { images: [], note: "Live numbers from Meta could not be read for this meeting: " + String(o?.error ?? r.status).slice(0, 120) };
+    // deno-lint-ignore no-explicit-any
+    const images: string[] = (o.accounts ?? []).flatMap((a: any) => (a.winners ?? []).flatMap((w: any) => (w.best_ads ?? []).slice(0, 1).map((x: any) => x.picture_url))).filter((u: unknown) => typeof u === "string" && u.startsWith("https://")).slice(0, 3);
+    // the picture links are only for the creative agent's eyes; keep them out of the written briefing (they are very long)
+    // deno-lint-ignore no-explicit-any
+    for (const a of o.accounts ?? []) { (a.campaigns ?? []).splice(12); for (const w of a.winners ?? []) for (const x of w.best_ads ?? []) delete x.picture_url; }
+    return { data: o, images };
+  } catch (e) { return { images: [], note: "Live numbers from Meta could not be read for this meeting: " + String((e as Error)?.message ?? e).slice(0, 100) }; }
+}
 async function runMeeting(meetingId: string, companyId: string, topic: string, demo: boolean, daily = false, auto = false) {
   try {
-    const { data: brief } = await db.rpc("rv_team_briefing", { p_company: companyId });
-    const briefing = JSON.stringify(brief ?? {}).slice(0, 9000);
+    const { data: brief0 } = await db.rpc("rv_team_briefing", { p_company: companyId });
+    const brief = { ...(brief0 ?? {}) } as Record<string, unknown>;
+    delete brief.ads_last_7d; // the stored daily table lags and was wrong: the live Meta numbers below replace it
+    const live = demo ? { images: [] as string[], data: undefined, note: undefined } : await liveMeta(companyId);
+    const briefing = JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...brief }).slice(0, 48000);
     // Who speaks, in order. After a person speaks, the next speaker answers them.
     const plan: Speaker[] = ["team_lead", "creative", "media_buyer", "customer_service", "team_lead", "creative", "media_buyer", "team_lead"];
     const count: Record<string, number> = {};
@@ -352,10 +379,14 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
       const row = await addMessage(meetingId, companyId, sp, "", false);
       const push = async (t: string) => { await db.from("ai_meeting_messages").update({ content: t, updated_at: new Date().toISOString() }).eq("id", row.id); };
       const n = count[sp] = (count[sp] ?? -1) + 1;
-      const text = demo ? await demoSpeak(sp, n, push) : await openaiStream([
+           const msgs0 = [
         { role: "system", content: `You are ${a.name}, the ${a.role} of an AI marketing team for a Nigerian online business. ${a.brief}\n\n${rules(!!(brief as { claims_verified?: boolean } | null)?.claims_verified)}\n\nMeeting topic: ${topic}\n\nBRIEFING (real data):\n${briefing}` },
         { role: "user", content: `Meeting so far:\n${transcript || "(nothing yet, you open the meeting)"}\n\nNow it is your turn, ${a.name}. ${sp === "team_lead" && !transcript ? "Open the meeting: say what the numbers show and what today's focus should be." : sp === "team_lead" && (count.team_lead ?? 0) > 1 ? "Close the meeting: state the decisions clearly (which products, which angles, how aggressive, what to launch tonight)." : "Respond to what was said and add your part."}` },
-      ], push);
+      ]; 
+      const withImgs = sp === "creative" && live.images.length ? [msgs0[0], { role: "user", content: [{ type: "text", text: String((msgs0[1] as { content: string }).content) + "\n\nThe pictures attached are the best ads running now. Look at them before you propose images." }, ...live.images.map((u) => ({ type: "image_url", image_url: { url: u } }))] }] : msgs0;
+      let text: string;
+      if (demo) text = await demoSpeak(sp, n, push);
+      else { try { text = await openaiStream(withImgs, push); } catch (e) { if (withImgs === msgs0) throw e; text = await openaiStream(msgs0, push); } }
       await db.from("ai_meeting_messages").update({ content: text.trim(), done: true, updated_at: new Date().toISOString() }).eq("id", row.id);
     }
     // The written decision the creative agent and media buyer will work from.
@@ -364,7 +395,7 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
       const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
       const transcript = (msgs ?? []).map((m) => `${AGENTS[m.speaker as Speaker]?.name ?? "BOSS"}: ${m.content}`).join("\n");
       const raw = await openaiStream([
-        { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "kill_rule": string}], "risks": [string]}. Use only products from the briefing. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing}` },
+        { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "countries": [string], "kill_rule": string}], "risks": [string]}. Use only products from the briefing. "countries" are two-letter country codes the launch targets, for example ["KE"] or ["NG"]; take them from what the meeting said or from the winning campaign for that product, and leave the list empty only if nobody said. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing}` },
         { role: "user", content: `Meeting transcript:\n${transcript}` },
       ], async () => {}, true);
       try { decision = JSON.parse(raw); } catch { decision = { summary: raw.slice(0, 600) }; }
@@ -390,7 +421,8 @@ Deno.serve(async (req) => {
   if (!ud?.user) return json({ error: "Please log in." }, 401);
   const { data: p } = await db.from("profiles").select("company_id, role").eq("id", ud.user.id).maybeSingle();
   if (!p?.company_id) return json({ error: "No company on this account." }, 403);
-  const isOwner = ["owner", "admin"].includes(String(p.role ?? ""));
+  // Owners, admins and media buyers all run the AI Team: settings, autopilot, images and launches (the spend limit still caps everything).
+  const isOwner = ["owner", "admin", "buyer"].includes(String(p.role ?? ""));
   const canStart = isOwner || String(p.role ?? "") === "buyer"; // media buyers can call a meeting (it spends nothing); approving images and launches stays with the owner
   const b = await req.json().catch(() => ({}));
   const companyId = p.company_id as string;
@@ -412,12 +444,12 @@ Deno.serve(async (req) => {
     const { data: team } = await db.from("ai_teams").select("*").eq("company_id", companyId).maybeSingle();
     const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
     const { data: images } = await db.from("ai_team_images").select("id, meeting_id, brief, status, image_url, error, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
-    const { data: launches } = await db.from("ai_launches").select("id, meeting_id, product_name, account_name, buyer_name, daily_budget_naira, status, note, start_at, kill_rule, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
+    const { data: launches } = await db.from("ai_launches").select("id, meeting_id, product_name, account_name, buyer_name, daily_budget_naira, status, note, start_at, kill_rule, created_at, countries").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
     return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!(OPENAI || RUNWAY), voice_ready: !!OPENAI, claims_verified: !!team?.claims_verified_at, can_manage: isOwner, can_start: canStart });
   }
 
   if (b?.action === "settings") {
-    if (!isOwner) return json({ error: "Only the owner can change the team's settings." }, 403);
+    if (!isOwner) return json({ error: "You do not have access to change the team settings." }, 403);
     const patch: Record<string, unknown> = { company_id: companyId, updated_at: new Date().toISOString() };
     if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
     if (typeof b.auto_launch === "boolean") patch.auto_launch = b.auto_launch;
@@ -444,14 +476,14 @@ Deno.serve(async (req) => {
   }
 
   if (b?.action === "make_images") {
-    if (!isOwner) return json({ error: "Only the owner or an admin can ask the creative agent to make images." }, 403);
+    if (!isOwner) return json({ error: "You do not have access to ask the creative agent to make images." }, 403);
     if (!OPENAI && !RUNWAY) return json({ error: "Image making is not switched on yet: it needs the OpenAI key (OPENAI_API_KEY)." }, 503);
     const r = await makeImages(String(b?.meeting_id ?? ""), companyId);
     return json(r.error ? { error: r.error } : { ok: true, started: r.started }, r.error ? 409 : 200);
   }
 
   if (b?.action === "approve_image" || b?.action === "reject_image") {
-    if (!isOwner) return json({ error: "Only the owner or an admin can approve images." }, 403);
+    if (!isOwner) return json({ error: "You do not have access to approve images." }, 403);
     const { data: im } = await db.from("ai_team_images").select("*").eq("id", String(b?.image_id ?? "")).maybeSingle();
     if (!im || im.company_id !== companyId) return json({ error: "Image not found." }, 404);
     if (b.action === "reject_image") { await db.from("ai_team_images").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", im.id); return json({ ok: true }); }
@@ -460,18 +492,18 @@ Deno.serve(async (req) => {
   }
 
   if (b?.action === "propose_launches") {
-    if (!isOwner) return json({ error: "Only the owner or an admin can prepare launches." }, 403);
+    if (!isOwner) return json({ error: "You do not have access to prepare launches." }, 403);
     const r = await proposeLaunches(String(b?.meeting_id ?? ""), companyId, ud.user.id);
     return json(r, "error" in r ? 409 : 200);
   }
   if (b?.action === "approve_launch") {
-    if (!isOwner) return json({ error: "Only the owner or an admin can approve a launch." }, 403);
+    if (!isOwner) return json({ error: "You do not have access to approve a launch." }, 403);
     const ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId, role: p.role ?? "", mediaBuyerId: null, displayName: "" };
     const r = await approveLaunch(String(b?.launch_id ?? ""), ctx);
     return json(r, "error" in r ? 409 : 200);
   }
   if (b?.action === "cancel_launch") {
-    if (!isOwner) return json({ error: "Only the owner or an admin can cancel a launch." }, 403);
+    if (!isOwner) return json({ error: "You do not have access to cancel a launch." }, 403);
     await db.from("ai_launches").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", String(b?.launch_id ?? "")).eq("company_id", companyId).eq("status", "proposed");
     return json({ ok: true });
   }
