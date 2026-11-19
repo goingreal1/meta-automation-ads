@@ -278,6 +278,8 @@ function evaluateRule(rule, ad, life) {
   if (!rule.enabled) return null;
   if (hours < Number(rule.min_hours)) return null;
   if (life.spend < Number(rule.min_spend)) return null;
+  // "Never pause an ad that has sold": only ads with no purchases are judged, like campaign and ad set spend limits.
+  if (rule.skip_if_purchase && ad.kind !== "messaging" && Number(life.purchases ?? 0) > 0) return null;
   const results = ad.kind === "messaging" ? life.conversations : life.purchases;
   const label = ad.kind === "messaging" ? "conversation" : "purchase";
   const cost = results > 0 ? life.spend / results : null;

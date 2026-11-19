@@ -540,6 +540,7 @@ async function bvRenderKillRules() {
           <label class="kr-sw"><span class="switch"><input type="checkbox" class="kr-enabled" ${v.enabled ? "checked" : ""}><span class="sw-track"></span></span> Use this rule${r ? "" : " <span class=\"kr-note\">(not set up yet)</span>"}</label>
           <label class="kr-sw"><span class="switch"><input type="checkbox" class="kr-auto" ${v.auto_kill ? "checked" : ""}><span class="sw-track"></span></span> Pause automatically</label>
         </div>
+        ${k.kind === "purchase" ? `<div class="kr-switches" style="margin-top:6px;"><label class="kr-sw"><span class="switch"><input type="checkbox" class="kr-skip" ${v.skip_if_purchase ? "checked" : ""}><span class="sw-track"></span></span> Never pause an ad that has a purchase <span class="kr-note">(only ads with no purchases are judged)</span></label></div>` : ""}
         <div class="fg" style="grid-template-columns:repeat(3,minmax(0,1fr));">
           <div class="field"><label>Max cost per ${k.unit} (₦)</label><input type="number" min="1" class="kr-max" value="${Number(v.max_cost_per_result)}"></div>
           <div class="field"><label>Judge after it spent (₦)</label><input type="number" min="0" class="kr-spend" value="${Number(v.min_spend)}"></div>
@@ -623,7 +624,7 @@ async function bvSaveKillRule(kind) {
   if (auto && enabled && !confirm("Turn on automatic pausing? Ads that break this rule will be paused on Meta for you, without asking.")) return;
   const { error } = await supabaseClient.from("kill_rules").upsert({
     profile_id: sessionData.user.id, company_id: window.myProfile.company_id, kind,
-    enabled, auto_kill: auto, max_cost_per_result: max, min_spend: spend, min_hours: hours, ...(lpv != null ? { max_cost_per_lpv: lpv > 0 ? lpv : null } : {}), updated_at: new Date().toISOString(),
+    enabled, auto_kill: auto, max_cost_per_result: max, min_spend: spend, min_hours: hours, ...(lpv != null ? { max_cost_per_lpv: lpv > 0 ? lpv : null } : {}), ...(g(".kr-skip") ? { skip_if_purchase: g(".kr-skip").checked } : {}), updated_at: new Date().toISOString(),
   }, { onConflict: "profile_id,kind" });
   msg.innerHTML = error ? `<span style="color:var(--danger);">❌ ${escH(error.message)}</span>` : `<span style="color:var(--accent);">✅ Saved</span>`;
   if (!error) { am.at = 0; setTimeout(() => { if (msg) msg.innerHTML = ""; }, 2500); }
