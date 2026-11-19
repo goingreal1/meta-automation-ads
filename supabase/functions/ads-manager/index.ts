@@ -873,21 +873,24 @@ async function handlePurchaseAlerts() {
       const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
       const ins = await insightsByLevel(actId, "ad", "today", token, factor);
       const buying = Object.entries(ins).filter(([, m])=>(m.purchases ?? 0) > 0);
+      let campIns = null; // campaign totals for the message, only fetched when something new happened
       const { data: seenRows } = await admin.from("meta_purchase_seen").select("ad_id, day, purchases").eq("ad_account_id", a.id).gte("day", yday);
       const seen = {}; for (const r of seenRows ?? []) if (r.day === day) seen[r.ad_id] = r.purchases;
       const baseline = !(seenRows ?? []).length; // the first run only learns what is already there, so old purchases do not flood the bell
       for (const [adId, m] of buying){
         const prev = seen[adId] ?? 0;
         if (m.purchases > prev && !baseline && sent < 30) {
-          let name = adId, camp = "";
-          try { const o = await graphGet(adId, { fields: "name,campaign{name}" }, token); name = o.name ?? adId; camp = o.campaign?.name ?? ""; } catch (_) { /* keep the id */ }
+          let name = adId, camp = "", campId = "";
+          try { const o = await graphGet(adId, { fields: "name,campaign{id,name}" }, token); name = o.name ?? adId; camp = o.campaign?.name ?? ""; campId = o.campaign?.id ?? ""; } catch (_) { /* keep the id */ }
+          if (!campIns) campIns = await insightsByLevel(actId, "campaign", "today", token, factor).catch(()=>({}));
+          const ct = campId ? campIns[campId] : null;
           const n = m.purchases - prev, cpa = m.spend > 0 ? Math.round(m.spend / m.purchases) : null;
           await notifyRpc(admin, {
             p_company: a.company_id, p_category: "orders", p_kind: "meta_purchase",
             p_title: `🛍 ${n > 1 ? n + " purchases" : "Purchase"} on Meta · ${String(name).slice(0, 70)}`,
-            p_body: [camp && camp.slice(0, 80), `${m.purchases} today`, `₦${Math.round(m.spend).toLocaleString("en-NG")} spent${cpa ? ` (₦${cpa.toLocaleString("en-NG")} each)` : ""}`, a.nickname].filter(Boolean).join(" · "),
+            p_body: [`Meta counted ${m.purchases} purchase${m.purchases === 1 ? "" : "s"} on this ad today`, `₦${Math.round(m.spend).toLocaleString("en-NG")} spent${cpa ? ` (₦${cpa.toLocaleString("en-NG")} each)` : ""}`, `${Math.round(m.reach || 0).toLocaleString("en-NG")} people reached`, ct ? `Campaign today: ${ct.purchases} purchases · ₦${Math.round(ct.spend).toLocaleString("en-NG")} spent · ${Math.round(ct.reach || 0).toLocaleString("en-NG")} reached` : null, camp && camp.slice(0, 70), a.nickname].filter(Boolean).join(" · "),
             p_url: "/dashboard_new.html?open=tab:campaigns", p_severity: "success",
-            p_data: { ad_id: adId, ad_account_id: a.id, purchases_today: m.purchases, added: n, spend: Math.round(m.spend) },
+            p_data: { ad_id: adId, ad_account_id: a.id, purchases_today: m.purchases, added: n, spend: Math.round(m.spend), reach: Math.round(m.reach || 0), campaign: ct ? { purchases: ct.purchases, spend: Math.round(ct.spend), reach: Math.round(ct.reach || 0) } : null },
             p_dedupe: `metapurchase:${adId}:${day}:${m.purchases}`, p_buyer: a.media_buyer_id ?? null, p_user: null, p_push: true
           });
           sent++;
@@ -946,6 +949,77 @@ async function handleDailyDigest(push = true) {
         p_data: { date: day, orders: ob.n, revenue: ob.value, meta_spend: Math.round(mb.spend), meta_purchases: mb.purchases }, p_dedupe: `digest2:${day}:${b.id}`, p_buyer: null, p_user: b.id, p_push: push });
       sent++;
     }
+  }
+  return { ok: true, sent };
+}
+// -- reports at 12 PM, 4 PM and 8 PM (Lagos): everything for the day so far, from Meta (spend, purchases, reach, balance, and spend per campaign / ad set / ad) --
+async function accountBalance(admin, a, actId, token) {
+  try {
+    if (a.billing_mode === "managed") { const { data: w } = await admin.rpc("company_wallet_balance", { p_company: a.company_id }); return Math.max(0, Number(w ?? 0)); }
+    const d = await graphGet(`act_${actId}`, { fields: "is_prepay_account,funding_source_details" }, token);
+    return parseAvailable(d.funding_source_details?.display_string);
+  } catch (_) { return null; }
+}
+async function handleMetaReport(slotHour, push = true) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const day = wat(0), from = new Date(`${day}T00:00:00+01:00`), to = new Date(from.getTime() + 86400000);
+  const label = slotHour === 12 ? "Midday report" : slotHour === 16 ? "Afternoon report" : slotHour === 20 ? "Evening report" : "Report";
+  const slot = slotHour === 12 || slotHour === 16 || slotHour === 20 ? String(slotHour) : "x";
+  const money = (n)=>"₦" + Math.round(n || 0).toLocaleString("en-NG");
+  const { data: companies } = await admin.from("companies").select("id");
+  let sent = 0;
+  for (const c of companies ?? []){
+    const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct").eq("company_id", c.id).eq("status", "active");
+    const usable = (accounts ?? []).filter((a)=>/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+    if (!usable.length) continue;
+    const per = await Promise.allSettled(usable.map(async (a)=>{
+      const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
+      const [rows, campIns, acctIns, balance] = await Promise.all([
+        graphGetAll(`act_${actId}/insights`, { level: "ad", time_range: JSON.stringify({ since: day, until: day }), fields: "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,actions" }, token, 12),
+        insightsByLevel(actId, "campaign", "today", token, factor).catch(()=>({})),
+        graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: day, until: day }), fields: "reach,impressions,spend" }, token).catch(()=>[]),
+        accountBalance(admin, a, actId, token)
+      ]);
+      const camps = new Map();
+      for (const r of rows){
+        const m = insightRow(r, factor);
+        if (!(m.spend > 0 || m.purchases > 0)) continue;
+        const cp = camps.get(r.campaign_id) ?? { id: r.campaign_id, name: r.campaign_name, spend: 0, purchases: 0, reach: Math.round(campIns[r.campaign_id]?.reach ?? 0), sets: new Map() };
+        cp.spend += m.spend; cp.purchases += m.purchases;
+        const st = cp.sets.get(r.adset_id) ?? { name: r.adset_name, spend: 0, purchases: 0, ads: [] };
+        st.spend += m.spend; st.purchases += m.purchases; st.ads.push({ name: r.ad_name, spend: Math.round(m.spend), purchases: m.purchases });
+        cp.sets.set(r.adset_id, st); camps.set(r.campaign_id, cp);
+      }
+      const list = [...camps.values()].sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend).slice(0, 10).map((cp)=>({
+        name: cp.name, spend: Math.round(cp.spend), purchases: cp.purchases, reach: cp.reach,
+        adsets: [...cp.sets.values()].sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend).slice(0, 6).map((st)=>({ name: st.name, spend: Math.round(st.spend), purchases: st.purchases, ads: st.ads.sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend).slice(0, 5) }))
+      }));
+      const spend = [...camps.values()].reduce((t, x)=>t + x.spend, 0), purchases = [...camps.values()].reduce((t, x)=>t + x.purchases, 0);
+      const ar = acctIns[0] ? num(acctIns[0].reach) : 0;
+      return { buyer: a.media_buyer_id, account: a.nickname, balance, spend: Math.round(spend), purchases, reach: Math.round(ar), campaigns: list };
+    }));
+    const okAccts = per.filter((r)=>r.status === "fulfilled").map((r)=>r.value);
+    const { data: ords } = await admin.from("orders").select("media_buyer_id, order_status, order_value_naira").eq("company_id", c.id).gte("ordered_at", from.toISOString()).lt("ordered_at", to.toISOString());
+    const make = (buyer)=>{
+      const accts = okAccts.filter((x)=>buyer === undefined || x.buyer === buyer);
+      const o = (ords ?? []).filter((x)=>x.order_status !== "cancelled" && (buyer === undefined || x.media_buyer_id === buyer));
+      const t = { spend: accts.reduce((s, x)=>s + x.spend, 0), purchases: accts.reduce((s, x)=>s + x.purchases, 0), reach: accts.reduce((s, x)=>s + x.reach, 0), balance: accts.reduce((s, x)=>s + (x.balance ?? 0), 0), orders: o.length, orders_value: o.reduce((s, x)=>s + Number(x.order_value_naira || 0), 0) };
+      return { t, accts };
+    };
+    const emit = async (who, r, userId)=>{
+      const best = r.accts.flatMap((x)=>x.campaigns).sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend)[0];
+      if (!(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0)) return;
+      await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "meta_report",
+        p_title: `📈 ${label}${who ? " · " + who : ""}: ${money(r.t.spend)} spent · ${r.t.purchases} Meta purchase${r.t.purchases === 1 ? "" : "s"}`,
+        p_body: [`${r.t.reach.toLocaleString("en-NG")} people reached`, `Balance ${money(r.t.balance)}`, r.t.orders ? `${r.t.orders} CRM order${r.t.orders === 1 ? "" : "s"} · ${money(r.t.orders_value)}` : "No orders in the CRM", best && best.purchases > 0 ? `Best: ${String(best.name).slice(0, 50)} (${best.purchases})` : null].filter(Boolean).join(" · "),
+        p_url: "/dashboard_new.html?open=tab:campaigns", p_severity: "info",
+        p_data: { report: { label, date: day, totals: r.t, accounts: r.accts.map(({ buyer, ...x })=>x) } },
+        p_dedupe: `report:${day}:${slot}${userId ? ":" + userId : ""}`, p_buyer: null, p_user: userId ?? null, p_push: push });
+      sent++;
+    };
+    await emit("", make(undefined), null);
+    const { data: buyers } = await admin.from("profiles").select("id, media_buyer_id").eq("company_id", c.id).not("media_buyer_id", "is", null);
+    for (const b of buyers ?? []) await emit("you", make(b.media_buyer_id), b.id);
   }
   return { ok: true, sent };
 }
@@ -1811,11 +1885,11 @@ Deno.serve(async (req)=>{
   });
   try {
     const body = await req.json().catch(()=>({}));
-    if (body.action === "purchase_alerts" || body.action === "daily_digest") {
+    if (body.action === "purchase_alerts" || body.action === "daily_digest" || body.action === "meta_report") {
       const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret0 } = await admin0.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
-      return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : await handleDailyDigest(body.push !== false));
+      return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || new Date(Date.now() + 3600000).getUTCHours(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
     if (body.action === "auto_kill") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);

@@ -96,6 +96,12 @@
 .rvn-stat b{display:block;font-size:16px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rvn-stat span{display:block;font-size:11px;color:var(--muted);margin-top:1px;line-height:1.25}
 .rvn-stat.bad b{color:#d93025}
+.rvn-rep{margin-top:10px;font-size:12.5px}
+.rvn-rep details{border-top:1px solid var(--border);padding:7px 0}.rvn-rep summary{cursor:pointer;display:flex;gap:8px;align-items:baseline;list-style:none}.rvn-rep summary::-webkit-details-marker{display:none}
+.rvn-rep summary b{flex:1;min-width:0;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rvn-rep summary span{color:var(--text2);white-space:nowrap}
+.rvn-rep .rvn-l2{padding:4px 0 2px 12px;color:var(--text2);display:flex;justify-content:space-between;gap:8px}.rvn-rep .rvn-l2 i{font-style:normal;white-space:nowrap}
+.rvn-rep .rvn-l3{padding:1px 0 1px 24px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;font-size:12px}
+.rvn-rep h5{margin:10px 0 2px;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .rvn-ask{margin-top:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:999px;padding:7px 13px;font:inherit;font-size:12.5px;font-weight:650;cursor:pointer}
 .rvn-pages{border:1px solid var(--border);border-radius:16px;background:var(--panel);padding:13px 14px;margin-bottom:6px}
 .rvn-ph{display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -200,6 +206,18 @@
         t(d.abandoned || 0, "Left without ordering", (d.abandoned || 0) > 0) + t(short(d.ad_spend), "Ad spend") + t(d.delivered || 0, "Delivered") + "</div>" +
         '<button type="button" class="rvn-ask" data-ask="' + esc(n.id) + '">Ask AI how today went</button>';
     }
+    if (n.kind === "meta_report" && d.report) {
+      var R = d.report, T = R.totals || {}, tl = function (v, l) { return '<div class="rvn-stat"><b>' + esc(v) + "</b><span>" + esc(l) + "</span></div>"; };
+      var pl = function (x) { return x === 1 ? "" : "s"; };
+      extra = '<div class="rvn-digest">' + tl(naira(T.spend), "Spent") + tl(T.purchases || 0, "Meta purchases") + tl(Number(T.reach || 0).toLocaleString("en-NG"), "People reached") + tl(naira(T.balance), "Balance in Meta") + tl(T.orders || 0, "CRM orders") + tl(short(T.orders_value || 0), "CRM revenue") + "</div>" +
+        '<div class="rvn-rep">' + (R.accounts || []).filter(function (a) { return a.spend > 0 || a.purchases > 0; }).map(function (a) {
+          return "<h5>" + esc(a.account) + " · balance " + (a.balance == null ? "not shown" : naira(a.balance)) + " · spent " + naira(a.spend) + " · " + (a.purchases || 0) + " purchase" + pl(a.purchases) + " · " + Number(a.reach || 0).toLocaleString("en-NG") + " reached</h5>" +
+            (a.campaigns || []).map(function (c) {
+              return "<details><summary><b>" + esc(c.name) + "</b><span>" + naira(c.spend) + " · " + c.purchases + " buy" + (c.purchases === 1 ? "" : "s") + "</span></summary>" +
+                (c.adsets || []).map(function (st) { return '<div class="rvn-l2"><span>' + esc(st.name) + "</span><i>" + naira(st.spend) + " · " + st.purchases + "</i></div>" + (st.ads || []).map(function (ad) { return '<div class="rvn-l3"><span>' + esc(ad.name) + "</span><i>" + naira(ad.spend) + " · " + ad.purchases + "</i></div>"; }).join(""); }).join("") + "</details>";
+            }).join("");
+        }).join("") + "</div>";
+    }
     return '<div class="rvn-card' + (isUnread(n) ? " unread" : "") + '" role="button" tabindex="0" data-id="' + esc(n.id) + '">' +
       '<div class="rvn-ico ' + esc(n.severity) + '">' + svg(n.category) + "</div>" +
       '<div class="rvn-main"><div class="rvn-t"><span>' + esc(plain(n.title)) + "</span><time>" + ago(n.created_at) + "</time></div>" +
@@ -235,6 +253,7 @@
     var ask = e.target.closest("[data-ask]");
     if (ask) { e.stopPropagation(); rvnClose(); markRead([ask.dataset.ask]); if (window.toggleChat) toggleChat(true); if (window.askChat) askChat("Summarize today for me: orders, ad spend, visitors, people who left without ordering, and what I should do tomorrow.", "How did today go?"); return; }
     if (e.target.closest("[data-settings]")) { rvnClose(); var t = document.querySelector('[data-tab="settings"]'); if (t) t.click(); return; }
+    if (e.target.closest(".rvn-rep")) return;
     var c = e.target.closest(".rvn-card");
     if (c) { var n = S.items.filter(function (x) { return x.id === c.dataset.id; })[0]; if (n) go(n); }
   }
