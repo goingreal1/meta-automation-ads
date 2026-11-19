@@ -1571,7 +1571,7 @@ async function handleAutoKill(dryRun = false) {
           graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,status,created_time", effective_status: JSON.stringify(["ACTIVE", "WITH_ISSUES"]) }, token),
           graphGetAll(`act_${actId}/ads`, { fields: "id,adset_id,campaign_id,status,created_time", effective_status: JSON.stringify(AD_STATES) }, token)
         ]);
-        const spendOf = async (lvl)=>{ const m = await insightsByLevel(actId, lvl, "lifetime", token, factorOf(account)); return Object.fromEntries(Object.entries(m).map(([k, v])=>[k, Number(v.spend) || 0])); };
+        const spendOf = async (lvl)=>{ const m = await insightsByLevel(actId, lvl, "lifetime", token, factorOf(account)); return Object.fromEntries(Object.entries(m).map(([k, v])=>[k, { spend: Number(v.spend) || 0, results: Number(v.purchases || 0) + Number(v.conversations || 0) }])); };
         const spend = { campaign: caps.campaign ? await spendOf("campaign") : {}, adset: caps.adset ? await spendOf("adset") : {} };
         const seen = new Set();
         const todo = [...planCaps(caps, campAll, adsets, spend), ...planCascade(campAll, adsets, adsAll)].filter((t)=>!seen.has(t.id) && seen.add(t.id));

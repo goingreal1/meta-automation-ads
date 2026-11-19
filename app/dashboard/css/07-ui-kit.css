@@ -335,3 +335,11 @@
 .rv-ui .cp-md { text-align: left; margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rv-ui .cp-md .am-sub { display: inline !important; margin: 0; }
 .rv-ui .cp-mm { padding-left: 54px; }
+
+/* the ad set / ad table in the details panel must fit without sideways scrolling: page views and cost per page view are the last columns */
+.rv-ui .rv-at th { white-space: normal; line-height: 1.25; vertical-align: bottom; padding: 0 5px 8px; font-size: 12px; }
+.rv-ui .rv-at td { padding: 10px 5px; font-size: 12.5px; white-space: nowrap; }
+.rv-ui .rv-at td:first-child { min-width: 120px; max-width: 170px; white-space: normal; }
+.rv-ui .rv-at td:first-child b { max-width: 110px; }
+.rv-ui .rv-at .rv-pill { padding: 2px 7px; font-size: 11.5px; } .rv-ui .rv-at .rv-th { width: 30px; height: 30px; }
+.rv-ui .rv-at td:first-child { min-width: 96px; max-width: 140px; } .rv-ui .rv-at td:first-child b { max-width: 92px; } .rv-ui .rv-at th, .rv-ui .rv-at td { padding-left: 4px; padding-right: 4px; }

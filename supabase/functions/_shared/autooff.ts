@@ -36,25 +36,27 @@ export function planCascade(campaigns: Obj[], adsets: Obj[], ads: Obj[], now = D
   return out;
 }
 
-// Spend limits: a campaign or ad set that has spent its limit (all its ads together, whole life) is switched off.
-// caps: the smallest limit set by anyone watching this account, per level. spend: lifetime spend by object id.
+// Spend limits: a campaign or ad set that has spent its limit (all its ads together, whole life) WITH NO RESULTS is switched off.
+// One that has sold (website: purchases, WhatsApp: conversations) keeps running: the ad kill rules judge its cost.
+// caps: the smallest limit set by anyone watching this account, per level. spend: lifetime spend and results by object id.
+export type SpendRow = { spend: number; results: number };
 export function planCaps(
   caps: { campaign?: number | null; adset?: number | null },
   campaigns: Obj[], adsets: Obj[],
-  spend: { campaign: Record<string, number>; adset: Record<string, number> },
+  spend: { campaign: Record<string, SpendRow>; adset: Record<string, SpendRow> },
   fmt: (n: number) => string = (n) => "₦" + Math.round(n).toLocaleString("en-NG"),
 ): Pause[] {
   const out: Pause[] = [];
   if (caps.adset && caps.adset > 0) {
     for (const s of adsets) {
-      const sp = spend.adset[s.id] ?? 0;
-      if (isActive(s) && sp >= caps.adset) out.push({ level: "adset", id: s.id, name: s.name ?? s.id, reason: `It has spent ${fmt(sp)}, which reaches your ${fmt(caps.adset)} limit for an ad set.` });
+      const r = spend.adset[s.id];
+      if (isActive(s) && r && r.spend >= caps.adset && !(r.results > 0)) out.push({ level: "adset", id: s.id, name: s.name ?? s.id, reason: `It has spent ${fmt(r.spend)} with no purchases or conversations, which reaches your ${fmt(caps.adset)} limit for an ad set.` });
     }
   }
   if (caps.campaign && caps.campaign > 0) {
     for (const c of campaigns) {
-      const sp = spend.campaign[c.id] ?? 0;
-      if (isActive(c) && sp >= caps.campaign) out.push({ level: "campaign", id: c.id, name: c.name ?? c.id, reason: `All its ad sets together have spent ${fmt(sp)}, which reaches your ${fmt(caps.campaign)} limit for a campaign.` });
+      const r = spend.campaign[c.id];
+      if (isActive(c) && r && r.spend >= caps.campaign && !(r.results > 0)) out.push({ level: "campaign", id: c.id, name: c.name ?? c.id, reason: `All its ad sets together have spent ${fmt(r.spend)} with no purchases or conversations, which reaches your ${fmt(caps.campaign)} limit for a campaign.` });
     }
   }
   return out;
