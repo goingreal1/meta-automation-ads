@@ -150,9 +150,20 @@ Deno.serve(async (req)=>{
     }, 400);
   }
   const action = String(b?.action ?? "overview");
-  if (["start", "verify", "sweep", "resolve"].includes(action) && !PAYSTACK_SECRET_KEY) return json({
+  if (["start", "verify", "sweep", "resolve", "peek"].includes(action) && !PAYSTACK_SECRET_KEY) return json({
     error: "Card payments are not switched on yet."
   }, 500);
+  if (action === "peek") {
+    // Cron-secret only: what Paystack says about one of our references (status, bank response, amount), for diagnosing a failed payment.
+    const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+    const given = req.headers.get("x-cron-secret") || "";
+    if (!given || given !== sec?.value && given !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+    const ref = String(b?.reference ?? "");
+    const r = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(ref)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+    const d = await r.json().catch(()=>null);
+    const t = d?.data ?? {};
+    return json({ http: r.status, message: d?.message, status: t.status, gateway_response: t.gateway_response, amount: t.amount, channel: t.channel, paid_at: t.paid_at, domain: t.domain, fees: t.fees, bank: t.authorization?.bank, card_type: t.authorization?.card_type, country: t.authorization?.country_code, log: (t.log?.history ?? []).slice(-6) });
+  }
   if (action === "sweep") {
     const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
     const given = req.headers.get("x-cron-secret") || "";
@@ -419,6 +430,13 @@ Deno.serve(async (req)=>{
         // A credit that paid the deposit fee shows what actually landed (after the fee), with the money sent as "gross".
         const dfee = a.reason === "given_by_company" ? (feeBy[a.ref] || 0) : 0;
         rows.push({ id: a.id, kind: a.reason, title: a.note ? `${l[0]} · ${a.note.replace(/^(To|From) /, "")}` : l[0], amount: amt - dfee, gross: dfee ? amt : undefined, fee: feeBy[a.ref] || 0, at: a.created_at, ref: a.ref, dir: amt >= 0 ? "in" : "out" });
+      }
+      // Money received from another user: the credit is already net of the receiver's fee, so read the fee from the fee ledger.
+      const recvRows = rows.filter((x)=>x.kind === "received_from_user");
+      if (recvRows.length) {
+        const { data: rf } = await admin.from("fee_ledger").select("ref, fee_naira").in("ref", recvRows.map((x)=>x.ref)).eq("kind", "wallet_receive");
+        const rfBy = Object.fromEntries((rf ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
+        for (const x of recvRows) if (rfBy[x.ref]) { x.fee = rfBy[x.ref]; x.gross = x.amount + rfBy[x.ref]; }
       }
       let tpQ = admin.from("wallet_topups").select("id, reference, amount_naira, status, created_at, confirmed_at, channel, paystack_fee_naira, charged_naira").eq("company_id", me.company_id).eq("status", "confirmed");
       tpQ = mb ? tpQ.eq("media_buyer_id", mb) : tpQ.is("media_buyer_id", null);

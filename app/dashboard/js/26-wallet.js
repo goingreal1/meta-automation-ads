@@ -539,30 +539,34 @@ async function w2AddGo() {
 
 // ---- Send to a Revora user (any company), found by phone number or email ----
 function w2PersonCard(p) { return `<button type="button" class="w2-person" onclick="w2Pick('${p.user_id}')"><span class="w2-av">${escH((p.name || "?").slice(0, 1).toUpperCase())}</span><span class="w2-t"><b>${escH(p.name)}</b><small>${escH(p.role === "buyer" ? "Media buyer" : "Admin")} · ${escH(p.company || "")} · ${escH(p.hint || "")}</small></span></button>`; }
+// Wallet to wallet: the sender pays a send fee on top; the receiver pays a receive fee out of what lands.
+function w2SendCalc(amt) {
+  const fs = w2Fee("wallet_send", amt), fr = Math.min(w2Fee("wallet_receive", amt), amt);
+  return { fs, fr, pays: amt + fs, gets: amt - fr };
+}
 function w2Send() {
   const s = W2.send, mine = Number(W2.ov?.me_wallet || 0);
   if (s.done) return `${w2Nav("Sent", "home")}<div class="w2-rcpt"><div class="w2-ok">${rvIc("check", 26)}</div><small>Sent to ${escH(s.done.to_name || "")}</small><div class="n">${w2Money(s.done.amount)}</div></div>
-    ${w2Lines([["To", escH(s.done.to_name || "")], ["Amount", w2Money(s.done.amount)], ["Revora fee", w2Money(s.done.fee), "fee"], ["Total from your wallet", w2Money(s.done.sender_pays), "tot"]])}<button type="button" class="w2-cta" onclick="W2.send={};w2Go('home');renderWallet(W2.el)">Done</button>`;
+    ${w2Lines([["To", escH(s.done.to_name || "")], ["Amount", w2Money(s.done.amount)], ["Your send fee", w2Money(s.done.fee_sender ?? s.done.fee), "fee"], ["Total from your wallet", w2Money(s.done.sender_pays), "tot"], ["They receive after their fee", w2Money(s.done.receiver_gets ?? s.done.amount)]])}<button type="button" class="w2-cta" onclick="W2.send={};w2Go('home');renderWallet(W2.el)">Done</button>`;
   if (!s.to) return `${w2Nav("Send")}<div class="w2-hint" style="margin-bottom:8px">Send to anyone on Revora, in any company, with their phone number or email. It lands in their wallet at once.</div>
     <div class="w2-find"><input id="w2Key" type="text" inputmode="email" placeholder="Phone number or email" value="${escH(s.key || "")}" onkeydown="if(event.key==='Enter')w2Find()"><button type="button" class="w2-go" onclick="w2Find()">Find</button></div>
     <div id="w2Msg" class="w2-msg">${escH(W2.msg || "")}</div>
     <div class="w2-people">${(s.people || []).map(w2PersonCard).join("")}</div>`;
-  const amt = Number(s.amount || 0), fee = w2Fee("wallet", amt), f = (W2.fees || []).find((x) => x.kind === "wallet"), payer = f?.payer || "sender";
-  const pays = amt + (payer === "sender" ? fee : 0), gets = amt - (payer === "receiver" ? fee : 0), short = pays > mine;
+  const amt = Number(s.amount || 0), c = w2SendCalc(amt), pays = c.pays, short = pays > mine;
   return `${w2Nav("Send", "home")}<button type="button" class="w2-person sel" onclick="W2.send.to=null;w2Draw()"><span class="w2-av">${escH((s.to.name || "?").slice(0, 1).toUpperCase())}</span><span class="w2-t"><b>${escH(s.to.name)}</b><small>${escH(s.to.role === "buyer" ? "Media buyer" : "Admin")} · ${escH(s.to.company || "")} · change</small></span></button>
     <div class="w2-big"><small>Amount</small><input id="w2SAmt" type="number" inputmode="numeric" min="100" step="100" placeholder="0" value="${amt || ""}" oninput="W2.send.amount=this.value;w2SendUpdate()"><small>Available ${w2Money(mine)}</small></div>
     <label class="w2-f">Note (optional)<input id="w2SNote" maxlength="120" placeholder="What is it for?" value="${escH(s.note || "")}" oninput="W2.send.note=this.value"></label>
-    <div id="w2SSum">${w2SendSum(amt, fee, payer, pays, gets, short)}</div>
+    <div id="w2SSum">${w2SendSum(amt, c, short)}</div>
     <div id="w2Msg" class="w2-msg">${escH(W2.msg || "")}</div><button type="button" class="w2-cta" id="w2SGo" ${amt >= 100 && !short ? "" : "disabled"} onclick="w2SendGo()">Send ${amt > 0 ? w2Money(amt) : ""}</button>`;
 }
-function w2SendSum(amt, fee, payer, pays, gets, short) {
-  const lines = [[escH(W2.send.to?.name || "They") + " receives", w2Money(gets)], ["Revora fee" + (payer === "receiver" ? " (paid by them)" : ""), (payer === "sender" ? "+" : "") + w2Money(fee), "fee"], ["Total from your wallet", w2Money(pays), "tot"]];
-  return w2Lines(lines) + (short ? `<div class="w2-hint bad">Not enough in your wallet. Add ${w2Money(pays - Number(W2.ov?.me_wallet || 0))} or send less.</div>` : "");
+function w2SendSum(amt, c, short) {
+  const who = escH(W2.send.to?.name || "They");
+  const lines = [["You send", w2Money(amt)], ["Your send fee", "+" + w2Money(c.fs), "fee"], ["Total from your wallet", w2Money(c.pays), "tot"], [who + " pays a receive fee of", w2Money(c.fr), "fee"], [who + " receives", w2Money(c.gets), "tot g"]];
+  return w2Lines(lines) + (short ? `<div class="w2-hint bad">Not enough in your wallet. Add ${w2Money(c.pays - Number(W2.ov?.me_wallet || 0))} or send less.</div>` : "");
 }
 function w2SendUpdate() {
-  const amt = Number(W2.send.amount || 0), fee = w2Fee("wallet", amt), f = (W2.fees || []).find((x) => x.kind === "wallet"), payer = f?.payer || "sender", mine = Number(W2.ov?.me_wallet || 0);
-  const pays = amt + (payer === "sender" ? fee : 0), gets = amt - (payer === "receiver" ? fee : 0), short = pays > mine;
-  const box = document.getElementById("w2SSum"); if (box) box.innerHTML = w2SendSum(amt, fee, payer, pays, gets, short);
+  const amt = Number(W2.send.amount || 0), c = w2SendCalc(amt), mine = Number(W2.ov?.me_wallet || 0), short = c.pays > mine;
+  const box = document.getElementById("w2SSum"); if (box) box.innerHTML = w2SendSum(amt, c, short);
   const go = document.getElementById("w2SGo"); if (go) { go.disabled = !(amt >= 100 && !short); go.textContent = "Send " + (amt > 0 ? w2Money(amt) : ""); }
 }
 async function w2Find() {
@@ -690,7 +694,7 @@ async function w2CancelLegacy(id) {
 
 // ---- Fees, Team (admins), and the old view for the rest ----
 function w2Fees() {
-  const rows = [["Adding money (card or bank)", "deposit", "Taken from money that arrives from outside."], ["Funds from your admin", "credit", "Admin credits and approved requests."], ["Sending to Meta", "transfer", "Includes the bank's own charge."], ["Sending to another user", "wallet", "Wallet to wallet, any company."]];
+  const rows = [["Adding money (card or bank)", "deposit", "Taken from money that arrives from outside."], ["Funds from your admin", "credit", "Admin credits and approved requests."], ["Sending to Meta", "transfer", "Includes the bank's own charge."], ["Sending to another user (sender pays)", "wallet_send", "Paid on top by the person sending."], ["Receiving from another user (receiver pays)", "wallet_receive", "Taken from what the receiver gets."]];
   return `${w2Nav("Fees")}<div class="w2-sum">${rows.map((r) => `<div class="w2-ln col"><span><b>${r[0]}</b><small>${r[2]}</small></span><span>${escH(w2FeeText(r[1]))}</span></div>`).join("")}</div>
     <div class="w2-hint">Card payments also add Paystack's charge at checkout (1.5% + ₦100, ₦100 waived under ₦2,500, at most ₦2,000). Fees are shown before you confirm and on every receipt.</div>`;
 }
