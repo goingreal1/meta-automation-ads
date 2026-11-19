@@ -151,14 +151,15 @@ Deno.serve(async (req) => {
   }
 
   if (b.action === "delete") {
-    const { data: rows } = await db.from("creative_assets").select("id, storage_provider, storage_path, public_url, launch_batch_id, campaign_name").eq("company_id", me.company_id).eq("public_url", src.public_url);
+    const { data: rows } = await db.from("creative_assets").select("id, asset_type, storage_provider, storage_path, public_url, launch_batch_id, campaign_name").eq("company_id", me.company_id).eq("public_url", src.public_url);
     const used = (rows ?? []).filter((r: any) => r.launch_batch_id || r.campaign_name).length;
     if (used && b.force !== true) return json({ error: `This creative was used in ${used} ad${used > 1 ? "s" : ""}. Deleting it won't stop those ads, but you can't reuse it. Delete anyway?`, used, needs_force: true }, 409);
     const { error } = await db.from("creative_assets").delete().eq("company_id", me.company_id).eq("public_url", src.public_url);
     if (error) return json({ error: error.message }, 500);
     // The file goes only when no other creative row (in any company) still points at it.
     const { count: left } = await db.from("creative_assets").select("id", { count: "exact", head: true }).eq("public_url", src.public_url);
-    if (!left) for (const r of rows ?? []) await removeFile(r as any);
+    // Carousel and Page-post rows own no file of their own (their pictures belong to other creatives), so never remove a file for them.
+    if (!left) for (const r of rows ?? []) if (!['carousel', 'post'].includes((r as any).asset_type)) await removeFile(r as any);
     return json({ ok: true, deleted: rows?.length ?? 0 });
   }
   return json({ error: "Unknown action." }, 400);

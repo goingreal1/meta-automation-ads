@@ -6,7 +6,7 @@ const BV_CTAS = [["SHOP_NOW", "Shop Now"], ["ORDER_NOW", "Order Now"], ["LEARN_M
 async function bvRenderProductVault(productId) {
   const box = document.getElementById("vaultBox"); if (!box) return;
   const p = (window.bvProductsCache || []).find(x => x.id === productId) || {};
-  const assets = await sbQuery("creative_assets", `select=id,file_name,display_name,public_url,asset_type,primary_text,headline,description,cta_type,test_status&product_id=eq.${productId}&order=uploaded_at.desc`).catch(() => []);
+  const assets = await sbQuery("creative_assets", `select=id,file_name,display_name,public_url,asset_type,primary_text,headline,description,cta_type,test_status,carousel_cards,feed_only,meta_post_id&product_id=eq.${productId}&order=uploaded_at.desc`).catch(() => []);
   const complete = assets.filter(a => (a.primary_text || "").trim() && (a.headline || "").trim()).length;
   const hasLink = !!(p.landing_page_url || (p.destination_type === "whatsapp" && p.whatsapp_number));
   const ready = assets.length >= 5 && complete >= 5 && hasLink;
@@ -30,8 +30,20 @@ async function bvRenderProductVault(productId) {
       <div class="dz-hint" id="vaultUpState">Then give each one its headline, primary text and description below.</div>
       <input type="file" id="vaultFiles" accept="video/*,image/*" multiple style="display:none;">
     </div>
+    <button type="button" class="btn btn-g" id="vaultCarousel" style="margin-top:8px;width:100%;">🎠 Create carousel (2 to 10 swipeable pictures)</button>
     <div style="display:grid;gap:10px;margin-top:12px;">
-      ${assets.map(a => `
+      ${assets.map(a => a.asset_type === "carousel" ? `
+        <div class="vaultCard" data-aid="${a.id}" data-kind="carousel" style="border:1px solid var(--accent);border-radius:10px;padding:10px;background:var(--panel2);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><b style="font-size:13px;">${escH(a.display_name || a.file_name || "Carousel")}</b><span class="cr-badge">Carousel · ${(a.carousel_cards || []).length} cards${a.feed_only ? " · Feed only" : ""}</span></div>
+          <div class="cr-strip" style="margin:8px 0;">${(a.carousel_cards || []).map(k => `<img src="${escH(k.image_url)}" alt="">`).join("")}</div>
+          <div style="font-size:11.5px;color:var(--muted);">${escH((a.primary_text || "").slice(0, 140)) || "No text above the carousel yet."}</div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;"><button type="button" class="btn btn-g vCarEdit" style="padding:5px 12px;font-size:12px;">Edit cards</button><button type="button" class="btn btn-g vDel" style="padding:5px 12px;font-size:12px;color:var(--red,#d33);">Delete</button></div>
+        </div>` : a.asset_type === "post" ? `
+        <div class="vaultCard" data-aid="${a.id}" data-kind="post" style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--panel2);display:flex;gap:10px;align-items:center;">
+          ${a.public_url && /^https/.test(a.public_url) && !/facebook\.com/.test(a.public_url) ? `<img src="${escH(a.public_url)}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;" alt="">` : ""}
+          <div style="flex:1;min-width:0;font-size:12px;"><span class="cr-badge">Page post</span><div style="margin-top:4px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escH(a.primary_text || a.meta_post_id || "")}</div></div>
+          <button type="button" class="btn btn-g vDel" style="padding:5px 12px;font-size:12px;">Delete</button>
+        </div>` : `
         <div class="vaultCard" data-aid="${a.id}" style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--panel2);display:grid;grid-template-columns:96px 1fr;gap:10px;">
           <div>
             <div data-view="${escH(a.public_url)}" data-type="${a.asset_type === "video" ? "video" : "image"}" style="position:relative;cursor:zoom-in;width:96px;height:96px;border-radius:8px;overflow:hidden;background:#101214;border:1px solid var(--border);">${a.asset_type === "video" ? `<video src="${escH(a.public_url)}#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:contain;"></video><span class="bv-play">▶</span>` : `<img src="${escH(a.public_url)}" style="width:100%;height:100%;object-fit:contain;">`}</div>
@@ -63,6 +75,7 @@ async function bvRenderProductVault(productId) {
       if (!error) { clearTimeout(box._rt); box._rt = setTimeout(() => bvRenderProductVault(productId), 1200); }
     };
     card.querySelectorAll(".vf").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { clearTimeout(timer); timer = setTimeout(save, 700); }));
+    if (card.dataset.kind) { card.querySelector(".vCarEdit")?.addEventListener("click", () => bvCarouselSheet(productId, aid)); card.querySelector(".vDel").addEventListener("click", async () => { if (await bvDeleteCreative(aid)) bvRenderProductVault(productId); }); return; }
     card.querySelector(".vEdit").addEventListener("click", () => bvCreativeEdit(aid, () => bvRenderProductVault(productId)));
     card.querySelector(".vDel").addEventListener("click", async () => {
       if (!confirm("Delete this creative and its file?")) return;
@@ -70,6 +83,7 @@ async function bvRenderProductVault(productId) {
     });
   });
 
+  document.getElementById("vaultCarousel")?.addEventListener("click", () => bvCarouselSheet(productId));
   const fileInput = document.getElementById("vaultFiles"), state = document.getElementById("vaultUpState");
   fileInput.addEventListener("change", async () => {
     const files = Array.from(fileInput.files || []); if (!files.length) return;

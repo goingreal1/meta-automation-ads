@@ -1040,7 +1040,7 @@ async function planAction(body, p) {
   }).eq("id", row.id).eq("status", "launching").or(`launching_at.is.null,launching_at.lt.${new Date(Date.now() - 5 * 60_000).toISOString()}`).select("id");
   if (!claim.data?.length) throw new Error("This plan is already being launched.");
   try {
-    const { data: srcs } = await supabase.from("creative_assets").select("id, ad_account_id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format").eq("company_id", p.companyId).in("id", plan.asset_ids);
+    const { data: srcs } = await supabase.from("creative_assets").select("id, ad_account_id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format, meta_post_id, carousel_cards, feed_only").eq("company_id", p.companyId).in("id", plan.asset_ids);
     const planAds = Array.isArray(plan.ads) && plan.ads.length ? plan.ads : plan.asset_ids.map((id, j)=>({
         asset_id: id,
         copy_index: j % plan.copies.length
@@ -1077,6 +1077,9 @@ async function planAction(body, p) {
           storage_path: s.storage_path,
           public_url: s.public_url,
           asset_type: s.asset_type,
+          meta_post_id: s.meta_post_id ?? null,
+          carousel_cards: s.carousel_cards ?? null,
+          feed_only: s.feed_only === true,
           // a Meta video / image id only works in the ad account it was uploaded to
           meta_video_id: s.ad_account_id === acct.id ? s.meta_video_id ?? null : null,
           meta_image_hash: s.ad_account_id === acct.id ? s.meta_image_hash ?? null : null,

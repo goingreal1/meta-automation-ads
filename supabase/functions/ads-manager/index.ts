@@ -1384,6 +1384,46 @@ async function handleAddPagePost(userClient, body) {
     text: String(post.message ?? "").slice(0, 300)
   };
 }
+async function readCarouselCards(admin, account, raw) {
+  const cards = [];
+  for (const k of raw){
+    let url = String(k?.image_url ?? "");
+    if (!url && k?.creative_id) {
+      const { data: a } = await admin.from("creative_assets").select("public_url, asset_type").eq("id", k.creative_id).eq("company_id", account.company_id).maybeSingle();
+      if (!a || a.asset_type !== "image") throw new HttpError(400, "Each card must be an uploaded image (creative_id of an image).");
+      url = a.public_url;
+    }
+    if (!/^https:\/\//.test(url)) throw new HttpError(400, "Each card needs an image (image_url or creative_id).");
+    cards.push({
+      image_url: url,
+      headline: String(k.headline ?? "").slice(0, 80),
+      description: String(k.description ?? "").slice(0, 150),
+      link: k.link ? String(k.link) : undefined
+    });
+  }
+  return cards;
+}
+async function handleUpdateCarousel(userClient, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: row } = await admin.from("creative_assets").select("id, asset_type").eq("id", body.creative_id).eq("company_id", account.company_id).maybeSingle();
+  if (!row || row.asset_type !== "carousel") throw new HttpError(404, "That carousel was not found.");
+  const patch = {};
+  if (Array.isArray(body.cards)) {
+    if (body.cards.length < 2 || body.cards.length > 10) throw new HttpError(400, "A carousel needs 2 to 10 cards.");
+    const cards = await readCarouselCards(admin, account, body.cards);
+    patch.carousel_cards = cards;
+    patch.public_url = `${cards[0].image_url.split("#")[0]}#carousel-${row.id}`;
+  }
+  if (body.name != null) patch.file_name = String(body.name).slice(0, 120) || "Carousel";
+  if (body.primary_text != null) patch.primary_text = String(body.primary_text).slice(0, 2000) || null;
+  if (body.feed_only != null) patch.feed_only = !!body.feed_only;
+  const { error } = await admin.from("creative_assets").update(patch).eq("id", row.id);
+  if (error) throw new HttpError(500, error.message);
+  return {
+    ok: true
+  };
+}
 async function handleAddCarousel(userClient, body) {
   const { account } = await getAccount(userClient, body.ad_account_id);
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -1406,14 +1446,17 @@ async function handleAddCarousel(userClient, body) {
     });
   }
   const name = String(body.name ?? "").trim() || `Carousel (${cards.length} cards)`;
+  const cid = crypto.randomUUID();
+  // The fragment keeps this row's public_url unique, so deleting/renaming it can never touch the picture it borrows.
   const { data, error } = await admin.from("creative_assets").insert({
     company_id: account.company_id,
     ad_account_id: account.id,
     file_name: name,
-    storage_path: `carousel/${crypto.randomUUID()}`,
-    public_url: cards[0].image_url,
+    storage_path: `carousel/${cid}`,
+    public_url: `${cards[0].image_url.split("#")[0]}#carousel-${cid}`,
     asset_type: "carousel",
     carousel_cards: cards,
+    feed_only: body.feed_only !== false,
     primary_text: String(body.primary_text ?? "").slice(0, 2000) || null,
     product_id: body.product_id || null,
     uploaded_by: "carousel",
@@ -2191,6 +2234,7 @@ Deno.serve(async (req)=>{
     if (body.action === "ad_preview") return json(await handleAdPreview(userClient, body));
     if (body.action === "page_posts") return json(await handlePagePosts(userClient, body));
     if (body.action === "add_page_post") return json(await handleAddPagePost(userClient, body));
+    if (body.action === "update_carousel") return json(await handleUpdateCarousel(userClient, body));
     if (body.action === "add_carousel") return json(await handleAddCarousel(userClient, body));
     if (body.action === "set_ad_image") return json(await handleSetAdImage(userClient, body));
     throw new HttpError(400, "Unknown action.");
