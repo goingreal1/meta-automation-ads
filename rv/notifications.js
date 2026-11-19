@@ -220,7 +220,7 @@
   function detailHtml(n) {
     return '<div class="rvn-det"><button type="button" class="rvn-link" data-back="1">← All notifications</button>' +
       '<div class="rvn-dh"><div class="rvn-ico ' + esc(n.severity) + '">' + svg(n.category) + '</div><div><h3>' + esc(plain(n.title)) + "</h3><time>" + ago(n.created_at) + "</time></div></div>" +
-      (n.body ? '<p class="rvn-full">' + esc(n.body) + "</p>" : "") + reportHtml(n) +
+      (n.body && !(n.kind === "meta_report" && n.data && n.data.report) ? '<p class="rvn-full">' + esc(n.body) + "</p>" : "") + reportHtml(n) +
       (n.url ? '<button type="button" class="rvn-open" data-open="' + esc(n.id) + '">Open in app</button>' : "") + "</div>";
   }
   function card(n) {

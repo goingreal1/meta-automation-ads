@@ -655,6 +655,78 @@ async function bvShowRequestFundsModal(editId) {
   });
 }
 
+
+// A media buyer sends money from their OWN held balance straight to Meta. No admin approval; only a verified Meta/Facebook account is accepted.
+async function bvShowSendToMetaModal() {
+  bvCloseModal();
+  const bal = Math.max(0, Number((await sbFn("wallet-topup", { action: "overview" }).catch(() => null))?.my_wallet || 0));
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay"; overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:6px;">Send to Meta</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Comes out of your wallet (${fN(bal)}). In Ads Manager open <b>Billing → Add funds → Bank transfer</b>, then enter the account number and bank Meta shows. Only a Meta account is accepted.</div>
+    <form id="sendMetaForm" novalidate><div class="fg">
+      <div class="field"><label>Amount *</label><input id="sm_amount" type="number" min="100" step="1" inputmode="numeric" placeholder="e.g. 10000"></div>
+      <div class="field"><label>Bank shown by Meta *</label><select id="sm_bank"><option value="">Loading banks…</option></select></div>
+      <div class="field"><label>Account number from Meta *</label><input id="sm_acct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number"></div>
+    </div><button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Send to Meta</button><div id="sendMetaMsg"></div></form></div>`;
+  document.body.appendChild(overlay);
+  bvLoadBanks(document.getElementById("sm_bank"));
+  document.getElementById("sendMetaForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button[type=submit]"), msg = document.getElementById("sendMetaMsg");
+    const amount = Number(document.getElementById("sm_amount").value), bank_code = document.getElementById("sm_bank").value, account_number = document.getElementById("sm_acct").value.replace(/\s+/g, "");
+    if (!amount || amount < 100) { msg.innerHTML = `<div class="msg err">❌ Enter an amount of at least ₦100.</div>`; return; }
+    if (amount > bal) { msg.innerHTML = `<div class="msg err">❌ Your wallet has ${fN(bal)}. Add money first.</div>`; return; }
+    if (!bank_code) { msg.innerHTML = `<div class="msg err">❌ Pick the bank Meta shows.</div>`; return; }
+    if (!/^\d{10}$/.test(account_number)) { msg.innerHTML = `<div class="msg err">❌ The account number is 10 digits.</div>`; return; }
+    if (btn.disabled) return;
+    btn.disabled = true; btn.textContent = "Checking the account and sending…";
+    try {
+      const r = await sbFn("fund-request-submit", { from_balance: true, amount_naira: amount, account_number, bank_code, note: "Sent from wallet" });
+      if (r.verified === false) { msg.innerHTML = `<div class="msg err">❌ Nothing was sent. ${escH(r.reason || "That account was not accepted.")}</div>`; btn.disabled = false; btn.textContent = "Send to Meta"; return; }
+      if (r.error) throw new Error(r.error);
+      bvCloseModal(); bvToast(`Sent ${fN(amount)} to ${r.account_name || "Meta"}`);
+      if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
+      renderWallet(document.getElementById("mainContent"));
+    } catch (err) { msg.innerHTML = `<div class="msg err">❌ ${escH(err.message)}</div>`; btn.disabled = false; btn.textContent = "Send to Meta"; }
+  });
+}
+
+// Log money received for ads (shows as "Fund received" in the 12pm / 4pm / 8pm reports).
+async function bvLogFundsModal() {
+  bvCloseModal();
+  const p = window.myProfile || {}, isAdmin = p.role === "owner" || p.role === "admin";
+  let buyers = [];
+  if (isAdmin) buyers = await sbQuery("media_buyers", "select=id,name&order=name").catch(() => []) || [];
+  const today = new Date(Date.now() + 3600000).toISOString().slice(0, 10);
+  const overlay = document.createElement("div");
+  overlay.id = "bvModalOverlay"; overlay.className = "bv-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) bvCloseModal(); };
+  overlay.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:6px;">Log funds received</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Money you were given for ads. It appears as Fund received in your daily reports.</div>
+    <form id="logFundsForm" novalidate><div class="fg">
+      ${isAdmin ? `<div class="field"><label>Media buyer *</label><select id="lf_buyer">${buyers.map((b) => `<option value="${b.id}" ${b.id === p.media_buyer_id ? "selected" : ""}>${escH(b.name)}</option>`).join("")}</select></div>` : ""}
+      <div class="field"><label>Amount *</label><input id="lf_amount" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 50000"></div>
+      <div class="field"><label>Date</label><input id="lf_date" type="date" value="${today}"></div>
+      <div class="field"><label>Note (optional)</label><input id="lf_note" placeholder="e.g. from the boss, Opay transfer"></div>
+    </div><button type="submit" class="btn btn-a btn-full" style="margin-top:12px;">Save</button><div id="logFundsMsg"></div></form></div>`;
+  document.body.appendChild(overlay);
+  document.getElementById("logFundsForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button[type=submit]"), msg = document.getElementById("logFundsMsg");
+    const amount = Number(document.getElementById("lf_amount").value), buyer = isAdmin ? document.getElementById("lf_buyer")?.value : p.media_buyer_id;
+    if (!amount || amount <= 0) { msg.innerHTML = `<div class="msg err">❌ Enter the amount.</div>`; return; }
+    if (!buyer) { msg.innerHTML = `<div class="msg err">❌ Pick the media buyer.</div>`; return; }
+    btn.disabled = true;
+    const { error } = await supabaseClient.from("fund_logs").insert({ company_id: p.company_id, media_buyer_id: buyer, amount_naira: amount, log_date: document.getElementById("lf_date").value || today, note: document.getElementById("lf_note").value.trim() || null, logged_by: sessionData.user.id });
+    if (error) { msg.innerHTML = `<div class="msg err">❌ ${escH(error.message)}</div>`; btn.disabled = false; return; }
+    bvCloseModal(); bvToast("Logged " + fN(amount)); renderWallet(document.getElementById("mainContent"));
+  });
+}
+
 // Owner/admin: approve one funding request with the transfer PIN. The PIN check, a fresh bank check of the Meta account name and
 // the transfer all happen in one step on the server (fund-request-send). If the account can no longer be verified nothing is sent.
 function bvShowSendPinModal(id, summary) {
