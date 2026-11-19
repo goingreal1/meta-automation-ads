@@ -46,6 +46,13 @@ button.s{height:32px;padding:0 12px;font-size:13px}
 .m b{font-weight:650;font-size:13.5px}.m .r{color:var(--ink3);font-size:12px;margin-left:6px;font-weight:500}
 .m .tx{margin-top:3px;line-height:1.5;background:var(--hover);padding:10px 13px;border-radius:4px 14px 14px 14px;display:inline-block;white-space:pre-wrap;word-break:break-word;max-width:100%}
 .m.me{align-self:flex-end;grid-template-columns:minmax(0,1fr);justify-items:end}.m.me>div{text-align:right}.m.me b{display:block}.m.me .tx{background:var(--brand);color:#fff;border-radius:14px 4px 14px 14px}
+.att{margin-top:8px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);max-width:420px}
+.att img{width:100%;display:block;aspect-ratio:1;object-fit:cover}.att .ph{aspect-ratio:1;display:grid;place-items:center;background:var(--hover);color:var(--ink2);text-align:center;padding:14px}
+.att .bd{padding:10px 12px;font-size:12.5px;color:var(--ink2)}.att .ac{display:flex;gap:6px;padding:0 12px 12px}.att .ac button{flex:1;height:34px;justify-content:center;font-size:13px}
+.plan{max-width:560px}.plan h4{margin:0;padding:12px 14px;background:var(--brandbg);color:var(--brand);font-size:13.5px;display:flex;gap:8px;align-items:center}
+.plan .kv2{display:grid;grid-template-columns:120px 1fr;gap:5px 10px;padding:12px 14px;font-size:13px}.plan .kv2 .k{color:var(--ink3)}.plan .kv2 .v{font-weight:550;overflow-wrap:anywhere}
+.plan .sub{padding:0 14px 12px;font-size:13px}.plan .sub b{display:block;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);margin:8px 0 4px;font-weight:700}.plan .sub div{padding:6px 0;border-top:1px solid var(--line)}
+.plan .q{margin:0 14px 12px;padding:9px 11px;border-radius:10px;background:var(--warnbg);color:var(--warn);font-size:13px}
 .typing::after{content:"▍";animation:pulse 1s infinite;color:var(--brand)}
 .empty{color:var(--ink2);text-align:center;padding:60px 14px;margin:auto}
 .empty b{color:var(--ink)}
@@ -173,16 +180,45 @@ function tab(t) {
 document.querySelectorAll("#tabs a").forEach(function (a) { a.onclick = function () { tab(a.dataset.t); }; });
 var hhmm = function (d) { return d ? new Date(d).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""; };
 
+function planHtml(p) {
+  var row = function (k, v) { return v ? '<span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + "</span>" : ""; };
+  var list = function (a) { return (a || []).map(function (x) { return typeof x === "string" ? x : Object.keys(x).map(function (k) { return k.replace(/_/g, " ") + ": " + (Array.isArray(x[k]) ? x[k].join(", ") : x[k]); }).join(" · "); }); };
+  var sets = (p.ad_sets || []).map(function (a) { return "<div><b style='display:inline;margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)'>" + esc(a.label || "Ad set") + "</b> · " + esc([(a.countries || []).join(", "), a.ages, a.genders, (a.interests || []).slice(0, 5).join(", "), a.placements, a.daily_budget_naira ? "₦" + Number(a.daily_budget_naira).toLocaleString() + "/day" : ""].filter(Boolean).join(" · ")) + "</div>"; }).join("");
+  var ads = (p.ads || []).map(function (a) { return "<div><b style='display:inline;margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)'>" + esc(a.headline || "Ad") + "</b><br><span class='note'>" + esc(a.primary_text || "") + "</span></div>"; }).join("");
+  return '<div class="att plan"><h4>' + ico('<path d="M3 11v2a1 1 0 001 1h1l5 4V6l-5 4H4a1 1 0 00-1 1z"/><path d="M15.5 8.5a4 4 0 010 7"/>') + "Campaign plan</h4><div class='kv2'>" +
+    row("Campaign", p.campaign_name) + row("Product", p.product) + row("Goal", [p.objective, p.destination].filter(Boolean).join(" · ")) + row("Countries", (p.countries || []).join(", ")) + row("Budget", p.daily_budget_naira ? "₦" + Number(p.daily_budget_naira).toLocaleString() + " a day · " + (p.budget_type || "") : "") + row("Starts", p.start) + row("Kill rule", p.kill_rule) + row("Based on", p.based_on) + "</div>" +
+    (sets ? '<div class="sub"><b>Ad sets</b>' + sets + "</div>" : "") + (ads ? '<div class="sub"><b>Ads</b>' + ads + "</div>" : "") +
+    ((p.open_questions || []).length ? '<div class="q"><b style="color:inherit;text-transform:none;letter-spacing:0;margin:0;font-size:13px">The team still needs from you:</b> ' + esc(list(p.open_questions).join(" · ")) + "</div>" : "") +
+    '<div class="bd" style="padding:0 14px 12px">Nothing is launched from this card. End the meeting to turn the plan into a launch you approve.</div></div>';
+}
+function attHtml(m) {
+  var a = m.attachment; if (!a) return "";
+  if (a.type === "plan" && a.plan) return planHtml(a.plan);
+  if (a.type === "error") return '<div class="att"><div class="bd" style="color:var(--bad)">' + esc(a.text || "Could not make this.") + "</div></div>";
+  if (a.type === "image") {
+    var im = (S.images || []).filter(function (x) { return x.id === a.image_id; })[0];
+    if (!im) { needImages(); return '<div class="att"><div class="ph"><div><div class="spin"></div>Zara is drawing…</div></div></div>'; }
+    if (im.status === "generating") { needImages(); return '<div class="att"><div class="ph"><div><div class="spin"></div>Zara is drawing…</div></div></div>'; }
+    if (im.status === "failed") return '<div class="att"><div class="ph" style="color:var(--bad)">Could not make this one.<br>' + esc(im.error || "") + "</div></div>";
+    var tag = { approved: "In your Creative Vault ✓", rejected: "Rejected", ready: "Sample picture" }[im.status] || im.status;
+    var ac = im.status === "ready" && S.canManage ? '<div class="ac"><button class="pri" data-ap="' + im.id + '">Approve for the Creative Vault</button><button data-rj="' + im.id + '">Reject</button></div>' : "";
+    return '<div class="att"><img src="' + esc(im.image_url) + '" alt="" loading="lazy"><div class="bd">' + tag + "</div>" + ac + "</div>";
+  }
+  return "";
+}
+function needImages() { if (S.fetchImg) return; S.fetchImg = setTimeout(function () { S.fetchImg = null; loadPast(); }, 4000); }
 function render() {
   var list = Object.keys(S.msgs).map(function (k) { return S.msgs[k]; }).sort(function (a, b) { return a.seq - b.seq; });
   var feed = $("feed"), atBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
   if (!list.length) { feed.innerHTML = '<div class="empty">' + (S.meeting ? "The team is getting ready…" : "No meeting yet. Press <b>New meeting</b> and watch the team talk it through.") + "</div>"; }
   else feed.innerHTML = list.map(function (m) {
     if (m.speaker === "you") return '<div class="m me"><div><b>You</b><div class="tx' + (m.done ? "" : " typing") + '">' + esc(m.content || "…") + "</div></div></div>";
-    return '<div class="m"><span class="rt">' + ico(IC[m.speaker] || IC.team_lead) + '</span><div><b>' + esc(NAMES[m.speaker] || m.speaker) + '</b><div class="tx' + (m.done ? "" : " typing") + '">' + esc(m.content || "…") + "</div></div></div>";
+    return '<div class="m"><span class="rt">' + ico(IC[m.speaker] || IC.team_lead) + '</span><div><b>' + esc(NAMES[m.speaker] || m.speaker) + '</b><div class="tx' + (m.done ? "" : " typing") + '">' + esc(m.content || "…") + "</div>" + attHtml(m) + "</div></div>";
   }).join("");
   if (atBottom) feed.scrollTop = feed.scrollHeight;
   voiceTick(list); markSpeaking(list);
+  document.querySelectorAll("#feed [data-ap]").forEach(function (b) { b.onclick = function () { imgAct("approve_image", b.dataset.ap, b); }; });
+  document.querySelectorAll("#feed [data-rj]").forEach(function (b) { b.onclick = function () { imgAct("reject_image", b.dataset.rj, b); }; });
   var running = S.meeting && S.meeting.status === "running";
   $("say").disabled = !running; $("sayb").disabled = !running; $("start").disabled = !!running || !S.canStart;
   document.querySelectorAll("#ask button").forEach(function (b) { b.disabled = !running; });
@@ -232,20 +268,25 @@ function voiceTick(list) {
   list.forEach(function (m) { if (m.done && m.speaker !== "you" && !S.spoken[m.id]) { S.spoken[m.id] = 1; S.q.push(m); } });
   pump();
 }
+var AUD = new Audio(); AUD.setAttribute("playsinline", ""); AUD.preload = "auto";
+var SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=";
+function unlockAudio() { try { AUD.src = SILENT; var p = AUD.play(); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
 async function pump() {
-  if (S.playing || !S.q.length || !S.voice) return;
+  if (S.playing || !S.q.length || !S.voice || S.blocked) return;
   S.playing = true; var m = S.q.shift(); S.talking = m.speaker; markSpeaking();
+  var res = true;
   try {
-    var url = URL.createObjectURL(await speakBlob(m.content, m.speaker)), a = new Audio(url); S.audio = a;
-    await new Promise(function (res) { S.audioRes = res; a.onended = res; a.onerror = res; a.play().catch(res); });
+    var url = URL.createObjectURL(await speakBlob(m.content, m.speaker)); S.audio = AUD; AUD.src = url;
+    res = await new Promise(function (done) { S.audioRes = function () { done(true); }; AUD.onended = function () { done(true); }; AUD.onerror = function () { done(false); }; var pr = AUD.play(); if (pr && pr.then) pr.then(null, function () { done("blocked"); }); });
     URL.revokeObjectURL(url);
   } catch (e) { err(e.message); S.voice = false; S.q = []; $("vol").classList.remove("on"); }
+  if (res === "blocked") { S.blocked = true; S.q.unshift(m); err("Your phone blocked the sound. Tap the speaker button once to allow it."); }
   S.audio = null; S.audioRes = null; S.talking = null; S.playing = false; markSpeaking(); pump();
 }
 function stopVoice() { S.q = []; if (S.audio) S.audio.pause(); if (S.audioRes) S.audioRes(); }
 function markAllSpoken() { Object.keys(S.msgs).forEach(function (k) { if (S.msgs[k].done) S.spoken[k] = 1; }); }
 async function loadMessages(id) {
-  var r = await sb.from("ai_meeting_messages").select("id,seq,speaker,content,done").eq("meeting_id", id).order("seq");
+  var r = await sb.from("ai_meeting_messages").select("id,seq,speaker,content,done,attachment").eq("meeting_id", id).order("seq");
   (r.data || []).forEach(function (m) { S.msgs[m.id] = m; });
 }
 async function refreshMeeting(id) {
@@ -341,7 +382,7 @@ $("mkLn").onclick = async function () {
 };
 
 $("start").onclick = async function () {
-  err(""); this.disabled = true;
+  err(""); this.disabled = true; if (S.voice) unlockAudio();
   var demo = !S.ready; // without the OpenAI key a clearly-marked demo shows how the meeting looks
   if (demo && !confirm("The OpenAI key isn't added yet, so this will run a short DEMO meeting with sample lines (not your real numbers). Continue?")) { this.disabled = false; return; }
   var o = await api({ action: "start", demo: demo, minutes: Number($("dur").value) || 60 });
@@ -360,29 +401,46 @@ async function say(text) {
 }
 $("sayb").onclick = function () { say(); }; $("say").onkeydown = function (e) { if (e.key === "Enter") say(); };
 document.querySelectorAll("#ask button").forEach(function (b) { b.onclick = function () { say(b.dataset.q); }; });
-var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-$("mic").onclick = function () {
+var REC = null;
+function recMime() { var c = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"]; for (var k = 0; k < c.length; k++) if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c[k])) return c[k]; return ""; }
+function micIdle() { $("mic").classList.remove("on"); $("say").placeholder = "Add a note for the team, for example “focus on Mombasa”…"; }
+$("mic").onclick = async function () {
   err("");
-  if (S.rec) { S.rec.stop(); return; }
-  if (!SR) { err("This browser cannot take voice input. Use Chrome or Safari, or type a note."); return; }
+  if (REC) { REC.stop(); return; } // second tap = send
+  if (!navigator.mediaDevices || !window.MediaRecorder) { err("This browser cannot record. Open the page in Chrome or Safari, or type a note."); return; }
   if (!S.meeting || S.meeting.status !== "running") { err("Start a meeting first, then talk to the team."); return; }
-  stopVoice();
-  var r = new SR(), final = ""; r.lang = navigator.language || "en-US"; r.interimResults = true; r.continuous = false;
-  r.onresult = function (e) { var t = ""; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; $("say").value = t; if (e.results[e.results.length - 1].isFinal) final = t; };
-  r.onerror = function (e) { if (e.error !== "no-speech" && e.error !== "aborted") err(e.error === "not-allowed" ? "Allow the microphone for this page, then try again." : "Voice input stopped: " + e.error); };
-  r.onend = function () { S.rec = null; $("mic").classList.remove("on"); $("say").placeholder = "Add a note for the team, for example “focus on Mombasa”…"; if (final.trim()) say(final); else $("say").value = ""; };
-  S.rec = r; try { r.start(); $("mic").classList.add("on"); $("say").placeholder = "Listening…"; } catch (e2) { S.rec = null; }
+  stopVoice(); if (S.voice) unlockAudio();
+  var stream; try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { err("Allow the microphone for this page (browser settings), then tap the microphone again."); return; }
+  var mime = recMime(), chunks = [], rec;
+  try { rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); } catch (e) { stream.getTracks().forEach(function (t) { t.stop(); }); err("This browser cannot record."); return; }
+  var stopTimer = setTimeout(function () { if (REC) REC.stop(); }, 60000);
+  rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = async function () {
+    clearTimeout(stopTimer); stream.getTracks().forEach(function (t) { t.stop(); }); REC = null; micIdle();
+    var blob = new Blob(chunks, { type: rec.mimeType || mime || "audio/webm" });
+    if (blob.size < 1500) { err("I did not hear anything. Tap the microphone, speak, then tap it again."); return; }
+    $("say").placeholder = "Reading what you said…";
+    var b64 = await new Promise(function (ok) { var fr = new FileReader(); fr.onloadend = function () { ok(String(fr.result).split(",")[1] || ""); }; fr.readAsDataURL(blob); });
+    var o = await api({ action: "transcribe", audio: b64, mime: blob.type });
+    micIdle();
+    if (o.error) { err(o.error); return; }
+    if (!o.text) { err("I could not make out any words. Try again a bit closer to the microphone."); return; }
+    say(o.text);
+  };
+  REC = rec; rec.start(); $("mic").classList.add("on"); $("say").placeholder = "Listening… tap the microphone again to send";
 };
 $("vol").onclick = function () {
   err("");
   if (!S.voiceReady) { err("Voice needs the OpenAI key."); return; }
+  unlockAudio();
+  if (S.blocked) { S.blocked = false; if (S.voice) { pump(); return; } }
   S.voice = !S.voice; try { localStorage.setItem("aiVoice", S.voice ? "1" : "0"); } catch (e) {}
   this.classList.toggle("on", S.voice);
-  if (S.voice) { try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=").play().catch(function () {}); } catch (e) {} markAllSpoken(); }
-  else stopVoice();
+  if (S.voice) markAllSpoken(); else stopVoice();
 };
 try { S.voice = localStorage.getItem("aiVoice") === "1"; $("vol").classList.toggle("on", S.voice); } catch (e) {}
-document.addEventListener("click", function () { if (S.voice) try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=").play().catch(function () {}); } catch (e) {} }, { once: true });
+document.addEventListener("click", function () { if (S.voice) unlockAudio(); }, { once: true });
+document.addEventListener("touchend", function () { if (S.voice) unlockAudio(); }, { once: true });
 $("sSave").onclick = async function () {
   if ($("sAuto").checked && !(Number($("sCap").value) > 0)) { $("sMsg").textContent = "Set a daily spend limit above 0 first, or the team may not spend anything."; return; }
   $("sMsg").textContent = "Saving…";
