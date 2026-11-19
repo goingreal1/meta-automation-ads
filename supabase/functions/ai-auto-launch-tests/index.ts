@@ -302,7 +302,7 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
                 return {
                   link,
                   picture: k.image_url,
-                  name: String(k.headline ?? "").slice(0, 80) || void 0,
+                  name: String(k.headline || creative.headline || "").slice(0, 80) || void 0,
                   description: String(k.description ?? "").slice(0, 150) || void 0,
                   call_to_action: cardCta(link)
                 };
