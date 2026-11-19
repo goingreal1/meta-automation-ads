@@ -158,6 +158,13 @@ Deno.serve(async (req)=>{
     const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
     const given = req.headers.get("x-cron-secret") || "";
     if (!given || given !== sec?.value && given !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+    if (b?.path) {
+      // read-only look at a few Paystack endpoints (a transfer, the balance ledger)
+      const path = String(b.path);
+      if (!/^\/(transfer\/[A-Za-z0-9_]+|balance|balance\/ledger(\?[a-z_=0-9&]+)?)$/.test(path)) return json({ error: "Path not allowed." }, 400);
+      const rr = await fetch(`${PAYSTACK_BASE}${path}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      return json({ http: rr.status, body: await rr.json().catch(()=>null) });
+    }
     const ref = String(b?.reference ?? "");
     const r = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(ref)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
     const d = await r.json().catch(()=>null);
