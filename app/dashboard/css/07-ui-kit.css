@@ -343,3 +343,21 @@
 .rv-ui .rv-at td:first-child b { max-width: 110px; }
 .rv-ui .rv-at .rv-pill { padding: 2px 7px; font-size: 11.5px; } .rv-ui .rv-at .rv-th { width: 30px; height: 30px; }
 .rv-ui .rv-at td:first-child { min-width: 96px; max-width: 140px; } .rv-ui .rv-at td:first-child b { max-width: 92px; } .rv-ui .rv-at th, .rv-ui .rv-at td { padding-left: 4px; padding-right: 4px; }
+
+/* ---- Campaigns on a laptop: the classic tables; the details open on their own with a Back link ---- */
+.rv-ui .rv-split.cp-old { display: block; }
+.rv-ui .cp-old .rv-mlist, .rv-ui .cp-old .rv-tree { display: none; }
+.rv-ui .cp-old .rv-old { padding: 0 0 6px; overflow: hidden; }
+.rv-ui .cp-old .rv-dt { display: none; } .rv-ui .cp-old.m-detail .rv-dt { display: block; } .rv-ui .cp-old.m-detail .rv-old { display: none; }
+.rv-ui .cp-old .rv-back { display: flex; }
+.rv-ui .cp-otb { display: flex; gap: 10px; align-items: center; padding: 14px 16px 6px; flex-wrap: wrap; }
+.rv-ui .cp-otb .am-search { flex: 1; min-width: 220px; max-width: 420px; } .rv-ui .cp-otb .am-filter { margin-left: auto; }
+.rv-ui .cp-old .am-tabs { padding: 0 16px; } .rv-ui .cp-old .am-chips { padding: 8px 16px 0; } .rv-ui .cp-old .am-bulk { margin: 8px 16px; }
+.rv-ui .cp-old .am-table { margin: 0 8px; }
+.rv-ui .am-acts a { white-space: nowrap; }
+@media (max-width: 860px) { .rv-ui .cp-old .rv-old { display: none !important; } .rv-ui .cp-old:not(.m-detail) .rv-mlist { display: block; } .rv-ui .cp-old.m-detail .rv-mlist { display: none; } }
+.rv-ui .cp-mx { margin: 6px 0 12px; border-top: 1px solid var(--c-line); border-bottom: 1px solid var(--c-line); padding: 12px 0 14px; }
+.rv-ui .cp-mxh { display: flex; align-items: center; gap: 10px; padding: 0 20px 10px; flex-wrap: wrap; } .rv-ui .cp-mxh > div { flex: 1; min-width: 0; } .rv-ui .cp-mxh b { font-size: 15px; }
+.rv-ui .cp-mx .rv-mg { grid-template-columns: repeat(8, minmax(0, 1fr)); margin: 0 16px; } .rv-ui .cp-mx .rv-mg > div { padding: 9px 12px; } .rv-ui .cp-mx .rv-mg .v { font-size: 15px; } .rv-ui .cp-mxh { padding: 0 16px 10px; }
+@media (max-width: 1500px) { .rv-ui .cp-mx .rv-mg { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 1180px) { .rv-ui .cp-mx .rv-mg { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
