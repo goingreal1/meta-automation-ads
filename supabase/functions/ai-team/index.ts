@@ -250,7 +250,7 @@ async function makeImages(meetingId: string, companyId: string): Promise<{ error
   const rows = [];
   for (const [bi, br0] of briefs.entries()) {
     const br = { ...br0, _i: bi };
-    const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, no text, no logos, no watermarks.`;
+    const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, ${PEOPLE_RULE} No text, no logos, no watermarks.`;
     const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
     if (r) rows.push(r.id);
   }
@@ -360,27 +360,70 @@ async function tick() {
 
 // The real, live numbers from Meta (not the stored daily table): every campaign today / yesterday / last 2 days / last 7 / last 30 days,
 // plus how the winning campaigns were built and what their ads say. Read through ads-manager with the internal key.
-async function liveMeta(companyId: string): Promise<{ data?: unknown; images: string[]; note?: string }> {
+async function liveMeta(companyId: string): Promise<{ data?: unknown; images: { url: string; label: string }[]; note?: string }> {
   try {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 55_000);
     const r = await fetch(`${SUPABASE_URL}/functions/v1/ads-manager`, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "team_snapshot", company_id: companyId }) });
     clearTimeout(t);
     const o = await r.json().catch(() => null);
     if (!r.ok || !o?.ok) return { images: [], note: "Live numbers from Meta could not be read for this meeting: " + String(o?.error ?? r.status).slice(0, 120) };
+    // The winning ads' pictures, ranked: sold today first, then this week, then this month. Their links are only for looking (very long), so they are kept out of the written briefing.
     // deno-lint-ignore no-explicit-any
-    const images: string[] = (o.accounts ?? []).flatMap((a: any) => (a.winners ?? []).flatMap((w: any) => (w.best_ads ?? []).slice(0, 1).map((x: any) => x.picture_url))).filter((u: unknown) => typeof u === "string" && u.startsWith("https://")).slice(0, 3);
-    // the picture links are only for the creative agent's eyes; keep them out of the written briefing (they are very long)
+    const cand: { url: string; label: string; k: number[] }[] = [];
     // deno-lint-ignore no-explicit-any
-    for (const a of o.accounts ?? []) { (a.campaigns ?? []).splice(12); for (const w of a.winners ?? []) for (const x of w.best_ads ?? []) delete x.picture_url; }
-    return { data: o, images };
+    for (const a of (o.accounts ?? []) as any[]) for (const w of a.winners ?? []) for (const x of w.best_ads ?? []) {
+      if (typeof x.picture_url === "string" && x.picture_url.startsWith("https://")) {
+        const td = x.today?.purchases ?? 0, wk = x.last_7_days?.purchases ?? 0, mo = x.last_30_days?.purchases ?? 0;
+        cand.push({ url: x.picture_url, label: `${x.name} (campaign ${w.campaign}): ${td} purchase${td === 1 ? "" : "s"} today, ${wk} in 7 days, ${mo} in 30 days`, k: [td, wk, mo] });
+      }
+      delete x.picture_url;
+    }
+    cand.sort((p, q) => q.k[0] - p.k[0] || q.k[1] - p.k[1] || q.k[2] - p.k[2]);
+    for (const a of o.accounts ?? []) (a.campaigns ?? []).splice(12);
+    return { data: o, images: cand.filter((c) => c.k[2] > 0).slice(0, 4).map(({ url, label }) => ({ url, label })) };
   } catch (e) { return { images: [], note: "Live numbers from Meta could not be read for this meeting: " + String((e as Error)?.message ?? e).slice(0, 100) }; }
 }
+
+const PEOPLE_RULE = "PEOPLE IN PICTURES: show Black African people (natural Nigerian or Kenyan faces, skin tones, hair and clothing), of varied ages and genders. Where several people appear, mostly Black Africans and sometimes mixed with other ethnicities. Never show only white people unless the BOSS asks for it.";
+
+// Meta's picture links refuse OpenAI's downloader (403), so this function downloads the picture itself and hands it over as data.
+async function asDataUrl(url: string): Promise<string | null> {
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12_000);
+    const r = await fetch(url, { signal: ctl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraTeam/1.0)", Accept: "image/*" } });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length < 500 || buf.length > 4_000_000) return null;
+    let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return `data:${(r.headers.get("content-type") ?? "image/jpeg").split(";")[0]};base64,${btoa(bin)}`;
+  } catch { return null; }
+}
+async function loadPictures(images: { url: string; label: string }[]): Promise<{ url: string; label: string }[]> {
+  const out = await Promise.all(images.map(async (im) => { const d = await asDataUrl(im.url); return d ? { url: d, label: im.label } : null; }));
+  return out.filter(Boolean) as { url: string; label: string }[];
+}
+
+// Look at the winning pictures and write down, in words, what is in them and why they work, so every agent can use it.
+async function readPictures(images: { url: string; label: string }[]): Promise<{ text?: unknown; note?: string }> {
+  if (!images.length) return {};
+  try {
+    const got = await loadPictures(images);
+    if (!got.length) return { note: "The winning pictures could not be downloaded from Meta." };
+    images = got;
+    const content: unknown[] = [{ type: "text", text: "These are the pictures of the ads that are selling right now (each is labelled with its results). For each picture, in order, describe what is in it (scene, people, objects, colours, any words on the picture) and the hook or emotion it uses. Return ONLY JSON {\"pictures\":[{\"label\": string, \"scene\": string, \"people\": string, \"words_on_image\": string, \"hook\": string, \"why_it_probably_works\": string}]}. Describe only what you can see." }];
+    images.forEach((im, k) => { content.push({ type: "text", text: `Picture ${k + 1}: ${im.label}` }, { type: "image_url", image_url: { url: im.url } }); });
+    const raw = await openaiStream([{ role: "user", content }], async () => {}, true);
+    return { text: JSON.parse(raw)?.pictures };
+  } catch (e) { return { note: "The winning pictures could not be read: " + String((e as Error)?.message ?? e).slice(0, 120) }; }
+}
+
 async function runMeeting(meetingId: string, companyId: string, topic: string, demo: boolean, daily = false, auto = false) {
   try {
     const { data: brief0 } = await db.rpc("rv_team_briefing", { p_company: companyId });
     const brief = { ...(brief0 ?? {}) } as Record<string, unknown>;
     delete brief.ads_last_7d; // the stored daily table lags and was wrong: the live Meta numbers below replace it
-    const live = demo ? { images: [] as string[], data: undefined, note: undefined } : await liveMeta(companyId);
+    const live = demo ? { images: [] as { url: string; label: string }[], data: undefined, note: undefined } : await liveMeta(companyId);
     const briefing = JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...brief }).slice(0, 48000);
     // Who speaks, in order. After a person speaks, the next speaker answers them.
     const plan: Speaker[] = ["team_lead", "creative", "media_buyer", "customer_service", "team_lead", "creative", "media_buyer", "team_lead"];
@@ -396,7 +439,7 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
         { role: "system", content: `You are ${a.name}, the ${a.role} of an AI marketing team for a Nigerian online business. ${a.brief}\n\n${rules(!!(brief as { claims_verified?: boolean } | null)?.claims_verified)}\n\nMeeting topic: ${topic}\n\nBRIEFING (real data):\n${briefing}` },
         { role: "user", content: `Meeting so far:\n${transcript || "(nothing yet, you open the meeting)"}\n\nNow it is your turn, ${a.name}. ${sp === "team_lead" && !transcript ? "Open the meeting: say what the numbers show and what today's focus should be." : sp === "team_lead" && (count.team_lead ?? 0) > 1 ? "Close the meeting: state the decisions clearly (which products, which angles, how aggressive, what to launch tonight)." : "Respond to what was said and add your part."}` },
       ]; 
-      const withImgs = sp === "creative" && live.images.length ? [msgs0[0], { role: "user", content: [{ type: "text", text: String((msgs0[1] as { content: string }).content) + "\n\nThe pictures attached are the best ads running now. Look at them before you propose images." }, ...live.images.map((u) => ({ type: "image_url", image_url: { url: u } }))] }] : msgs0;
+      const withImgs = sp === "creative" && live.images.length ? [msgs0[0], { role: "user", content: [{ type: "text", text: String((msgs0[1] as { content: string }).content) + "\n\nThe pictures attached are the best ads running now. Look at them before you propose images." }, ...live.images.map((u) => ({ type: "image_url", image_url: { url: u.url } }))] }] : msgs0;
       let text: string;
       if (demo) text = await demoSpeak(sp, n, push);
       else { try { text = await openaiStream(withImgs, push); } catch (e) { if (withImgs === msgs0) throw e; text = await openaiStream(msgs0, push); } }
@@ -433,10 +476,11 @@ async function assembleBriefing(companyId: string) {
   const brief = { ...(brief0 ?? {}) } as Record<string, unknown>;
   delete brief.ads_last_7d; // the stored daily table lags: the live Meta numbers replace it
   const live = await liveMeta(companyId);
-  return { briefing: JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...brief }).slice(0, 48000), images: live.images, verified: !!brief.claims_verified };
+  const read = await readPictures(live.images);
+  return { briefing: JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, winning_pictures_described: read.text ?? null, winning_pictures_note: read.note ?? null, ...brief }).slice(0, 48000), images: live.images, verified: !!brief.claims_verified };
 }
 
-async function liveTurn(meetingId: string, companyId: string, sp: Speaker, instruction: string, m: { topic: string; briefing: string; images: string[]; verified: boolean }) {
+async function liveTurn(meetingId: string, companyId: string, sp: Speaker, instruction: string, m: { topic: string; briefing: string; images: { url: string; label: string }[]; verified: boolean }) {
   const a = AGENTS[sp];
   const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
   const transcript = (msgs ?? []).map((x) => `${x.speaker === "you" ? "BOSS (a person, answer them directly)" : (AGENTS[x.speaker as Speaker]?.name ?? x.speaker) + " (" + (AGENTS[x.speaker as Speaker]?.role ?? "") + ")"}: ${x.content}`).join("\n");
@@ -445,7 +489,8 @@ async function liveTurn(meetingId: string, companyId: string, sp: Speaker, instr
   const system = `You are ${a.name}, the ${a.role} of an AI marketing team for a Nigerian online business. ${a.brief}\n\n${rules(m.verified)}\n\nLIVE MEETING: you are talking with the BOSS (the person who runs this business) and three teammates. This is a conversation, not a presentation: say only YOUR part, in at most 3 short sentences, never repeat what a teammate just said, and answer the BOSS directly when they have spoken. When the BOSS gives a direction, accept it and say what you will do; nothing is ever launched without the BOSS approving it on the page. The BOSS's instructions beat your own ideas: if they say focus on a product or launch in a country, follow it. Ask the BOSS a short question only when you really need the answer (for example which country a product should be launched in when its target_countries are empty).\n\nMeeting topic: ${m.topic}\n\nBRIEFING (real data):\n${m.briefing}`;
   const user = `Meeting so far:\n${transcript || "(nothing yet)"}\n\n${instruction}`;
   const plain = [{ role: "system", content: system }, { role: "user", content: user }];
-  const withImgs = sp === "creative" && m.images.length ? [plain[0], { role: "user", content: [{ type: "text", text: user + "\n\nThe pictures attached are the best ads running now. Look at them." }, ...m.images.map((u) => ({ type: "image_url", image_url: { url: u } }))] }] : plain;
+  const seen = sp === "creative" && m.images.length ? await loadPictures(m.images) : [];
+  const withImgs = seen.length ? [plain[0], { role: "user", content: [{ type: "text", text: user + "\n\nThe pictures attached are the ads that are SELLING now, best first:\n" + seen.map((u, k) => `${k + 1}. ${u.label}`).join("\n") + "\nLook at them and learn from what works." }, ...seen.map((u) => ({ type: "image_url", image_url: { url: u.url } }))] }] : plain;
   let text: string;
   try { text = await openaiStream(withImgs, push); } catch (e) { if (withImgs === plain) throw e; text = await openaiStream(plain, push); }
   await db.from("ai_meeting_messages").update({ content: text.trim(), done: true, updated_at: new Date().toISOString() }).eq("id", row.id);
@@ -501,11 +546,14 @@ async function routeSpeakers(meetingId: string, boss: string): Promise<{ speaker
 }
 
 // What the team MAKES in the meeting (not just talks about): a real picture, and a real campaign plan.
-async function makeChatImage(meetingId: string, companyId: string, rowId: string, said: string, topic: string) {
-  const raw = await openaiStream([
-    { role: "system", content: `From the creative agent's message and the meeting, return ONLY JSON {"product": string, "angle": string, "headline_on_image": string, "image_prompt": string}. image_prompt is one complete, detailed prompt for a photorealistic square social media ad image (scene, people, lighting, mood, composition). If headline_on_image is not empty the image must show that headline in large, clear, correctly spelled letters. No logos, no fake brand marks, no medical claims in the picture.` },
-    { role: "user", content: `Meeting topic: ${topic}\nCreative agent said: ${said}` },
-  ], async () => {}, true);
+async function makeChatImage(meetingId: string, companyId: string, rowId: string, said: string, topic: string, winners: { url: string; label: string }[]) {
+  const ask = `Meeting topic: ${topic}\nCreative agent said: ${said}`;
+  winners = await loadPictures(winners.slice(0, 3));
+  const user: unknown = winners.length ? [{ type: "text", text: ask + "\n\nThe pictures attached are the ads that are SELLING now. Keep what makes them work (the concept, the emotion, the composition style) but make a NEW picture, not a copy.\n" + winners.slice(0, 3).map((u, k) => `${k + 1}. ${u.label}`).join("\n") }, ...winners.slice(0, 3).map((u) => ({ type: "image_url", image_url: { url: u.url } }))] : ask;
+  const sys = { role: "system", content: `From the creative agent's message and the meeting, return ONLY JSON {"product": string, "angle": string, "headline_on_image": string, "image_prompt": string}. image_prompt is one complete, detailed prompt for a photorealistic square social media ad image (scene, people, lighting, mood, composition) built on the concept of the winning pictures when they are shown. ${PEOPLE_RULE} If headline_on_image is not empty the image must show that headline in large, clear, correctly spelled letters. No logos, no fake brand marks, no medical claims in the picture.` };
+  let raw: string;
+  try { raw = await openaiStream([sys, { role: "user", content: user }], async () => {}, true); }
+  catch (_) { raw = await openaiStream([sys, { role: "user", content: ask }], async () => {}, true); }
   let o: { product?: string; angle?: string; headline_on_image?: string; image_prompt?: string } = {};
   try { o = JSON.parse(raw); } catch { /* use the message itself */ }
   const prompt = String(o.image_prompt || said).slice(0, 1500);
@@ -530,7 +578,7 @@ async function liveRespond(meetingId: string, companyId: string) {
   const { data: got } = await db.from("ai_meetings").update({ responding_since: new Date().toISOString() }).eq("id", meetingId).eq("status", "running").or(`responding_since.is.null,responding_since.lt.${stale}`).select("topic, briefing, images");
   if (!got?.length) return; // someone is already answering; they will see the new message when they finish
   try {
-    let m = { topic: String(got[0].topic ?? ""), briefing: String(got[0].briefing ?? ""), images: (got[0].images ?? []) as string[], verified: false };
+    let m = { topic: String(got[0].topic ?? ""), briefing: String(got[0].briefing ?? ""), images: ((got[0].images ?? []) as unknown[]).map((x) => typeof x === "string" ? { url: x, label: "a winning ad" } : x as { url: string; label: string }), verified: false };
     if (!m.briefing) { const b = await assembleBriefing(companyId); m = { ...m, briefing: b.briefing, images: b.images, verified: b.verified }; await db.from("ai_meetings").update({ briefing: b.briefing, images: b.images }).eq("id", meetingId); }
     else { const { data: t } = await db.rpc("rv_team_briefing", { p_company: companyId }); m.verified = !!(t as { claims_verified?: boolean } | null)?.claims_verified; }
     for (let round = 0; round < 4; round++) {
@@ -543,11 +591,11 @@ async function liveRespond(meetingId: string, companyId: string) {
       for (let i = 0; i < speakers.length; i++) {
         const sp = speakers[i];
         const wantImage = sp === "creative" && route.image, wantPlan = sp === "media_buyer" && route.plan;
-        const ins = wantImage ? "The BOSS asked for a picture. In one or two sentences say what you are creating right now (scene, mood, headline). The real picture appears under your message in a few seconds."
+        const ins = wantImage ? "The BOSS asked for a picture. In one or two sentences say what you are creating right now: say which winning ad (best seller first) the concept comes from, the scene, the people and the headline. The real picture appears under your message in a few seconds."
           : wantPlan ? "The BOSS asked to see the campaign plan. In one or two sentences say what the plan is (product, country, budget, how it is set up). The plan card appears under your message."
           : i === 0 ? "Answer the BOSS's last message directly." : "Add only what is NEW and useful after your teammate. If nothing is needed, say so in one short sentence.";
         const r = await liveTurn(meetingId, companyId, sp, ins, m);
-        if (wantImage) jobs.push(makeChatImage(meetingId, companyId, r.id, r.text, m.topic).catch(async (e) => { await db.from("ai_meeting_messages").update({ attachment: { type: "error", text: "The picture could not be made: " + String((e as Error)?.message ?? e).slice(0, 120) } }).eq("id", r.id); }));
+        if (wantImage) jobs.push(makeChatImage(meetingId, companyId, r.id, r.text, m.topic, m.images).catch(async (e) => { await db.from("ai_meeting_messages").update({ attachment: { type: "error", text: "The picture could not be made: " + String((e as Error)?.message ?? e).slice(0, 120) } }).eq("id", r.id); }));
         if (wantPlan) jobs.push(makeChatPlan(meetingId, companyId, r.id, m).catch(() => {}));
         await db.from("ai_meetings").update({ responding_since: new Date().toISOString(), last_activity_at: new Date().toISOString() }).eq("id", meetingId);
         if (i < speakers.length - 1) await pace(r.text);
@@ -578,7 +626,7 @@ async function finishLive(meetingId: string, companyId: string) {
   try {
     await db.from("ai_meetings").update({ responding_since: null }).eq("id", meetingId);
     const briefing = String(got[0].briefing ?? "");
-    const m = { topic: String(got[0].topic ?? ""), briefing, images: [] as string[], verified: false };
+    const m = { topic: String(got[0].topic ?? ""), briefing, images: [] as { url: string; label: string }[], verified: false };
     await liveTurn(meetingId, companyId, "team_lead", "The meeting is ending. Close it in two short sentences: thank the BOSS and say what the team agreed to do, or that nothing is decided yet. Say the written decision is being prepared.", m);
     const decision = await makeDecision(meetingId, briefing);
     await db.from("ai_meetings").update({ decision }).eq("id", meetingId);

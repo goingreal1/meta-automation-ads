@@ -839,17 +839,18 @@ async function handleTeamSnapshot(body) {
     rows.sort((x, y)=>(y.last_7_days?.purchases ?? 0) - (x.last_7_days?.purchases ?? 0) || (y.last_7_days?.conversations ?? 0) - (x.last_7_days?.conversations ?? 0) || (y.last_7_days?.spend ?? 0) - (x.last_7_days?.spend ?? 0));
     // how the best ones were built, and what their ads say
     const top = rows.filter((r)=>(r.last_30_days?.purchases ?? 0) + (r.last_30_days?.conversations ?? 0) > 0).slice(0, 3);
-    const adIns = top.length ? await insightsByLevel(actId, "ad", "last30", token, factor).catch(()=>({})) : {};
+    const [adIns, adToday, adWeek] = top.length ? await Promise.all(["last30", "today", "last7"].map((r)=>insightsByLevel(actId, "ad", r, token, factor).catch(()=>({})))) : [{}, {}, {}];
     const winners = await Promise.all(top.map(async (c)=>{
       const [sets, ads] = await Promise.all([
         graphGetAll(`${c.id}/adsets`, { fields: "id,name,status,daily_budget,optimization_goal,destination_type,bid_strategy,targeting" }, token).catch(()=>[]),
-        graphGetAll(`${c.id}/ads`, { fields: "id,name,adset_id,status,creative{body,title,object_story_spec,thumbnail_url,image_url,call_to_action_type}" }, token).catch(()=>[])
+        graphGetAll(`${c.id}/ads`, { fields: "id,name,adset_id,status,creative.thumbnail_width(800).thumbnail_height(800){body,title,object_story_spec,thumbnail_url,image_url,call_to_action_type}" }, token).catch(()=>[])
       ]);
-      const best = ads.map((ad)=>({ ad, m: adIns[ad.id] })).sort((x, y)=>(y.m?.purchases ?? 0) - (x.m?.purchases ?? 0) || (y.m?.conversations ?? 0) - (x.m?.conversations ?? 0) || (y.m?.spend ?? 0) - (x.m?.spend ?? 0)).slice(0, 3);
+      // the ads that sold TODAY come first, then this week's, then the month's
+      const best = ads.map((ad)=>({ ad, m: adIns[ad.id], t: adToday[ad.id], w: adWeek[ad.id] })).sort((x, y)=>(y.t?.purchases ?? 0) - (x.t?.purchases ?? 0) || (y.w?.purchases ?? 0) - (x.w?.purchases ?? 0) || (y.m?.purchases ?? 0) - (x.m?.purchases ?? 0) || (y.m?.conversations ?? 0) - (x.m?.conversations ?? 0) || (y.m?.spend ?? 0) - (x.m?.spend ?? 0)).slice(0, 4);
       return {
         campaign: c.name, objective: c.objective,
         ad_sets: sets.filter((s)=>s.status === "ACTIVE").slice(0, 4).map((s)=>({ name: s.name, daily_budget: s.daily_budget ? Math.round(num(s.daily_budget) * factor / 100) : null, optimization: s.optimization_goal, destination: s.destination_type, bid: s.bid_strategy, targeting: snapTargeting(s.targeting) })),
-        best_ads: best.map(({ ad, m })=>({ ...snapCopy(ad), last_30_days: num2(m) }))
+        best_ads: best.map(({ ad, m, t, w })=>({ ...snapCopy(ad), today: num2(t), last_7_days: num2(w), last_30_days: num2(m) }))
       };
     }));
     return { account: a.nickname, currency: a.currency ?? "NGN", campaigns: rows.slice(0, 25), winners };
