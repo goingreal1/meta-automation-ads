@@ -856,6 +856,99 @@ async function handleTeamSnapshot(body) {
   }));
   return { ok: true, generated_at: new Date().toISOString(), accounts: results.map((r, i)=>r.status === "fulfilled" ? r.value : { account: usable[i].nickname, error: String(r.reason?.message ?? r.reason).slice(0, 160) }) };
 }
+// -- notifications from Meta: a message for every new purchase an ad gets (checked every few minutes) --
+async function notifyRpc(admin, args) {
+  const { error } = await admin.rpc("rv_notify", args);
+  if (error) console.error("rv_notify:", error.message);
+}
+async function handlePurchaseAlerts() {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const day = wat(0), yday = wat(-1);
+  const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct").eq("status", "active");
+  const usable = (accounts ?? []).filter((a)=>/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+  let sent = 0;
+  const out = [];
+  await Promise.allSettled(usable.map(async (a)=>{
+    try {
+      const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
+      const ins = await insightsByLevel(actId, "ad", "today", token, factor);
+      const buying = Object.entries(ins).filter(([, m])=>(m.purchases ?? 0) > 0);
+      const { data: seenRows } = await admin.from("meta_purchase_seen").select("ad_id, day, purchases").eq("ad_account_id", a.id).gte("day", yday);
+      const seen = {}; for (const r of seenRows ?? []) if (r.day === day) seen[r.ad_id] = r.purchases;
+      const baseline = !(seenRows ?? []).length; // the first run only learns what is already there, so old purchases do not flood the bell
+      for (const [adId, m] of buying){
+        const prev = seen[adId] ?? 0;
+        if (m.purchases > prev && !baseline && sent < 30) {
+          let name = adId, camp = "";
+          try { const o = await graphGet(adId, { fields: "name,campaign{name}" }, token); name = o.name ?? adId; camp = o.campaign?.name ?? ""; } catch (_) { /* keep the id */ }
+          const n = m.purchases - prev, cpa = m.spend > 0 ? Math.round(m.spend / m.purchases) : null;
+          await notifyRpc(admin, {
+            p_company: a.company_id, p_category: "orders", p_kind: "meta_purchase",
+            p_title: `🛍 ${n > 1 ? n + " purchases" : "Purchase"} on Meta · ${String(name).slice(0, 70)}`,
+            p_body: [camp && camp.slice(0, 80), `${m.purchases} today`, `₦${Math.round(m.spend).toLocaleString("en-NG")} spent${cpa ? ` (₦${cpa.toLocaleString("en-NG")} each)` : ""}`, a.nickname].filter(Boolean).join(" · "),
+            p_url: "/dashboard_new.html?open=tab:campaigns", p_severity: "success",
+            p_data: { ad_id: adId, ad_account_id: a.id, purchases_today: m.purchases, added: n, spend: Math.round(m.spend) },
+            p_dedupe: `metapurchase:${adId}:${day}:${m.purchases}`, p_buyer: a.media_buyer_id ?? null, p_user: null, p_push: true
+          });
+          sent++;
+        }
+      }
+      const rows = buying.map(([adId, m])=>({ ad_account_id: a.id, ad_id: adId, day, purchases: m.purchases, updated_at: new Date().toISOString() }));
+      rows.push({ ad_account_id: a.id, ad_id: "_baseline", day, purchases: 0, updated_at: new Date().toISOString() }); // proves this account has run before, so a first purchase is never swallowed as "baseline"
+      await admin.from("meta_purchase_seen").upsert(rows, { onConflict: "ad_account_id,ad_id,day" });
+    } catch (e) { out.push({ account: a.nickname, error: String(e.message ?? e).slice(0, 120) }); }
+  }));
+  admin.from("meta_purchase_seen").delete().lt("day", wat(-3)).then(()=>{}, ()=>{});
+  return { ok: true, sent, errors: out };
+}
+
+// -- the 9 PM report: orders, visitors and the LIVE Meta numbers (spend, purchases, best campaign), to the owner/admins and to each media buyer --
+async function handleDailyDigest(push = true) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const day = wat(0), from = new Date(`${day}T00:00:00+01:00`), to = new Date(from.getTime() + 86400000);
+  const money = (n)=>"₦" + Math.round(n).toLocaleString("en-NG");
+  const { data: companies } = await admin.from("companies").select("id");
+  let sent = 0;
+  for (const c of companies ?? []){
+    const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct").eq("company_id", c.id).eq("status", "active");
+    const usable = (accounts ?? []).filter((a)=>/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+    const per = await Promise.allSettled(usable.map(async (a)=>{
+      const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
+      const [ins, camps] = await Promise.all([insightsByLevel(actId, "campaign", "today", token, factor), graphGetAll(`act_${actId}/campaigns`, { fields: "id,name", effective_status: JSON.stringify(["ACTIVE", "PAUSED"]) }, token).catch(()=>[])]);
+      const names = Object.fromEntries(camps.map((x)=>[x.id, x.name]));
+      const rows = Object.entries(ins).map(([id, m])=>({ id, name: names[id] ?? id, spend: m.spend || 0, purchases: m.purchases || 0 }));
+      return { buyer: a.media_buyer_id, rows };
+    }));
+    const metaBy = (buyer)=>{
+      const rows = per.filter((r)=>r.status === "fulfilled" && (buyer === undefined || r.value.buyer === buyer)).flatMap((r)=>r.value.rows);
+      const spend = rows.reduce((t, r)=>t + r.spend, 0), purchases = rows.reduce((t, r)=>t + r.purchases, 0);
+      const best = [...rows].sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend)[0];
+      return { spend, purchases, best: best && (best.purchases > 0 || best.spend > 0) ? best : null };
+    };
+    const { data: ords } = await admin.from("orders").select("media_buyer_id, order_status, order_value_naira").eq("company_id", c.id).gte("ordered_at", from.toISOString()).lt("ordered_at", to.toISOString());
+    const ordsBy = (buyer)=>{ const x = (ords ?? []).filter((o)=>o.order_status !== "cancelled" && (buyer === undefined || o.media_buyer_id === buyer)); return { n: x.length, value: x.reduce((t, o)=>t + Number(o.order_value_naira || 0), 0) }; };
+    const body = (m, o, vs)=>[m.spend > 0 || m.purchases > 0 ? `Meta: ${money(m.spend)} spent · ${m.purchases} purchase${m.purchases === 1 ? "" : "s"}` : null, m.best && m.best.purchases > 0 ? `Best: ${String(m.best.name).slice(0, 60)} (${m.best.purchases})` : null, vs ? `${vs.visitors} visitors${vs.abandoned > 0 ? ` · ${vs.abandoned} left without ordering` : ""}` : null].filter(Boolean).join(" · ");
+    // everyone: owner and admins
+    const { data: vsAll } = await admin.rpc("rv_visit_stats_for", { p_company: c.id, p_from: from.toISOString(), p_to: to.toISOString(), p_buyer: null });
+    const m = metaBy(undefined), o = ordsBy(undefined), vs = vsAll ? { visitors: Number(vsAll.visitors || 0), abandoned: Number(vsAll.abandoned || 0) } : null;
+    if (o.n || m.spend > 0 || m.purchases || vs?.visitors) {
+      await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "daily_digest", p_title: `📊 Today: ${o.n} order${o.n === 1 ? "" : "s"} · ${money(o.value)}`, p_body: body(m, o, vs), p_url: "/dashboard_new.html?open=tab:overview", p_severity: "info",
+        p_data: { date: day, orders: o.n, revenue: o.value, meta_spend: Math.round(m.spend), meta_purchases: m.purchases }, p_dedupe: `digest2:${day}`, p_buyer: null, p_user: null, p_push: push });
+      sent++;
+    }
+    // each media buyer: their own accounts and orders
+    const { data: buyers } = await admin.from("profiles").select("id, media_buyer_id").eq("company_id", c.id).not("media_buyer_id", "is", null);
+    for (const b of buyers ?? []){
+      const mb = metaBy(b.media_buyer_id), ob = ordsBy(b.media_buyer_id);
+      if (!(ob.n || mb.spend > 0 || mb.purchases)) continue;
+      const { data: vb } = await admin.rpc("rv_visit_stats_for", { p_company: c.id, p_from: from.toISOString(), p_to: to.toISOString(), p_buyer: b.media_buyer_id });
+      await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "daily_digest", p_title: `📊 Your day: ${ob.n} order${ob.n === 1 ? "" : "s"} · ${money(ob.value)}`, p_body: body(mb, ob, vb ? { visitors: Number(vb.visitors || 0), abandoned: Number(vb.abandoned || 0) } : null), p_url: "/dashboard_new.html?open=tab:overview", p_severity: "info",
+        p_data: { date: day, orders: ob.n, revenue: ob.value, meta_spend: Math.round(mb.spend), meta_purchases: mb.purchases }, p_dedupe: `digest2:${day}:${b.id}`, p_buyer: null, p_user: b.id, p_push: push });
+      sent++;
+    }
+  }
+  return { ok: true, sent };
+}
 // -- set_status --
 async function pauseOrResume(admin, account, actId, token, level, objectId, status) {
   // The object must belong to this ad account -- never trust the id alone.
@@ -1718,6 +1811,12 @@ Deno.serve(async (req)=>{
   });
   try {
     const body = await req.json().catch(()=>({}));
+    if (body.action === "purchase_alerts" || body.action === "daily_digest") {
+      const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret0 } = await admin0.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
+      return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : await handleDailyDigest(body.push !== false));
+    }
     if (body.action === "auto_kill") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
