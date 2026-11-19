@@ -1,4 +1,5 @@
 // Revora dashboard, part 11 of 23: CATALOG: one place for products, their creatives, sales pages and results
+const BV_COUNTRIES = [["NG", "Nigeria"], ["KE", "Kenya"], ["GH", "Ghana"], ["ZA", "South Africa"], ["UG", "Uganda"], ["TZ", "Tanzania"], ["CM", "Cameroon"], ["RW", "Rwanda"], ["ZM", "Zambia"], ["SN", "Senegal"], ["CI", "Côte d'Ivoire"], ["ET", "Ethiopia"], ["EG", "Egypt"], ["US", "United States"], ["GB", "United Kingdom"], ["CA", "Canada"]];
 
 // ── TAB: PRODUCTS ─────────────────────────────────────────────────────────────
 
@@ -113,6 +114,8 @@ async function bvCatProduct(el) {
       <div class="cat-row2"><select class="cat-in" id="cd_dest"><option value="whatsapp" ${p.destination_type !== "website" ? "selected" : ""}>WhatsApp chat</option><option value="website" ${p.destination_type === "website" ? "selected" : ""}>Website order form</option></select>
         <input class="cat-in" id="cd_wa" placeholder="WhatsApp number, e.g. 2348012345678" value="${escH(p.whatsapp_number || "")}"></div>
       <input class="cat-in" id="cd_url" style="margin-top:8px" placeholder="Website link (for website orders)" value="${escH(p.landing_page_url || "")}">
+      <div class="cat-lbl">Countries this product sells in <span style="font-weight:500">(the AI Team launches ads here. Leave all unticked and it asks you in the meeting)</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-bottom:4px">${BV_COUNTRIES.map(([c, n]) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="cd_cc" value="${c}" ${(p.target_countries || []).includes(c) ? "checked" : ""}> ${escH(n)}</label>`).join("")}</div>
       <details class="cat-more" ${p.safety_notes || p.nafdac_reg_no ? "open" : ""}><summary>More details <span>for ${escH((window.myCompany?.business_types || [])[0]?.replace(/_/g, " ") || "your product")}</span></summary>
         <div class="cat-lbl">${escH(nz.extra)}</div><textarea class="cat-in" id="cd_safety">${escH(p.safety_notes || "")}</textarea>
         ${nz.nafdac || p.nafdac_reg_no ? `<div class="cat-lbl">NAFDAC number</div><input class="cat-in" id="cd_nafdac" value="${escH(p.nafdac_reg_no || "")}">` : ""}
@@ -143,7 +146,7 @@ async function bvCatProduct(el) {
       if (!name || !(price >= 0)) { msg.innerHTML = '<div class="msg err">Name and price are needed.</div>'; return; }
       const fields = { product_name: name, default_order_value_naira: price, stock_on_hand: g("cd_stock") === "" ? null : Number(g("cd_stock")), description: g("cd_desc").trim() || null, benefits: g("cd_benefits").trim() || null,
         destination_type: g("cd_dest"), whatsapp_number: g("cd_wa").replace(/[^\d]/g, "") || null, landing_page_url: g("cd_url").trim() || null, safety_notes: g("cd_safety").trim() || null,
-        is_active: document.getElementById("cd_active").checked, ...(document.getElementById("cd_nafdac") ? { nafdac_reg_no: g("cd_nafdac").trim() || null } : {}) };
+        target_countries: (cc => cc.length ? cc : null)([...document.querySelectorAll(".cd_cc:checked")].map(x => x.value)), is_active: document.getElementById("cd_active").checked, ...(document.getElementById("cd_nafdac") ? { nafdac_reg_no: g("cd_nafdac").trim() || null } : {}) };
       save.disabled = true; save.textContent = "Saving…";
       const { error } = await supabaseClient.from("products").update(fields).eq("id", p.id);
       save.disabled = false; save.textContent = "Save";

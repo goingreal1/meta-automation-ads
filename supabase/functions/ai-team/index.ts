@@ -287,6 +287,11 @@ async function mintToken(userId: string): Promise<string | null> {
 // Runs every 5 minutes (pg_cron). Starts a due daily meeting; moves automatic meetings through images -> launches, one safe step at a time.
 async function tick() {
   const log: string[] = [];
+  { // live meetings: end them when their time is up or nobody has spoken for 45 minutes
+    const idle = new Date(Date.now() - 45 * 60_000).toISOString(), nowIso = new Date().toISOString();
+    const { data: over } = await db.from("ai_meetings").select("id, company_id").eq("status", "running").eq("mode", "live").or(`ends_at.lt.${nowIso},last_activity_at.lt.${idle}`).limit(3);
+    for (const x of over ?? []) { await finishLive(x.id, x.company_id); log.push(`${x.id}: live meeting ended`); }
+  }
   const nowL = new Date(Date.now() + 3600_000), lagosHour = nowL.getUTCHours();
   const dayStart = Date.UTC(nowL.getUTCFullYear(), nowL.getUTCMonth(), nowL.getUTCDate()) - 3600_000;
   const { data: teams } = await db.from("ai_teams").select("*").eq("enabled", true).eq("daily_meeting", true);
@@ -407,6 +412,129 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
   }
 }
 
+
+// ============ LIVE MEETINGS (people-paced) ============
+// A live meeting stays open until a person ends it (or the time is up). The team opens it with the real numbers, then waits for the BOSS:
+// every message the BOSS sends is answered by whoever it is for (one to three people, one after the other, with a pause between them).
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const pace = (t: string) => sleep(Math.min(6000, 1500 + t.length * 18));
+const SPEAKERS: Speaker[] = ["team_lead", "creative", "media_buyer", "customer_service"];
+
+async function assembleBriefing(companyId: string) {
+  const { data: brief0 } = await db.rpc("rv_team_briefing", { p_company: companyId });
+  const brief = { ...(brief0 ?? {}) } as Record<string, unknown>;
+  delete brief.ads_last_7d; // the stored daily table lags: the live Meta numbers replace it
+  const live = await liveMeta(companyId);
+  return { briefing: JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...brief }).slice(0, 48000), images: live.images, verified: !!brief.claims_verified };
+}
+
+async function liveTurn(meetingId: string, companyId: string, sp: Speaker, instruction: string, m: { topic: string; briefing: string; images: string[]; verified: boolean }) {
+  const a = AGENTS[sp];
+  const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
+  const transcript = (msgs ?? []).map((x) => `${x.speaker === "you" ? "BOSS (a person, answer them directly)" : (AGENTS[x.speaker as Speaker]?.name ?? x.speaker) + " (" + (AGENTS[x.speaker as Speaker]?.role ?? "") + ")"}: ${x.content}`).join("\n");
+  const row = await addMessage(meetingId, companyId, sp, "", false);
+  const push = async (t: string) => { await db.from("ai_meeting_messages").update({ content: t, updated_at: new Date().toISOString() }).eq("id", row.id); };
+  const system = `You are ${a.name}, the ${a.role} of an AI marketing team for a Nigerian online business. ${a.brief}\n\n${rules(m.verified)}\n\nLIVE MEETING: you are talking with the BOSS (the person who runs this business) and three teammates. This is a conversation, not a presentation: say only YOUR part, in at most 3 short sentences, never repeat what a teammate just said, and answer the BOSS directly when they have spoken. When the BOSS gives a direction, accept it and say what you will do; nothing is ever launched without the BOSS approving it on the page. The BOSS's instructions beat your own ideas: if they say focus on a product or launch in a country, follow it. Ask the BOSS a short question only when you really need the answer (for example which country a product should be launched in when its target_countries are empty).\n\nMeeting topic: ${m.topic}\n\nBRIEFING (real data):\n${m.briefing}`;
+  const user = `Meeting so far:\n${transcript || "(nothing yet)"}\n\n${instruction}`;
+  const plain = [{ role: "system", content: system }, { role: "user", content: user }];
+  const withImgs = sp === "creative" && m.images.length ? [plain[0], { role: "user", content: [{ type: "text", text: user + "\n\nThe pictures attached are the best ads running now. Look at them." }, ...m.images.map((u) => ({ type: "image_url", image_url: { url: u } }))] }] : plain;
+  let text: string;
+  try { text = await openaiStream(withImgs, push); } catch (e) { if (withImgs === plain) throw e; text = await openaiStream(plain, push); }
+  await db.from("ai_meeting_messages").update({ content: text.trim(), done: true, updated_at: new Date().toISOString() }).eq("id", row.id);
+  return text;
+}
+
+async function startLive(meetingId: string, companyId: string, topic: string) {
+  try {
+    const b = await assembleBriefing(companyId);
+    await db.from("ai_meetings").update({ briefing: b.briefing, images: b.images }).eq("id", meetingId);
+    const ctx = { topic, briefing: b.briefing, images: b.images, verified: b.verified };
+    const steps: [Speaker, string][] = [
+      ["team_lead", "Open the meeting in at most 4 short sentences. Say what the LIVE numbers show: which campaign is winning (name it) with its numbers for today, yesterday and the last 7 days, and anything spending without results. Then tell the BOSS you want their direction and hand over to Zara for the creative read."],
+      ["creative", "Give your read in 2 or 3 sentences: look at the winning ads' copy, headlines and pictures (winners / best_ads) and say which hook or angle seems to be working and why. Do not propose new images yet."],
+      ["media_buyer", "Give your read in 2 or 3 sentences: how the winning campaigns are set up (countries, ages, budgets) and what you would test next. If a product has no target_countries set, ask the BOSS which country it should run in."],
+      ["customer_service", "Give your read in 2 or 3 sentences from the orders and stock in the briefing, and say if they do not match Meta's purchases. Mention anything customers or stock should change."],
+      ["team_lead", "Close the opening in one or two sentences by asking the BOSS one clear question: what should the team focus on today? Then wait for the answer."],
+    ];
+    for (const [sp, ins] of steps) { const t = await liveTurn(meetingId, companyId, sp, ins, ctx); await db.from("ai_meetings").update({ last_activity_at: new Date().toISOString() }).eq("id", meetingId); await pace(t); }
+  } catch (e) {
+    await db.from("ai_meetings").update({ status: "failed", error: String((e as Error)?.message ?? e).slice(0, 400), ended_at: new Date().toISOString() }).eq("id", meetingId);
+  }
+}
+
+async function routeSpeakers(meetingId: string, boss: string): Promise<Speaker[]> {
+  const name = boss.toLowerCase();
+  const named: Speaker[] = [];
+  if (/\b(ada|strategy|team lead)\b/.test(name)) named.push("team_lead");
+  if (/\b(zara|creative)\b/.test(name)) named.push("creative");
+  if (/\b(tobi|media ?buy\w*)\b/.test(name)) named.push("media_buyer");
+  if (/\b(ife|customer (care|service))\b/.test(name)) named.push("customer_service");
+  try {
+    const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq", { ascending: false }).limit(6);
+    const recent = (msgs ?? []).reverse().map((x) => `${x.speaker}: ${String(x.content).slice(0, 220)}`).join("\n");
+    const raw = await openaiStream([
+      { role: "system", content: `You decide who answers the BOSS in a live marketing meeting. People: team_lead (strategy, priorities), creative (images, hooks, copy), media_buyer (budgets, targeting, countries, launches, kill rules), customer_service (orders, customers, stock). Return ONLY JSON {"speakers":[...]} with 1 to 3 of those ids in speaking order: the person the BOSS is talking to first; others only if they have something genuinely new to add. If the BOSS gives a general direction, team_lead answers first, then whoever must act on it.` },
+      { role: "user", content: `Recent messages:\n${recent}\n\nThe BOSS's last message is the last line starting with "you".` },
+    ], async () => {}, true);
+    const list = (JSON.parse(raw)?.speakers ?? []).filter((x: string) => SPEAKERS.includes(x as Speaker)) as Speaker[];
+    const out = [...new Set([...named, ...list])].slice(0, 3);
+    if (out.length) return out;
+  } catch (_) { /* fall back below */ }
+  return named.length ? named.slice(0, 3) : ["team_lead", "media_buyer"];
+}
+
+async function liveRespond(meetingId: string, companyId: string) {
+  const stale = new Date(Date.now() - 3 * 60_000).toISOString();
+  const { data: got } = await db.from("ai_meetings").update({ responding_since: new Date().toISOString() }).eq("id", meetingId).eq("status", "running").or(`responding_since.is.null,responding_since.lt.${stale}`).select("topic, briefing, images");
+  if (!got?.length) return; // someone is already answering; they will see the new message when they finish
+  try {
+    let m = { topic: String(got[0].topic ?? ""), briefing: String(got[0].briefing ?? ""), images: (got[0].images ?? []) as string[], verified: false };
+    if (!m.briefing) { const b = await assembleBriefing(companyId); m = { ...m, briefing: b.briefing, images: b.images, verified: b.verified }; await db.from("ai_meetings").update({ briefing: b.briefing, images: b.images }).eq("id", meetingId); }
+    else { const { data: t } = await db.rpc("rv_team_briefing", { p_company: companyId }); m.verified = !!(t as { claims_verified?: boolean } | null)?.claims_verified; }
+    for (let round = 0; round < 4; round++) {
+      const { data: last } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq", { ascending: false }).limit(1).maybeSingle();
+      if (!last || last.speaker !== "you") break;
+      const speakers = await routeSpeakers(meetingId, String(last.content));
+      await sleep(900);
+      for (let i = 0; i < speakers.length; i++) {
+        const t = await liveTurn(meetingId, companyId, speakers[i], i === 0 ? "Answer the BOSS's last message directly." : "Add only what is NEW and useful after your teammate. If nothing is needed, say so in one short sentence.", m);
+        await db.from("ai_meetings").update({ responding_since: new Date().toISOString(), last_activity_at: new Date().toISOString() }).eq("id", meetingId);
+        if (i < speakers.length - 1) await pace(t);
+      }
+    }
+  } catch (e) {
+    await addMessage(meetingId, companyId, "team_lead", "Sorry, I lost my connection for a moment. Please say that again.", true).catch(() => {});
+  } finally {
+    await db.from("ai_meetings").update({ responding_since: null, last_activity_at: new Date().toISOString() }).eq("id", meetingId);
+  }
+}
+
+async function makeDecision(meetingId: string, briefing: string): Promise<unknown> {
+  const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
+  const transcript = (msgs ?? []).map((m) => `${AGENTS[m.speaker as Speaker]?.name ?? "BOSS"}: ${m.content}`).join("\n");
+  const raw = await openaiStream([
+    { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "countries": [string], "kill_rule": string}], "risks": [string]}. THE BOSS'S INSTRUCTIONS IN THE TRANSCRIPT BEAT EVERYTHING: plan only what the BOSS asked for (the products, the countries, the budgets). "countries" are two-letter codes the launch targets, for example ["KE"] or ["NG"]; take them from the BOSS or from the product's target_countries or from the winning campaign for that product, and leave the list empty only if nobody said. If the BOSS asked for nothing to be launched, return an empty launch_plan. Use only products from the briefing. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing.slice(0, 20000)}` },
+    { role: "user", content: `Meeting transcript:\n${transcript}` },
+  ], async () => {}, true);
+  try { return JSON.parse(raw); } catch { return { summary: raw.slice(0, 600) }; }
+}
+
+async function finishLive(meetingId: string, companyId: string) {
+  // Claim the ending first so it happens once; the meeting shows as finished right away and the written decision follows.
+  const { data: got } = await db.from("ai_meetings").update({ status: "done", ended_at: new Date().toISOString() }).eq("id", meetingId).eq("status", "running").select("topic, briefing, images");
+  if (!got?.length) return;
+  try {
+    await db.from("ai_meetings").update({ responding_since: null }).eq("id", meetingId);
+    const briefing = String(got[0].briefing ?? "");
+    const m = { topic: String(got[0].topic ?? ""), briefing, images: [] as string[], verified: false };
+    await liveTurn(meetingId, companyId, "team_lead", "The meeting is ending. Close it in two short sentences: thank the BOSS and say what the team agreed to do, or that nothing is decided yet. Say the written decision is being prepared.", m);
+    const decision = await makeDecision(meetingId, briefing);
+    await db.from("ai_meetings").update({ decision }).eq("id", meetingId);
+  } catch (e) {
+    await db.from("ai_meetings").update({ error: String((e as Error)?.message ?? e).slice(0, 300) }).eq("id", meetingId);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -442,7 +570,7 @@ Deno.serve(async (req) => {
 
   if (b?.action === "state") {
     const { data: team } = await db.from("ai_teams").select("*").eq("company_id", companyId).maybeSingle();
-    const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
+    const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error, mode, ends_at, duration_minutes").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
     const { data: images } = await db.from("ai_team_images").select("id, meeting_id, brief, status, image_url, error, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
     const { data: launches } = await db.from("ai_launches").select("id, meeting_id, product_name, account_name, buyer_name, daily_budget_naira, status, note, start_at, kill_rule, created_at, countries").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
     return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!(OPENAI || RUNWAY), voice_ready: !!OPENAI, claims_verified: !!team?.claims_verified_at, can_manage: isOwner, can_start: canStart });
@@ -465,13 +593,22 @@ Deno.serve(async (req) => {
     if (!canStart) return json({ error: "Only the owner, an admin or a media buyer can call a meeting." }, 403);
     const demo = b?.demo === true;
     if (!demo && !OPENAI) return json({ error: "The AI team is not switched on yet: it needs the OpenAI key (OPENAI_API_KEY)." }, 503);
-    const { data: running } = await db.from("ai_meetings").select("id").eq("company_id", companyId).eq("status", "running").gt("started_at", new Date(Date.now() - 6 * 60_000).toISOString()).limit(1).maybeSingle();
+    const nowIso = new Date().toISOString();
+    const { data: running } = await db.from("ai_meetings").select("id").eq("company_id", companyId).eq("status", "running").or(`and(mode.eq.live,ends_at.gt.${nowIso}),started_at.gt.${new Date(Date.now() - 6 * 60_000).toISOString()}`).limit(1).maybeSingle();
     if (running) return json({ error: "A meeting is already running.", meeting_id: running.id }, 409);
-    const topic = String(b?.topic ?? "").trim().slice(0, 300) || "Daily strategy: what is selling, how to position it, what to make and launch next.";
-    const { data: m, error } = await db.from("ai_meetings").insert({ company_id: companyId, topic: demo ? `[DEMO] ${topic}` : topic, started_by: ud.user.id }).select("id").single();
+    const topic = String(b?.topic ?? "").trim().slice(0, 300) || "Live meeting: what is working, what to make and launch next.";
+    if (demo) {
+      const { data: m, error } = await db.from("ai_meetings").insert({ company_id: companyId, topic: `[DEMO] ${topic}`, started_by: ud.user.id }).select("id").single();
+      if (error || !m) return json({ error: error?.message ?? "Could not start." }, 500);
+      // deno-lint-ignore no-explicit-any
+      (globalThis as any).EdgeRuntime?.waitUntil(runMeeting(m.id, companyId, topic, true));
+      return json({ meeting_id: m.id });
+    }
+    const minutes = [30, 60, 90].includes(Number(b?.minutes)) ? Number(b.minutes) : 60;
+    const { data: m, error } = await db.from("ai_meetings").insert({ company_id: companyId, topic, started_by: ud.user.id, mode: "live", duration_minutes: minutes, ends_at: new Date(Date.now() + minutes * 60_000).toISOString(), last_activity_at: nowIso }).select("id").single();
     if (error || !m) return json({ error: error?.message ?? "Could not start." }, 500);
     // deno-lint-ignore no-explicit-any
-    (globalThis as any).EdgeRuntime?.waitUntil(runMeeting(m.id, companyId, topic, demo));
+    (globalThis as any).EdgeRuntime?.waitUntil(startLive(m.id, companyId, topic));
     return json({ meeting_id: m.id });
   }
 
@@ -510,11 +647,25 @@ Deno.serve(async (req) => {
 
   if (b?.action === "say") {
     const text = String(b?.text ?? "").trim().slice(0, 600);
-    const { data: m } = await db.from("ai_meetings").select("id, company_id, status").eq("id", String(b?.meeting_id ?? "")).maybeSingle();
+    const { data: m } = await db.from("ai_meetings").select("id, company_id, status, mode").eq("id", String(b?.meeting_id ?? "")).maybeSingle();
     if (!m || m.company_id !== companyId) return json({ error: "Meeting not found." }, 404);
     if (m.status !== "running") return json({ error: "This meeting has ended." }, 409);
     if (!text) return json({ error: "Say something first." }, 400);
     await addMessage(m.id, companyId, "you", text, true);
+    await db.from("ai_meetings").update({ last_activity_at: new Date().toISOString() }).eq("id", m.id);
+    // deno-lint-ignore no-explicit-any
+    if (m.mode === "live") (globalThis as any).EdgeRuntime?.waitUntil(liveRespond(m.id, companyId));
+    return json({ ok: true });
+  }
+
+  if (b?.action === "end") {
+    if (!canStart) return json({ error: "You do not have access to end a meeting." }, 403);
+    const { data: m } = await db.from("ai_meetings").select("id, company_id, status, mode").eq("id", String(b?.meeting_id ?? "")).maybeSingle();
+    if (!m || m.company_id !== companyId) return json({ error: "Meeting not found." }, 404);
+    if (m.status !== "running") return json({ ok: true });
+    if (m.mode !== "live") return json({ error: "This is an automatic meeting; it ends by itself." }, 409);
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(finishLive(m.id, companyId));
     return json({ ok: true });
   }
 
