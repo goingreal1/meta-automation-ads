@@ -703,7 +703,7 @@ const TOOLS = [
   {
     name: "get_live_ads",
     title: "Live ads from Meta",
-    description: "Every campaign, ad set and ad in an ad account with status, spend, messages or purchases, cost per result, CTR, and whether it breaks the person's kill rules. Use for any question about what is working.",
+    description: "Every campaign, ad set and ad in an ad account with status, spend, purchases and cost per purchase, messages and cost per message, landing page views and cost per landing page view, link clicks and cost per link click, link CTR, impressions, CPM, reach, frequency, and whether it breaks the person's kill rules. Use for any question about what is working.",
     inputSchema: OBJ({
       ...accountProp,
       range: {
@@ -730,7 +730,7 @@ const TOOLS = [
   {
     name: "get_account_performance",
     title: "Ad account performance",
-    description: "KPIs for an ad account over some days: spend, orders, cost per order, CTR, per ad set.",
+    description: "KPIs for an ad account over some days: spend, purchases and cost per purchase, messages, landing page views and cost per landing page view, link clicks and cost per link click, link CTR, CPM, impressions, per campaign.",
     inputSchema: OBJ({
       ad_account_name: str("Name or nickname of the ad account"),
       days: {
