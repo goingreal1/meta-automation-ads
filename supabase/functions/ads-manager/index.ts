@@ -1016,6 +1016,12 @@ async function accountBalance(admin, a, actId, token) {
     return parseAvailable(d.funding_source_details?.display_string);
   } catch (_) { return null; }
 }
+// Which report this run is: the nearest of 12pm / 4pm / 8pm Lagos, so a run a few minutes early or late is still labelled right.
+function reportSlot() {
+  const t = new Date(Date.now() + 3600000), h = t.getUTCHours() + t.getUTCMinutes() / 60;
+  const near = [12, 16, 20].reduce((b, x)=>Math.abs(x - h) < Math.abs(b - h) ? x : b, 12);
+  return Math.abs(near - h) <= 2 ? near : Math.floor(h);
+}
 async function handleMetaReport(slotHour, push = true) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const day = wat(0), from = new Date(`${day}T00:00:00+01:00`), to = new Date(from.getTime() + 86400000);
@@ -1062,6 +1068,8 @@ async function handleMetaReport(slotHour, push = true) {
       }));
       const spend = [...camps.values()].reduce((t, x)=>t + x.spend, 0), purchases = [...camps.values()].reduce((t, x)=>t + x.purchases, 0);
       const ar = acctIns[0] ? num(acctIns[0].reach) : 0;
+      // Catch any deposit or overspend since the last 5-minute check, so the balance in this report is right to the minute.
+      if (active) await trackBalance(admin, a, actId, token, day, spend).catch((e)=>console.error("trackBalance:", e.message));
       return { buyer: a.media_buyer_id, account: a.nickname, active, balance: active ? balance : null, spend: Math.round(spend), purchases, reach: Math.round(ar), month_spend: Math.round(mm.spend), month_purchases: mm.purchases, campaigns: list };
     }));
     const okAccts = per.filter((r)=>r.status === "fulfilled").map((r)=>r.value);
@@ -1993,7 +2001,7 @@ Deno.serve(async (req)=>{
       const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret0 } = await admin0.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
-      return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || new Date(Date.now() + 3600000).getUTCHours(), body.push !== false) : await handleDailyDigest(body.push !== false));
+      return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
     if (body.action === "auto_kill") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
