@@ -2010,7 +2010,7 @@ Deno.serve(async (req)=>{
       if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
       if (body.action === "wa_report_setup") {
         if (body.mode === "test" && body.user_id) {
-          const t = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "daily_report", user_id: String(body.user_id), values: ["Midday report (test)", "0", "9,864", "14,507", "3", "4,836", "19,379", "fund received ₦350,000, ad spend ₦319,507, OC 17, CPA ₦18,795"] }) });
+          const t = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "daily_report", user_id: String(body.user_id), values: Array.isArray(body.values) ? body.values : ["Midday report (test)", "0", "9,864", "14,507", "3", "4,836", "19,379", "fund received ₦350,000, ad spend ₦319,507, OC 17, CPA ₦18,795"] }) });
           return json({ status: t.status, ...(await t.json().catch(()=>({}))) });
         }
         const r = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "report_template", action: body.mode === "status" ? "status" : "create" }) });
