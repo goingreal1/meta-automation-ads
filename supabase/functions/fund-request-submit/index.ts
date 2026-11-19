@@ -189,8 +189,10 @@ Deno.serve(async (req)=>{
   // Send from the buyer's own held balance: no admin approval, Meta accounts only (verified above). The amount is set aside at once so it cannot be spent twice.
   if (b?.from_balance === true) {
     const { data: bal } = await admin.rpc("buyer_wallet_balance", { p_buyer: me.media_buyer_id });
-    if (Number(bal ?? 0) < amount) return json({
-      error: `Your balance is ₦${Math.max(0, Math.round(Number(bal ?? 0))).toLocaleString("en-NG")}, which cannot cover ₦${amount.toLocaleString("en-NG")}. Add money first.`
+    const { data: tfee } = await admin.rpc("rv_fee", { p_kind: "transfer", p_amount: amount });
+    const fee0 = Number(tfee ?? 0);
+    if (Number(bal ?? 0) < amount + fee0) return json({
+      error: `Your balance is ₦${Math.max(0, Math.round(Number(bal ?? 0))).toLocaleString("en-NG")}, which cannot cover ₦${amount.toLocaleString("en-NG")} plus the ₦${fee0.toLocaleString("en-NG")} transfer fee. Add money first.`
     }, 400);
     const { data: own, error: ownErr } = await admin.from("fund_requests").insert({
       company_id: me.company_id, media_buyer_id: me.media_buyer_id, amount_naira: amount, note, status: "approved", paid_from: "buyer",
