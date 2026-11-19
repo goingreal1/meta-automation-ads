@@ -123,6 +123,13 @@ function rangeParams(range) {
           until: wat(-1)
         })
       };
+    case "last2":
+      return {
+        time_range: JSON.stringify({
+          since: wat(-1),
+          until: wat(0)
+        })
+      };
     case "last3":
       return {
         time_range: JSON.stringify({
@@ -786,6 +793,68 @@ async function handleReach(userClient, body) {
   const ok = accountsOut.filter((x)=>!x.error);
   const reach = ok.reduce((t, x)=>t + x.reach, 0), impressions = ok.reduce((t, x)=>t + x.impressions, 0);
   return { ok: true, reach, impressions, frequency: reach > 0 ? impressions / reach : null, accounts: accountsOut };
+}
+// -- team_snapshot: the live picture the AI Team meeting works from (internal only). For every active ad account of a company: each campaign's
+// numbers today / yesterday / last 2 days / last 7 / last 30 days, and for the campaigns that are winning: how each ad set was set up
+// (countries, ages, interests, placements, budget) and the ad copy, headline and picture of the best ads. --
+const SNAP_WINDOWS = [["today", "today"], ["yesterday", "yesterday"], ["last_2_days_incl_today", "last2"], ["last_7_days", "last7"], ["last_30_days", "last30"]];
+const GENDER = { 1: "men", 2: "women" };
+function snapTargeting(t) {
+  const g = t?.geo_locations ?? {};
+  const interests = [];
+  for (const f of t?.flexible_spec ?? []) for (const i of f?.interests ?? []) interests.push(i.name);
+  return {
+    countries: g.countries ?? [], regions: (g.regions ?? []).map((r)=>r.name).slice(0, 8), cities: (g.cities ?? []).map((c)=>c.name).slice(0, 8),
+    ages: t?.age_min || t?.age_max ? `${t?.age_min ?? 18}-${t?.age_max ?? 65}` : null,
+    genders: t?.genders?.length ? t.genders.map((x)=>GENDER[x] ?? x).join("+") : "all", interests: [...new Set(interests)].slice(0, 10),
+    advantage_audience: t?.targeting_automation?.advantage_audience === 1, platforms: t?.publisher_platforms ?? null
+  };
+}
+function snapCopy(ad) {
+  const c = ad.creative ?? {}, o = c.object_story_spec ?? {}, ld = o.link_data, vd = o.video_data;
+  const cut = (v, n)=>v ? String(v).replace(/\s+/g, " ").slice(0, n) : null;
+  return {
+    id: ad.id, name: ad.name, type: vd ? "video" : "image",
+    primary_text: cut(c.body ?? ld?.message ?? vd?.message, 420), headline: cut(c.title ?? ld?.name ?? vd?.title, 100), description: cut(ld?.description ?? vd?.link_description, 120),
+    cta: c.call_to_action_type ?? ld?.call_to_action?.type ?? vd?.call_to_action?.type ?? null, picture_url: c.image_url ?? ld?.picture ?? vd?.image_url ?? c.thumbnail_url ?? null
+  };
+}
+async function handleTeamSnapshot(body) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const companyId = String(body.company_id ?? "");
+  if (!/^[0-9a-f-]{36}$/.test(companyId)) throw new HttpError(400, "company_id missing.");
+  const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct, currency").eq("company_id", companyId).eq("status", "active");
+  const usable = (accounts ?? []).filter((a)=>/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
+  const results = await Promise.allSettled(usable.map(async (a)=>{
+    const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
+    const [camps, ...wins] = await Promise.all([
+      graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,status,effective_status,daily_budget,lifetime_budget,objective,created_time", effective_status: JSON.stringify(["ACTIVE", "PAUSED", "WITH_ISSUES"]) }, token),
+      ...SNAP_WINDOWS.map(([, r])=>insightsByLevel(actId, "campaign", r, token, factor).catch(()=>({})))
+    ]);
+    const num2 = (m)=>m ? { spend: Math.round(m.spend), purchases: m.purchases, conversations: m.conversations, clicks: m.clicks, landing_page_views: m.landing_page_views, cost_per_purchase: m.purchases > 0 ? Math.round(m.spend / m.purchases) : null, cost_per_conversation: m.conversations > 0 ? Math.round(m.spend / m.conversations) : null } : null;
+    const rows = camps.map((c)=>{
+      const w = {}; SNAP_WINDOWS.forEach(([k], i)=>{ const v = num2(wins[i][c.id]); if (v && (v.spend > 0 || v.purchases || v.conversations)) w[k] = v; });
+      return { id: c.id, name: c.name, status: c.effective_status, objective: c.objective, daily_budget: c.daily_budget ? Math.round(num(c.daily_budget) * factor / 100) : null, created: String(c.created_time ?? "").slice(0, 10), ...w };
+    }).filter((r)=>r.status === "ACTIVE" || r.last_30_days);
+    rows.sort((x, y)=>(y.last_7_days?.purchases ?? 0) - (x.last_7_days?.purchases ?? 0) || (y.last_7_days?.conversations ?? 0) - (x.last_7_days?.conversations ?? 0) || (y.last_7_days?.spend ?? 0) - (x.last_7_days?.spend ?? 0));
+    // how the best ones were built, and what their ads say
+    const top = rows.filter((r)=>(r.last_30_days?.purchases ?? 0) + (r.last_30_days?.conversations ?? 0) > 0).slice(0, 3);
+    const adIns = top.length ? await insightsByLevel(actId, "ad", "last30", token, factor).catch(()=>({})) : {};
+    const winners = await Promise.all(top.map(async (c)=>{
+      const [sets, ads] = await Promise.all([
+        graphGetAll(`${c.id}/adsets`, { fields: "id,name,status,daily_budget,optimization_goal,destination_type,bid_strategy,targeting" }, token).catch(()=>[]),
+        graphGetAll(`${c.id}/ads`, { fields: "id,name,adset_id,status,creative{body,title,object_story_spec,thumbnail_url,image_url,call_to_action_type}" }, token).catch(()=>[])
+      ]);
+      const best = ads.map((ad)=>({ ad, m: adIns[ad.id] })).sort((x, y)=>(y.m?.purchases ?? 0) - (x.m?.purchases ?? 0) || (y.m?.conversations ?? 0) - (x.m?.conversations ?? 0) || (y.m?.spend ?? 0) - (x.m?.spend ?? 0)).slice(0, 3);
+      return {
+        campaign: c.name, objective: c.objective,
+        ad_sets: sets.filter((s)=>s.status === "ACTIVE").slice(0, 4).map((s)=>({ name: s.name, daily_budget: s.daily_budget ? Math.round(num(s.daily_budget) * factor / 100) : null, optimization: s.optimization_goal, destination: s.destination_type, bid: s.bid_strategy, targeting: snapTargeting(s.targeting) })),
+        best_ads: best.map(({ ad, m })=>({ ...snapCopy(ad), last_30_days: num2(m) }))
+      };
+    }));
+    return { account: a.nickname, currency: a.currency ?? "NGN", campaigns: rows.slice(0, 25), winners };
+  }));
+  return { ok: true, generated_at: new Date().toISOString(), accounts: results.map((r, i)=>r.status === "fulfilled" ? r.value : { account: usable[i].nickname, error: String(r.reason?.message ?? r.reason).slice(0, 160) }) };
 }
 // -- set_status --
 async function pauseOrResume(admin, account, actId, token, level, objectId, status) {
@@ -1655,6 +1724,15 @@ Deno.serve(async (req)=>{
       const given = req.headers.get("x-cron-secret") ?? "";
       if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
       return json(await handleAutoKill(body.dry_run === true));
+    }
+    if (body.action === "team_snapshot") {
+      let okAuth = !!SERVICE_KEY && req.headers.get("x-internal-key") === SERVICE_KEY;
+      if (!okAuth && req.headers.get("x-cron-secret")) {
+        const { data: secret } = await createClient(SUPABASE_URL, SERVICE_KEY).from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+        okAuth = !!secret?.value && req.headers.get("x-cron-secret") === secret.value;
+      }
+      if (!okAuth) throw new HttpError(401, "Not allowed.");
+      return json(await handleTeamSnapshot(body));
     }
     const { userClient, profile } = await getUserContext(req);
     if (body.action === "list") return json(await handleList(userClient, profile, body));

@@ -122,7 +122,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--ink3);te
   <div class="pane" id="p-auto">
     <section class="card sec">
       <div class="hd"><h3>Autopilot</h3></div>
-      <div class="row2" id="autoLock" style="display:none;border-top:0"><span class="chip off">View only</span><span class="note">Only the owner or an admin can change Autopilot. Ask them to turn it on. What you see here is what is saved now.</span></div>
+      <div class="row2" id="autoLock" style="display:none;border-top:0"><span class="chip off">View only</span><span class="note">You do not have access to change Autopilot. What you see here is what is saved now.</span></div>
       <div class="row2" style="border-top:0"><div class="m2"><b>Hold a meeting by itself every day</b><small>The team meets without you calling it</small></div><label class="sw"><input type="checkbox" id="sDaily"><span></span></label></div>
       <div class="row2"><div class="m2"><b>Meeting time</b><small>Lagos time</small></div><select id="sHour"></select></div>
       <div class="row2"><div class="m2"><b>Fully automatic</b><small>Off means you approve every image and launch yourself</small></div><label class="sw"><input type="checkbox" id="sAuto"><span></span></label></div>
@@ -276,7 +276,7 @@ function renderImages() {
   var mk = $("mkImg"); mk.style.display = (!mine.length && briefs && S.canManage) ? "" : "none"; mk.disabled = !S.imagesReady;
   $("imgNote").textContent = briefs || mine.length ? (S.imagesReady ? "Creative (Zara) makes one image per brief. Approve the ones you like and they go into your Creative Vault, ready to launch." : "Image making needs the Runway key (RUNWAY_API_KEY). Until it is added, the briefs are ready and waiting.") : "";
   var ready = (S.images || []).filter(function (i) { return i.status === "ready"; }).length;
-  $("imgsHint").textContent = !S.canManage ? "The owner or an admin approves images and launches." : (ready ? ready + " waiting for your approval" : "");
+  $("imgsHint").textContent = !S.canManage ? "You do not have access to approve images and launches." : (ready ? ready + " waiting for your approval" : "");
   $("imgs").innerHTML = all.length ? all.map(function (i) {
     var br = i.brief || {}, top;
     if (i.status === "generating") top = '<div class="ph"><div><div class="spin"></div>Drawing…</div></div>';
@@ -314,7 +314,7 @@ function renderLaunches() {
     var when = l.start_at ? new Date(l.start_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "";
     var ac = l.status === "proposed" && S.canManage ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="pri s" data-la="' + l.id + '">Approve and schedule for 12:05 AM</button><button class="s" data-lc="' + l.id + '">Cancel</button></div>' : "";
     return '<div class="ln"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>' + esc(l.product_name) + '</b><span class="chip ' + (l.status === "scheduled" ? "live" : (l.status === "failed" || l.status === "skipped" ? "bad" : (l.status === "proposed" ? "off" : ""))) + '">' + esc(tag) + "</span></div>" +
-      '<div class="note">₦' + Number(l.daily_budget_naira || 0).toLocaleString() + "/day" + (l.account_name ? " · " + esc(l.account_name) : "") + (l.buyer_name ? " · buyer " + esc(l.buyer_name) : "") + (when && (l.status === "proposed" || l.status === "scheduled") ? " · starts " + esc(when) : "") + "</div>" +
+      '<div class="note">₦' + Number(l.daily_budget_naira || 0).toLocaleString() + "/day" + (l.account_name ? " · " + esc(l.account_name) : "") + (l.buyer_name ? " · buyer " + esc(l.buyer_name) : "") + (l.countries && l.countries.length ? " · " + esc(l.countries.join(", ")) : "") + (when && (l.status === "proposed" || l.status === "scheduled") ? " · starts " + esc(when) : "") + "</div>" +
       (l.note ? '<div class="note" style="color:' + (l.status === "failed" ? "var(--bad)" : "var(--ink3)") + '">' + esc(l.note) + "</div>" : "") + (l.kill_rule ? '<div class="note">Kill rule from the meeting: ' + esc(l.kill_rule) + "</div>" : "") + ac + "</div>";
   }).join("") : '<div class="ln note">No launches yet. They appear here after a meeting.</div>';
   document.querySelectorAll("[data-la]").forEach(function (b) { b.onclick = function () { lnAct("approve_launch", b.dataset.la, b); }; });
