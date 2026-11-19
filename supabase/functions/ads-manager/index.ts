@@ -862,6 +862,37 @@ async function notifyRpc(admin, args) {
   const { error } = await admin.rpc("rv_notify", args);
   if (error) console.error("rv_notify:", error.message);
 }
+// True only when the account has an ACTIVE ad whose ad set and campaign are on too (Meta's effective_status already folds the parents in).
+async function hasActiveAds(actId, token) {
+  try { const d = await graphGet(`act_${actId}/ads`, { fields: "id", effective_status: JSON.stringify(["ACTIVE"]), limit: "1" }, token); return (d.data ?? []).length > 0; } catch (_) { return false; }
+}
+// Watch the Meta balance of a running account. If it rises by more than the spend explains, money arrived from somewhere else
+// (Opay, a card, a transfer): log it as funds received. Sends from the Revora wallet are already logged, so they are subtracted first.
+async function trackBalance(admin, a, actId, token, day, spendNow) {
+  if (a.billing_mode === "managed") return null;
+  const bal = await accountBalance(admin, a, actId, token);
+  if (bal == null) return null;
+  const { data: prev } = await admin.from("ad_balance_track").select("*").eq("ad_account_id", a.id).maybeSingle();
+  let added = 0;
+  if (prev) {
+    const spentSince = prev.day === day ? Math.max(0, spendNow - Number(prev.spend_today)) : spendNow;
+    const expected = Number(prev.balance) - spentSince;
+    let jump = bal - expected;
+    if (jump > 0 && a.media_buyer_id) {
+      const { data: sent } = await admin.from("fund_requests").select("amount_naira").eq("media_buyer_id", a.media_buyer_id).eq("paid_from", "buyer").eq("status", "transferred").gte("transferred_at", prev.updated_at);
+      jump -= (sent ?? []).reduce((t, x)=>t + Number(x.amount_naira || 0), 0);
+    }
+    if (jump >= 1000) added = Math.round(jump);
+  }
+  await admin.from("ad_balance_track").upsert({ ad_account_id: a.id, day, balance: bal, spend_today: spendNow, updated_at: new Date().toISOString() });
+  if (added > 0) {
+    await admin.from("fund_logs").insert({ company_id: a.company_id, media_buyer_id: a.media_buyer_id ?? null, ad_account_id: a.id, amount_naira: added, source: "meta_detected", note: `Balance on ${a.nickname ?? "ad account"} went up (sent from another source)`, log_date: day });
+    await notifyRpc(admin, { p_company: a.company_id, p_category: "money", p_kind: "meta_funded", p_title: `💰 ${a.nickname ?? "Ad account"} was topped up: +₦${added.toLocaleString("en-NG")}`,
+      p_body: `Meta balance is now ₦${Math.round(bal).toLocaleString("en-NG")}. Logged as funds received from another source.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "success",
+      p_data: { ad_account_id: a.id, added, balance: Math.round(bal) }, p_dedupe: `metafunded:${a.id}:${Date.now()}`, p_buyer: a.media_buyer_id ?? null, p_user: null, p_push: true });
+  }
+  return added;
+}
 async function handlePurchaseAlerts() {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const day = wat(0), yday = wat(-1);
@@ -873,6 +904,8 @@ async function handlePurchaseAlerts() {
     try {
       const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
       const ins = await insightsByLevel(actId, "ad", "today", token, factor);
+      const spendNow = Object.values(ins).reduce((t, m)=>t + (m.spend || 0), 0);
+      if (await hasActiveAds(actId, token)) await trackBalance(admin, a, actId, token, day, spendNow).catch((e)=>console.error("trackBalance:", e.message));
       const buying = Object.entries(ins).filter(([, m])=>(m.purchases ?? 0) > 0);
       let campIns = null; // campaign totals for the message, only fetched when something new happened
       const { data: seenRows } = await admin.from("meta_purchase_seen").select("ad_id, day, purchases").eq("ad_account_id", a.id).gte("day", yday);
@@ -983,6 +1016,7 @@ async function handleMetaReport(slotHour, push = true) {
         accountBalance(admin, a, actId, token),
         graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: monthStart, until: day }), fields: "spend,actions" }, token).catch(()=>[])
       ]);
+      const active = await hasActiveAds(actId, token);
       const mm = monthRows[0] ? insightRow(monthRows[0], factor) : { spend: 0, purchases: 0 };
       const camps = new Map();
       for (const r of rows){
@@ -1000,7 +1034,7 @@ async function handleMetaReport(slotHour, push = true) {
       }));
       const spend = [...camps.values()].reduce((t, x)=>t + x.spend, 0), purchases = [...camps.values()].reduce((t, x)=>t + x.purchases, 0);
       const ar = acctIns[0] ? num(acctIns[0].reach) : 0;
-      return { buyer: a.media_buyer_id, account: a.nickname, balance, spend: Math.round(spend), purchases, reach: Math.round(ar), month_spend: Math.round(mm.spend), month_purchases: mm.purchases, campaigns: list };
+      return { buyer: a.media_buyer_id, account: a.nickname, active, balance: active ? balance : null, spend: Math.round(spend), purchases, reach: Math.round(ar), month_spend: Math.round(mm.spend), month_purchases: mm.purchases, campaigns: list };
     }));
     const okAccts = per.filter((r)=>r.status === "fulfilled").map((r)=>r.value);
     const { data: ords } = await admin.from("orders").select("media_buyer_id, order_status, order_value_naira").eq("company_id", c.id).gte("ordered_at", from.toISOString()).lt("ordered_at", to.toISOString());
