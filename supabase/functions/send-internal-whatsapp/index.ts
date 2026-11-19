@@ -186,11 +186,48 @@ Deno.serve(async (req)=>{
     error: "WhatsApp isn't configured yet."
   }, 500);
   try {
-    if (!await getCaller(req, supabase)) return json({
+    const caller = await getCaller(req, supabase);
+    if (!caller) return json({
       error: "Not signed in"
     }, 401);
     const body = await req.json();
     const { type } = body;
+    // ---- daily money report (12pm / 4pm / 8pm) ----
+    const REPORT_TPL = Deno.env.get("WHATSAPP_TPL_DAILY_REPORT") ?? "revora_daily_report_v1";
+    const REPORT_TEXT = "📈 {{1}}\nFund received: ₦{{2}}\nSent to Meta: ₦{{3}}\nAd spend: ₦{{4}}\nOrder count: {{5}}\nCPA: ₦{{6}}\nBalance: ₦{{7}}\nThis month: {{8}}\nThis is your automatic Revora ad report. Open Revora to see every campaign, ad set and ad.";
+    if ((type === "report_template" || type === "daily_report") && !caller.service) return json({ error: "Server use only." }, 403);
+    if (type === "report_template") {
+      // Creates the report template on the WhatsApp Business account behind the global token (Meta then reviews it).
+      let waba = Deno.env.get("REVORA_WABA_ID") ?? "";
+      const tried = [];
+      if (!waba) {
+        const g = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}?fields=whatsapp_business_account&access_token=${WHATSAPP_TOKEN}`).then((r)=>r.json()).catch(()=>({}));
+        waba = String(g?.whatsapp_business_account?.id ?? ""); tried.push(g?.error?.message ?? "phone lookup");
+      }
+      if (!waba) {
+        const APP = Deno.env.get("META_APP_ID") ?? "", SEC = Deno.env.get("META_APP_SECRET") ?? "";
+        const d = await fetch(`${META_GRAPH_BASE}/debug_token?` + new URLSearchParams({ input_token: WHATSAPP_TOKEN, access_token: `${APP}|${SEC}` })).then((r)=>r.json()).catch(()=>({}));
+        waba = String((d?.data?.granular_scopes ?? []).find((x)=>x.scope === "whatsapp_business_management")?.target_ids?.[0] ?? ""); tried.push(d?.error?.message ?? "debug_token");
+      }
+      if (!waba) return json({ error: "Could not find the WhatsApp Business account id for this token.", tried }, 502);
+      if (body.action === "status") {
+        const r = await fetch(`${META_GRAPH_BASE}/${waba}/message_templates?name=${REPORT_TPL}&fields=name,status,category,rejected_reason&access_token=${WHATSAPP_TOKEN}`).then((x)=>x.json());
+        return json({ waba, result: r });
+      }
+      const ex = ["Midday report", "50,000", "0", "20,975", "1", "20,975", "44,025", "fund received ₦350,000, ad spend ₦305,000, OC 14, CPA ₦21,785"];
+      const r = await fetch(`${META_GRAPH_BASE}/${waba}/message_templates`, { method: "POST", headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: REPORT_TPL, language: "en", category: "UTILITY", components: [{ type: "BODY", text: REPORT_TEXT, example: { body_text: [ex] } }] }) });
+      return json({ waba, status: r.status, result: await r.json().catch(()=>({})) });
+    }
+    if (type === "daily_report") {
+      const { data: prof } = await supabase.from("profiles").select("whatsapp_number, whatsapp_reports").eq("id", String(body.user_id ?? "")).maybeSingle();
+      const phone = String(prof?.whatsapp_number ?? "").replace(/\D/g, "");
+      if (!phone || !prof?.whatsapp_reports) return json({ skipped: true });
+      const vals = (Array.isArray(body.values) ? body.values : []).map((v)=>String(v ?? "").replace(/[\n\t]+/g, " ").slice(0, 120));
+      if (vals.length !== 8) return json({ error: "values must have 8 items" }, 400);
+      const text = REPORT_TEXT.replace(/\{\{(\d+)\}\}/g, (_, i)=>vals[Number(i) - 1] ?? "");
+      return json({ ok: true, results: await sendToMany([phone], REPORT_TPL, vals, text) });
+    }
     if (type === "low_balance") {
       const { data: acct } = await supabase.from("ad_accounts").select("id, name, nickname, balance_naira, company_id, media_buyer_id").eq("id", body.ad_account_id).maybeSingle();
       if (!acct) return json({
