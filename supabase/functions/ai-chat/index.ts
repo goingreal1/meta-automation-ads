@@ -1600,7 +1600,7 @@ Rules:
 - Buyers never send money themselves (an admin approves with a transfer PIN and Revora sends it), so do not use resolve_meta_transfer_account.
 
 - ACTIVE AD ACCOUNT: ${ctx.account ? `the person is currently working in the ad account "${ctx.account.name}" (id ${ctx.account.id})${ctx.account.balance != null ? `, prepaid balance about ${fmtNaira(ctx.account.balance)}` : ""}. When they say "my ad account", "this account", "my ads", "how are my ads doing" etc., they mean THIS one — NEVER ask which ad account. Only talk about a different account if they name one.` : "none is selected right now (the person is on the all-accounts view). If they ask about ads, call list_ad_accounts and ask which one only if there is more than one."}
-- For ad set / ad level questions call get_live_ads (live from Meta: spend, messages/conversations, cost per message, reach, frequency, CTR per ad set and per ad). List the ads under each ad set when asked, and comment on what is working or not. Judge against THIS PERSON'S kill thresholds (below), not made-up benchmarks; the tool also marks ads that break them.
+- For ad set / ad level questions call get_live_ads (live from Meta, per campaign, ad set and ad: spend, purchases, cost per purchase, messages, cost per message, landing page views, cost per landing page view, link clicks, cost per link click, link CTR, impressions, CPM, reach, frequency). Always include landing page views and their cost when judging website ads. List the ads under each ad set when asked, and comment on what is working or not. Judge against THIS PERSON'S kill thresholds (below), not made-up benchmarks; the tool also marks ads that break them.
 - KILL THRESHOLDS for this person (their own settings): ${killRules.length ? JSON.stringify(killRules.map((r)=>({
       type: r.kind === "messaging" ? "WhatsApp message ads" : "website purchase ads",
       rule_on: r.enabled,
@@ -2253,7 +2253,7 @@ ${JSON.stringify(data)}`;
       type: "function",
       function: {
         name: "get_live_ads",
-        description: "LIVE from Meta: every campaign > ad set > ad in the person's currently selected ad account (or another account by id) with status, daily budget, spend, conversations (messages), cost per message, reach, frequency, CTR, plus whether each ad breaks the person's kill thresholds. Use for any question about ad sets, ads, what is working, what to kill or scale.",
+        description: "LIVE from Meta: every campaign > ad set > ad in the person's currently selected ad account (or another account by id) with status, daily budget, spend, purchases and cost per purchase, conversations (messages) and cost per message, landing page views and cost per landing page view, link clicks and cost per link click, link CTR, impressions, CPM, reach, frequency, plus whether each ad breaks the person's kill thresholds. Use for any question about ad sets, ads, what is working, what to kill or scale.",
         parameters: {
           type: "object",
           properties: {
@@ -2672,14 +2672,21 @@ async function accountFor(ctx, requested) {
 const r0 = (n, d = 0)=>n == null ? null : Number(Number(n).toFixed(d));
 const slimMetrics = (m)=>({
     spend: r0(m.spend),
-    messages: m.kind === "messaging" ? m.conversations : void 0,
-    purchases: m.kind === "purchase" ? m.purchases : void 0,
+    messages: m.kind === "messaging" || Number(m.conversations) > 0 ? m.conversations : void 0,
+    cost_per_message: m.cost_per_conversation != null ? r0(m.cost_per_conversation) : void 0,
+    purchases: m.kind === "purchase" || Number(m.purchases) > 0 ? m.purchases : void 0,
+    cost_per_purchase: m.cost_per_purchase != null ? r0(m.cost_per_purchase) : void 0,
     cost_per_result: r0(m.cost_per_result),
-    reach: m.reach,
-    frequency: r0(m.frequency, 2),
+    landing_page_views: m.landing_page_views,
+    cost_per_landing_page_view: m.cost_per_landing_page_view != null ? r0(m.cost_per_landing_page_view, 2) : void 0,
+    link_clicks: m.clicks,
+    cost_per_link_click: m.clicks > 0 ? r0(m.spend / m.clicks, 2) : void 0,
+    link_ctr_percent: m.impressions > 0 ? r0(m.clicks / m.impressions * 100, 2) : void 0,
     ctr_percent_all_clicks: r0(m.ctr, 2),
     impressions: m.impressions,
-    link_clicks: m.clicks
+    cpm: m.cpm != null ? r0(m.cpm, 2) : void 0,
+    reach: m.reach,
+    frequency: r0(m.frequency, 2)
   });
 async function runTool(name, args, ctx) {
   switch(name){
@@ -2945,7 +2952,7 @@ async function runTool(name, args, ctx) {
         });
         if (live?.ok && Array.isArray(live.campaigns)) {
           const sum = (k)=>live.campaigns.reduce((t, c)=>t + Number(c[k] || 0), 0);
-          const spend = sum("spend"), imp = sum("impressions"), clicks = sum("clicks"), msgs = sum("conversations"), buys = sum("purchases");
+          const spend = sum("spend"), imp = sum("impressions"), clicks = sum("clicks"), msgs = sum("conversations"), buys = sum("purchases"), lpv = sum("landing_page_views"), reachSum = sum("reach");
           return {
             ad_account: account.name || account.nickname,
             source: "live from Meta",
@@ -2956,6 +2963,12 @@ async function runTool(name, args, ctx) {
             purchases: buys,
             impressions: imp,
             link_clicks: clicks,
+            cost_per_link_click: clicks ? fmtNaira(spend / clicks) : "n/a",
+            landing_page_views: lpv,
+            cost_per_landing_page_view: lpv ? fmtNaira(spend / lpv) : "n/a",
+            cost_per_purchase: buys ? fmtNaira(spend / buys) : "n/a",
+            cpm: imp ? fmtNaira(spend / imp * 1000) : "n/a",
+            reach_sum_of_campaigns: reachSum,
             ctr_pct: imp ? (clicks / imp * 100).toFixed(2) : "0.00",
             per_campaign: live.campaigns.filter((c)=>Number(c.spend || 0) > 0).map((c)=>({
                 campaign: c.name,
@@ -2963,7 +2976,13 @@ async function runTool(name, args, ctx) {
                 spend: fmtNaira(Number(c.spend || 0)),
                 results: c.kind === "purchase" ? Number(c.purchases || 0) : Number(c.conversations || 0),
                 result_type: c.kind === "purchase" ? "purchases" : "messages",
-                cost_per_result: c.cost_per_result != null ? fmtNaira(Number(c.cost_per_result)) : "n/a"
+                cost_per_result: c.cost_per_result != null ? fmtNaira(Number(c.cost_per_result)) : "n/a",
+                landing_page_views: Number(c.landing_page_views || 0),
+                cost_per_landing_page_view: c.cost_per_landing_page_view != null ? fmtNaira(Number(c.cost_per_landing_page_view)) : "n/a",
+                link_clicks: Number(c.clicks || 0),
+                cost_per_link_click: Number(c.clicks) > 0 ? fmtNaira(Number(c.spend) / Number(c.clicks)) : "n/a",
+                link_ctr_pct: Number(c.impressions) > 0 ? (Number(c.clicks) / Number(c.impressions) * 100).toFixed(2) : "n/a",
+                impressions: Number(c.impressions || 0)
               })),
             note: range === "lifetime" && days > 30 ? "Lifetime figures, because more than 30 days was asked." : void 0
           };
