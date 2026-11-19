@@ -507,13 +507,13 @@ function w2Add() {
     const acct = d === undefined ? `<div class="w2-sk" style="height:140px"></div>` : d && d.account ? `<div class="w2-acct"><small>${escH(d.account.bank || "")}</small><div class="no">${escH(d.account.number)}</div><small>${escH(d.account.name || "")}</small>
         <button type="button" class="w2-sbtn" onclick="w2CopyAcct()">Copy account number</button></div>` : `<div class="w2-empty">${d && d.error ? escH(d.error) : "You do not have an account number yet."}<br><button type="button" class="w2-cta" style="margin-top:12px" onclick="w2LoadDva(true)">Get my account number</button></div>`;
     return `${w2Nav("Add money")}${seg}${acct}
-      <div class="w2-sum"><div class="w2-ln"><span>Paystack fee</span><span>Taken from what you send</span></div><div class="w2-ln"><span>Revora deposit fee</span><span>${escH(w2FeeText("deposit"))}</span></div></div>
+      <div class="w2-sum"><div class="w2-ln"><span>Fee</span><span>${escH(w2FeeText("deposit"))}</span></div></div>
       <div class="w2-hint">${admin ? "This is your company account. A payment that matches a customer's order goes to that order; anything else lands in your funding wallet." : "Send from any bank, any time. The money is added to your wallet within a minute or two, minus the fees above, and you get a notification."}</div>`;
   }
   const amt = Number(W2.addAmt || 50000), charged = w2Charge(amt), rf = w2Fee("deposit", amt);
   return `${w2Nav("Add money")}${seg}
     <div class="w2-big"><small>Amount</small><input id="w2AddAmt" type="number" inputmode="numeric" min="1000" step="500" value="${amt}" oninput="W2.addAmt=this.value;w2AddSum()"><div class="w2-qs">${[10000, 20000, 50000, 100000].map((n) => `<button type="button" class="w2-chip${amt === n ? " on" : ""}" onclick="W2.addAmt=${n};w2Draw()">${n / 1000}k</button>`).join("")}</div></div>
-    <div id="w2AddSum">${w2Lines([["You pay at checkout", `<b>${w2Money(charged)}</b>`], ["Paystack fee (added at checkout)", w2Money(charged - amt), "fee"], ["Revora deposit fee", "−" + w2Money(rf), "fee"], ["Lands in your wallet", w2Money(amt - rf), "tot g"]])}</div>
+    <div id="w2AddSum">${w2Lines([["You pay", `<b>${w2Money(amt)}</b>`], ["Revora fee (covers payment charges)", "−" + w2Money(rf), "fee"], ["Lands in your wallet", w2Money(amt - rf), "tot g"]])}</div>
     <div class="w2-hint">Card, bank and USSD options appear on the Paystack page. The money is added as soon as the payment is confirmed.</div>
     <div id="w2Msg" class="w2-msg"></div><button type="button" class="w2-cta" id="w2AddGo" onclick="w2AddGo()">Continue to payment</button>`;
 }
@@ -526,7 +526,7 @@ function w2CopyAcct() { try { navigator.clipboard.writeText(W2.dva.account.numbe
 function w2AddSum() {
   const amt = Number(W2.addAmt || 0), box = document.getElementById("w2AddSum"); if (!box) return;
   const charged = w2Charge(amt), rf = w2Fee("deposit", amt);
-  box.innerHTML = w2Lines([["You pay at checkout", `<b>${w2Money(charged)}</b>`], ["Paystack fee (added at checkout)", w2Money(charged - amt), "fee"], ["Revora deposit fee", "−" + w2Money(rf), "fee"], ["Lands in your wallet", w2Money(amt - rf), "tot g"]]);
+  box.innerHTML = w2Lines([["You pay", `<b>${w2Money(amt)}</b>`], ["Revora fee (covers payment charges)", "−" + w2Money(rf), "fee"], ["Lands in your wallet", w2Money(amt - rf), "tot g"]]);
 }
 async function w2AddGo() {
   const amt = Math.round(Number(W2.addAmt || 0)), msg = document.getElementById("w2Msg"), btn = document.getElementById("w2AddGo");
@@ -696,7 +696,7 @@ async function w2CancelLegacy(id) {
 function w2Fees() {
   const rows = [["Adding money (card or bank)", "deposit", "Taken from money that arrives from outside."], ["Funds from your admin", "credit", "Admin credits and approved requests."], ["Sending to Meta", "transfer", "Includes the bank's own charge."], ["Sending to another user (sender pays)", "wallet_send", "Paid on top by the person sending."], ["Receiving from another user (receiver pays)", "wallet_receive", "Taken from what the receiver gets."]];
   return `${w2Nav("Fees")}<div class="w2-sum">${rows.map((r) => `<div class="w2-ln col"><span><b>${r[0]}</b><small>${r[2]}</small></span><span>${escH(w2FeeText(r[1]))}</span></div>`).join("")}</div>
-    <div class="w2-hint">Card payments also add Paystack's charge at checkout (1.5% + ₦100, ₦100 waived under ₦2,500, at most ₦2,000). Fees are shown before you confirm and on every receipt.</div>`;
+    <div class="w2-hint">You only ever pay Revora's fee. Payment charges are already included in it. Fees are shown before you confirm and on every receipt.</div>`;
 }
 function w2Team() {
   const b = W2.ov?.buyers || [], cw = Number(W2.ov?.company_wallet || 0);

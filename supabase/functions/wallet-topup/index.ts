@@ -109,7 +109,8 @@ async function settle(ref) {
   const { data: won } = await admin.from("wallet_topups").update({
     status: "confirmed",
     confirmed_at: new Date().toISOString(),
-    channel: t.channel ?? null
+    channel: t.channel ?? null,
+    paystack_fee_naira: Number(t.fees ?? 0) / 100
   }).eq("id", row.id).eq("status", "pending").select("id");
   // Revora's deposit fee comes off the money that just landed.
   if (won?.length) await takeDepositFee(row.company_id, row.media_buyer_id, row.created_by ?? null, Number(row.amount_naira), ref, "Deposit fee on card top-up");
@@ -158,6 +159,13 @@ Deno.serve(async (req)=>{
     const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
     const given = req.headers.get("x-cron-secret") || "";
     if (!given || given !== sec?.value && given !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+    if (b?.path) {
+      // read-only look at a few Paystack endpoints (a transfer, the balance ledger)
+      const path = String(b.path);
+      if (!/^\/(transfer\/[A-Za-z0-9_]+|balance|balance\/ledger(\?[a-z_=0-9&]+)?|transaction\?[A-Za-z_=0-9&]+)$/.test(path)) return json({ error: "Path not allowed." }, 400);
+      const rr = await fetch(`${PAYSTACK_BASE}${path}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      return json({ http: rr.status, body: await rr.json().catch(()=>null) });
+    }
     const ref = String(b?.reference ?? "");
     const r = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(ref)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
     const d = await r.json().catch(()=>null);
@@ -280,13 +288,13 @@ Deno.serve(async (req)=>{
         buyerId = String(b.target);
       }
       const reference = `wt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
-      const charged = paystackCharge(amount);
+      const charged = amount; // the user pays exactly the amount; Revora pays Paystack out of its own fee
       const { error: insErr } = await admin.from("wallet_topups").insert({
         company_id: me.company_id,
         media_buyer_id: buyerId,
         amount_naira: amount,
         charged_naira: charged,
-        paystack_fee_naira: charged - amount,
+        paystack_fee_naira: 0,
         reference,
         status: "pending",
         created_by: me.id
@@ -332,7 +340,7 @@ Deno.serve(async (req)=>{
         reference,
         amount_naira: amount,
         charged_naira: charged,
-        paystack_fee_naira: charged - amount,
+        paystack_fee_naira: 0,
         revora_fee_naira: await rvFee("deposit", amount)
       });
     }
@@ -388,7 +396,7 @@ Deno.serve(async (req)=>{
       const a = Math.round(Number(b?.amount));
       if (Number.isFinite(a) && a > 0) {
         const charged = paystackCharge(a), rf = await rvFee("deposit", a);
-        out.preview = { amount: a, card_charged: charged, paystack_fee: charged - a, revora_deposit_fee: rf, credit_fee: await rvFee("credit", a), card_lands: a - rf, transfer_fee: await rvFee("transfer", a), wallet_fee: await rvFee("wallet", a) };
+        out.preview = { amount: a, card_charged: a, paystack_fee: 0, revora_deposit_fee: rf, credit_fee: await rvFee("credit", a), card_lands: a - rf, transfer_fee: await rvFee("transfer", a), wallet_fee: await rvFee("wallet", a) };
       }
       return json(out);
     }
@@ -444,7 +452,7 @@ Deno.serve(async (req)=>{
       const tref = (tps ?? []).map((x)=>x.reference);
       const { data: fl } = tref.length ? await admin.from("fee_ledger").select("ref, fee_naira, kind").in("ref", tref).eq("kind", "deposit") : { data: [] };
       const flBy = Object.fromEntries((fl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
-      for (const x of tps ?? []) rows.push({ id: x.id, kind: "topup", title: "Money added", sub: x.channel ?? "card", amount: Number(x.amount_naira) - (flBy[x.reference] || 0), gross: Number(x.charged_naira ?? x.amount_naira), fee: (flBy[x.reference] || 0) + Number(x.paystack_fee_naira || 0), at: x.confirmed_at ?? x.created_at, ref: x.reference, dir: "in" });
+      for (const x of tps ?? []) rows.push({ id: x.id, kind: "topup", title: "Money added", sub: x.channel ?? "card", amount: Number(x.amount_naira) - (flBy[x.reference] || 0), gross: Number(x.amount_naira), fee: (flBy[x.reference] || 0), at: x.confirmed_at ?? x.created_at, ref: x.reference, dir: "in" });
       let frQ = admin.from("fund_requests").select("id, amount_naira, transferred_at, destination_account_name, req_account_name, paid_from, requested_at").eq("company_id", me.company_id).eq("status", "transferred");
       frQ = mb ? frQ.eq("media_buyer_id", mb).eq("paid_from", "buyer") : frQ.eq("paid_from", "company");
       const { data: frs } = await (beforeIso ? frQ.lt("transferred_at", beforeIso) : frQ).order("transferred_at", { ascending: false }).limit(60);

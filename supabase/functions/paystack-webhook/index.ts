@@ -315,7 +315,8 @@ Deno.serve(async (req)=>{
       const legacyOrder = await findOrder({ buyerId: buyer.id, companyId: buyer.company_id }, true);
       if (legacyOrder) { await confirmOrder(legacyOrder); return new Response("ok", { status: 200 }); }
       // Otherwise it is the buyer topping up their wallet from any bank. Paystack's fee and Revora's deposit fee come off what lands.
-      const credited = Math.max(0, Math.round((amountNaira - paystackFee) * 100) / 100);
+      // The person pays only Revora's fee: Paystack's own cut (paystackFee) is paid by Revora out of that fee.
+      const credited = amountNaira;
       const { data: seenTop } = await supabase.from("wallet_topups").select("id").eq("reference", reference).limit(1);
       if (seenTop && seenTop.length) return new Response("ok", { status: 200 });
       const { error: topErr } = await supabase.from("wallet_topups").insert({
@@ -336,7 +337,7 @@ Deno.serve(async (req)=>{
       if (take > 0) await supabase.rpc("rv_take_fee", { p_kind: "deposit", p_company: buyer.company_id, p_buyer: buyer.id, p_user: null, p_amount: credited, p_fee: take, p_ref: reference, p_note: "Deposit fee on bank transfer" });
       const { data: bprof } = await supabase.from("profiles").select("id").eq("media_buyer_id", buyer.id).eq("role", "buyer").limit(1).maybeSingle();
       await supabase.rpc("rv_notify", { p_company: buyer.company_id, p_category: "money", p_kind: "wallet_deposit", p_title: `💰 ${"₦" + Math.round(credited - take).toLocaleString("en-NG")} added to your wallet`,
-        p_body: `Bank transfer received${data.authorization?.sender_name ? " from " + data.authorization.sender_name : ""}. Fees: ₦${Math.round(paystackFee + take).toLocaleString("en-NG")}.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "success", p_data: { reference }, p_dedupe: "dva:" + reference, p_buyer: null, p_user: bprof?.id ?? null, p_push: true });
+        p_body: `Bank transfer received${data.authorization?.sender_name ? " from " + data.authorization.sender_name : ""}. Fee: ₦${Math.round(take).toLocaleString("en-NG")}.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "success", p_data: { reference }, p_dedupe: "dva:" + reference, p_buyer: null, p_user: bprof?.id ?? null, p_push: true });
     }
     return new Response("ok", {
       status: 200
