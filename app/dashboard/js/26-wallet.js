@@ -96,6 +96,12 @@ function wlExport() {
   bvDownloadCsv("revora-wallet-" + new Date().toISOString().slice(0, 10) + ".csv", ["Date", "Type", "Description", "Detail", "Buyer", "Amount (NGN)"],
     WL.ledger.map((t) => [new Date(t.date).toISOString(), t.type === "credit" ? "Money in" : "Money out", t.label, t.detail || "", t.buyerName || "", (t.type === "credit" ? "" : "-") + t.amount]));
 }
+async function wlDelLog(id) {
+  if (!confirm("Remove this entry?")) return;
+  const { error } = await supabaseClient.from("fund_logs").delete().eq("id", id);
+  if (error) { alert(error.message); return; }
+  renderWallet(document.getElementById("mainContent"));
+}
 function wlCopy(txt) { try { navigator.clipboard.writeText(txt); bvToast("Copied"); } catch { bvToast("Could not copy", "err"); } }
 
 // The Revora-managed wallets (buying ad accounts from Revora): admin gives and takes funds; a buyer tops up or asks.
@@ -139,6 +145,7 @@ async function renderWallet(el) {
   const pendingByPayment = new Map((matchReqs || []).filter(r => r.status === "pending").map(r => [r.payment_id, r]));
 
   const rw = await sbFn("wallet-topup", { action: "overview" }).catch(() => null);
+  const fundLogs = await sbQuery("fund_logs", "select=id,amount_naira,log_date,note,media_buyer_id,logged_by&order=log_date.desc,created_at.desc&limit=30").catch(() => []) || [];
   const myRevenue = myId ? (walletBalances[myId] || walletBlank()) : walletBlank();
   const myRequests = myId ? (fundRequests || []).filter(f => f.media_buyer_id === myId) : [];
 
@@ -237,10 +244,12 @@ async function renderWallet(el) {
     }
   }
 
-  const heroLabel = isAdmin ? "Funding wallet" : "Waiting for your admin";
-  const heroAmt = isAdmin ? fundingWalletBalance : waiting;
+  const buyerHeld = !isAdmin && myId && rw && rw.my_wallet !== undefined;
+  const heroLabel = isAdmin ? "Funding wallet" : buyerHeld ? "My wallet" : "Waiting for your admin";
+  const heroAmt = isAdmin ? fundingWalletBalance : buyerHeld ? Math.max(0, Number(rw.my_wallet || 0)) : waiting;
   const heroSub = isAdmin
     ? (short ? "Low: you have approved more than you have deposited." : "Available to send to Meta" + (managedSpend > 0 ? ` · ${fN(managedSpend)} spent on your Revora ad accounts` : ""))
+    : buyerHeld ? "Money you hold here. When an ad account runs low, send it straight to Meta. No approval needed."
     : "Ad funding you asked for. Your admin approves it and the money goes straight to your Meta ad account.";
 
   const collect = isAdmin
@@ -257,12 +266,14 @@ async function renderWallet(el) {
   const rcPill = (st) => st === "delivered" ? `<span class="rv-pill ok">Sent</span>` : st === "failed" ? `<span class="rv-pill bad">Failed</span>` : `<span class="rv-pill warn">Processing</span>`;
   const rcpts = (receipts || []).length ? `<section class="rv-card wl-sec"><div class="wl-hd"><h3>Transfer receipts</h3></div>${receipts.slice(0, 8).map((r) => `<div class="wl-r"><div class="wl-mid"><b>${fN(r.amount_naira)} to ${escH(r.account_name || "—")}</b><small>RV-${new Date(r.created_at).getUTCFullYear()}-${String(r.receipt_no).padStart(6, "0")} · ${escH(r.bank_name || "")} · ${r.source === "assistant" ? "AI assistant" : "Dashboard"} · ${ago(r.created_at)}</small></div>${rcPill(r.status)}<button type="button" class="rv-btn s" onclick="window.open('receipt.html?r=${r.id}','_blank')">Receipt</button></div>`).join("")}</section>` : "";
 
+  const flBuyer = (id) => (buyers || []).find((b) => b.id === id)?.name || "";
+  const logsSec = `<section class="rv-card wl-sec"><div class="wl-hd"><h3>Funds received</h3><div style="flex:1"></div><button type="button" class="rv-btn s" onclick="bvLogFundsModal()">Log</button></div>${fundLogs.length ? fundLogs.slice(0, 8).map((l) => `<div class="wl-r"><div class="wl-mid"><b>${fN(l.amount_naira)}</b><small>${escH(l.log_date)}${isAdmin && flBuyer(l.media_buyer_id) ? " · " + escH(flBuyer(l.media_buyer_id)) : ""}${l.note ? " · " + escH(l.note) : ""}</small></div><button type="button" class="rv-btn s" onclick="wlDelLog('${l.id}')">Remove</button></div>`).join("") : `<div class="rv-empty" style="padding:6px 20px 18px">Log money you receive for ads and it shows in your daily reports.</div>`}</section>`;
   el.innerHTML = `<div class="rv-ui" id="wlRoot">
     <div class="rv-head"><div><h1>Wallet</h1><p class="rv-hm">Money in, money out, and what is waiting for you</p></div><div style="flex:1"></div>
       <button type="button" class="rv-btn rv-hm" onclick="wlExport()">${rvIc("dl")}Statement</button><button type="button" class="rv-btn" onclick="renderWallet(document.getElementById('mainContent'))" aria-label="Refresh">${rvIc("refresh")}</button></div>
     <div class="wl-top">
       <section class="wl-bal${short ? " neg" : ""}"><div class="wl-bl">${rvIc("wallet")}${heroLabel}</div><div class="wl-ba"><small>₦</small>${Math.round(heroAmt).toLocaleString("en-NG")}</div><div class="wl-bs">${escH(heroSub)}</div>
-        <div class="wl-acts">${isAdmin ? `<button type="button" class="wl-act p" onclick="bvShowAddFundsModal()"><i>${rvIc("plus")}</i>${short ? "Top up now" : "Add money"}</button>${myId ? `<button type="button" class="wl-act" onclick="bvShowRequestFundsModal()"><i>${rvIc("ext")}</i>Send to Meta</button>` : ""}<button type="button" class="wl-act" onclick="bvShowAdminWithdrawModal()"><i>${rvIc("arrup")}</i>Send money</button>` : myId ? `<button type="button" class="wl-act p" onclick="bvShowRequestFundsModal()"><i>${rvIc("plus")}</i>Request funds</button>` : ""}</div></section>
+        <div class="wl-acts">${isAdmin ? `<button type="button" class="wl-act p" onclick="bvShowAddFundsModal()"><i>${rvIc("plus")}</i>${short ? "Top up now" : "Add money"}</button>${myId ? `<button type="button" class="wl-act" onclick="bvShowRequestFundsModal()"><i>${rvIc("ext")}</i>Send to Meta</button>` : ""}<button type="button" class="wl-act" onclick="bvShowAdminWithdrawModal()"><i>${rvIc("arrup")}</i>Send money</button>` : buyerHeld ? `<button type="button" class="wl-act p" onclick="bvTopUpModal('me')"><i>${rvIc("plus")}</i>Add money</button><button type="button" class="wl-act" onclick="bvShowSendToMetaModal()"><i>${rvIc("ext")}</i>Send to Meta</button><button type="button" class="wl-act" onclick="bvLogFundsModal()"><i>${rvIc("check")}</i>Log funds received</button>` : myId ? `<button type="button" class="wl-act p" onclick="bvShowRequestFundsModal()"><i>${rvIc("plus")}</i>Request funds</button>` : ""}${isAdmin ? `<button type="button" class="wl-act" onclick="bvLogFundsModal()"><i>${rvIc("check")}</i>Log funds received</button>` : ""}</div></section>
       <section class="rv-card wl-rev"><div class="wl-rl">${rvIc("chart")}${isAdmin ? "Revenue collected" : "Your confirmed revenue"}</div><div class="wl-ra">${fN(revenueNow)}</div>
         <div class="rv-mut3">${spark ? `${fN(spark.total)} in the last 14 days` : isAdmin ? "Every confirmed customer payment, all buyers" : "Confirmed payments on orders you generated"}</div>
         ${spark ? `<svg class="wl-sp" viewBox="0 0 300 74" preserveAspectRatio="none"><defs><linearGradient id="wlg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".22"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="${spark.area}" fill="url(#wlg)"/><path d="${spark.line}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>` : ""}
@@ -271,7 +282,7 @@ async function renderWallet(el) {
     <div class="wl-grid"><div class="wl-col">
       ${att.length ? `<section class="rv-card wl-sec"><div class="wl-hd"><h3>Needs your attention</h3><span class="rv-pill warn n">${att.length}</span></div>${att.join("")}</section>` : ""}
       <section class="rv-card wl-sec"><div class="wl-hd"><h3>Transactions</h3><div style="flex:1"></div><div class="rv-seg" id="wlTabs">${[["all", "All"], ["in", "Money in"], ["out", "Money out"]].map(([k, l]) => `<button type="button" data-wltab="${k}" class="${WL.tab === k ? "on" : ""}">${l}</button>`).join("")}</div></div><div id="wlLedger">${wlLedgerHtml()}</div></section>
-    </div><div class="wl-col">${collect}${wlRevoraHtml(rw, isAdmin)}${byBuyer}${auto}${rcpts}</div></div></div>`;
+    </div><div class="wl-col">${logsSec}${collect}${wlRevoraHtml(rw, isAdmin)}${byBuyer}${auto}${rcpts}</div></div></div>`;
   el.onclick = (e) => {
     const t = e.target.closest("[data-wltab]"); if (t && t.closest("#wlRoot")) { WL.tab = t.dataset.wltab; WL.more = 20; document.querySelectorAll("#wlTabs button").forEach((b) => b.classList.toggle("on", b === t)); document.getElementById("wlLedger").innerHTML = wlLedgerHtml(); return; }
     if (e.target.closest("[data-wlmore]")) { WL.more += 30; document.getElementById("wlLedger").innerHTML = wlLedgerHtml(); }

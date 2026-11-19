@@ -92,7 +92,9 @@ Deno.serve(async (req)=>{
       error: "Funding request not found"
     }, 404);
     const isAdmin = profile.role === "owner" || profile.role === "admin";
-    if (!isAdmin || profile.company_id !== fr.company_id) return json({
+    // A media buyer may send money to Meta out of their OWN held balance (paid_from = "buyer"); everything else needs an owner/admin.
+    const ownBalanceSend = fr.paid_from === "buyer" && !!profile.media_buyer_id && profile.media_buyer_id === fr.media_buyer_id && profile.company_id === fr.company_id;
+    if (!ownBalanceSend && (!isAdmin || profile.company_id !== fr.company_id)) return json({
       error: "Only an owner or admin of this company can send money to Meta."
     }, 403);
     if (fr.status !== "pending" && fr.status !== "approved") return json({
@@ -111,7 +113,9 @@ Deno.serve(async (req)=>{
     }, 409);
     {
       // The funding wallet (deposits, minus money set aside or sent, minus what Revora-managed ad accounts have spent) must cover this now.
-      const { data: bal } = await supabase.rpc("company_wallet_balance", {
+      const { data: bal } = ownBalanceSend ? await supabase.rpc("buyer_wallet_balance", {
+        p_buyer: fr.media_buyer_id
+      }) : await supabase.rpc("company_wallet_balance", {
         p_company: fr.company_id
       });
       const available = Number(bal ?? 0) + (fr.status === "approved" ? Number(fr.amount_naira) : 0);

@@ -28,7 +28,7 @@
     bell: '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>',
   };
   var S = (window.rvn = { items: [], unread: 0, loaded: false, error: null, isUnread: function (n) { return isUnread(n); } });
-  var filter = "all", isOpen = false, range = "today", stats = null, statsErr = false, channel = null, poll = null, toastTimer = null;
+  var filter = "all", detailId = null, isOpen = false, range = "today", stats = null, statsErr = false, channel = null, poll = null, toastTimer = null;
 
   function esc(v) { return (window.escH ? window.escH(v) : String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; })); }
   function svg(name, size) { return '<svg width="' + (size || 18) + '" height="' + (size || 18) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || ICONS.system) + "</svg>"; }
@@ -119,6 +119,11 @@
 .rvn-sk{height:66px;border-radius:16px;background:linear-gradient(90deg,var(--panel2),var(--border),var(--panel2));background-size:200% 100%;animation:rvnSk 1.2s infinite;margin-bottom:8px}
 @keyframes rvnSk{to{background-position:-200% 0}}
 .rvn-foot{display:flex;justify-content:center;padding-top:6px}
+.rvn-b{white-space:pre-line}
+.rvn-det{padding:4px 2px 24px}.rvn-dh{display:flex;gap:12px;align-items:center;margin:12px 0 10px}.rvn-dh h3{margin:0;font-size:17px;line-height:1.25}.rvn-dh time{font-size:12px;color:var(--muted)}
+.rvn-full{white-space:pre-line;font-size:15px;line-height:1.7;margin:8px 0 14px;font-weight:600}
+.rvn-h4{margin:18px 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.rvn-open{margin-top:18px;width:100%;padding:13px;border:0;border-radius:14px;background:var(--accent,#7c3aed);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
 #rvnToast{position:fixed;z-index:9200;top:calc(10px + env(safe-area-inset-top));left:50%;width:min(420px,calc(100vw - 20px));transform:translate(-50%,-140%);transition:transform .35s cubic-bezier(.2,1.1,.3,1);background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:18px;box-shadow:0 14px 40px rgba(0,0,0,.22);padding:12px 14px;display:flex;gap:12px;align-items:center;cursor:pointer}
 #rvnToast.on{transform:translate(-50%,0)}
 @media(prefers-reduced-motion:reduce){#rvnSheet,#rvnToast{transition:none}#rvBell.ring svg{animation:none}}
@@ -147,7 +152,7 @@
     sheet.querySelector("#rvnAll").addEventListener("click", markAllRead);
     sheet.querySelector("#rvnChips").addEventListener("click", function (e) { var b = e.target.closest("[data-f]"); if (b) { filter = b.dataset.f; paint(); } });
     sheet.querySelector("#rvnBody").addEventListener("click", onBodyClick);
-    toast.addEventListener("click", function () { var id = toast.dataset.id; hideToast(); var n = S.items.filter(function (x) { return x.id === id; })[0]; if (n) go(n); });
+    toast.addEventListener("click", function () { var id = toast.dataset.id; hideToast(); var n = S.items.filter(function (x) { return x.id === id; })[0]; if (n) { rvnOpen(); showDetail(n); } });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape" && isOpen) rvnClose(); });
   }
 
@@ -197,6 +202,27 @@
         (src ? '<div class="rvn-src">Where they came from: ' + src + "</div>" : "") :
         '<div class="rvn-grid4"><div class="rvn-sk" style="height:54px;margin:0"></div><div class="rvn-sk" style="height:54px;margin:0"></div><div class="rvn-sk" style="height:54px;margin:0"></div><div class="rvn-sk" style="height:54px;margin:0"></div></div>') + "</div>";
   }
+  function reportHtml(n) {
+    var d = n.data || {}; if (!(n.kind === "meta_report" && d.report)) return "";
+    var R = d.report, T = R.totals || {}, M = T.month, tl = function (v, l) { return '<div class="rvn-stat"><b>' + esc(v) + "</b><span>" + esc(l) + "</span></div>"; };
+    var pl = function (x) { return x === 1 ? "" : "s"; };
+    var html = '<div class="rvn-digest">' + tl(naira(T.fund_received), "Fund received") + tl(naira(T.spend), "Ad spend") + tl(T.order_count != null ? T.order_count : (T.orders || T.purchases || 0), "Order count" + (T.order_source === "meta" ? " (Meta)" : "")) + tl(naira(T.cpa), "CPA") + tl(naira(T.balance), "Balance") + tl(Number(T.reach || 0).toLocaleString("en-NG"), "People reached") + "</div>";
+    if (M) html += '<h4 class="rvn-h4">This month</h4><div class="rvn-digest">' + tl(naira(M.fund_received), "Fund received") + tl(naira(M.spend), "Ad spend") + tl(M.order_count, "Order count") + tl(naira(M.cpa), "CPA") + "</div>";
+    html += '<h4 class="rvn-h4">Spend by campaign, ad set and ad</h4><div class="rvn-rep">' + (R.accounts || []).filter(function (a) { return a.spend > 0 || a.purchases > 0; }).map(function (a) {
+      return "<h5>" + esc(a.account) + " · balance " + (a.balance == null ? "not shown" : naira(a.balance)) + " · spent " + naira(a.spend) + " · " + (a.purchases || 0) + " purchase" + pl(a.purchases) + "</h5>" +
+        (a.campaigns || []).map(function (c) {
+          return "<details open><summary><b>" + esc(c.name) + "</b><span>" + naira(c.spend) + " · " + c.purchases + " buy" + (c.purchases === 1 ? "" : "s") + "</span></summary>" +
+            (c.adsets || []).map(function (st) { return '<div class="rvn-l2"><span>' + esc(st.name) + "</span><i>" + naira(st.spend) + " · " + st.purchases + "</i></div>" + (st.ads || []).map(function (ad) { return '<div class="rvn-l3"><span>' + esc(ad.name) + "</span><i>" + naira(ad.spend) + " · " + ad.purchases + "</i></div>"; }).join(""); }).join("") + "</details>";
+        }).join("");
+    }).join("") + "</div>";
+    return html;
+  }
+  function detailHtml(n) {
+    return '<div class="rvn-det"><button type="button" class="rvn-link" data-back="1">← All notifications</button>' +
+      '<div class="rvn-dh"><div class="rvn-ico ' + esc(n.severity) + '">' + svg(n.category) + '</div><div><h3>' + esc(plain(n.title)) + "</h3><time>" + ago(n.created_at) + "</time></div></div>" +
+      (n.body && !(n.kind === "meta_report" && n.data && n.data.report) ? '<p class="rvn-full">' + esc(n.body) + "</p>" : "") + reportHtml(n) +
+      (n.url ? '<button type="button" class="rvn-open" data-open="' + esc(n.id) + '">Open in app</button>' : "") + "</div>";
+  }
   function card(n) {
     var d = n.data || {}, digest = n.kind === "daily_digest";
     var extra = "";
@@ -205,18 +231,6 @@
       extra = '<div class="rvn-digest">' + t(d.orders || 0, "Orders") + t(short(d.revenue), "Revenue") + t(d.visitors || 0, "Visitors") +
         t(d.abandoned || 0, "Left without ordering", (d.abandoned || 0) > 0) + t(short(d.ad_spend), "Ad spend") + t(d.delivered || 0, "Delivered") + "</div>" +
         '<button type="button" class="rvn-ask" data-ask="' + esc(n.id) + '">Ask AI how today went</button>';
-    }
-    if (n.kind === "meta_report" && d.report) {
-      var R = d.report, T = R.totals || {}, tl = function (v, l) { return '<div class="rvn-stat"><b>' + esc(v) + "</b><span>" + esc(l) + "</span></div>"; };
-      var pl = function (x) { return x === 1 ? "" : "s"; };
-      extra = '<div class="rvn-digest">' + tl(naira(T.spend), "Spent") + tl(T.purchases || 0, "Meta purchases") + tl(Number(T.reach || 0).toLocaleString("en-NG"), "People reached") + tl(naira(T.balance), "Balance in Meta") + tl(T.orders || 0, "CRM orders") + tl(short(T.orders_value || 0), "CRM revenue") + "</div>" +
-        '<div class="rvn-rep">' + (R.accounts || []).filter(function (a) { return a.spend > 0 || a.purchases > 0; }).map(function (a) {
-          return "<h5>" + esc(a.account) + " · balance " + (a.balance == null ? "not shown" : naira(a.balance)) + " · spent " + naira(a.spend) + " · " + (a.purchases || 0) + " purchase" + pl(a.purchases) + " · " + Number(a.reach || 0).toLocaleString("en-NG") + " reached</h5>" +
-            (a.campaigns || []).map(function (c) {
-              return "<details><summary><b>" + esc(c.name) + "</b><span>" + naira(c.spend) + " · " + c.purchases + " buy" + (c.purchases === 1 ? "" : "s") + "</span></summary>" +
-                (c.adsets || []).map(function (st) { return '<div class="rvn-l2"><span>' + esc(st.name) + "</span><i>" + naira(st.spend) + " · " + st.purchases + "</i></div>" + (st.ads || []).map(function (ad) { return '<div class="rvn-l3"><span>' + esc(ad.name) + "</span><i>" + naira(ad.spend) + " · " + ad.purchases + "</i></div>"; }).join(""); }).join("") + "</details>";
-            }).join("");
-        }).join("") + "</div>";
     }
     return '<div class="rvn-card' + (isUnread(n) ? " unread" : "") + '" role="button" tabindex="0" data-id="' + esc(n.id) + '">' +
       '<div class="rvn-ico ' + esc(n.severity) + '">' + svg(n.category) + "</div>" +
@@ -232,6 +246,9 @@
       return '<button type="button" class="rvn-chip' + (f.k === filter ? " on" : "") + '" data-f="' + f.k + '">' + f.label + (u ? "<em>" + u + "</em>" : "") + "</button>";
     }).join("");
     all.disabled = S.unread === 0;
+    var dn = detailId && S.items.filter(function (x) { return x.id === detailId; })[0];
+    if (dn) { chips.style.display = "none"; body.innerHTML = detailHtml(dn); body.scrollTop = 0; return; }
+    detailId = null; chips.style.display = "";
     var html = filter === "all" || filter === "reports" ? pagesBlock() : "";
     if (!S.loaded) html += '<div class="rvn-sk"></div><div class="rvn-sk"></div><div class="rvn-sk"></div>';
     else if (S.error) html += '<div class="rvn-empty"><div class="big">' + svg("system", 28) + "</div><h3>Notifications aren't ready yet</h3><p>Please try again in a moment.</p></div>";
@@ -253,10 +270,14 @@
     var ask = e.target.closest("[data-ask]");
     if (ask) { e.stopPropagation(); rvnClose(); markRead([ask.dataset.ask]); if (window.toggleChat) toggleChat(true); if (window.askChat) askChat("Summarize today for me: orders, ad spend, visitors, people who left without ordering, and what I should do tomorrow.", "How did today go?"); return; }
     if (e.target.closest("[data-settings]")) { rvnClose(); var t = document.querySelector('[data-tab="settings"]'); if (t) t.click(); return; }
-    if (e.target.closest(".rvn-rep")) return;
+    if (e.target.closest("[data-back]")) { detailId = null; paint(); return; }
+    var op = e.target.closest("[data-open]");
+    if (op) { var on = S.items.filter(function (x) { return x.id === op.dataset.open; })[0]; if (on) go(on); return; }
+    if (e.target.closest(".rvn-det")) return;
     var c = e.target.closest(".rvn-card");
-    if (c) { var n = S.items.filter(function (x) { return x.id === c.dataset.id; })[0]; if (n) go(n); }
+    if (c) { var n = S.items.filter(function (x) { return x.id === c.dataset.id; })[0]; if (n) showDetail(n); }
   }
+  function showDetail(n) { markRead([n.id]); detailId = n.id; paint(); }
   function go(n) {
     markRead([n.id]);
     rvnClose();
@@ -300,7 +321,7 @@
     var x = document.getElementById("rvnX"); if (x) x.focus({ preventScroll: true });
   }
   function rvnClose() {
-    isOpen = false;
+    isOpen = false; detailId = null;
     var b = document.getElementById("rvnBack"), s = document.getElementById("rvnSheet");
     if (b) b.classList.remove("on");
     if (s) { s.classList.remove("on"); s.setAttribute("aria-hidden", "true"); }

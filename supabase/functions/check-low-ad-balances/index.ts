@@ -76,6 +76,11 @@ async function lowBalance(acct, name) {
     head: true
   }).eq("ad_account_id", acct.id).eq("status", "ACTIVE");
   if (!count) return false;
+  // Also in the bell (and pushed), pointing the buyer at the wallet so they can send money to Meta.
+  const slot = Math.floor(Date.now() / (6 * 3600_000));
+  await db.rpc("rv_notify", { p_company: acct.company_id, p_category: "money", p_kind: "low_balance", p_title: `⚠️ ${name} is low: ${naira(Number(acct.balance_naira))} left`,
+    p_body: `Ads are still running on ${name}. Top up now so they don't stop: open Wallet and tap Send to Meta.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "warning",
+    p_data: { ad_account_id: acct.id, balance: Number(acct.balance_naira) }, p_dedupe: `lowbal:${acct.id}:${slot}`, p_buyer: acct.media_buyer_id ?? null, p_user: null, p_push: true }).then((r)=>{ if (r.error) console.error("rv_notify:", r.error.message); });
   await tell(acct, "low_balance", `${name} is running low`, `Balance is about ${naira(Number(acct.balance_naira))} and ads are still running. Top up so they don't stop.`, `low_balance:${acct.id}:${Math.floor(Date.now() / (6 * 3600_000))}`);
   await db.from("ad_accounts").update({
     last_low_balance_alert_at: new Date().toISOString()

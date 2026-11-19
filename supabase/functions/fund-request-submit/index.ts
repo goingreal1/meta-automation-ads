@@ -186,6 +186,29 @@ Deno.serve(async (req)=>{
     error: "A request with that account number is already waiting for approval."
   }, 409);
   const note = String(b?.note ?? "").trim().slice(0, 300) || null;
+  // Send from the buyer's own held balance: no admin approval, Meta accounts only (verified above). The amount is set aside at once so it cannot be spent twice.
+  if (b?.from_balance === true) {
+    const { data: bal } = await admin.rpc("buyer_wallet_balance", { p_buyer: me.media_buyer_id });
+    if (Number(bal ?? 0) < amount) return json({
+      error: `Your balance is ₦${Math.max(0, Math.round(Number(bal ?? 0))).toLocaleString("en-NG")}, which cannot cover ₦${amount.toLocaleString("en-NG")}. Add money first.`
+    }, 400);
+    const { data: own, error: ownErr } = await admin.from("fund_requests").insert({
+      company_id: me.company_id, media_buyer_id: me.media_buyer_id, amount_naira: amount, note, status: "approved", paid_from: "buyer",
+      decided_at: new Date().toISOString(), decided_by: me.id,
+      req_account_number: accountNumber, req_bank_code: bankCode, req_bank_name: v.bank, req_account_name: v.name, req_verified_at: new Date().toISOString()
+    }).select("id").single();
+    if (ownErr) return json({ error: ownErr.message }, 500);
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/paystack-transfer-to-meta`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, "x-internal-key": SERVICE_KEY },
+      body: JSON.stringify({ fund_request_id: own.id, on_behalf_of: me.id, approved_with: "own_balance", source: "dashboard" })
+    });
+    const j = await r.json().catch(()=>({}));
+    if (j?.ok) return json({ ok: true, id: own.id, sent: true, account_name: v.name, bank_name: v.bank, receipt: j.receipt ?? null });
+    // Not sent: release the held amount so the balance is right again.
+    await admin.from("fund_requests").update({ status: "declined", transfer_error: String(j?.reason || j?.error || "Could not send").slice(0, 300) }).eq("id", own.id).is("paystack_transfer_code", null);
+    return json({ error: String(j?.reason || j?.error || "The money could not be sent."), verified: j?.verified === false ? false : undefined, reason: j?.reason });
+  }
   const { data: ins, error } = await admin.from("fund_requests").insert({
     company_id: me.company_id,
     media_buyer_id: me.media_buyer_id,
