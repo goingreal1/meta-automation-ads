@@ -534,10 +534,10 @@ async function bvRenderKillRules() {
     }).join("")}
     <div class="kr-block" id="kr_caps">
       <div class="kr-title">Spend limits</div>
-      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A campaign is switched off once <b>all its ad sets and ads together</b> have spent its limit, however many there are. An ad set works the same way. Checked every 5 minutes, so a campaign can go a little over before it stops.</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">A campaign is switched off once <b>all its ad sets and ads together</b> have spent its limit <b>and have no purchases</b> (or no WhatsApp conversations, for message ads). A campaign that has sold keeps running: your ad kill rules above judge its cost. An ad set works the same way. Checked every 5 minutes, so a campaign can go a little over before it stops.</div>
       ${[["campaign", "Campaign limit (₦)", "Switch a campaign off after it has spent"], ["adset", "Ad set limit (₦)", "Switch an ad set off after it has spent"]].map(([lvl, lbl]) => { const c = capBy[lvl]; return `
       <div class="kr-switches"><label class="kr-sw"><span class="switch"><input type="checkbox" class="cap-on" data-l="${lvl}" ${c?.enabled ? "checked" : ""}><span class="sw-track"></span></span> ${lbl.replace(" (₦)", "")}</label></div>
-      <div class="fg" style="grid-template-columns:minmax(0,1fr);margin-bottom:8px;"><div class="field"><label>${["campaign", "adset"].includes(lvl) ? "Switch off after it has spent (₦)" : ""}</label><input type="number" min="1" class="cap-max" data-l="${lvl}" value="${c ? Number(c.max_spend_naira) : ""}" placeholder="e.g. 10000"></div></div>`; }).join("")}
+      <div class="fg" style="grid-template-columns:minmax(0,1fr);margin-bottom:8px;"><div class="field"><label>${["campaign", "adset"].includes(lvl) ? "Switch off at this spend if it has no purchases (₦)" : ""}</label><input type="number" min="1" class="cap-max" data-l="${lvl}" value="${c ? Number(c.max_spend_naira) : ""}" placeholder="e.g. 10000"></div></div>`; }).join("")}
       <div style="font-size:11.5px;color:var(--muted);margin:4px 0 10px;">Also on by default: when the last live ad in an ad set is turned off, the ad set is switched off too, and when the last live ad set in a campaign is off, the campaign is too. An ad set with other live ads keeps running.</div>
       <button type="button" class="btn btn-a" style="padding:6px 14px;" onclick="bvSaveSpendCaps()">Save spend limits</button> <span class="kr-msg" id="krMsg_caps"></span>
     </div>
