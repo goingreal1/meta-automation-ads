@@ -952,6 +952,9 @@ async function editAd(a, c) {
             error: "A media buyer can only use creatives of their own products."
           };
         }
+        if (asset.asset_type === "post") return {
+          error: "That is an existing Page post. A post ad cannot be swapped in here, so make a new ad from the post instead."
+        };
         const isVideoAsset = asset.asset_type === "video";
         if (isVideoAsset !== (key === "video_data")) return {
           error: `This is ${key === "video_data" ? "a video" : "an image"} ad, so it can only be switched to another ${key === "video_data" ? "video" : "image"}. To change the type, make a new ad.`

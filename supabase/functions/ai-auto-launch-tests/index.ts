@@ -252,6 +252,27 @@ async function ensureMetaMedia(supabase, accountId, creative, maxWaitMs = 90 * 1
 }
 async function createAdCreative(accountId, pageId, igUserId, creative, media, destinationLink, ctaType, destinationType, productName) {
   try {
+    // Existing post ("boost a post" style): the post keeps its own picture, text, button and link.
+    if (creative.asset_type === "post" && creative.meta_post_id) {
+      const pr = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: `Post-${creative.meta_post_id}-${Date.now()}`,
+          object_story_id: creative.meta_post_id,
+          access_token: META_ACCESS_TOKEN
+        })
+      });
+      const pd = await pr.json();
+      if (!pd.id) return {
+        error: JSON.stringify(pd.error || pd)
+      };
+      return {
+        id: pd.id
+      };
+    }
     let objectStorySpec;
     const thumb = media.thumbnailUrl ? {
       image_url: media.thumbnailUrl
@@ -1297,7 +1318,9 @@ async function launchAdSetGroup(supabase, creativeGroup) {
     // slowest video, and it is capped so the launch can still finish and clean up after itself.
     const mediaBudgetMs = Math.max(15e3, 95e3 - (Date.now() - launchStartedAt));
     const prepared = await Promise.all(creativeGroup.map(async (copy)=>{
-      const media = await ensureMetaMedia(supabase, accountId, copy, mediaBudgetMs);
+      const media = copy.asset_type === "post" ? {
+        imageUrl: copy.public_url || null
+      } : await ensureMetaMedia(supabase, accountId, copy, mediaBudgetMs);
       if (!media || media.error) return {
         copy,
         error: `Failed to upload media to Meta for creative ${copy.id} (${copy.file_name}): ${media?.error || "unknown error"}`

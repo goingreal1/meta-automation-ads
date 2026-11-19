@@ -1302,6 +1302,88 @@ function readIframe(html) {
     height: Number(String(html).match(/height="(\d+)"/)?.[1]) || 600
   };
 }
+// -- Page posts: list the Page's published posts, and save one as a launchable "post" creative --
+async function pageTokenFor(admin, account, token) {
+  const { data: acc } = await admin.from("ad_accounts").select("fb_page_id").eq("id", account.id).maybeSingle();
+  if (!acc?.fb_page_id) throw new HttpError(400, "This ad account has no Facebook Page connected yet.");
+  let pageToken = token;
+  try {
+    const pt = await graphGet(acc.fb_page_id, {
+      fields: "access_token"
+    }, token);
+    if (pt?.access_token) pageToken = pt.access_token;
+  } catch  {}
+  return {
+    pageId: acc.fb_page_id,
+    pageToken
+  };
+}
+async function handlePagePosts(userClient, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const token = await resolveToken(admin, account);
+  const { pageId, pageToken } = await pageTokenFor(admin, account, token);
+  const d = await graphGet(`${pageId}/published_posts`, {
+    fields: "id,message,created_time,full_picture,permalink_url,attachments{media_type}",
+    limit: String(Math.min(Number(body.limit) || 15, 40))
+  }, pageToken);
+  return {
+    ok: true,
+    page_id: pageId,
+    posts: (d?.data ?? []).map((p)=>({
+        post_id: p.id,
+        text: String(p.message ?? "").slice(0, 300),
+        created: p.created_time,
+        picture: p.full_picture ?? null,
+        link: p.permalink_url ?? null,
+        kind: p.attachments?.data?.[0]?.media_type ?? "status"
+      }))
+  };
+}
+async function handleAddPagePost(userClient, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const raw = String(body.post_id ?? "").trim();
+  // Accept "pageid_postid", a bare post id (page id is added), or a facebook.com post link.
+  const { data: acc } = await admin.from("ad_accounts").select("fb_page_id").eq("id", account.id).maybeSingle();
+  let postId = raw;
+  const m = raw.match(/(?:posts|videos|photos)\/(?:pfbid[\w]+|\d+)/);
+  if (/^\d+$/.test(raw) && acc?.fb_page_id) postId = `${acc.fb_page_id}_${raw}`;
+  else if (!/^\d+_\d+$/.test(raw) && m) {
+    const id = m[0].split("/")[1];
+    if (/^\d+$/.test(id) && acc?.fb_page_id) postId = `${acc.fb_page_id}_${id}`;
+  }
+  if (!/^\d+_\d+$/.test(postId)) throw new HttpError(400, "Send the post id (like 1234567890_9876543210) or pick a post from page_posts.");
+  const token = await resolveToken(admin, account);
+  const { pageToken } = await pageTokenFor(admin, account, token);
+  const post = await graphGet(postId, {
+    fields: "id,message,full_picture,permalink_url,created_time"
+  }, pageToken).catch((e)=>{
+    throw new HttpError(400, `Meta could not read that post (${e.message}). It must be a public post on this ad account's Page.`);
+  });
+  const { data, error } = await admin.from("creative_assets").insert({
+    company_id: account.company_id,
+    ad_account_id: account.id,
+    file_name: `Post ${postId}`,
+    storage_path: `post/${postId}`,
+    public_url: post.full_picture || post.permalink_url || "",
+    asset_type: "post",
+    meta_post_id: postId,
+    primary_text: String(post.message ?? "").slice(0, 2000) || null,
+    product_id: body.product_id || null,
+    uploaded_by: "page_post",
+    test_status: "untested",
+    uploaded_at: new Date().toISOString()
+  }).select("id").single();
+  if (error) throw new HttpError(500, error.message);
+  return {
+    ok: true,
+    creative_id: data.id,
+    post_id: postId,
+    preview: post.full_picture ?? null,
+    text: String(post.message ?? "").slice(0, 300)
+  };
+}
 const isOurImage = (u)=>u.startsWith(`${SUPABASE_URL}/storage/v1/object/public/`);
 async function handleAdPreview(userClient, body) {
   const { account, actId } = await getAccount(userClient, body.ad_account_id);
@@ -2064,6 +2146,8 @@ Deno.serve(async (req)=>{
     if (body.action === "targeting_search") return json(await handleTargetingSearch(userClient, body));
     if (body.action === "reach_estimate") return json(await handleReachEstimate(userClient, body));
     if (body.action === "ad_preview") return json(await handleAdPreview(userClient, body));
+    if (body.action === "page_posts") return json(await handlePagePosts(userClient, body));
+    if (body.action === "add_page_post") return json(await handleAddPagePost(userClient, body));
     if (body.action === "set_ad_image") return json(await handleSetAdImage(userClient, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e) {
