@@ -391,6 +391,7 @@ Deno.serve(async (req) => {
   const { data: p } = await db.from("profiles").select("company_id, role").eq("id", ud.user.id).maybeSingle();
   if (!p?.company_id) return json({ error: "No company on this account." }, 403);
   const isOwner = ["owner", "admin"].includes(String(p.role ?? ""));
+  const canStart = isOwner || String(p.role ?? "") === "buyer"; // media buyers can call a meeting (it spends nothing); approving images and launches stays with the owner
   const b = await req.json().catch(() => ({}));
   const companyId = p.company_id as string;
 
@@ -412,7 +413,7 @@ Deno.serve(async (req) => {
     const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
     const { data: images } = await db.from("ai_team_images").select("id, meeting_id, brief, status, image_url, error, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
     const { data: launches } = await db.from("ai_launches").select("id, meeting_id, product_name, account_name, buyer_name, daily_budget_naira, status, note, start_at, kill_rule, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
-    return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!(OPENAI || RUNWAY), voice_ready: !!OPENAI, claims_verified: !!team?.claims_verified_at, can_manage: isOwner });
+    return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!(OPENAI || RUNWAY), voice_ready: !!OPENAI, claims_verified: !!team?.claims_verified_at, can_manage: isOwner, can_start: canStart });
   }
 
   if (b?.action === "settings") {
@@ -429,7 +430,7 @@ Deno.serve(async (req) => {
   }
 
   if (b?.action === "start") {
-    if (!isOwner) return json({ error: "Only the owner or an admin can call a meeting." }, 403);
+    if (!canStart) return json({ error: "Only the owner, an admin or a media buyer can call a meeting." }, 403);
     const demo = b?.demo === true;
     if (!demo && !OPENAI) return json({ error: "The AI team is not switched on yet: it needs the OpenAI key (OPENAI_API_KEY)." }, 503);
     const { data: running } = await db.from("ai_meetings").select("id").eq("company_id", companyId).eq("status", "running").gt("started_at", new Date(Date.now() - 6 * 60_000).toISOString()).limit(1).maybeSingle();
