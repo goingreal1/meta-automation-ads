@@ -229,7 +229,7 @@ Deno.serve(async (req)=>{
       const rows = Array.isArray(body.fees) ? body.fees : [];
       const out = [];
       for (const f of rows) {
-        if (!["deposit", "transfer", "wallet"].includes(f?.kind)) continue;
+        if (!["deposit", "transfer", "wallet", "credit"].includes(f?.kind)) continue;
         const n = (v, max)=>Math.min(Math.max(Number(v) || 0, 0), max);
         out.push({ kind: f.kind, enabled: !!f.enabled, pct: n(f.pct, 20), flat_naira: n(f.flat_naira, 100000), min_naira: n(f.min_naira, 100000), cap_naira: n(f.cap_naira, 1000000), payer: f.payer === "receiver" ? "receiver" : "sender", updated_at: new Date().toISOString(), updated_by: u.user.id });
       }
@@ -245,7 +245,7 @@ Deno.serve(async (req)=>{
       const all = rows ?? [];
       const inRange = (r, from)=>new Date(r.created_at) >= from;
       const tot = (list)=>list.reduce((t, r)=>t + Number(r.fee_naira || 0), 0);
-      const byKind = (list)=>({ deposit: tot(list.filter((r)=>r.kind === "deposit")), transfer: tot(list.filter((r)=>r.kind === "transfer")), wallet: tot(list.filter((r)=>r.kind === "wallet")) });
+      const byKind = (list)=>({ deposit: tot(list.filter((r)=>r.kind === "deposit")), credit: tot(list.filter((r)=>r.kind === "credit")), transfer: tot(list.filter((r)=>r.kind === "transfer")), wallet: tot(list.filter((r)=>r.kind === "wallet")) });
       const month = all.filter((r)=>inRange(r, monthStart)), last30 = all.filter((r)=>inRange(r, d30)), today = all.filter((r)=>inRange(r, day0));
       const perCo = new Map();
       for (const r of month) perCo.set(r.company_id, (perCo.get(r.company_id) ?? 0) + Number(r.fee_naira || 0));
