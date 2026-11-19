@@ -259,26 +259,24 @@ function withResults(kind, m) {
   };
 }
 function evaluateRule(rule, ad, life) {
-  if (!rule || !rule.enabled) return null;
+  if (!rule) return null;
   if (ad.status !== "ACTIVE" || ad.effective_status !== "ACTIVE") return null;
   // A scheduled ad set exists on Meta long before it starts delivering: the clock starts at go-live.
   const since = ad.live_since ?? ad.created_time;
   const hours = since ? (Date.now() - new Date(since).getTime()) / 3600_000 : Infinity;
-  if (hours < 0 || hours < Number(rule.min_hours)) return null;
-  if (life.spend < Number(rule.min_spend)) return null;
-  // Landing page views (website ads only): kill when each view costs more than the limit, or when money was spent and nobody landed on the page.
+  if (hours < 0) return null;
+  // Landing page view cost (website ads only): its own switch. Kill when each view costs more than the limit, or when money was spent and nobody landed on the page.
   const lpvLimit = Number(rule.max_cost_per_lpv);
-  if (lpvLimit > 0 && ad.kind !== "messaging") {
-    const lpv = Number(life.landing_page_views ?? 0), n = (v)=>"₦" + Math.round(v).toLocaleString("en-NG");
-    if (lpv === 0) return {
-      kill: true,
-      reason: `Spent ${n(life.spend)} over ${Math.round(hours)}h with 0 landing page views (rule: kill after ${n(Number(rule.min_spend))}).`
-    };
-    if (life.spend / lpv > lpvLimit) return {
-      kill: true,
-      reason: `${n(life.spend / lpv)} per landing page view is above your ${n(lpvLimit)} limit (${lpv} view${lpv === 1 ? "" : "s"}, ${n(life.spend)} spent).`
-    };
+  if (rule.lpv_enabled && lpvLimit > 0 && ad.kind !== "messaging") {
+    const lpvSpend = Number(rule.lpv_min_spend ?? rule.min_spend ?? 0), lpv = Number(life.landing_page_views ?? 0), n = (v)=>"₦" + Math.round(v).toLocaleString("en-NG");
+    if (life.spend >= lpvSpend) {
+      if (lpv === 0) return { kill: true, auto: !!rule.lpv_auto_kill, reason: `Spent ${n(life.spend)} with 0 landing page views (limit: ${n(lpvLimit)} per view, judged after ${n(lpvSpend)}).` };
+      if (life.spend / lpv > lpvLimit) return { kill: true, auto: !!rule.lpv_auto_kill, reason: `${n(life.spend / lpv)} per landing page view is above your ${n(lpvLimit)} limit (${lpv} view${lpv === 1 ? "" : "s"}, ${n(life.spend)} spent).` };
+    }
   }
+  if (!rule.enabled) return null;
+  if (hours < Number(rule.min_hours)) return null;
+  if (life.spend < Number(rule.min_spend)) return null;
   const results = ad.kind === "messaging" ? life.conversations : life.purchases;
   const label = ad.kind === "messaging" ? "conversation" : "purchase";
   const cost = results > 0 ? life.spend / results : null;
@@ -1762,7 +1760,7 @@ const LIVE_ANNOUNCE_AFTER = new Date("2026-10-06T00:00:00Z").getTime();
 // -- scheduled sweep (cron, every 5 minutes) --
 async function handleAutoKill(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-  const { data: ruleRows } = await admin.from("kill_rules").select("*").eq("enabled", true);
+  const { data: ruleRows } = await admin.from("kill_rules").select("*").or("enabled.eq.true,lpv_enabled.eq.true");
   const rulesByProfile = {};
   for (const r of ruleRows ?? [])(rulesByProfile[r.profile_id] ??= {})[r.kind] = r;
   const { data: capRows } = await admin.from("spend_caps").select("*").eq("enabled", true);
@@ -1839,12 +1837,12 @@ async function handleAutoKill(dryRun = false) {
               for: w.id,
               ...m,
               would_pause: verdict?.reason ?? null,
-              mode: verdict ? rule.auto_kill ? "auto-pause" : "suggest" : null
+              mode: verdict ? (verdict.auto ?? rule.auto_kill) ? "auto-pause" : "suggest" : null
             });
             continue;
           }
           if (!verdict?.kill || paused.has(ad.id)) continue;
-          if (rule.auto_kill) {
+          if (verdict.auto ?? rule.auto_kill) {
             if (pauses >= MAX_AUTO_PAUSES_PER_RUN) continue;
             const result = await pauseOrResume(admin, account, actId, token, "ad", ad.id, "PAUSED");
             pauses++;
