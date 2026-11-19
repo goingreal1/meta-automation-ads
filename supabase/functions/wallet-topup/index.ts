@@ -150,7 +150,7 @@ Deno.serve(async (req)=>{
     }, 400);
   }
   const action = String(b?.action ?? "overview");
-  if (["start", "verify", "sweep"].includes(action) && !PAYSTACK_SECRET_KEY) return json({
+  if (["start", "verify", "sweep", "resolve"].includes(action) && !PAYSTACK_SECRET_KEY) return json({
     error: "Card payments are not switched on yet."
   }, 500);
   if (action === "sweep") {
@@ -357,6 +357,19 @@ Deno.serve(async (req)=>{
         row = await read();
       }
       return json({ ok: true, owner: buyerRow ? "buyer" : "company", account: row?.dedicated_account_number ? { number: row.dedicated_account_number, bank: row.dedicated_account_bank, name: `${row.name ?? ""}` } : null });
+    }
+    if (action === "resolve") {
+      // Who owns this bank account, right now (and is it Meta's)? Shown to the person before they confirm anything.
+      const acct = String(b?.account_number ?? "").replace(/\s+/g, ""), bank = String(b?.bank_code ?? "").trim();
+      if (!/^\d{10}$/.test(acct) || !bank) return json({ error: "Enter the bank and a 10-digit account number." }, 400);
+      const rr = await fetch(`${PAYSTACK_BASE}/bank/resolve?account_number=${encodeURIComponent(acct)}&bank_code=${encodeURIComponent(bank)}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
+      const jj = await rr.json().catch(()=>({}));
+      const name = String(jj?.data?.account_name ?? "");
+      if (!rr.ok || !name) return json({ ok: false, error: "The bank could not find that account. Check the number and the bank." });
+      const { data: rows } = await admin.from("transfer_allowed_names").select("name_key").eq("company_id", me.company_id);
+      const list = rows ?? [], key = name.trim().toLowerCase().replace(/\s+/g, " ");
+      const isMeta = list.length ? list.some((x)=>x.name_key === key) : /(facebook|meta)/i.test(name);
+      return json({ ok: true, name, is_meta: isMeta });
     }
     if (action === "fees") {
       const { data: fees } = await admin.from("platform_fees").select("kind, enabled, pct, flat_naira, min_naira, cap_naira, payer");
