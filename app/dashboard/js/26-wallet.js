@@ -716,7 +716,7 @@ function w2Pane() {
 function w2Draw() {
   const el = W2.el; if (!el) return;
   const keep = { k: document.getElementById("w2Key")?.value, a: document.getElementById("w2SAmt")?.value };
-  el.innerHTML = `<div class="rv-ui wl2" id="wlRoot2" data-view="${W2.view === "home" ? "home" : "pane"}"><div class="wl2-home">${w2Home()}</div><div class="wl2-pane">${w2Pane()}</div></div>`;
+  el.innerHTML = `<div class="rv-ui wl2" id="wlRoot2" data-w2="${W2.view === "home" ? "home" : "pane"}"><div class="wl2-home">${w2Home()}</div><div class="wl2-pane">${w2Pane()}</div></div>`;
   if (W2.view === "meta") { const sel = document.getElementById("w2MBank"); if (sel) { sel.innerHTML = `<option value="">Loading banks…</option>`; Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.meta.bank) sel.value = W2.meta.bank; }); sel.onchange = () => { W2.meta.bank = sel.value; }; } }
   if (W2.view === "requests" && W2.legacy === undefined) w2LoadLegacy();
   if (W2.view === "add" && W2.addMode === "bank" && W2.dva === undefined && !W2.dvaBusy) { W2.dvaBusy = true; w2LoadDva().finally(() => { W2.dvaBusy = false; }); }
