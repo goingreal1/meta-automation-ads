@@ -45,9 +45,9 @@ function paystackCharge(net) {
 }
 const rvFee = async (kind, amount)=>Number((await admin.rpc("rv_fee", { p_kind: kind, p_amount: amount })).data ?? 0);
 // Take the deposit fee off a wallet the moment money lands in it. Safe to call twice for the same ref.
-async function takeDepositFee(companyId, buyerId, userId, amount, ref, note) {
-  const fee = await rvFee("deposit", amount);
-  if (fee > 0) await admin.rpc("rv_take_fee", { p_kind: "deposit", p_company: companyId, p_buyer: buyerId, p_user: userId, p_amount: amount, p_fee: fee, p_ref: ref, p_note: note });
+async function takeDepositFee(companyId, buyerId, userId, amount, ref, note, kind = "deposit") {
+  const fee = await rvFee(kind, amount);
+  if (fee > 0) await admin.rpc("rv_take_fee", { p_kind: kind, p_company: companyId, p_buyer: buyerId, p_user: userId, p_amount: amount, p_fee: fee, p_ref: ref, p_note: note });
   return fee;
 }
 const safeEq = (a, b)=>{
@@ -364,7 +364,7 @@ Deno.serve(async (req)=>{
       const a = Math.round(Number(b?.amount));
       if (Number.isFinite(a) && a > 0) {
         const charged = paystackCharge(a), rf = await rvFee("deposit", a);
-        out.preview = { amount: a, card_charged: charged, paystack_fee: charged - a, revora_deposit_fee: rf, card_lands: a - rf, transfer_fee: await rvFee("transfer", a), wallet_fee: await rvFee("wallet", a) };
+        out.preview = { amount: a, card_charged: charged, paystack_fee: charged - a, revora_deposit_fee: rf, credit_fee: await rvFee("credit", a), card_lands: a - rf, transfer_fee: await rvFee("transfer", a), wallet_fee: await rvFee("wallet", a) };
       }
       return json(out);
     }
@@ -557,7 +557,7 @@ Deno.serve(async (req)=>{
           error: "Could not move the money."
         }, 500);
       }
-      await takeDepositFee(me.company_id, req0.media_buyer_id, null, amount, ref, "Deposit fee on approved request");
+      await takeDepositFee(me.company_id, req0.media_buyer_id, null, amount, ref, "Fee on approved request", "credit");
       return json({
         ok: true
       });
@@ -621,7 +621,7 @@ Deno.serve(async (req)=>{
       }, 500);
       // Money credited to a buyer's wallet pays the deposit fee like any other deposit.
       let fee = 0;
-      if (toBuyer) fee = await takeDepositFee(me.company_id, buyer.id, null, amount, ref, "Deposit fee on funds from your admin");
+      if (toBuyer) fee = await takeDepositFee(me.company_id, buyer.id, null, amount, ref, "Fee on funds from your admin", "credit");
       return json({
         ok: true,
         fee

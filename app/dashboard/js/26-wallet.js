@@ -600,16 +600,16 @@ function w2SendGo() {
 
 // ---- Request money from an admin (media buyers) ----
 function w2Request() {
-  const mine = (W2.ov?.requests || []).slice(0, 5), rf = w2Fee("deposit", Number(W2.reqAmt || 0));
+  const mine = (W2.ov?.requests || []).slice(0, 5), rf = w2Fee("credit", Number(W2.reqAmt || 0));
   return `${w2Nav("Request money")}<div class="w2-hint" style="margin-bottom:8px">Your admin gets a notification and approves in one tap. It lands in your wallet.</div>
     <div class="w2-big"><small>Amount</small><input id="w2RAmt" type="number" inputmode="numeric" min="500" step="500" placeholder="0" value="${W2.reqAmt || ""}" oninput="W2.reqAmt=this.value;w2ReqSum()"></div>
     <label class="w2-f">What is it for?<input id="w2RNote" maxlength="200" placeholder="e.g. scaling the Friday campaign" value="${escH(W2.reqNote || "")}" oninput="W2.reqNote=this.value"></label>
-    <div id="w2RSum" class="w2-hint">${Number(W2.reqAmt) > 0 ? `If approved, ${w2Money(W2.reqAmt)} less the Revora deposit fee of ${w2Money(rf)} lands in your wallet.` : ""}</div>
+    <div id="w2RSum" class="w2-hint">${Number(W2.reqAmt) > 0 ? `If approved, ${w2Money(W2.reqAmt)} less the Revora fee of ${w2Money(rf)} lands in your wallet.` : ""}</div>
     <div id="w2Msg" class="w2-msg"></div><button type="button" class="w2-cta" onclick="w2ReqGo()">Send request</button>
     <div class="w2-sec" style="margin-top:14px"><h3>My requests</h3><button type="button" class="w2-lnk" onclick="w2Go('requests')">See all</button></div>
     <div class="w2-list">${mine.length ? mine.map(w2ReqRow).join("") : `<div class="w2-empty">You have not asked for anything yet.</div>`}</div>`;
 }
-function w2ReqSum() { const rf = w2Fee("deposit", Number(W2.reqAmt || 0)), b = document.getElementById("w2RSum"); if (b) b.textContent = Number(W2.reqAmt) > 0 ? `If approved, ${w2Money(W2.reqAmt)} less the Revora deposit fee of ${w2Money(rf)} lands in your wallet.` : ""; }
+function w2ReqSum() { const rf = w2Fee("credit", Number(W2.reqAmt || 0)), b = document.getElementById("w2RSum"); if (b) b.textContent = Number(W2.reqAmt) > 0 ? `If approved, ${w2Money(W2.reqAmt)} less the Revora fee of ${w2Money(rf)} lands in your wallet.` : ""; }
 function w2ReqRow(r) {
   const st = r.status === "approved" ? ["Approved", "ok"] : r.status === "pending" ? ["Waiting", "w"] : ["Declined", "no"];
   return `<div class="w2-row static"><span class="w2-ic in">${rvIc("arrdn")}</span><span class="w2-t"><b>${w2Money(r.amount_naira)}</b><small>${new Date(r.requested_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}${r.note ? " · " + escH(r.note) : ""}</small></span><span class="w2-pill ${st[1]}">${st[0]}</span></div>`;
@@ -687,7 +687,7 @@ async function w2CancelLegacy(id) {
 
 // ---- Fees, Team (admins), and the old view for the rest ----
 function w2Fees() {
-  const rows = [["Adding money", "deposit", "Taken from every deposit: card, admin credits and approved requests."], ["Sending to Meta", "transfer", "Includes the bank's own charge."], ["Sending to another user", "wallet", "Wallet to wallet, any company."]];
+  const rows = [["Adding money (card or bank)", "deposit", "Taken from money that arrives from outside."], ["Funds from your admin", "credit", "Admin credits and approved requests."], ["Sending to Meta", "transfer", "Includes the bank's own charge."], ["Sending to another user", "wallet", "Wallet to wallet, any company."]];
   return `${w2Nav("Fees")}<div class="w2-sum">${rows.map((r) => `<div class="w2-ln col"><span><b>${r[0]}</b><small>${r[2]}</small></span><span>${escH(w2FeeText(r[1]))}</span></div>`).join("")}</div>
     <div class="w2-hint">Card payments also add Paystack's charge at checkout (1.5% + ₦100, ₦100 waived under ₦2,500, at most ₦2,000). Fees are shown before you confirm and on every receipt.</div>`;
 }
