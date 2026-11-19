@@ -361,3 +361,9 @@
 .rv-ui .cp-mx .rv-mg { grid-template-columns: repeat(8, minmax(0, 1fr)); margin: 0 16px; } .rv-ui .cp-mx .rv-mg > div { padding: 9px 12px; } .rv-ui .cp-mx .rv-mg .v { font-size: 15px; } .rv-ui .cp-mxh { padding: 0 16px 10px; }
 @media (max-width: 1500px) { .rv-ui .cp-mx .rv-mg { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 @media (max-width: 1180px) { .rv-ui .cp-mx .rv-mg { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* extra numbers under each phone row */
+.rv-ui .cp-mx { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 8px; margin-top: 8px; padding: 10px 0 0 54px; border-top: 1px dashed var(--c-line, rgba(0,0,0,.1)); }
+.rv-ui .cp-mx small { display: block; color: var(--c-ink3); font-size: 11px; line-height: 1.25; }
+.rv-ui .cp-mx b { font-size: 14px; font-weight: 650; }
+.rv-ui .cp-mpick { margin: 8px 0 2px; width: 100%; }
