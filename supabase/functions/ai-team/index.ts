@@ -84,27 +84,48 @@ async function addMessage(meetingId: string, companyId: string, speaker: string,
 }
 
 // The creative agent: one Runway image per brief. The picture lands in the company's vault storage (R2) and waits for a person's approval.
+// Images come from OpenAI (gpt-image-1, then dall-e-3 if that model is not open to this account). Runway is only used when there is no OpenAI key.
+async function openaiImage(prompt: string): Promise<{ bytes?: Uint8Array; error?: string }> {
+  const tryModel = async (model: string, extra: Record<string, unknown>) => {
+    const r = await fetch("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, prompt: prompt.slice(0, model === "dall-e-3" ? 3900 : 3000), n: 1, size: "1024x1024", ...extra }) });
+    const o = await r.json().catch(() => ({}));
+    const b64 = o?.data?.[0]?.b64_json;
+    if (r.ok && b64) { const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return { bytes }; }
+    return { error: `${model}: ${o?.error?.message ?? r.status}` };
+  };
+  const a = await tryModel("gpt-image-1", { quality: "medium" });
+  if (a.bytes) return a;
+  const b = await tryModel("dall-e-3", { response_format: "b64_json" });
+  return b.bytes ? b : { error: `${a.error} | ${b.error}`.slice(0, 280) };
+}
 async function generateImage(id: string, companyId: string) {
   const fail = (e: string) => db.from("ai_team_images").update({ status: "failed", error: e.slice(0, 300), updated_at: new Date().toISOString() }).eq("id", id);
   try {
     const { data: im } = await db.from("ai_team_images").select("prompt").eq("id", id).single();
-    const h = { Authorization: `Bearer ${RUNWAY}`, "Content-Type": "application/json", "X-Runway-Version": "2024-11-06" };
-    const r = await fetch("https://api.dev.runwayml.com/v1/text_to_image", { method: "POST", headers: h, body: JSON.stringify({ model: "gen4_image", promptText: String(im?.prompt ?? "").slice(0, 1000), ratio: "1024:1024" }) });
-    const o = await r.json().catch(() => ({}));
-    if (!r.ok || !o?.id) return await fail(`Runway said ${r.status}: ${JSON.stringify(o).slice(0, 160)}`);
-    await db.from("ai_team_images").update({ runway_task: o.id }).eq("id", id);
-    let url = "";
-    for (let i = 0; i < 40; i++) { // up to ~2 minutes
-      await new Promise((res) => setTimeout(res, 3000));
-      const t = await fetch(`https://api.dev.runwayml.com/v1/tasks/${o.id}`, { headers: h }).then((x) => x.json()).catch(() => null);
-      if (t?.status === "SUCCEEDED") { url = String(t.output?.[0] ?? ""); break; }
-      if (t?.status === "FAILED" || t?.status === "CANCELLED") return await fail(String(t.failure ?? "Runway could not make this image."));
+    let bytes: Uint8Array | undefined;
+    if (OPENAI) {
+      const r = await openaiImage(String(im?.prompt ?? ""));
+      if (r.error || !r.bytes) return await fail(r.error ?? "OpenAI could not make this image.");
+      bytes = r.bytes;
+    } else {
+      const h = { Authorization: `Bearer ${RUNWAY}`, "Content-Type": "application/json", "X-Runway-Version": "2024-11-06" };
+      const r = await fetch("https://api.dev.runwayml.com/v1/text_to_image", { method: "POST", headers: h, body: JSON.stringify({ model: "gen4_image", promptText: String(im?.prompt ?? "").slice(0, 1000), ratio: "1024:1024" }) });
+      const o = await r.json().catch(() => ({}));
+      if (!r.ok || !o?.id) return await fail(`Runway said ${r.status}: ${JSON.stringify(o).slice(0, 160)}`);
+      await db.from("ai_team_images").update({ runway_task: o.id }).eq("id", id);
+      let url = "";
+      for (let i = 0; i < 40; i++) { // up to ~2 minutes
+        await new Promise((res) => setTimeout(res, 3000));
+        const t = await fetch(`https://api.dev.runwayml.com/v1/tasks/${o.id}`, { headers: h }).then((x) => x.json()).catch(() => null);
+        if (t?.status === "SUCCEEDED") { url = String(t.output?.[0] ?? ""); break; }
+        if (t?.status === "FAILED" || t?.status === "CANCELLED") return await fail(String(t.failure ?? "Runway could not make this image."));
+      }
+      if (!url) return await fail("Runway took too long.");
+      const img = await fetch(url); if (!img.ok) return await fail("Could not download the image.");
+      bytes = new Uint8Array(await img.arrayBuffer());
     }
-    if (!url) return await fail("Runway took too long.");
-    const img = await fetch(url); if (!img.ok) return await fail("Could not download the image.");
-    const bytes = new Uint8Array(await img.arrayBuffer());
     const path = `ai-team/${companyId}/${id}.png`;
-    const up = await db.storage.from("creative-vault").upload(path, bytes, { contentType: "image/png", upsert: true });
+    const up = await db.storage.from("creative-vault").upload(path, bytes!, { contentType: "image/png", upsert: true });
     if (up.error) return await fail(up.error.message);
     const pub = db.storage.from("creative-vault").getPublicUrl(path).data.publicUrl;
     await db.from("ai_team_images").update({ status: "ready", image_url: pub, updated_at: new Date().toISOString() }).eq("id", id);
@@ -286,7 +307,7 @@ async function tick() {
       if (!imgs?.length) {
         // deno-lint-ignore no-explicit-any
         const hasBriefs = Array.isArray((m.decision as any)?.creative_briefs) && (m.decision as any).creative_briefs.length;
-        if (!RUNWAY || !hasBriefs) { await done("The meeting is ready, but images could not be made automatically (" + (!RUNWAY ? "no Runway key" : "no image briefs") + "). Open the AI Team page to continue.", "warn"); continue; }
+        if ((!OPENAI && !RUNWAY) || !hasBriefs) { await done("The meeting is ready, but images could not be made automatically (" + (!OPENAI && !RUNWAY ? "no image key" : "no image briefs") + "). Open the AI Team page to continue.", "warn"); continue; }
         const r = await makeImages(m.id, m.company_id); log.push(`${m.id}: images ${r.error ?? r.started}`); if (r.error) await done(r.error, "warn"); continue;
       }
       // a worker that died leaves an image "generating" forever; give up on those after 8 minutes
@@ -373,12 +394,25 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({}));
   const companyId = p.company_id as string;
 
+  // VOICE: one OpenAI voice per role. Returns the audio itself (mp3).
+  if (b?.action === "speak") {
+    if (!OPENAI) return json({ error: "Voice needs the OpenAI key." }, 503);
+    const VOICES: Record<string, string> = { team_lead: "nova", creative: "shimmer", media_buyer: "onyx", customer_service: "coral" };
+    const text = String(b?.text ?? "").replace(/[*_#`>]/g, "").replace(/\s+/g, " ").trim().slice(0, 700);
+    if (!text) return json({ error: "Nothing to say." }, 400);
+    const say = (voice: string) => fetch("https://api.openai.com/v1/audio/speech", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "tts-1", voice, input: text, response_format: "mp3" }) });
+    let r = await say(VOICES[String(b?.speaker)] ?? "alloy");
+    if (!r.ok && r.status === 400) r = await say("alloy"); // a voice this account's model does not have
+    if (!r.ok) return json({ error: "OpenAI voice said " + r.status + ": " + (await r.text()).slice(0, 160) }, 502);
+    return new Response(r.body, { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=3600", ...cors } });
+  }
+
   if (b?.action === "state") {
     const { data: team } = await db.from("ai_teams").select("*").eq("company_id", companyId).maybeSingle();
     const { data: meetings } = await db.from("ai_meetings").select("id, status, topic, trigger, started_at, ended_at, decision, error").eq("company_id", companyId).order("started_at", { ascending: false }).limit(15);
     const { data: images } = await db.from("ai_team_images").select("id, meeting_id, brief, status, image_url, error, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
     const { data: launches } = await db.from("ai_launches").select("id, meeting_id, product_name, account_name, buyer_name, daily_budget_naira, status, note, start_at, kill_rule, created_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(40);
-    return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!RUNWAY, claims_verified: !!team?.claims_verified_at, can_manage: isOwner });
+    return json({ launches: launches ?? [], team: team ?? { company_id: companyId, enabled: true, auto_launch: false, daily_budget_cap_naira: 0 }, meetings: meetings ?? [], images: images ?? [], ai_ready: !!OPENAI, images_ready: !!(OPENAI || RUNWAY), voice_ready: !!OPENAI, claims_verified: !!team?.claims_verified_at, can_manage: isOwner });
   }
 
   if (b?.action === "settings") {
@@ -410,7 +444,7 @@ Deno.serve(async (req) => {
 
   if (b?.action === "make_images") {
     if (!isOwner) return json({ error: "Only the owner or an admin can ask the creative agent to make images." }, 403);
-    if (!RUNWAY) return json({ error: "Image generation is not switched on yet: it needs the Runway key (RUNWAY_API_KEY)." }, 503);
+    if (!OPENAI && !RUNWAY) return json({ error: "Image making is not switched on yet: it needs the OpenAI key (OPENAI_API_KEY)." }, 503);
     const r = await makeImages(String(b?.meeting_id ?? ""), companyId);
     return json(r.error ? { error: r.error } : { ok: true, started: r.started }, r.error ? 409 : 200);
   }

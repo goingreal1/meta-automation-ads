@@ -51,7 +51,7 @@ button.s{height:32px;padding:0 12px;font-size:13px}
 .comp{border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:10px;align-items:center}
 .comp input{flex:1;font:inherit;height:44px;border-radius:12px;border:0;background:var(--hover);padding:0 14px;color:var(--ink);min-width:0;outline:0}
 .mic,.sendb{width:44px;height:44px;border-radius:50%;padding:0;justify-content:center;flex:none}
-.sendb{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.mic.on{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 0 0 4px var(--brandbg)}.sendb{background:var(--ink);color:var(--card);border-color:var(--ink)}
 .err{color:var(--bad);font-size:13px;padding:0 16px 10px}
 .rside{display:grid;gap:16px}
 .sc .hd{padding:14px 18px 10px;font-weight:650;font-size:15px;display:flex;align-items:center;gap:8px}
@@ -101,7 +101,7 @@ table{width:100%;border-collapse:collapse}th{font-size:12px;color:var(--ink3);te
           <span id="mstat" class="chip" style="display:none"></span></div>
         <div id="feed"><div class="empty">No meeting yet. Press <b>New meeting</b> and watch the team talk it through.</div></div>
         <div class="err" id="err"></div>
-        <div class="comp"><button class="mic" id="mic" title="Talking to the team by voice is coming next" aria-label="Voice (coming next)"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></button><input id="say" placeholder="Add a note for the team, for example “focus on Mombasa”…" maxlength="600" disabled><button class="sendb" id="sayb" disabled aria-label="Send"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+        <div class="comp"><button class="mic" id="mic" title="Talk to the team" aria-label="Talk to the team"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></button><button class="mic" id="vol" title="Hear the team speak" aria-label="Hear the team speak"><svg class="i" viewBox="0 0 24 24"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/></svg></button><input id="say" placeholder="Add a note for the team, for example “focus on Mombasa”…" maxlength="600" disabled><button class="sendb" id="sayb" disabled aria-label="Send"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
       </section>
       <aside class="rside">
         <section class="card sc"><div class="hd">About this meeting</div><div class="kv" id="about"><div><small>Status</small><b>No meeting yet</b></div></div></section>
@@ -147,7 +147,7 @@ var $ = function (id) { return document.getElementById(id); };
 (function () { var h = document.getElementById("sHour"), o = ""; for (var i = 0; i < 24; i++) o += '<option value="' + i + '">' + (i % 12 || 12) + ':00 ' + (i < 12 ? "AM" : "PM") + "</option>"; h.innerHTML = o; })();
 var IC = { team_lead: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>', creative: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>', media_buyer: '<path d="M3 11v2a1 1 0 001 1h1l5 4V6l-5 4H4a1 1 0 00-1 1z"/><path d="M15.5 8.5a4 4 0 010 7M18.5 5.5a8 8 0 010 13"/>', customer_service: '<path d="M21 11.5a8.4 8.4 0 01-12.2 7.5L3 20.5l1.6-5.4A8.4 8.4 0 1121 11.5z"/>' };
 var NAMES = { team_lead: "Strategy (Ada)", creative: "Creative (Zara)", media_buyer: "Media buying (Tobi)", customer_service: "Customer care (Ife)", you: "You" };
-var S = { launches: [], images: [], imagesReady: false, claims: false, meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false, meetings: [] };
+var S = { voice: false, spoken: {}, q: [], playing: false, talking: null, voiceReady: false, launches: [], images: [], imagesReady: false, claims: false, meeting: null, msgs: {}, ch: null, poll: null, ready: false, canManage: false, meetings: [] };
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function ico(p) { return '<svg class="i" viewBox="0 0 24 24">' + p + "</svg>"; }
 async function api(body) {
@@ -173,8 +173,7 @@ function render() {
     return '<div class="m"><span class="rt">' + ico(IC[m.speaker] || IC.team_lead) + '</span><div><b>' + esc(NAMES[m.speaker] || m.speaker) + '</b><div class="tx' + (m.done ? "" : " typing") + '">' + esc(m.content || "…") + "</div></div></div>";
   }).join("");
   if (atBottom) feed.scrollTop = feed.scrollHeight;
-  var speaking = list.filter(function (m) { return !m.done; }).pop();
-  document.querySelectorAll(".ag").forEach(function (a) { a.classList.toggle("speaking", !!speaking && speaking.speaker === a.dataset.sp); });
+  voiceTick(list); markSpeaking(list);
   var running = S.meeting && S.meeting.status === "running";
   $("say").disabled = !running; $("sayb").disabled = !running; $("start").disabled = !!running || !S.canManage;
   document.querySelectorAll("#ask button").forEach(function (b) { b.disabled = !running; });
@@ -200,6 +199,36 @@ function renderDecision() {
     (d.risks && d.risks.length ? '<div class="k">Risks</div><ul>' + li(d.risks) + "</ul>" : "") + "</div>";
 }
 
+
+// ---- voice: each role has its own OpenAI voice; your microphone uses the browser's speech recognition ----
+function markSpeaking(list) {
+  list = list || Object.keys(S.msgs).map(function (k) { return S.msgs[k]; });
+  var typing = list.filter(function (m) { return !m.done; }).pop(), who = S.talking || (typing && typing.speaker);
+  document.querySelectorAll(".ag").forEach(function (a) { a.classList.toggle("speaking", !!who && who === a.dataset.sp); });
+}
+async function speakBlob(text, speaker) {
+  var s = (await sb.auth.getSession()).data.session;
+  var r = await fetch(SUPA_URL + "/functions/v1/ai-team", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token, apikey: ANON }, body: JSON.stringify({ action: "speak", text: text, speaker: speaker }) });
+  if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).error || ("Voice said " + r.status));
+  return await r.blob();
+}
+function voiceTick(list) {
+  if (!S.voice) return;
+  list.forEach(function (m) { if (m.done && m.speaker !== "you" && !S.spoken[m.id]) { S.spoken[m.id] = 1; S.q.push(m); } });
+  pump();
+}
+async function pump() {
+  if (S.playing || !S.q.length || !S.voice) return;
+  S.playing = true; var m = S.q.shift(); S.talking = m.speaker; markSpeaking();
+  try {
+    var url = URL.createObjectURL(await speakBlob(m.content, m.speaker)), a = new Audio(url); S.audio = a;
+    await new Promise(function (res) { S.audioRes = res; a.onended = res; a.onerror = res; a.play().catch(res); });
+    URL.revokeObjectURL(url);
+  } catch (e) { err(e.message); S.voice = false; S.q = []; $("vol").classList.remove("on"); }
+  S.audio = null; S.audioRes = null; S.talking = null; S.playing = false; markSpeaking(); pump();
+}
+function stopVoice() { S.q = []; if (S.audio) S.audio.pause(); if (S.audioRes) S.audioRes(); }
+function markAllSpoken() { Object.keys(S.msgs).forEach(function (k) { if (S.msgs[k].done) S.spoken[k] = 1; }); }
 async function loadMessages(id) {
   var r = await sb.from("ai_meeting_messages").select("id,seq,speaker,content,done").eq("meeting_id", id).order("seq");
   (r.data || []).forEach(function (m) { S.msgs[m.id] = m; });
@@ -208,10 +237,10 @@ async function refreshMeeting(id) {
   var r = await sb.from("ai_meetings").select("id,status,topic,decision,error,started_at").eq("id", id).maybeSingle();
   if (r.data) S.meeting = r.data;
 }
-async function openMeeting(id) {
+async function openMeeting(id, fresh) {
   if (S.ch) { sb.removeChannel(S.ch); S.ch = null; } clearInterval(S.poll);
-  S.msgs = {}; S.meeting = { id: id, status: "running" };
-  await Promise.all([loadMessages(id), refreshMeeting(id)]); render();
+  S.msgs = {}; S.spoken = {}; stopVoice(); S.meeting = { id: id, status: "running" };
+  await Promise.all([loadMessages(id), refreshMeeting(id)]); if (!fresh) markAllSpoken(); render();
   // Live: new words arrive through Realtime; a light poll covers any dropped connection.
   S.ch = sb.channel("meet-" + id).on("postgres_changes", { event: "*", schema: "public", table: "ai_meeting_messages", filter: "meeting_id=eq." + id }, function (p) { if (p.new && p.new.id) { S.msgs[p.new.id] = p.new; render(); } })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "ai_meetings", filter: "id=eq." + id }, function (p) { if (p.new) { S.meeting = Object.assign(S.meeting || {}, p.new); render(); if (p.new.status !== "running") loadPast(); } }).subscribe();
@@ -219,7 +248,7 @@ async function openMeeting(id) {
 }
 async function loadPast() {
   var o = await api({ action: "state" });
-  S.ready = !!o.ai_ready; S.canManage = !!o.can_manage; S.images = o.images || []; S.launches = o.launches || []; S.imagesReady = !!o.images_ready; S.claims = !!o.claims_verified;
+  S.ready = !!o.ai_ready; S.voiceReady = !!o.voice_ready; S.canManage = !!o.can_manage; S.images = o.images || []; S.launches = o.launches || []; S.imagesReady = !!o.images_ready; S.claims = !!o.claims_verified;
   S.cap = o.team ? Number(o.team.daily_budget_cap_naira || 0) : 0;
   $("claimsNote").textContent = S.claims ? "Your business is verified: the team may use only the approved claims you list on each product." : "Your business is not verified yet, so the team makes no product claims beyond the plain description. Revora verifies businesses and can then switch approved claims on.";
   var rd = $("ready"); rd.className = "chip " + (S.ready ? "live" : "off"); rd.innerHTML = S.ready ? '<span class="dot"></span> Ready' : "Setup needed: OpenAI key";
@@ -300,7 +329,7 @@ $("start").onclick = async function () {
   var demo = !S.ready; // without the OpenAI key a clearly-marked demo shows how the meeting looks
   if (demo && !confirm("The OpenAI key isn't added yet, so this will run a short DEMO meeting with sample lines (not your real numbers). Continue?")) { this.disabled = false; return; }
   var o = await api({ action: "start", demo: demo });
-  if (o.meeting_id) { await openMeeting(o.meeting_id); loadPast(); tab("room"); } else { err(o.error || "Could not start the meeting."); this.disabled = false; }
+  if (o.meeting_id) { await openMeeting(o.meeting_id, true); loadPast(); tab("room"); } else { err(o.error || "Could not start the meeting."); this.disabled = false; }
 };
 async function say(text) {
   var t = (text || $("say").value).trim(); if (!t || !S.meeting) return; $("say").value = ""; err("");
@@ -309,7 +338,29 @@ async function say(text) {
 }
 $("sayb").onclick = function () { say(); }; $("say").onkeydown = function (e) { if (e.key === "Enter") say(); };
 document.querySelectorAll("#ask button").forEach(function (b) { b.onclick = function () { say(b.dataset.q); }; });
-$("mic").onclick = function () { err("Talking to the team by voice is coming next. For now, type a note."); };
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+$("mic").onclick = function () {
+  err("");
+  if (S.rec) { S.rec.stop(); return; }
+  if (!SR) { err("This browser cannot take voice input. Use Chrome or Safari, or type a note."); return; }
+  if (!S.meeting || S.meeting.status !== "running") { err("Start a meeting first, then talk to the team."); return; }
+  stopVoice();
+  var r = new SR(), final = ""; r.lang = navigator.language || "en-US"; r.interimResults = true; r.continuous = false;
+  r.onresult = function (e) { var t = ""; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; $("say").value = t; if (e.results[e.results.length - 1].isFinal) final = t; };
+  r.onerror = function (e) { if (e.error !== "no-speech" && e.error !== "aborted") err(e.error === "not-allowed" ? "Allow the microphone for this page, then try again." : "Voice input stopped: " + e.error); };
+  r.onend = function () { S.rec = null; $("mic").classList.remove("on"); $("say").placeholder = "Add a note for the team, for example “focus on Mombasa”…"; if (final.trim()) say(final); else $("say").value = ""; };
+  S.rec = r; try { r.start(); $("mic").classList.add("on"); $("say").placeholder = "Listening…"; } catch (e2) { S.rec = null; }
+};
+$("vol").onclick = function () {
+  err("");
+  if (!S.voiceReady) { err("Voice needs the OpenAI key."); return; }
+  S.voice = !S.voice; try { localStorage.setItem("aiVoice", S.voice ? "1" : "0"); } catch (e) {}
+  this.classList.toggle("on", S.voice);
+  if (S.voice) { try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=").play().catch(function () {}); } catch (e) {} markAllSpoken(); }
+  else stopVoice();
+};
+try { S.voice = localStorage.getItem("aiVoice") === "1"; $("vol").classList.toggle("on", S.voice); } catch (e) {}
+document.addEventListener("click", function () { if (S.voice) try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=").play().catch(function () {}); } catch (e) {} }, { once: true });
 $("sSave").onclick = async function () {
   if ($("sAuto").checked && !(Number($("sCap").value) > 0)) { $("sMsg").textContent = "Set a daily spend limit above 0 first, or the team may not spend anything."; return; }
   $("sMsg").textContent = "Saving…";
