@@ -2253,7 +2253,7 @@ ${JSON.stringify(data)}`;
       type: "function",
       function: {
         name: "get_live_ads",
-        description: "LIVE from Meta: every campaign > ad set > ad in the person's currently selected ad account (or another account by id) with status, daily budget, spend, purchases and cost per purchase, conversations (messages) and cost per message, landing page views and cost per landing page view, link clicks and cost per link click, link CTR, impressions, CPM, reach, frequency, plus whether each ad breaks the person's kill thresholds. Use for any question about ad sets, ads, what is working, what to kill or scale.",
+        description: "LIVE from Meta: every campaign > ad set > ad in the person's currently selected ad account (or another account by id) with status, daily budget, spend, purchases and cost per purchase, conversations (messages) and cost per message, landing page views and cost per landing page view, link clicks and cost per link click, link CTR, impressions, CPM, reach, frequency, plus (when Meta reported them) purchase value, ROAS, add to cart, checkouts, video hook/hold rate and ThruPlays, engagement, and whether each ad breaks the person's kill thresholds. Use for any question about ad sets, ads, what is working, what to kill or scale.",
         parameters: {
           type: "object",
           properties: {
@@ -2670,6 +2670,7 @@ async function accountFor(ctx, requested) {
   };
 }
 const r0 = (n, d = 0)=>n == null ? null : Number(Number(n).toFixed(d));
+const pos = (k, v)=>v != null && Number(v) > 0 ? { [k]: v } : {};
 const slimMetrics = (m)=>({
     spend: r0(m.spend),
     messages: m.kind === "messaging" || Number(m.conversations) > 0 ? m.conversations : void 0,
@@ -2686,7 +2687,21 @@ const slimMetrics = (m)=>({
     impressions: m.impressions,
     cpm: m.cpm != null ? r0(m.cpm, 2) : void 0,
     reach: m.reach,
-    frequency: r0(m.frequency, 2)
+    frequency: r0(m.frequency, 2),
+    // buying steps, value, video and engagement: only included when Meta reported something
+    ...pos("purchase_value", m.purchase_value ? r0(m.purchase_value) : null),
+    ...pos("roas", m.purchase_value > 0 && m.spend > 0 ? r0(m.purchase_value / m.spend, 2) : null),
+    ...pos("view_content", m.view_content), ...pos("add_to_cart", m.add_to_cart), ...pos("cost_per_add_to_cart", m.add_to_cart > 0 ? r0(m.spend / m.add_to_cart) : null),
+    ...pos("checkouts_started", m.initiate_checkout), ...pos("cost_per_checkout", m.initiate_checkout > 0 ? r0(m.spend / m.initiate_checkout) : null),
+    ...pos("purchase_rate_percent", m.landing_page_views > 0 && m.purchases > 0 ? r0(m.purchases / m.landing_page_views * 100, 2) : null),
+    ...pos("outbound_clicks", m.outbound_clicks),
+    ...pos("video_3s_plays", m.video_plays), ...pos("thruplays", m.video_thruplays),
+    ...pos("cost_per_thruplay", m.video_thruplays > 0 ? r0(m.spend / m.video_thruplays, 2) : null),
+    ...pos("hook_rate_percent", m.video_plays > 0 && m.impressions > 0 ? r0(m.video_plays / m.impressions * 100, 1) : null),
+    ...pos("hold_rate_percent", m.video_plays > 0 ? r0(m.video_thruplays / m.video_plays * 100, 1) : null),
+    ...pos("watched_25_percent", m.video_p25), ...pos("watched_50_percent", m.video_p50), ...pos("watched_75_percent", m.video_p75), ...pos("watched_100_percent", m.video_p100),
+    ...pos("avg_watch_seconds", m.video_avg_seconds),
+    ...pos("post_engagement", m.post_engagement), ...pos("reactions", m.reactions), ...pos("comments", m.comments), ...pos("shares", m.shares), ...pos("saves", m.saves)
   });
 async function runTool(name, args, ctx) {
   switch(name){
