@@ -71,11 +71,17 @@ async function lowBalance(acct, name) {
   if (Number(acct.balance_naira) > Number(acct.low_balance_threshold_naira)) return false;
   const last = acct.last_low_balance_alert_at ? new Date(acct.last_low_balance_alert_at).getTime() : 0;
   if (Date.now() - last < 6 * 3600_000) return false;
-  const { count } = await db.from("campaigns").select("id", {
-    count: "exact",
-    head: true
-  }).eq("ad_account_id", acct.id).eq("status", "ACTIVE");
-  if (!count) return false;
+  // Only an account that is really spending: an active ad inside an active ad set inside an active campaign, with money spent today.
+  const day = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+  const [{ data: camps }, { data: sets }, { data: spent }] = await Promise.all([
+    db.from("campaigns").select("id").eq("ad_account_id", acct.id).eq("status", "active"),
+    db.from("ad_sets").select("id, campaign_id").eq("ad_account_id", acct.id).eq("status", "active"),
+    db.from("daily_metrics").select("spend_naira").eq("ad_account_id", acct.id).eq("metric_date", day).is("ad_set_ad_id", null)
+  ]);
+  const liveCamps = new Set((camps ?? []).map((c)=>c.id)), liveSets = (sets ?? []).filter((x)=>liveCamps.has(x.campaign_id)).map((x)=>x.id);
+  if (!liveSets.length) return false;
+  const { count } = await db.from("ad_set_ads").select("id", { count: "exact", head: true }).in("ad_set_id", liveSets).eq("status", "active");
+  if (!count || !(spent ?? []).some((r)=>Number(r.spend_naira) > 0)) return false;
   // Also in the bell (and pushed), pointing the buyer at the wallet so they can send money to Meta.
   const slot = Math.floor(Date.now() / (6 * 3600_000));
   await db.rpc("rv_notify", { p_company: acct.company_id, p_category: "money", p_kind: "low_balance", p_title: `⚠️ ${name} is low: ${naira(Number(acct.balance_naira))} left`,
