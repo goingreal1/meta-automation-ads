@@ -1128,6 +1128,12 @@ async function handleMetaReport(slotHour, push = true) {
         p_data: { report: { label, date: day, totals: r.t, accounts: r.accts.map(({ buyer, ...x })=>x) } },
         p_dedupe: `report:${day}:${slot}${userId ? ":" + userId : ""}`, p_buyer: null, p_user: userId ?? null, p_push: push });
       sent++;
+      // WhatsApp copy for people who switched it on (their own numbers only; template first, plain text as fallback).
+      if (userId && push) {
+        const n = (v)=>Math.round(Number(v) || 0).toLocaleString("en-NG"), M = r.t.month;
+        fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({ type: "daily_report", user_id: userId, values: [label, n(r.t.fund_received), n(r.t.sent_to_meta), n(r.t.spend), r.t.order_count, n(r.t.cpa), n(r.t.balance), `fund received ₦${n(M.fund_received)}, ad spend ₦${n(M.spend)}, OC ${M.order_count}, CPA ₦${n(M.cpa)}`] }) }).catch(()=>{});
+      }
     };
     await emit("", make(undefined), null);
     const { data: buyers } = await admin.from("profiles").select("id, media_buyer_id").eq("company_id", c.id).not("media_buyer_id", "is", null);
@@ -1997,10 +2003,18 @@ Deno.serve(async (req)=>{
   });
   try {
     const body = await req.json().catch(()=>({}));
-    if (body.action === "purchase_alerts" || body.action === "daily_digest" || body.action === "meta_report") {
+    if (body.action === "purchase_alerts" || body.action === "daily_digest" || body.action === "meta_report" || body.action === "wa_report_setup") {
       const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret0 } = await admin0.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
+      if (body.action === "wa_report_setup") {
+        if (body.mode === "test" && body.user_id) {
+          const t = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "daily_report", user_id: String(body.user_id), values: ["Midday report (test)", "0", "9,864", "14,507", "3", "4,836", "19,379", "fund received ₦350,000, ad spend ₦319,507, OC 17, CPA ₦18,795"] }) });
+          return json({ status: t.status, ...(await t.json().catch(()=>({}))) });
+        }
+        const r = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "report_template", action: body.mode === "status" ? "status" : "create" }) });
+        return json({ status: r.status, ...(await r.json().catch(()=>({}))) });
+      }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
     if (body.action === "auto_kill") {
