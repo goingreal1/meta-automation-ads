@@ -2292,6 +2292,59 @@ const TOOLS = [
     }
   },
   {
+    name: "list_page_posts",
+    title: "List the Page's posts",
+    description: "Show the latest published posts of this ad account's Facebook Page (post id, text, picture, link). Use it when the person wants to run an ad from a post that is already on their Page. Then call add_page_post with the chosen post_id.",
+    inputSchema: OBJ({
+      ...accountProp,
+      limit: {
+        type: "number",
+        description: "How many posts (default 15, max 40)."
+      }
+    }),
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: true
+    },
+    run: async (a, c)=>{
+      const acct = await pickAccount(a, c);
+      if ("error" in acct) return acct;
+      return await fn("ads-manager", {
+        action: "page_posts",
+        ad_account_id: acct.id,
+        limit: a?.limit
+      }, c);
+    }
+  },
+  {
+    name: "add_page_post",
+    title: "Use a Page post as an ad",
+    description: "Save an existing Facebook Page post as a launchable creative, from its post id (like 1234567890_9876543210), a bare post number, or a facebook.com post link. It then shows in list_creatives with creative_type 'post' and is assigned/planned like any image or video. IMPORTANT: a post ad keeps the post's own picture, text, button and link, so the ad copy, headline and CTA you write for it are NOT used. Likes and comments on the post carry over to the ad. Tell the person this.",
+    inputSchema: OBJ({
+      ...accountProp,
+      post_id: str("Post id (pageid_postid), a post number, or a facebook.com post link."),
+      product_id: str("Optional product this post sells.")
+    }, [
+      "post_id"
+    ]),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true
+    },
+    write: true,
+    run: async (a, c)=>{
+      const acct = await pickAccount(a, c);
+      if ("error" in acct) return acct;
+      return await fn("ads-manager", {
+        action: "add_page_post",
+        ad_account_id: acct.id,
+        post_id: a?.post_id,
+        product_id: a?.product_id
+      }, c);
+    }
+  },
+  {
     name: "duplicate_ad",
     title: "Duplicate an ad or ad set",
     description: "Copy an ad or ad set inside the same campaign. For a WINNER: the original keeps running and the copy goes live (to scale it). For a BAD ad: set pause_original true to relaunch it as a fresh copy and switch the old one off.",
