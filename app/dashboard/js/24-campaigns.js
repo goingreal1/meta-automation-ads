@@ -81,6 +81,9 @@ function cpMetrics(r) {
     ["Page views", web ? ovNum(r.landing_page_views) : "—", 1], ["Cost / page view", web && r.cost_per_landing_page_view != null ? fN2(r.cost_per_landing_page_view) : "—", 1], ["Page view rate", web && rate != null ? rate.toFixed(1) + "%" : "—", 1],
     ["Messages started", r.conversations != null ? ovNum(r.conversations) : "—"], ["Purchases", r.purchases != null ? ovNum(r.purchases) : "—"],
   ];
+  // everything else Meta reported for this one (only numbers that have something in them)
+  const have = new Set(["Results", "Traffic", "Delivery"]), extra = ["pval", "roas", "outb", "cpoutb", "vc", "atc", "cpatc", "ic", "cpic", "prate", "eng", "react", "comm", "share", "save", "v3", "cpv3", "thru", "cpthru", "hook", "hold", "p25", "p50", "p75", "p100", "avgw"];
+  for (const m of CP_METRICS) { if (!extra.includes(m.k) || (m.web && !web)) continue; const v = m.v(r); if (v != null && Number(v) > 0) tiles.push([m.label, m.f(v)]); }
   return tiles.filter((t, i) => i < 3 || !((t[0] === "Messages started" && r.result_label === "Conversations") || (t[0] === "Purchases" && r.result_label === "Purchases"))); // the 2nd and 3rd tiles are the main result; do not repeat it later
 }
 function cpStatusPill(r) {
@@ -180,17 +183,49 @@ async function cpDoDuplicate(l, id) {
 // ---- phone: the flat list (campaigns / ad sets / ads tabs, on-off switch, key numbers on every row). Tapping a row opens the details. ----
 CP.mlevel = "campaigns";
 function cpMLevel(l) { CP.mlevel = l; amDraw(); }
-// Extra numbers a phone row can show under the main three. The person picks them (and it is remembered on this device).
+// The numbers a row can show under its main ones (phone list and laptop tables). The person picks them; the choice is remembered on this device.
+const _n = (v) => Number(v || 0), _cnt = (n) => Number(n).toLocaleString("en-NG"), _pct = (a, b) => (b > 0 ? a / b * 100 : null), _per = (r, x) => (_n(x) > 0 ? _n(r.spend) / _n(x) : null);
 const CP_METRICS = [
-  { k: "lpv", web: true, label: "Page views", v: (r) => r.landing_page_views, f: (n) => Number(n).toLocaleString("en-NG") },
-  { k: "cplpv", web: true, label: "Cost / page view", v: (r) => r.cost_per_landing_page_view, f: (n) => fN(n) },
-  { k: "clicks", label: "Link clicks", v: (r) => r.clicks, f: (n) => Number(n).toLocaleString("en-NG") },
-  { k: "cpc", label: "Cost / link click", v: (r) => (r.clicks > 0 ? r.spend / r.clicks : null), f: (n) => fN(n) },
-  { k: "ctr", label: "Link CTR", v: (r) => (r.impressions > 0 ? r.ctr : null), f: (n) => Number(n).toFixed(2) + "%" },
-  { k: "reach", label: "Reach", v: (r) => r.reach, f: (n) => Number(n).toLocaleString("en-NG") },
-  { k: "impr", label: "Impressions", v: (r) => r.impressions, f: (n) => Number(n).toLocaleString("en-NG") },
-  { k: "freq", label: "Frequency", v: (r) => (r.reach > 0 ? r.frequency : null), f: (n) => Number(n).toFixed(2) },
-  { k: "cpm", label: "CPM", v: (r) => (r.impressions > 0 ? r.cpm : null), f: (n) => fN(n) },
+  { g: "Results", k: "purchases", label: "Purchases", v: (r) => r.purchases, f: _cnt },
+  { g: "Results", k: "cpp", label: "Cost / purchase", v: (r) => _per(r, r.purchases), f: (n) => fN(n) },
+  { g: "Results", k: "pval", label: "Purchase value", v: (r) => (r.purchase_value > 0 ? r.purchase_value : null), f: (n) => fN(n) },
+  { g: "Results", k: "roas", label: "ROAS", v: (r) => (r.purchase_value > 0 && r.spend > 0 ? r.purchase_value / r.spend : null), f: (n) => Number(n).toFixed(2) + "×" },
+  { g: "Results", k: "msgs", label: "Messages started", v: (r) => r.conversations, f: _cnt },
+  { g: "Results", k: "cpmsg", label: "Cost / message", v: (r) => _per(r, r.conversations), f: (n) => fN(n) },
+  { g: "Traffic", k: "lpv", web: true, label: "Page views", v: (r) => r.landing_page_views, f: _cnt },
+  { g: "Traffic", k: "cplpv", web: true, label: "Cost / page view", v: (r) => r.cost_per_landing_page_view, f: (n) => fN(n) },
+  { g: "Traffic", k: "lpvrate", web: true, label: "Page view rate", v: (r) => (r.clicks > 0 ? Math.min(100, _pct(_n(r.landing_page_views), _n(r.clicks))) : null), f: (n) => Number(n).toFixed(0) + "%" },
+  { g: "Traffic", k: "clicks", label: "Link clicks", v: (r) => r.clicks, f: _cnt },
+  { g: "Traffic", k: "cpc", label: "Cost / link click", v: (r) => _per(r, r.clicks), f: (n) => fN(n) },
+  { g: "Traffic", k: "ctr", label: "Link CTR", v: (r) => (r.impressions > 0 ? _pct(_n(r.clicks), _n(r.impressions)) : null), f: (n) => Number(n).toFixed(2) + "%" },
+  { g: "Traffic", k: "outb", label: "Outbound clicks", v: (r) => r.outbound_clicks, f: _cnt },
+  { g: "Traffic", k: "cpoutb", label: "Cost / outbound click", v: (r) => _per(r, r.outbound_clicks), f: (n) => fN(n) },
+  { g: "Buying steps", k: "vc", web: true, label: "Content views", v: (r) => r.view_content, f: _cnt },
+  { g: "Buying steps", k: "atc", web: true, label: "Add to cart", v: (r) => r.add_to_cart, f: _cnt },
+  { g: "Buying steps", k: "cpatc", web: true, label: "Cost / add to cart", v: (r) => _per(r, r.add_to_cart), f: (n) => fN(n) },
+  { g: "Buying steps", k: "ic", web: true, label: "Checkouts started", v: (r) => r.initiate_checkout, f: _cnt },
+  { g: "Buying steps", k: "cpic", web: true, label: "Cost / checkout", v: (r) => _per(r, r.initiate_checkout), f: (n) => fN(n) },
+  { g: "Buying steps", k: "prate", web: true, label: "Purchase rate", v: (r) => (r.landing_page_views > 0 ? _pct(_n(r.purchases), _n(r.landing_page_views)) : null), f: (n) => Number(n).toFixed(2) + "%" },
+  { g: "Engagement", k: "eng", label: "Post engagements", v: (r) => r.post_engagement, f: _cnt },
+  { g: "Engagement", k: "react", label: "Reactions", v: (r) => r.reactions, f: _cnt },
+  { g: "Engagement", k: "comm", label: "Comments", v: (r) => r.comments, f: _cnt },
+  { g: "Engagement", k: "share", label: "Shares", v: (r) => r.shares, f: _cnt },
+  { g: "Engagement", k: "save", label: "Saves", v: (r) => r.saves, f: _cnt },
+  { g: "Video", k: "v3", label: "3-sec plays", v: (r) => r.video_plays, f: _cnt },
+  { g: "Video", k: "cpv3", label: "Cost / 3-sec play", v: (r) => _per(r, r.video_plays), f: (n) => fN(n) },
+  { g: "Video", k: "thru", label: "ThruPlays", v: (r) => r.video_thruplays, f: _cnt },
+  { g: "Video", k: "cpthru", label: "Cost / ThruPlay", v: (r) => _per(r, r.video_thruplays), f: (n) => fN(n) },
+  { g: "Video", k: "hook", label: "Hook rate", v: (r) => (r.impressions > 0 && r.video_plays > 0 ? _pct(_n(r.video_plays), _n(r.impressions)) : null), f: (n) => Number(n).toFixed(1) + "%" },
+  { g: "Video", k: "hold", label: "Hold rate", v: (r) => (r.video_plays > 0 ? _pct(_n(r.video_thruplays), _n(r.video_plays)) : null), f: (n) => Number(n).toFixed(1) + "%" },
+  { g: "Video", k: "p25", label: "Watched 25%", v: (r) => r.video_p25, f: _cnt },
+  { g: "Video", k: "p50", label: "Watched 50%", v: (r) => r.video_p50, f: _cnt },
+  { g: "Video", k: "p75", label: "Watched 75%", v: (r) => r.video_p75, f: _cnt },
+  { g: "Video", k: "p100", label: "Watched 100%", v: (r) => r.video_p100, f: _cnt },
+  { g: "Video", k: "avgw", label: "Avg watch time", v: (r) => (r.video_avg_seconds > 0 ? r.video_avg_seconds : null), f: (n) => Number(n).toFixed(1) + "s" },
+  { g: "Delivery", k: "reach", label: "Reach", v: (r) => r.reach, f: _cnt },
+  { g: "Delivery", k: "impr", label: "Impressions", v: (r) => r.impressions, f: _cnt },
+  { g: "Delivery", k: "freq", label: "Frequency", v: (r) => (r.reach > 0 ? r.frequency : null), f: (n) => Number(n).toFixed(2) + "×" },
+  { g: "Delivery", k: "cpm", label: "CPM", v: (r) => (r.impressions > 0 ? r.cpm : null), f: (n) => fN(n) },
 ];
 function cpMetricsOn() {
   try { const v = JSON.parse(localStorage.getItem("rv_cp_metrics") || "null"); if (Array.isArray(v)) return v; } catch {}
@@ -198,12 +233,12 @@ function cpMetricsOn() {
 }
 function cpMetricsPick() {
   bvCloseModal();
-  const on = new Set(cpMetricsOn()), ov = document.createElement("div");
+  const on = new Set(cpMetricsOn()), ov = document.createElement("div"), groups = [...new Set(CP_METRICS.map((m) => m.g))];
   ov.id = "bvModalOverlay"; ov.className = "bv-overlay"; ov.onclick = (e) => { if (e.target === ov) bvCloseModal(); };
-  ov.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+  ov.innerHTML = `<div class="bv-modal" style="max-height:86vh;overflow:auto"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
     <div class="ph-title" style="margin-bottom:6px;">Numbers on each row</div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Tick what you want to see under every campaign, ad set and ad. Untick to hide.</div>
-    ${CP_METRICS.map((m) => `<label class="kr-sw" style="display:flex;gap:10px;align-items:center;padding:8px 0;"><span class="switch"><input type="checkbox" data-m="${m.k}" ${on.has(m.k) ? "checked" : ""}><span class="sw-track"></span></span> ${m.label}</label>`).join("")}</div>`;
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">Tick what you want under every campaign, ad set and ad. They appear straight away and fit the screen on their own. Numbers Meta does not report for an ad show a dash.</div>
+    ${groups.map((g) => `<div class="cp-pg">${g}</div>` + CP_METRICS.filter((m) => m.g === g).map((m) => `<label class="kr-sw" style="display:flex;gap:10px;align-items:center;padding:6px 0;"><span class="switch"><input type="checkbox" data-m="${m.k}" ${on.has(m.k) ? "checked" : ""}><span class="sw-track"></span></span> ${m.label}</label>`).join("")).join("")}</div>`;
   document.body.appendChild(ov);
   ov.addEventListener("change", () => {
     const sel = [...ov.querySelectorAll("input[data-m]")].filter((i) => i.checked).map((i) => i.dataset.m);
@@ -211,10 +246,10 @@ function cpMetricsPick() {
     amDraw();
   });
 }
-function cpMetricsRow(r) {
-  const on = new Set(cpMetricsOn()), items = CP_METRICS.filter((m) => on.has(m.k) && !(m.web && r.kind === "messaging"));
+function cpMetricsRow(r, skip) {
+  const on = new Set(cpMetricsOn()), items = CP_METRICS.filter((m) => on.has(m.k) && !(m.web && r.kind === "messaging") && !(skip && skip.includes(m.k)));
   if (!items.length) return "";
-  return `<div class="cp-mx">${items.map((m) => { const v = m.v(r); return `<div><small>${m.label}</small><b>${v == null || Number.isNaN(Number(v)) ? "—" : m.f(v)}</b></div>`; }).join("")}</div>`;
+  return `<div class="cp-xr">${items.map((m) => { const v = m.v(r); return `<div><small>${m.label}</small><b>${v == null || Number.isNaN(Number(v)) ? "—" : m.f(v)}</b></div>`; }).join("")}</div>`;
 }
 function cpMRow(level, r) {
   const d = am.data, on = r.status === "ACTIVE", busy = am.busy.has(r.id);
@@ -261,7 +296,7 @@ function amCampaignTable(rows, tot, allChecked) {
       <td class="num">${r.results != null ? Number(r.results).toLocaleString("en-NG") + (web ? " purchases" : " chats") : "—"}</td>
       <td class="num">${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</td>
       <td class="c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('campaign','${r.id}',this)"><span class="sw-track"></span></label></td>
-    </tr>`;
+    </tr>${cpMetricsRow(r, ["purchases", "cpp", "msgs", "cpmsg"]) ? `<tr class="am-xtr"><td></td><td colspan="7">${cpMetricsRow(r, ["purchases", "cpp", "msgs", "cpmsg"])}</td></tr>` : ""}`;
   };
   return `<div class="am-card"><div class="am-scroll"><table class="am-tbl no-card"><thead><tr>
     <th class="c-chk"><input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('campaigns',this.checked)" aria-label="Select all"></th>
@@ -318,6 +353,7 @@ function amRowHtml(level, r) {
         <div class="am-c am-c-clk" data-label="Link clicks">${Number(r.clicks).toLocaleString("en-NG")}</div>
         <div class="am-c am-c-ctr" data-label="CTR">${r.impressions ? Number(r.ctr).toFixed(2) + "%" : "—"}</div>
       </div>
+      <div class="am-xr-w">${cpMetricsRow(r, am.showLpv ? ["lpv", "cplpv", "purchases", "cpp", "msgs", "cpmsg"] : ["purchases", "cpp", "msgs", "cpmsg"])}</div>
       ${flag ? `<div class="am-flagline">⚠ ${escH(r.suggestion.reason)} <button type="button" class="btn btn-g am-flagbtn" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause this ad</button></div>` : ""}
     </div>`;
 }
@@ -404,7 +440,7 @@ function cpOldHtml() {
     ? `<div class="am-table${lvl === "ads" ? " ads" : ""}${am.showLpv ? " lpv" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
     : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
 
-  const filt = `<div class="cp-otb"><input class="am-search" type="search" placeholder="Search ${lvl === "campaigns" ? "campaigns" : lvl === "adsets" ? "ad sets" : "ads"}" value="${escH(am.q || "")}" oninput="amSetQuery(this.value)" aria-label="Search"><select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="live" ${am.filter === "live" ? "selected" : ""}>Live: active, in review, preparing</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option><option value="all" ${am.filter === "all" ? "selected" : ""}>All</option></select></div>`;
+  const filt = `<div class="cp-otb"><button type="button" class="rv-btn s" onclick="cpMetricsPick()" title="Choose which numbers show on every row">⚙ Numbers</button><input class="am-search" type="search" placeholder="Search ${lvl === "campaigns" ? "campaigns" : lvl === "adsets" ? "ad sets" : "ads"}" value="${escH(am.q || "")}" oninput="amSetQuery(this.value)" aria-label="Search"><select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="live" ${am.filter === "live" ? "selected" : ""}>Live: active, in review, preparing</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option><option value="all" ${am.filter === "all" ? "selected" : ""}>All</option></select></div>`;
   return `${filt}${cpMxCard(lvl, rows)}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${bulk}${body}`;
 }
 
