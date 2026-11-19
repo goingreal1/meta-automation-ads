@@ -954,12 +954,12 @@ async function graphJson(method, path, params, token) {
   if (!j || j.error) throw new Error("Meta: " + String(j?.error?.error_user_msg || j?.error?.message || "request failed").slice(0, 200));
   return j;
 }
-async function copyAdByHand(adId, targetAdsetId, token, status) {
+async function copyAdByHand(adId, targetAdsetId, token, status, igUserId = null) {
   const ad = await graphJson("GET", adId, {
     fields: "name,adset_id,account_id,creative{id}"
   }, token);
   const cr = await graphJson("GET", ad.creative.id, {
-    fields: "name,object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags,object_story_id,effective_object_story_id,instagram_user_id,call_to_action_type"
+    fields: "name,object_story_spec,asset_feed_spec,degrees_of_freedom_spec,url_tags,object_story_id,effective_object_story_id,instagram_user_id,call_to_action_type,instagram_actor_id"
   }, token);
   const dfs = cr.degrees_of_freedom_spec;
   if (dfs?.creative_features_spec) {
@@ -977,6 +977,15 @@ async function copyAdByHand(adId, targetAdsetId, token, status) {
   else throw new Error("This ad's creative type cannot be copied automatically. Copy it in Ads Manager.");
   if (dfs && Object.keys(dfs).length) params.degrees_of_freedom_spec = JSON.stringify(dfs);
   if (cr.url_tags) params.url_tags = cr.url_tags;
+  // Older ads were made without an Instagram identity; Meta now insists on one. Keep theirs, else use the account's linked one.
+  const ig = cr.instagram_user_id || igUserId;
+  if (ig && params.object_story_spec) {
+    const oss = JSON.parse(params.object_story_spec);
+    if (!oss.instagram_user_id) {
+      oss.instagram_user_id = ig;
+      params.object_story_spec = JSON.stringify(oss);
+    }
+  } else if (ig && !params.object_story_spec) params.instagram_user_id = ig;
   const act = String(ad.account_id).replace(/^act_/, "");
   const nc = await graphJson("POST", `act_${act}/adcreatives`, params, token);
   const na = await graphJson("POST", `act_${act}/ads`, {
@@ -989,12 +998,12 @@ async function copyAdByHand(adId, targetAdsetId, token, status) {
   }, token);
   return na.id;
 }
-const isEnhancementError = (r)=>/standard.?enhancement|deprecat/i.test(String(r?.error?.error_user_msg || "") + " " + String(r?.error?.message || ""));
+const isEnhancementError = (r)=>/standard.?enhancement|deprecat|instagram account/i.test(String(r?.error?.error_user_msg || "") + " " + String(r?.error?.message || ""));
 async function duplicateObject(body, p) {
   const level = body?.level === "adset" ? "adset" : "ad";
   const objectId = String(body?.object_id ?? "");
   if (!/^\d+$/.test(objectId)) throw new Error("Invalid id.");
-  let q = supabase.from("ad_accounts").select("id, meta_connection_id, media_buyer_id").eq("id", String(body?.ad_account_id ?? "")).eq("company_id", p.companyId);
+  let q = supabase.from("ad_accounts").select("id, meta_connection_id, media_buyer_id, ig_user_id").eq("id", String(body?.ad_account_id ?? "")).eq("company_id", p.companyId);
   if (p.role === "buyer") q = q.eq("media_buyer_id", p.mediaBuyerId);
   const { data: acct } = await q.maybeSingle();
   if (!acct) throw new Error("That ad account is not yours.");
@@ -1012,7 +1021,7 @@ async function duplicateObject(body, p) {
   const status = body?.start_paused === false ? "ACTIVE" : "PAUSED";
   if (r && isEnhancementError(r)) {
     // Fallback: copy by hand without the retired field.
-    if (level === "ad") newId = await copyAdByHand(objectId, null, token, status);
+    if (level === "ad") newId = await copyAdByHand(objectId, null, token, status, acct.ig_user_id || null);
     else {
       const sf = new URLSearchParams({
         access_token: token,
@@ -1029,7 +1038,7 @@ async function duplicateObject(body, p) {
         fields: "id",
         limit: "50"
       }, token);
-      for (const a of ads.data ?? [])await copyAdByHand(a.id, newId, token, status);
+      for (const a of ads.data ?? [])await copyAdByHand(a.id, newId, token, status, acct.ig_user_id || null);
       if (status === "ACTIVE") await graphJson("POST", newId, {
         status: "ACTIVE"
       }, token).catch(()=>{});
