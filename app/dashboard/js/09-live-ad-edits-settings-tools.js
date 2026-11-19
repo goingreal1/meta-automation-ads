@@ -516,7 +516,7 @@ async function bvRenderKillRules() {
       const limit = Number(r.max_cost_per_lpv) > 0 ? Number(r.max_cost_per_lpv) : "", spend = Number(r.lpv_min_spend ?? r.min_spend ?? 0) || 1000;
       return `<div class="kr-block" id="kr_lpv" style="border:1px solid var(--accent);border-radius:14px;padding:14px;margin-bottom:14px;">
         <div class="kr-title">🌐 Landing page view cost limit</div>
-        <div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px;">For website ads. Kill an ad when each landing page view costs more than your limit, or when it spent money and nobody reached the page. It works on its own and does not need the purchase rule below.</div>
+        <div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px;">For website ads. Kill an ad that has no purchases when each landing page view costs more than your limit, or when it spent money and nobody reached the page. An ad that got a purchase is never killed by this. It works on its own and does not need the purchase rule below.</div>
         <div class="kr-switches">
           <label class="kr-sw"><span class="switch"><input type="checkbox" class="lpv-on" ${on ? "checked" : ""}><span class="sw-track"></span></span> Use this limit</label>
           <label class="kr-sw"><span class="switch"><input type="checkbox" class="lpv-auto" ${auto ? "checked" : ""}><span class="sw-track"></span></span> Pause automatically</label>
@@ -570,7 +570,7 @@ async function bvRenderKillRules() {
   if (lpvBox) {
     const upd = () => {
       const g = (c) => lpvBox.querySelector(c), mx = Number(g(".lpv-max").value || 0), sp = Number(g(".lpv-spend").value || 0);
-      g(".lpv-sum").textContent = !g(".lpv-on").checked ? "Off. Ads are not judged on landing page views." : mx > 0 ? `Once an ad has spent ${fN(sp)}, it is ${g(".lpv-auto").checked ? "paused for you" : "flagged for you to pause"} if a landing page view costs more than ${fN(mx)}, or if it got no views at all.` : "Enter the most you will pay for one landing page view.";
+      g(".lpv-sum").textContent = !g(".lpv-on").checked ? "Off. Ads are not judged on landing page views." : mx > 0 ? `Once an ad has spent ${fN(sp)}, it is ${g(".lpv-auto").checked ? "paused for you" : "flagged for you to pause"} if it has no purchases and a landing page view costs more than ${fN(mx)}, or it got no views at all. Ads with a purchase are left alone.` : "Enter the most you will pay for one landing page view.";
     };
     lpvBox.querySelectorAll("input").forEach((i) => i.addEventListener("input", upd)); upd();
   }

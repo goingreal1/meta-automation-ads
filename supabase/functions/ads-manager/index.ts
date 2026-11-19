@@ -269,7 +269,8 @@ function evaluateRule(rule, ad, life) {
   const lpvLimit = Number(rule.max_cost_per_lpv);
   if (rule.lpv_enabled && lpvLimit > 0 && ad.kind !== "messaging") {
     const lpvSpend = Number(rule.lpv_min_spend ?? rule.min_spend ?? 0), lpv = Number(life.landing_page_views ?? 0), n = (v)=>"₦" + Math.round(v).toLocaleString("en-NG");
-    if (life.spend >= lpvSpend) {
+    // Only ads with no purchases are judged here: an ad that sold keeps running whatever its page views cost.
+    if (life.spend >= lpvSpend && !(Number(life.purchases ?? 0) > 0)) {
       if (lpv === 0) return { kill: true, auto: !!rule.lpv_auto_kill, reason: `Spent ${n(life.spend)} with 0 landing page views (limit: ${n(lpvLimit)} per view, judged after ${n(lpvSpend)}).` };
       if (life.spend / lpv > lpvLimit) return { kill: true, auto: !!rule.lpv_auto_kill, reason: `${n(life.spend / lpv)} per landing page view is above your ${n(lpvLimit)} limit (${lpv} view${lpv === 1 ? "" : "s"}, ${n(life.spend)} spent).` };
     }
