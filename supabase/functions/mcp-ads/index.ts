@@ -2353,6 +2353,10 @@ const TOOLS = [
       name: str("Name for this carousel."),
       primary_text: str("Text shown above the carousel."),
       product_id: str("Optional product."),
+      feed_only: {
+        type: "boolean",
+        description: "Default true: run only in Facebook and Instagram Feed (carousels often look wrong or are refused in Reels/Stories). Set false to allow all placements."
+      },
       cards: {
         type: "array",
         description: "2 to 10 cards.",
@@ -2382,6 +2386,53 @@ const TOOLS = [
         name: a?.name,
         primary_text: a?.primary_text,
         product_id: a?.product_id,
+        feed_only: a?.feed_only,
+        cards: a?.cards
+      }, c);
+    }
+  },
+  {
+    name: "update_carousel",
+    title: "Edit a carousel's cards",
+    description: "Change a saved carousel: replace/reorder its cards (send ALL cards again, in the order they should swipe), rename it, change primary_text, or switch feed_only. Card 1 is shown first. Only for carousels not yet launched; a live ad is not changed.",
+    inputSchema: OBJ({
+      ...accountProp,
+      creative_id: str("Carousel creative id (creative_type 'carousel')."),
+      name: str("New name."),
+      primary_text: str("Text above the carousel."),
+      feed_only: {
+        type: "boolean"
+      },
+      cards: {
+        type: "array",
+        description: "The full list of cards, in swipe order.",
+        items: OBJ({
+          creative_id: str("Uploaded image id."),
+          image_url: str("Or public https image link."),
+          headline: str("Card headline."),
+          description: str("Card description."),
+          link: str("Website link for this card.")
+        })
+      }
+    }, [
+      "creative_id"
+    ]),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true
+    },
+    write: true,
+    run: async (a, c)=>{
+      const acct = await pickAccount(a, c);
+      if ("error" in acct) return acct;
+      return await fn("ads-manager", {
+        action: "update_carousel",
+        ad_account_id: acct.id,
+        creative_id: a?.creative_id,
+        name: a?.name,
+        primary_text: a?.primary_text,
+        feed_only: a?.feed_only,
         cards: a?.cards
       }, c);
     }

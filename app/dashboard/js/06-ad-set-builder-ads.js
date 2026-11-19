@@ -28,7 +28,7 @@ async function bvOpenReuseCreativeModal() {
           <div style="flex:1;min-width:0;">
             <div style="font-size:12.5px;font-weight:700;color:var(--text);">${escH(a.headline || "(no headline yet)")}</div>
             <div style="font-size:11.5px;color:var(--text2);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escH(a.primary_text || "(no primary text yet)")}</div>
-            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">${escH(a.file_name || "")} · ${(a.test_status ?? "untested").replace(/_/g, " ")}</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px;">${a.asset_type === "carousel" ? `<span class="cr-badge">Carousel · ${(a.carousel_cards || []).length} cards</span> ` : a.asset_type === "post" ? `<span class="cr-badge">Page post</span> ` : ""}${escH(a.file_name || "")} · ${(a.test_status ?? "untested").replace(/_/g, " ")}</div>
           </div>
         </div>`).join("")}</div>`;
 }

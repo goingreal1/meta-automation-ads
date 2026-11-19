@@ -35,12 +35,22 @@ async function init(){
   if(p.status==="launched")return show('<h1>Already launched ✅</h1>');
   if(p.status!=="draft")return show('<h1>Cannot launch</h1><div class="sub">This plan is '+esc(p.status)+'.</div>');
   var sets=pl.ad_sets||pl.adsets||[],ads=pl.ads||pl.creatives||[];
+  var ids=[];(pl.ads||[]).forEach(function(a){if(a&&a.asset_id)ids.push(a.asset_id)});(pl.asset_ids||[]).forEach(function(i){if(ids.indexOf(i)<0)ids.push(i)});
+  var af={};
+  if(ids.length){var ar=await sb.from("creative_assets").select("id,file_name,public_url,asset_type,carousel_cards,feed_only,meta_post_id").in("id",ids);(ar.data||[]).forEach(function(a){af[a.id]=a})}
+  var adsHtml=ids.map(function(i,n){var a=af[i];if(!a)return"";
+    var h='<div class="row" style="display:block"><span>Ad '+(n+1)+'</span> <b>'+esc(a.file_name||"")+'</b>';
+    if(a.asset_type==="carousel"){var c=a.carousel_cards||[];h+=' <span style="background:#0a7f8f;color:#fff;border-radius:99px;padding:1px 9px;font-size:11px;font-weight:700">Carousel · '+c.length+' cards'+(a.feed_only?' · Feed only':'')+'</span><div style="display:flex;gap:8px;overflow-x:auto;margin-top:8px">'+c.map(function(k,j){return'<div style="flex:none;width:120px;font-size:11px"><img src="'+esc(k.image_url)+'" style="width:120px;height:100px;object-fit:cover;border-radius:8px"><b style="display:block">'+(j+1)+'. '+esc(k.headline||"")+'</b><span>'+esc(k.description||"")+'</span></div>'}).join("")+'</div>'}
+    else if(a.asset_type==="post"){h+=' <span style="background:#0a7f8f;color:#fff;border-radius:99px;padding:1px 9px;font-size:11px;font-weight:700">Page post</span>'}
+    else if(a.asset_type==="video"){h+=' · video'}
+    else{h+='<div><img src="'+esc(a.public_url)+'" style="width:90px;height:90px;object-fit:cover;border-radius:8px;margin-top:6px"></div>'}
+    return h+'</div>'}).join("");
   show('<h1>Launch this campaign?</h1><div class="sub">Check the summary. Only you can press Launch. Your AI assistant cannot.</div>'+
     row("Campaign",pick(pl,["campaign_name","name","title"]))+
     row("Objective",pick(pl,["objective"]))+
     row("Budget",pick(pl,["daily_budget","budget","total_daily_budget"]))+
     row("Budget type",pick(pl,["budget_type"]))+
-    row("Ad sets",sets.length||null)+row("Ads",ads.length||null)+
+    row("Ad sets",sets.length||null)+row("Ads",ads.length||null)+adsHtml+
     row("Starts",pick(pl,["start_time","scheduled_for"]))+
     row("Starts paused",pl.launch_paused===true?"Yes":pl.launch_paused===false?"No, live":null)+
     '<button id="go">Launch</button><button class="alt" id="no">Cancel plan</button><div id="m"></div>');

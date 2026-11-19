@@ -1311,6 +1311,14 @@ async function launchAdSetGroup(supabase, creativeGroup) {
         placements: planPlacements
       } : cfg;
     });
+    // A carousel marked "Feed only" must not run in Reels/Stories/etc., where Meta crops or refuses carousels.
+    if (creativeGroup.some((x)=>x.asset_type === "carousel" && x.feed_only)) adSetConfigs = adSetConfigs.map((cfg)=>({
+        ...cfg,
+        placements: [
+          "fb_feed",
+          "ig_feed"
+        ]
+      }));
     if (budgetProblems.length) return {
       error: `Nothing was launched. ${budgetProblems.join(" ")}`
     };

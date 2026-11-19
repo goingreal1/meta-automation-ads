@@ -1111,7 +1111,7 @@ async function planView(row, c) {
       ...Array.isArray(plan.asset_ids) ? plan.asset_ids.map(String) : []
     ])
   ].filter((x)=>UUID.test(x));
-  const { data: files } = ids.length ? await admin.from("creative_assets").select("id, file_name, public_url, asset_type").eq("company_id", c.companyId).in("id", ids) : {
+  const { data: files } = ids.length ? await admin.from("creative_assets").select("id, file_name, public_url, asset_type, carousel_cards, meta_post_id, feed_only").eq("company_id", c.companyId).in("id", ids) : {
     data: []
   };
   const fileOf = new Map((files ?? []).map((f)=>[
@@ -1133,6 +1133,19 @@ async function planView(row, c) {
       creative_file: f?.file_name ?? null,
       creative_type: f?.asset_type ?? null,
       creative_link: f?.public_url ?? null,
+      ...f?.asset_type === "carousel" ? {
+        carousel_cards: (f.carousel_cards ?? []).map((k, n)=>({
+            card: n + 1,
+            headline: k.headline,
+            description: k.description,
+            image: k.image_url
+          })),
+        feed_only: f.feed_only === true
+      } : {},
+      ...f?.asset_type === "post" ? {
+        post_id: f.meta_post_id,
+        note: "Existing Page post: keeps its own picture, text and button."
+      } : {},
       copy_index: m.copy_index,
       primary_text: cp?.primary_text ?? null,
       headline: cp?.headline ?? null,
