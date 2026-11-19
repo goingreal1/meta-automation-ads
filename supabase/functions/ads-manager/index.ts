@@ -898,10 +898,20 @@ async function trackBalance(admin, a, actId, token, day, spendNow) {
   }
   await admin.from("ad_balance_track").upsert({ ad_account_id: a.id, day, balance: bal, spend_today: spendNow, updated_at: new Date().toISOString() });
   if (added > 0) {
-    await admin.from("fund_logs").insert({ company_id: a.company_id, media_buyer_id: a.media_buyer_id ?? null, ad_account_id: a.id, amount_naira: added, source: "meta_detected", note: `Balance on ${a.nickname ?? "ad account"} went up (sent from another source)`, log_date: day });
-    await notifyRpc(admin, { p_company: a.company_id, p_category: "money", p_kind: "meta_funded", p_title: `💰 ${a.nickname ?? "Ad account"} was topped up: +₦${added.toLocaleString("en-NG")}`,
-      p_body: `Meta balance is now ₦${Math.round(bal).toLocaleString("en-NG")}. Logged as funds received from another source.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "success",
-      p_data: { ad_account_id: a.id, added, balance: Math.round(bal) }, p_dedupe: `metafunded:${a.id}:${Date.now()}`, p_buyer: a.media_buyer_id ?? null, p_user: null, p_push: true });
+    // Money that reached Meta: if the buyer's Revora wallet holds enough, it came out of that balance; only the rest is new money from another source.
+    let fromWallet = 0;
+    if (a.media_buyer_id) {
+      const { data: w } = await admin.rpc("buyer_wallet_balance", { p_buyer: a.media_buyer_id });
+      fromWallet = Math.min(added, Math.max(0, Math.round(Number(w ?? 0))));
+      if (fromWallet > 0) await admin.from("wallet_adjustments").insert({ company_id: a.company_id, media_buyer_id: a.media_buyer_id, amount_naira: fromWallet, reason: "sent_to_meta_from_balance", ref: `acct:${a.id}:${Date.now()}` });
+    }
+    const other = added - fromWallet;
+    if (other > 0) await admin.from("fund_logs").insert({ company_id: a.company_id, media_buyer_id: a.media_buyer_id ?? null, ad_account_id: a.id, amount_naira: other, source: "meta_detected", note: `Balance on ${a.nickname ?? "ad account"} went up (sent from another source)`, log_date: day });
+    const m = (n)=>"₦" + Math.round(n).toLocaleString("en-NG");
+    await notifyRpc(admin, { p_company: a.company_id, p_category: "money", p_kind: "meta_funded", p_title: `💰 ${a.nickname ?? "Ad account"} was topped up: +${m(added)}`,
+      p_body: `Meta balance is now ${m(bal)}. ` + (fromWallet > 0 ? `${m(fromWallet)} was taken off your Revora wallet` : "") + (fromWallet > 0 && other > 0 ? " and " : "") + (other > 0 ? `${m(other)} was logged as funds received from another source` : "") + ".",
+      p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "success",
+      p_data: { ad_account_id: a.id, added, from_wallet: fromWallet, other, balance: Math.round(bal) }, p_dedupe: `metafunded:${a.id}:${Date.now()}`, p_buyer: a.media_buyer_id ?? null, p_user: null, p_push: true });
   }
   return added;
 }
@@ -1062,25 +1072,26 @@ async function handleMetaReport(slotHour, push = true) {
       admin.from("fund_logs").select("media_buyer_id, amount_naira, log_date").eq("company_id", c.id).gte("log_date", monthStart).lte("log_date", day),
       admin.from("wallet_topups").select("media_buyer_id, amount_naira, confirmed_at").eq("company_id", c.id).eq("status", "confirmed").gte("confirmed_at", mFrom.toISOString()).lt("confirmed_at", to.toISOString()),
       admin.from("fund_requests").select("media_buyer_id, amount_naira, transferred_at").eq("company_id", c.id).eq("paid_from", "company").eq("status", "transferred").gte("transferred_at", mFrom.toISOString()).lt("transferred_at", to.toISOString()),
-      admin.from("wallet_adjustments").select("media_buyer_id, amount_naira, created_at").eq("company_id", c.id).eq("reason", "given_by_company").gte("created_at", mFrom.toISOString()).lt("created_at", to.toISOString()),
+      admin.from("wallet_adjustments").select("media_buyer_id, amount_naira, created_at, reason").eq("company_id", c.id).in("reason", ["given_by_company", "sent_to_meta_from_balance"]).gte("created_at", mFrom.toISOString()).lt("created_at", to.toISOString()),
       admin.from("fund_requests").select("media_buyer_id, amount_naira, transferred_at").eq("company_id", c.id).eq("paid_from", "buyer").eq("status", "transferred").gte("transferred_at", mFrom.toISOString()).lt("transferred_at", to.toISOString())
     ]);
     const buyerIds = [...new Set(okAccts.map((x)=>x.buyer).filter(Boolean))];
     const wallets = {};
     for (const id of buyerIds){ const { data: w } = await admin.rpc("buyer_wallet_balance", { p_buyer: id }); wallets[id] = Math.max(0, Number(w ?? 0)); }
+    const adjIn = (adj ?? []).filter((x)=>x.reason === "given_by_company"), adjSent = (adj ?? []).filter((x)=>x.reason === "sent_to_meta_from_balance");
     const recv = (buyer)=>{
       const ok = (x)=>buyer === undefined || x.media_buyer_id === buyer, add = (rows, f, inDay)=>(rows ?? []).filter(ok).reduce((t, x)=>t + (inDay(f(x)) ? Number(x.amount_naira || 0) : 0), 0);
       const inToday = (iso)=>String(iso).length === 10 ? iso === day : new Date(iso) >= from && new Date(iso) < to, any = ()=>true;
       return {
         // Money credited to the buyer: logged funds, card top-ups, funds the admin gave to their wallet, and money the admin sent straight to Meta for them.
-        today: add(fl, (x)=>x.log_date, inToday) + add(tp, (x)=>x.confirmed_at, inToday) + add(fr, (x)=>x.transferred_at, inToday) - add(adj, (x)=>x.created_at, inToday),
+        today: add(fl, (x)=>x.log_date, inToday) + add(tp, (x)=>x.confirmed_at, inToday) + add(fr, (x)=>x.transferred_at, inToday) - add(adjIn, (x)=>x.created_at, inToday),
         month: (()=>{
           const rel = buyer === undefined ? [...bases.keys()] : bases.has(buyer) ? [buyer] : [];
           const aft = (rows, f)=>(rows ?? []).filter(ok).filter((x)=>{ const b = bases.get(x.media_buyer_id), d = String(f(x)).length === 10 ? f(x) : new Date(new Date(f(x)).getTime() + 3600000).toISOString().slice(0, 10); return !b || d > b.as_of; });
           const sum = (rows, f)=>aft(rows, f).reduce((t, x)=>t + Number(x.amount_naira || 0), 0);
-          return sum(fl, (x)=>x.log_date) + sum(tp, (x)=>x.confirmed_at) + sum(fr, (x)=>x.transferred_at) - sum(adj, (x)=>x.created_at) + rel.reduce((t, id)=>t + Number(bases.get(id).fund_received || 0), 0);
+          return sum(fl, (x)=>x.log_date) + sum(tp, (x)=>x.confirmed_at) + sum(fr, (x)=>x.transferred_at) - sum(adjIn, (x)=>x.created_at) + rel.reduce((t, id)=>t + Number(bases.get(id).fund_received || 0), 0);
         })(),
-        sentToday: add(own, (x)=>x.transferred_at, inToday), sentMonth: add(own, (x)=>x.transferred_at, any)
+        sentToday: add(own, (x)=>x.transferred_at, inToday) + add(adjSent, (x)=>x.created_at, inToday), sentMonth: add(own, (x)=>x.transferred_at, any) + add(adjSent, (x)=>x.created_at, any)
       };
     };
     const make = (buyer)=>{
