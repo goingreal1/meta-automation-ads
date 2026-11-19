@@ -193,8 +193,9 @@ Deno.serve(async (req)=>{
     const body = await req.json();
     const { type } = body;
     // ---- daily money report (12pm / 4pm / 8pm) ----
-    const REPORT_TPL = Deno.env.get("WHATSAPP_TPL_DAILY_REPORT") ?? "revora_daily_report_v1";
-    const REPORT_TEXT = "📈 {{1}}\nFund received: ₦{{2}}\nSent to Meta: ₦{{3}}\nAd spend: ₦{{4}}\nOrder count: {{5}}\nCPA: ₦{{6}}\nBalance: ₦{{7}}\nThis month: {{8}}\nThis is your automatic Revora ad report. Open Revora to see every campaign, ad set and ad.";
+    const REPORT_TPL = Deno.env.get("WHATSAPP_TPL_DAILY_REPORT") ?? "revora_daily_report_v2";
+    const REPORT_URL = "https://dash.revoracrm.app/dashboard_new.html?open=tab:wallet";
+    const REPORT_TEXT = "Here is your *{{1}}*:\n\nFund received: *₦{{2}}*\nSent to Meta: *₦{{3}}*\nAd spend: *₦{{4}}*\nOrder count: *{{5}}*\nCPA: *₦{{6}}*\nBalance: *₦{{7}}*\n\nThis month: {{8}}\n\nThis is your automatic Revora ad report. Tap below to see every campaign, ad set and ad.";
     if ((type === "report_template" || type === "daily_report") && !caller.service) return json({ error: "Server use only." }, 403);
     if (type === "report_template") {
       // Creates the report template on the WhatsApp Business account behind the global token (Meta then reviews it).
@@ -217,7 +218,7 @@ Deno.serve(async (req)=>{
       }
       const ex = ["Midday report", "50,000", "0", "20,975", "1", "20,975", "44,025", "fund received ₦350,000, ad spend ₦305,000, OC 14, CPA ₦21,785"];
       const r = await fetch(`${META_GRAPH_BASE}/${waba}/message_templates`, { method: "POST", headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: REPORT_TPL, language: "en", category: "UTILITY", components: [{ type: "BODY", text: REPORT_TEXT, example: { body_text: [ex] } }] }) });
+        body: JSON.stringify({ name: REPORT_TPL, language: "en", category: "UTILITY", components: [{ type: "HEADER", format: "TEXT", text: "Revora ad report" }, { type: "BODY", text: REPORT_TEXT, example: { body_text: [ex] } }, { type: "FOOTER", text: "Revora CRM" }, { type: "BUTTONS", buttons: [{ type: "URL", text: "Open Revora", url: REPORT_URL }] }] }) });
       return json({ waba, status: r.status, result: await r.json().catch(()=>({})) });
     }
     if (type === "daily_report") {
@@ -227,7 +228,21 @@ Deno.serve(async (req)=>{
       const vals = (Array.isArray(body.values) ? body.values : []).map((v)=>String(v ?? "").replace(/[\n\t]+/g, " ").slice(0, 120));
       if (vals.length !== 8) return json({ error: "values must have 8 items" }, 400);
       const text = REPORT_TEXT.replace(/\{\{(\d+)\}\}/g, (_, i)=>vals[Number(i) - 1] ?? "");
-      return json({ ok: true, results: await sendToMany([phone], REPORT_TPL, vals, text) });
+      // 1) the approved template (header, bold lines, footer and an Open Revora button); 2) inside the 24h window an interactive message with a button; 3) plain text.
+      const results = {};
+      try { await sendTemplate(phone, REPORT_TPL, vals); results[phone] = "sent (template)"; }
+      catch (e1) {
+        try {
+          const res = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, { method: "POST", headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ messaging_product: "whatsapp", to: phone, type: "interactive", interactive: { type: "cta_url", header: { type: "text", text: "📈 Revora ad report" }, body: { text }, footer: { text: "Revora CRM" }, action: { name: "cta_url", parameters: { display_text: "Open Revora", url: REPORT_URL } } } }) });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d?.error?.message || "interactive failed");
+          results[phone] = "sent (interactive, template: " + e1.message.slice(0, 80) + ")";
+        } catch (e2) {
+          try { await sendText(phone, text + "\n" + REPORT_URL); results[phone] = "sent (text fallback)"; } catch (e3) { results[phone] = "error: " + e3.message; }
+        }
+      }
+      return json({ ok: true, results });
     }
     if (type === "low_balance") {
       const { data: acct } = await supabase.from("ad_accounts").select("id, name, nickname, balance_naira, company_id, media_buyer_id").eq("id", body.ad_account_id).maybeSingle();
