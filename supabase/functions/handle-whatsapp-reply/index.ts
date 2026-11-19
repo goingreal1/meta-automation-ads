@@ -549,6 +549,8 @@ Deno.serve(async (req)=>{
         status: 200
       });
     }
+    // Remember when this person last messaged us (opens WhatsApp's 24h free-reply window for reports).
+    if (message?.from) await supabase.from("wa_last_inbound").upsert({ phone: String(message.from).replace(/\D/g, ""), at: new Date().toISOString() }).then(()=>{}, ()=>{});
     const from = message.from; // sender's WhatsApp number
     const text = message.type === "text" ? (message.text?.body ?? "").trim() : "";
     // Revora social-post approvals (Approve / Skip / Edit buttons and the edit reply). Guarded: on any problem it
