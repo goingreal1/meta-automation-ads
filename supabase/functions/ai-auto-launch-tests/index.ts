@@ -191,6 +191,16 @@ async function waitForVideoThumbnail(videoId, maxWaitMs = 90 * 1e3) {
 async function ensureMetaMedia(supabase, accountId, creative, maxWaitMs = 90 * 1e3) {
   const isVideo = creative.asset_type === "video";
   let videoId = creative.meta_video_id || null;
+  // Already sent to THIS ad account's library (by an earlier launch or by the pre-upload when the plan was made)?
+  if (!videoId && isVideo && creative.ad_account_id && creative.public_url) {
+    const { data: hit } = await supabase.from("meta_video_cache").select("meta_video_id").eq("ad_account_id", creative.ad_account_id).eq("public_url", creative.public_url).maybeSingle();
+    if (hit?.meta_video_id) {
+      videoId = hit.meta_video_id;
+      await supabase.from("creative_assets").update({
+        meta_video_id: videoId
+      }).eq("id", creative.id);
+    }
+  }
   if (!videoId) {
     if (!isVideo) {
       return {
@@ -217,6 +227,13 @@ async function ensureMetaMedia(supabase, accountId, creative, maxWaitMs = 90 * 1
         meta_video_id: data.id
       }).eq("id", creative.id);
       videoId = data.id;
+      if (creative.ad_account_id && creative.public_url) await supabase.from("meta_video_cache").upsert({
+        ad_account_id: creative.ad_account_id,
+        public_url: creative.public_url,
+        meta_video_id: data.id
+      }, {
+        onConflict: "ad_account_id,public_url"
+      });
     } catch (err) {
       console.error("ensureMetaMedia error:", err);
       return {
@@ -1480,6 +1497,64 @@ Deno.serve(async (req)=>{
           "Content-Type": "application/json",
           ...CORS_HEADERS
         }
+      });
+    }
+    // PRE-UPLOAD: send the videos of a plan to the ad account's Meta library right away, so Meta has processed them by the time the plan is approved.
+    const peek = await req.clone().json().catch(()=>null);
+    if (peek?.action === "prewarm") {
+      const reply = (o, status = 200)=>new Response(JSON.stringify(o), {
+          status,
+          headers: {
+            "Content-Type": "application/json",
+            ...CORS_HEADERS
+          }
+        });
+      const { data: acct } = await supabase.from("ad_accounts").select("id, meta_ad_account_id, company_id").eq("id", String(peek.ad_account_id ?? "")).maybeSingle();
+      if (!acct || !caller.service && acct.company_id !== caller.company_id) return reply({
+        error: "That ad account is not yours."
+      }, 403);
+      const act = String(acct.meta_ad_account_id ?? "").replace(/^act_/, "");
+      if (!/^\d+$/.test(act)) return reply({
+        ok: true,
+        uploaded: 0
+      });
+      const ids = (Array.isArray(peek.asset_ids) ? peek.asset_ids : []).slice(0, 30);
+      const { data: assets } = await supabase.from("creative_assets").select("id, public_url, asset_type").in("id", ids).eq("company_id", acct.company_id).eq("asset_type", "video");
+      const urls = [
+        ...new Set((assets ?? []).map((a)=>a.public_url).filter(Boolean))
+      ];
+      const { data: cached } = urls.length ? await supabase.from("meta_video_cache").select("public_url").eq("ad_account_id", acct.id).in("public_url", urls) : {
+        data: []
+      };
+      const have = new Set((cached ?? []).map((x)=>x.public_url));
+      let uploaded = 0;
+      await Promise.all(urls.filter((u)=>!have.has(u)).map(async (u)=>{
+        try {
+          const r = await fetch(`${META_GRAPH_BASE}/act_${act}/advideos`, {
+            method: "POST",
+            body: new URLSearchParams({
+              file_url: u,
+              access_token: META_ACCESS_TOKEN
+            })
+          });
+          const d = await r.json();
+          if (d?.id) {
+            await supabase.from("meta_video_cache").upsert({
+              ad_account_id: acct.id,
+              public_url: u,
+              meta_video_id: d.id
+            }, {
+              onConflict: "ad_account_id,public_url"
+            });
+            uploaded++;
+          } else console.error("prewarm upload failed:", d?.error || d);
+        } catch (e) {
+          console.error("prewarm error:", e);
+        }
+      }));
+      return reply({
+        ok: true,
+        uploaded
       });
     }
     let requestedProductId = null;

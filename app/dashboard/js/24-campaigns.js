@@ -188,10 +188,10 @@ function cpMRow(level, r) {
   if (level !== "ads" && r.daily_budget) sub += (sub ? " · " : "") + fN(r.daily_budget) + "/day";
   const flag = level === "ads" && on && r.suggestion?.kill;
   const thumb = level === "ads" && r.thumbnail_url ? `<img class="cp-mth" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
-  const cl = r.kind === "messaging" ? "Cost / chat" : r.kind === "purchase" ? "Cost / purchase" : "Cost / result";
+  const cl = r.kind === "messaging" ? "Per chat" : r.kind === "purchase" ? "Per purchase" : "Per result";
   return `<div class="cp-mr${on ? "" : " off"}${flag ? " flag" : ""}" onclick="cpSelect('${level}','${r.id}')">
     <div class="cp-mt"><label class="switch" onclick="event.stopPropagation()"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)" aria-label="${on ? "Pause" : "Turn on"}"><span class="sw-track"></span></label>
-      ${thumb}<div class="cp-mn"><b>${escH(r.name)}</b>${sub ? `<small>${escH(sub)}</small>` : ""}</div><div class="cp-md">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div></div>
+      ${thumb}<div class="cp-mn"><b>${escH(r.name)}</b>${sub ? `<small>${escH(sub)}</small>` : ""}<div class="cp-md">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div></div></div>
     <div class="cp-mm"><div><small>${escH(r.result_label || "Results")}</small><b>${r.results != null ? r.results : "—"}</b></div><div><small>${cl}</small><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div><div><small>Spent</small><b>${fN(r.spend)}</b></div></div>
     ${flag ? `<div class="cp-mf" onclick="event.stopPropagation()">${rvIc("alert")}<span>${escH(r.suggestion.reason)}</span><button type="button" class="rv-btn s" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause</button></div>` : ""}</div>`;
 }

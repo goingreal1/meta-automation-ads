@@ -388,7 +388,8 @@ function bvModal(title, bodyHtml) {
 async function sbQuery(table, queryStr = "", opts = {}) {
   // Append ad account filter if applicable (ignore for system_settings, earnings etc. which are shared/global)
   let finalQuery = queryStr;
-  const filteredTables = ["ad_sets", "creative_assets", "daily_metrics", "products"];
+  // Products and creatives belong to the whole company, not to one ad account: they show under every ad account. (They are sent to Meta per account when a campaign launches.)
+  const filteredTables = ["ad_sets", "daily_metrics"];
 
   if (!opts.allAccounts && filteredTables.includes(table) && activeAccountId) {
     finalQuery += finalQuery ? `&ad_account_id=eq.${activeAccountId}` : `ad_account_id=eq.${activeAccountId}`;

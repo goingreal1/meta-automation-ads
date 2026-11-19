@@ -875,6 +875,24 @@ async function planCampaignTool(args, ctx) {
   if (error || !row) return {
     error: "Could not save the plan: " + (error?.message ?? "unknown")
   };
+  // Send the plan's videos to this ad account's Meta library now, in the background: by the time it is approved Meta has processed them.
+  try {
+    const vids = (Array.isArray(plan.asset_ids) ? plan.asset_ids : []).concat((Array.isArray(plan.ads) ? plan.ads : []).map((x)=>x?.asset_id)).filter(Boolean);
+    if (vids.length) globalThis.EdgeRuntime?.waitUntil(fetch(`${SUPABASE_URL}/functions/v1/ai-auto-launch-tests`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        action: "prewarm",
+        ad_account_id: acct.id,
+        asset_ids: [
+          ...new Set(vids)
+        ]
+      })
+    }).catch(()=>{}));
+  } catch (_) {}
   ctx.cards.push(await planCard(plan, row.id, {
     authHeader: ctx.authHeader,
     accountId: acct.id,
@@ -1022,7 +1040,7 @@ async function planAction(body, p) {
   }).eq("id", row.id).eq("status", "launching").or(`launching_at.is.null,launching_at.lt.${new Date(Date.now() - 5 * 60_000).toISOString()}`).select("id");
   if (!claim.data?.length) throw new Error("This plan is already being launched.");
   try {
-    const { data: srcs } = await supabase.from("creative_assets").select("id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format").eq("company_id", p.companyId).in("id", plan.asset_ids);
+    const { data: srcs } = await supabase.from("creative_assets").select("id, ad_account_id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format").eq("company_id", p.companyId).in("id", plan.asset_ids);
     const planAds = Array.isArray(plan.ads) && plan.ads.length ? plan.ads : plan.asset_ids.map((id, j)=>({
         asset_id: id,
         copy_index: j % plan.copies.length
@@ -1059,8 +1077,9 @@ async function planAction(body, p) {
           storage_path: s.storage_path,
           public_url: s.public_url,
           asset_type: s.asset_type,
-          meta_video_id: s.meta_video_id ?? null,
-          meta_image_hash: s.meta_image_hash ?? null,
+          // a Meta video / image id only works in the ad account it was uploaded to
+          meta_video_id: s.ad_account_id === acct.id ? s.meta_video_id ?? null : null,
+          meta_image_hash: s.ad_account_id === acct.id ? s.meta_image_hash ?? null : null,
           mechanism: s.mechanism,
           format: s.format,
           primary_text: c.primary_text,
