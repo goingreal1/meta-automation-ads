@@ -159,7 +159,7 @@ async function amQuietRefresh() {
 // ── KILL RULES (Settings) ───────────────────────────────────────────────────
 const KR_KINDS = [
   { kind: "messaging", icon: "💬", title: "WhatsApp message ads", unit: "conversation", defaults: { max: 100, spend: 150, hours: 6 } },
-  { kind: "purchase", icon: "🛒", title: "Website purchase ads", unit: "purchase", lpv: true, defaults: { max: 2500, spend: 3000, hours: 48, lpv: 0 } },
+  { kind: "purchase", icon: "🛒", title: "Website purchase ads", unit: "purchase", lpv: false, defaults: { max: 2500, spend: 3000, hours: 48, lpv: 0 } },
 ];
 
 function krSummary(unit, max, spend, hours, auto, lpv) {
@@ -511,6 +511,25 @@ async function bvRenderKillRules() {
   el.innerHTML = `
     <div class="ph"><div class="ph-title">Ad kill rules</div></div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Set when an ad should be killed, separately for WhatsApp-message ads and website-purchase ads. These rules are yours; other team members set their own.</div>
+    ${(() => {
+      const r = byKind.purchase || {}, on = !!r.lpv_enabled, auto = !!r.lpv_auto_kill;
+      const limit = Number(r.max_cost_per_lpv) > 0 ? Number(r.max_cost_per_lpv) : "", spend = Number(r.lpv_min_spend ?? r.min_spend ?? 0) || 1000;
+      return `<div class="kr-block" id="kr_lpv" style="border:1px solid var(--accent);border-radius:14px;padding:14px;margin-bottom:14px;">
+        <div class="kr-title">🌐 Landing page view cost limit</div>
+        <div style="font-size:11.5px;color:var(--muted);margin:2px 0 10px;">For website ads. Kill an ad when each landing page view costs more than your limit, or when it spent money and nobody reached the page. It works on its own and does not need the purchase rule below.</div>
+        <div class="kr-switches">
+          <label class="kr-sw"><span class="switch"><input type="checkbox" class="lpv-on" ${on ? "checked" : ""}><span class="sw-track"></span></span> Use this limit</label>
+          <label class="kr-sw"><span class="switch"><input type="checkbox" class="lpv-auto" ${auto ? "checked" : ""}><span class="sw-track"></span></span> Pause automatically</label>
+        </div>
+        <div class="fg" style="grid-template-columns:repeat(2,minmax(0,1fr));">
+          <div class="field"><label>Max cost per landing page view (₦)</label><input type="number" min="1" class="lpv-max" value="${limit}" placeholder="e.g. 150"></div>
+          <div class="field"><label>Judge an ad after it spent (₦)</label><input type="number" min="0" class="lpv-spend" value="${spend}"></div>
+        </div>
+        <div class="lpv-sum" style="font-size:11.5px;color:var(--muted);margin:8px 0 10px;"></div>
+        <button type="button" class="btn btn-a" style="padding:6px 14px;" onclick="bvSaveLpvRule()">Save landing page view limit</button>
+        <span class="kr-msg" id="krMsg_lpv"></span>
+      </div>`;
+    })()}
     ${KR_KINDS.map(k => {
       const r = byKind[k.kind];
       const v = r || { enabled: false, auto_kill: false, max_cost_per_result: k.defaults.max, min_spend: k.defaults.spend, min_hours: k.defaults.hours };
@@ -547,6 +566,14 @@ async function bvRenderKillRules() {
         <div class="kr-log-r"><span class="pill ${l.source === "auto" ? "scale" : "watch"}">${l.source === "auto" ? "Auto" : "By you"}</span>
           <span class="kr-log-t"><b>${escH(l.object_name || l.meta_object_id)}</b> · ${l.level === "adset" ? "ad set" : l.level} ${l.action}${l.reason ? ` — ${escH(l.reason)}` : ""}</span>
           <span class="kr-log-d">${ago(l.created_at)}</span></div>`).join("")}</div>` : ""}`;
+  const lpvBox = document.getElementById("kr_lpv");
+  if (lpvBox) {
+    const upd = () => {
+      const g = (c) => lpvBox.querySelector(c), mx = Number(g(".lpv-max").value || 0), sp = Number(g(".lpv-spend").value || 0);
+      g(".lpv-sum").textContent = !g(".lpv-on").checked ? "Off. Ads are not judged on landing page views." : mx > 0 ? `Once an ad has spent ${fN(sp)}, it is ${g(".lpv-auto").checked ? "paused for you" : "flagged for you to pause"} if a landing page view costs more than ${fN(mx)}, or if it got no views at all.` : "Enter the most you will pay for one landing page view.";
+    };
+    lpvBox.querySelectorAll("input").forEach((i) => i.addEventListener("input", upd)); upd();
+  }
   for (const k of KR_KINDS) {
     const box = document.getElementById(`kr_${k.kind}`);
     box?.querySelectorAll("input").forEach(i => i.addEventListener("input", () => {
@@ -567,6 +594,21 @@ async function bvSaveSpendCaps() {
   const { error } = rows.length ? await supabaseClient.from("spend_caps").upsert(rows, { onConflict: "profile_id,level" }) : { error: null };
   msg.innerHTML = error ? `<span style="color:var(--danger);">❌ ${escH(error.message)}</span>` : `<span style="color:var(--accent);">✅ Saved</span>`;
   if (!error) setTimeout(() => { if (msg) msg.innerHTML = ""; }, 2500);
+}
+
+async function bvSaveLpvRule() {
+  const box = document.getElementById("kr_lpv"); if (!box) return;
+  const msg = document.getElementById("krMsg_lpv"), g = (c) => box.querySelector(c);
+  const on = g(".lpv-on").checked, auto = g(".lpv-auto").checked, mx = Number(g(".lpv-max").value || 0), sp = Number(g(".lpv-spend").value || 0);
+  if (on && !(mx > 0)) { msg.innerHTML = `<span style="color:var(--danger);">Enter the most you will pay per landing page view, or switch it off.</span>`; return; }
+  if (!(sp >= 0)) { msg.innerHTML = `<span style="color:var(--danger);">Enter a valid amount to judge after.</span>`; return; }
+  if (on && auto && !confirm("Turn on automatic pausing? Ads over this limit will be paused on Meta for you, without asking.")) return;
+  const uid = sessionData.user.id, patch = { max_cost_per_lpv: mx > 0 ? mx : null, lpv_enabled: on, lpv_auto_kill: auto, lpv_min_spend: sp, updated_at: new Date().toISOString() };
+  const cur = (await sbQuery("kill_rules", `select=id&profile_id=eq.${uid}&kind=eq.purchase`).catch(() => []))?.[0];
+  const { error } = cur ? await supabaseClient.from("kill_rules").update(patch).eq("id", cur.id)
+    : await supabaseClient.from("kill_rules").insert({ profile_id: uid, company_id: window.myProfile.company_id, kind: "purchase", enabled: false, auto_kill: false, max_cost_per_result: 2500, min_spend: 3000, min_hours: 48, ...patch });
+  msg.innerHTML = error ? `<span style="color:var(--danger);">❌ ${escH(error.message)}</span>` : `<span style="color:var(--accent);">✅ Saved</span>`;
+  if (!error) { am.at = 0; setTimeout(() => { if (msg) msg.innerHTML = ""; }, 2500); }
 }
 
 async function bvSaveKillRule(kind) {
