@@ -230,7 +230,10 @@ Deno.serve(async (req)=>{
       const text = REPORT_TEXT.replace(/\{\{(\d+)\}\}/g, (_, i)=>vals[Number(i) - 1] ?? "");
       // 1) the approved template (header, bold lines, footer and an Open Revora button); 2) inside the 24h window an interactive message with a button; 3) plain text.
       const results = {};
-      try { await sendTemplate(phone, REPORT_TPL, vals); results[phone] = "sent (template)"; }
+      // Inside the 24h window a free interactive message is best (no template fees, no template eligibility rules); otherwise the approved template.
+      const { data: li } = await supabase.from("wa_last_inbound").select("at").eq("phone", phone).maybeSingle();
+      const open24 = !!li?.at && Date.now() - new Date(li.at).getTime() < 23 * 3600_000;
+      try { if (open24) throw new Error("free window open"); await sendTemplate(phone, REPORT_TPL, vals); results[phone] = "sent (template)"; }
       catch (e1) {
         try {
           const res = await fetch(`${META_GRAPH_BASE}/${WHATSAPP_PHONE_ID}/messages`, { method: "POST", headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
