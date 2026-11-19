@@ -1006,17 +1006,24 @@ async function handleMetaReport(slotHour, push = true) {
     const { data: ords } = await admin.from("orders").select("media_buyer_id, order_status, order_value_naira").eq("company_id", c.id).gte("ordered_at", from.toISOString()).lt("ordered_at", to.toISOString());
     const { data: mOrds } = await admin.from("orders").select("media_buyer_id, order_status").eq("company_id", c.id).gte("ordered_at", mFrom.toISOString()).lt("ordered_at", to.toISOString());
     // Money received = logged funds + card top-ups + money Revora sent to Meta for the buyer (sends out of a buyer's own held balance are NOT counted again).
-    const [{ data: fl }, { data: tp }, { data: fr }] = await Promise.all([
+    const [{ data: fl }, { data: tp }, { data: fr }, { data: adj }, { data: own }] = await Promise.all([
       admin.from("fund_logs").select("media_buyer_id, amount_naira, log_date").eq("company_id", c.id).gte("log_date", monthStart).lte("log_date", day),
       admin.from("wallet_topups").select("media_buyer_id, amount_naira, confirmed_at").eq("company_id", c.id).eq("status", "confirmed").gte("confirmed_at", mFrom.toISOString()).lt("confirmed_at", to.toISOString()),
-      admin.from("fund_requests").select("media_buyer_id, amount_naira, transferred_at").eq("company_id", c.id).eq("paid_from", "company").eq("status", "transferred").gte("transferred_at", mFrom.toISOString()).lt("transferred_at", to.toISOString())
+      admin.from("fund_requests").select("media_buyer_id, amount_naira, transferred_at").eq("company_id", c.id).eq("paid_from", "company").eq("status", "transferred").gte("transferred_at", mFrom.toISOString()).lt("transferred_at", to.toISOString()),
+      admin.from("wallet_adjustments").select("media_buyer_id, amount_naira, created_at").eq("company_id", c.id).eq("reason", "given_by_company").gte("created_at", mFrom.toISOString()).lt("created_at", to.toISOString()),
+      admin.from("fund_requests").select("media_buyer_id, amount_naira, transferred_at").eq("company_id", c.id).eq("paid_from", "buyer").eq("status", "transferred").gte("transferred_at", mFrom.toISOString()).lt("transferred_at", to.toISOString())
     ]);
+    const buyerIds = [...new Set(okAccts.map((x)=>x.buyer).filter(Boolean))];
+    const wallets = {};
+    for (const id of buyerIds){ const { data: w } = await admin.rpc("buyer_wallet_balance", { p_buyer: id }); wallets[id] = Math.max(0, Number(w ?? 0)); }
     const recv = (buyer)=>{
       const ok = (x)=>buyer === undefined || x.media_buyer_id === buyer, add = (rows, f, inDay)=>(rows ?? []).filter(ok).reduce((t, x)=>t + (inDay(f(x)) ? Number(x.amount_naira || 0) : 0), 0);
       const inToday = (iso)=>String(iso).length === 10 ? iso === day : new Date(iso) >= from && new Date(iso) < to, any = ()=>true;
       return {
-        today: add(fl, (x)=>x.log_date, inToday) + add(tp, (x)=>x.confirmed_at, inToday) + add(fr, (x)=>x.transferred_at, inToday),
-        month: add(fl, (x)=>x.log_date, any) + add(tp, (x)=>x.confirmed_at, any) + add(fr, (x)=>x.transferred_at, any)
+        // Money credited to the buyer: logged funds, card top-ups, funds the admin gave to their wallet, and money the admin sent straight to Meta for them.
+        today: add(fl, (x)=>x.log_date, inToday) + add(tp, (x)=>x.confirmed_at, inToday) + add(fr, (x)=>x.transferred_at, inToday) - add(adj, (x)=>x.created_at, inToday),
+        month: add(fl, (x)=>x.log_date, any) + add(tp, (x)=>x.confirmed_at, any) + add(fr, (x)=>x.transferred_at, any) - add(adj, (x)=>x.created_at, any),
+        sentToday: add(own, (x)=>x.transferred_at, inToday), sentMonth: add(own, (x)=>x.transferred_at, any)
       };
     };
     const make = (buyer)=>{
@@ -1025,10 +1032,12 @@ async function handleMetaReport(slotHour, push = true) {
       const t = { spend: accts.reduce((s, x)=>s + x.spend, 0), purchases: accts.reduce((s, x)=>s + x.purchases, 0), reach: accts.reduce((s, x)=>s + x.reach, 0), balance: accts.reduce((s, x)=>s + (x.balance ?? 0), 0), orders: o.length, orders_value: o.reduce((s, x)=>s + Number(x.order_value_naira || 0), 0) };
       // Order count = CRM orders; when the CRM has none, the Meta purchases stand in. CPA = spend / order count.
       t.order_count = t.orders || t.purchases; t.order_source = t.orders ? "crm" : "meta"; t.cpa = t.order_count ? Math.round(t.spend / t.order_count) : 0;
-      const rc = recv(buyer); t.fund_received = Math.round(rc.today);
+      const rc = recv(buyer); t.fund_received = Math.round(rc.today); t.sent_to_meta = Math.round(rc.sentToday);
+      // Balance = what is left in the wallet + what is left in the Meta ad accounts.
+      t.meta_balance = Math.round(t.balance); t.wallet_balance = Math.round(buyer === undefined ? buyerIds.reduce((q, id)=>q + (wallets[id] ?? 0), 0) : (wallets[buyer] ?? 0)); t.balance = t.meta_balance + t.wallet_balance;
       const mo = (mOrds ?? []).filter((x)=>x.order_status !== "cancelled" && (buyer === undefined || x.media_buyer_id === buyer)).length;
       const ms = accts.reduce((s, x)=>s + (x.month_spend || 0), 0), mp = accts.reduce((s, x)=>s + (x.month_purchases || 0), 0), moc = mo || mp;
-      t.month = { fund_received: Math.round(rc.month), spend: ms, order_count: moc, cpa: moc ? Math.round(ms / moc) : 0 };
+      t.month = { fund_received: Math.round(rc.month), sent_to_meta: Math.round(rc.sentMonth), spend: ms, order_count: moc, cpa: moc ? Math.round(ms / moc) : 0 };
       return { t, accts };
     };
     const emit = async (who, r, userId)=>{
@@ -1036,7 +1045,7 @@ async function handleMetaReport(slotHour, push = true) {
       if (!(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0 || r.t.fund_received > 0)) return;
       await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "meta_report",
         p_title: `📈 ${label}${who ? " · " + who : ""}`,
-        p_body: [`Fund received: ${money(r.t.fund_received)}`, `Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)}`].concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []).join("\n"),
+        p_body: [`Fund received: ${money(r.t.fund_received)}`].concat(r.t.sent_to_meta > 0 ? [`Sent to Meta: ${money(r.t.sent_to_meta)}`] : []).concat([`Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)} (wallet ${money(r.t.wallet_balance)} + Meta ${money(r.t.meta_balance)})`]).concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []).join("\n"),
         p_url: "/dashboard_new.html?open=tab:campaigns", p_severity: "info",
         p_data: { report: { label, date: day, totals: r.t, accounts: r.accts.map(({ buyer, ...x })=>x) } },
         p_dedupe: `report:${day}:${slot}${userId ? ":" + userId : ""}`, p_buyer: null, p_user: userId ?? null, p_push: push });
