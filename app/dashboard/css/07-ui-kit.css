@@ -329,3 +329,9 @@
   .rv-ui .awc.hero .hr-b > div { padding: 10px 8px; text-align: center; } .rv-ui .awc.hero .hr-b b { font-size: 18px; } .rv-ui .awc.hero .hr-b .upd { display: none; }
   .rv-ui .cp-tools .rv-seg { width: 100%; } .rv-ui .cp-tools .rv-seg button { flex: 1; } .rv-ui .cp-tools .rv-sel { display: none; }
 }
+/* phone list: the name gets the full width; the status sits underneath it */
+.rv-ui .cp-mn b { overflow-wrap: break-word; word-break: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.rv-ui .cp-mn small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.rv-ui .cp-md { text-align: left; margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rv-ui .cp-md .am-sub { display: inline !important; margin: 0; }
+.rv-ui .cp-mm { padding-left: 54px; }
