@@ -876,6 +876,18 @@ async function trackBalance(admin, a, actId, token, day, spendNow) {
   let added = 0;
   if (prev) {
     const spentSince = prev.day === day ? Math.max(0, spendNow - Number(prev.spend_today)) : spendNow;
+    // Spend beyond what the Meta balance held was paid from somewhere else (card, Opay): take that amount off the buyer's Revora wallet, as far as the wallet goes.
+    const over = Math.round(spentSince - Number(prev.balance));
+    if (over >= 100 && a.media_buyer_id) {
+      const { data: w } = await admin.rpc("buyer_wallet_balance", { p_buyer: a.media_buyer_id });
+      const take = Math.min(over, Math.max(0, Math.round(Number(w ?? 0))));
+      if (take > 0) {
+        await admin.from("wallet_adjustments").insert({ company_id: a.company_id, media_buyer_id: a.media_buyer_id, amount_naira: take, reason: "meta_overspend", ref: `acct:${a.id}:${Date.now()}` });
+        await notifyRpc(admin, { p_company: a.company_id, p_category: "money", p_kind: "wallet_deducted", p_title: `Wallet −₦${take.toLocaleString("en-NG")}: ${a.nickname ?? "ad account"} spent more than its Meta balance`,
+          p_body: `Meta spend went past the balance on ${a.nickname ?? "the account"}, so ₦${take.toLocaleString("en-NG")} was taken off your Revora wallet.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "warning",
+          p_data: { ad_account_id: a.id, taken: take }, p_dedupe: `walletdeduct:${a.id}:${Date.now()}`, p_buyer: a.media_buyer_id, p_user: null, p_push: true });
+      }
+    }
     const expected = Number(prev.balance) - spentSince;
     let jump = bal - expected;
     if (jump > 0 && a.media_buyer_id) {
@@ -1007,14 +1019,20 @@ async function handleMetaReport(slotHour, push = true) {
     const { data: accounts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct").eq("company_id", c.id).eq("status", "active");
     const usable = (accounts ?? []).filter((a)=>/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, "")));
     if (!usable.length) continue;
+    // A buyer can carry a "month so far" starting point (figures from a report kept elsewhere, up to and including as_of); only days after it are added on top.
+    const { data: baseRows } = await admin.from("report_baselines").select("*").eq("company_id", c.id).eq("month", day.slice(0, 7));
+    const bases = new Map((baseRows ?? []).map((x)=>[x.media_buyer_id, x]));
+    const nextDay = (d)=>new Date(new Date(`${d}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
+    const sinceFor = (buyer)=>bases.has(buyer) ? nextDay(bases.get(buyer).as_of) : monthStart;
     const per = await Promise.allSettled(usable.map(async (a)=>{
       const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
+      const mSince = sinceFor(a.media_buyer_id);
       const [rows, campIns, acctIns, balance, monthRows] = await Promise.all([
         graphGetAll(`act_${actId}/insights`, { level: "ad", time_range: JSON.stringify({ since: day, until: day }), fields: "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,actions" }, token, 12),
         insightsByLevel(actId, "campaign", "today", token, factor).catch(()=>({})),
         graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: day, until: day }), fields: "reach,impressions,spend" }, token).catch(()=>[]),
         accountBalance(admin, a, actId, token),
-        graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: monthStart, until: day }), fields: "spend,actions" }, token).catch(()=>[])
+        graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: mSince, until: day }), fields: "spend,actions" }, token).catch(()=>[])
       ]);
       const active = await hasActiveAds(actId, token);
       const mm = monthRows[0] ? insightRow(monthRows[0], factor) : { spend: 0, purchases: 0 };
@@ -1038,7 +1056,7 @@ async function handleMetaReport(slotHour, push = true) {
     }));
     const okAccts = per.filter((r)=>r.status === "fulfilled").map((r)=>r.value);
     const { data: ords } = await admin.from("orders").select("media_buyer_id, order_status, order_value_naira").eq("company_id", c.id).gte("ordered_at", from.toISOString()).lt("ordered_at", to.toISOString());
-    const { data: mOrds } = await admin.from("orders").select("media_buyer_id, order_status").eq("company_id", c.id).gte("ordered_at", mFrom.toISOString()).lt("ordered_at", to.toISOString());
+    const { data: mOrds } = await admin.from("orders").select("media_buyer_id, order_status, ordered_at").eq("company_id", c.id).gte("ordered_at", mFrom.toISOString()).lt("ordered_at", to.toISOString());
     // Money received = logged funds + card top-ups + money Revora sent to Meta for the buyer (sends out of a buyer's own held balance are NOT counted again).
     const [{ data: fl }, { data: tp }, { data: fr }, { data: adj }, { data: own }] = await Promise.all([
       admin.from("fund_logs").select("media_buyer_id, amount_naira, log_date").eq("company_id", c.id).gte("log_date", monthStart).lte("log_date", day),
@@ -1056,7 +1074,12 @@ async function handleMetaReport(slotHour, push = true) {
       return {
         // Money credited to the buyer: logged funds, card top-ups, funds the admin gave to their wallet, and money the admin sent straight to Meta for them.
         today: add(fl, (x)=>x.log_date, inToday) + add(tp, (x)=>x.confirmed_at, inToday) + add(fr, (x)=>x.transferred_at, inToday) - add(adj, (x)=>x.created_at, inToday),
-        month: add(fl, (x)=>x.log_date, any) + add(tp, (x)=>x.confirmed_at, any) + add(fr, (x)=>x.transferred_at, any) - add(adj, (x)=>x.created_at, any),
+        month: (()=>{
+          const rel = buyer === undefined ? [...bases.keys()] : bases.has(buyer) ? [buyer] : [];
+          const aft = (rows, f)=>(rows ?? []).filter(ok).filter((x)=>{ const b = bases.get(x.media_buyer_id), d = String(f(x)).length === 10 ? f(x) : new Date(new Date(f(x)).getTime() + 3600000).toISOString().slice(0, 10); return !b || d > b.as_of; });
+          const sum = (rows, f)=>aft(rows, f).reduce((t, x)=>t + Number(x.amount_naira || 0), 0);
+          return sum(fl, (x)=>x.log_date) + sum(tp, (x)=>x.confirmed_at) + sum(fr, (x)=>x.transferred_at) - sum(adj, (x)=>x.created_at) + rel.reduce((t, id)=>t + Number(bases.get(id).fund_received || 0), 0);
+        })(),
         sentToday: add(own, (x)=>x.transferred_at, inToday), sentMonth: add(own, (x)=>x.transferred_at, any)
       };
     };
@@ -1069,8 +1092,10 @@ async function handleMetaReport(slotHour, push = true) {
       const rc = recv(buyer); t.fund_received = Math.round(rc.today); t.sent_to_meta = Math.round(rc.sentToday);
       // Balance = what is left in the wallet + what is left in the Meta ad accounts.
       t.meta_balance = Math.round(t.balance); t.wallet_balance = Math.round(buyer === undefined ? buyerIds.reduce((q, id)=>q + (wallets[id] ?? 0), 0) : (wallets[buyer] ?? 0)); t.balance = t.meta_balance + t.wallet_balance;
-      const mo = (mOrds ?? []).filter((x)=>x.order_status !== "cancelled" && (buyer === undefined || x.media_buyer_id === buyer)).length;
-      const ms = accts.reduce((s, x)=>s + (x.month_spend || 0), 0), mp = accts.reduce((s, x)=>s + (x.month_purchases || 0), 0), moc = mo || mp;
+      const relB = buyer === undefined ? [...bases.keys()] : bases.has(buyer) ? [buyer] : [];
+      const mo = (mOrds ?? []).filter((x)=>{ const b = bases.get(x.media_buyer_id), d = new Date(new Date(x.ordered_at).getTime() + 3600000).toISOString().slice(0, 10); return x.order_status !== "cancelled" && (buyer === undefined || x.media_buyer_id === buyer) && (!b || d > b.as_of); }).length;
+      const ms = accts.reduce((s, x)=>s + (x.month_spend || 0), 0) + relB.reduce((q, id)=>q + Number(bases.get(id).ad_spend || 0), 0), mp = accts.reduce((s, x)=>s + (x.month_purchases || 0), 0);
+      const moc = (mo || mp) + relB.reduce((q, id)=>q + Number(bases.get(id).order_count || 0), 0);
       t.month = { fund_received: Math.round(rc.month), sent_to_meta: Math.round(rc.sentMonth), spend: ms, order_count: moc, cpa: moc ? Math.round(ms / moc) : 0 };
       return { t, accts };
     };
