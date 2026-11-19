@@ -180,6 +180,42 @@ async function cpDoDuplicate(l, id) {
 // ---- phone: the flat list (campaigns / ad sets / ads tabs, on-off switch, key numbers on every row). Tapping a row opens the details. ----
 CP.mlevel = "campaigns";
 function cpMLevel(l) { CP.mlevel = l; amDraw(); }
+// Extra numbers a phone row can show under the main three. The person picks them (and it is remembered on this device).
+const CP_METRICS = [
+  { k: "lpv", web: true, label: "Page views", v: (r) => r.landing_page_views, f: (n) => Number(n).toLocaleString("en-NG") },
+  { k: "cplpv", web: true, label: "Cost / page view", v: (r) => r.cost_per_landing_page_view, f: (n) => fN(n) },
+  { k: "clicks", label: "Link clicks", v: (r) => r.clicks, f: (n) => Number(n).toLocaleString("en-NG") },
+  { k: "cpc", label: "Cost / link click", v: (r) => (r.clicks > 0 ? r.spend / r.clicks : null), f: (n) => fN(n) },
+  { k: "ctr", label: "Link CTR", v: (r) => (r.impressions > 0 ? r.ctr : null), f: (n) => Number(n).toFixed(2) + "%" },
+  { k: "reach", label: "Reach", v: (r) => r.reach, f: (n) => Number(n).toLocaleString("en-NG") },
+  { k: "impr", label: "Impressions", v: (r) => r.impressions, f: (n) => Number(n).toLocaleString("en-NG") },
+  { k: "freq", label: "Frequency", v: (r) => (r.reach > 0 ? r.frequency : null), f: (n) => Number(n).toFixed(2) },
+  { k: "cpm", label: "CPM", v: (r) => (r.impressions > 0 ? r.cpm : null), f: (n) => fN(n) },
+];
+function cpMetricsOn() {
+  try { const v = JSON.parse(localStorage.getItem("rv_cp_metrics") || "null"); if (Array.isArray(v)) return v; } catch {}
+  return ["lpv", "cplpv", "clicks", "cpc", "ctr"];
+}
+function cpMetricsPick() {
+  bvCloseModal();
+  const on = new Set(cpMetricsOn()), ov = document.createElement("div");
+  ov.id = "bvModalOverlay"; ov.className = "bv-overlay"; ov.onclick = (e) => { if (e.target === ov) bvCloseModal(); };
+  ov.innerHTML = `<div class="bv-modal"><button class="bv-modal-close" onclick="bvCloseModal()">✕</button>
+    <div class="ph-title" style="margin-bottom:6px;">Numbers on each row</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Tick what you want to see under every campaign, ad set and ad. Untick to hide.</div>
+    ${CP_METRICS.map((m) => `<label class="kr-sw" style="display:flex;gap:10px;align-items:center;padding:8px 0;"><span class="switch"><input type="checkbox" data-m="${m.k}" ${on.has(m.k) ? "checked" : ""}><span class="sw-track"></span></span> ${m.label}</label>`).join("")}</div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener("change", () => {
+    const sel = [...ov.querySelectorAll("input[data-m]")].filter((i) => i.checked).map((i) => i.dataset.m);
+    try { localStorage.setItem("rv_cp_metrics", JSON.stringify(sel)); } catch {}
+    amDraw();
+  });
+}
+function cpMetricsRow(r) {
+  const on = new Set(cpMetricsOn()), items = CP_METRICS.filter((m) => on.has(m.k) && !(m.web && r.kind === "messaging"));
+  if (!items.length) return "";
+  return `<div class="cp-mx">${items.map((m) => { const v = m.v(r); return `<div><small>${m.label}</small><b>${v == null || Number.isNaN(Number(v)) ? "—" : m.f(v)}</b></div>`; }).join("")}</div>`;
+}
 function cpMRow(level, r) {
   const d = am.data, on = r.status === "ACTIVE", busy = am.busy.has(r.id);
   let sub = "";
@@ -193,6 +229,7 @@ function cpMRow(level, r) {
     <div class="cp-mt"><label class="switch" onclick="event.stopPropagation()"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)" aria-label="${on ? "Pause" : "Turn on"}"><span class="sw-track"></span></label>
       ${thumb}<div class="cp-mn"><b>${escH(r.name)}</b>${sub ? `<small>${escH(sub)}</small>` : ""}<div class="cp-md">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div></div></div>
     <div class="cp-mm"><div><small>${escH(r.result_label || "Results")}</small><b>${r.results != null ? r.results : "—"}</b></div><div><small>${cl}</small><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div><div><small>Spent</small><b>${fN(r.spend)}</b></div></div>
+    ${cpMetricsRow(r)}
     ${flag ? `<div class="cp-mf" onclick="event.stopPropagation()">${rvIc("alert")}<span>${escH(r.suggestion.reason)}</span><button type="button" class="rv-btn s" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause</button></div>` : ""}</div>`;
 }
 function cpMobileHtml() {
@@ -200,7 +237,8 @@ function cpMobileHtml() {
   const rows = amRows(lvl), tot = amTotals(rows), word = lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad";
   return `<div class="tb"><div class="rv-fld">${rvIc("search")}<input type="search" placeholder="Search" value="${escH(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search"></div>
     <div class="rv-seg rv-w100">${[["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]].map(([k, l]) => `<button type="button" class="${lvl === k ? "on" : ""}" onclick="cpMLevel('${k}')">${l}<em>${counts[k]}</em></button>`).join("")}</div>
-    <div class="rv-seg rv-w100" style="margin-top:8px">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}</button>`).join("")}</div></div>
+    <div class="rv-seg rv-w100" style="margin-top:8px">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}</button>`).join("")}</div>
+    <button type="button" class="rv-btn s cp-mpick" onclick="cpMetricsPick()">⚙ Choose numbers to show</button></div>
     ${rows.length ? rows.map((r) => cpMRow(lvl, r)).join("") + `<div class="cp-mtot"><b>Total · ${rows.length} ${word}${rows.length === 1 ? "" : "s"}</b><span>${fN(tot.spend)} spent${tot.label ? ` · ${tot.results.toLocaleString("en-NG")} ${tot.label.toLowerCase()}` : ""}</span></div>` : `<div class="rv-empty" style="padding:20px 14px">${am.q ? "Nothing matches your search." : "Nothing here for this filter."}</div>`}`;
 }
 
