@@ -343,6 +343,21 @@ Deno.serve(async (req)=>{
         status: s.status
       });
     }
+    if (action === "dva") {
+      // The account number for topping up by bank transfer from any bank: a media buyer's own account (an admin uses the company account).
+      const buyerRow = me.role === "buyer" ? me.media_buyer_id : null;
+      const read = async ()=>buyerRow ? (await admin.from("media_buyers").select("dedicated_account_number, dedicated_account_bank, name").eq("id", buyerRow).maybeSingle()).data : (await admin.from("companies").select("dedicated_account_number, dedicated_account_bank, name").eq("id", me.company_id).maybeSingle()).data;
+      let row = await read();
+      if (!row?.dedicated_account_number && b?.create) {
+        if (!PAYSTACK_SECRET_KEY) return json({ error: "Bank transfer top-ups are not switched on yet." }, 500);
+        const url = buyerRow ? "paystack-create-account" : "paystack-create-company-account";
+        const rr = await fetch(`${SUPABASE_URL}/functions/v1/${url}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify(buyerRow ? { media_buyer_id: buyerRow } : { company_id: me.company_id }) });
+        const jj = await rr.json().catch(()=>({}));
+        if (!rr.ok && !jj.account_number) return json({ error: jj.error || "Could not open the account number yet." }, 502);
+        row = await read();
+      }
+      return json({ ok: true, owner: buyerRow ? "buyer" : "company", account: row?.dedicated_account_number ? { number: row.dedicated_account_number, bank: row.dedicated_account_bank, name: `${row.name ?? ""}` } : null });
+    }
     if (action === "fees") {
       const { data: fees } = await admin.from("platform_fees").select("kind, enabled, pct, flat_naira, min_naira, cap_naira, payer");
       const out = { ok: true, fees: fees ?? [] };

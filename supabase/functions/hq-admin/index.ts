@@ -220,6 +220,44 @@ Deno.serve(async (req)=>{
         buyer_wallets: wallets
       });
     }
+    // Platform fees (what Revora charges on deposits, sends to Meta and wallet-to-wallet) and what they have earned.
+    if (action === "fees") {
+      const { data: fees } = await db.from("platform_fees").select("*").order("kind");
+      return json({ fees: fees ?? [] });
+    }
+    if (action === "set_fees") {
+      const rows = Array.isArray(body.fees) ? body.fees : [];
+      const out = [];
+      for (const f of rows) {
+        if (!["deposit", "transfer", "wallet"].includes(f?.kind)) continue;
+        const n = (v, max)=>Math.min(Math.max(Number(v) || 0, 0), max);
+        out.push({ kind: f.kind, enabled: !!f.enabled, pct: n(f.pct, 20), flat_naira: n(f.flat_naira, 100000), min_naira: n(f.min_naira, 100000), cap_naira: n(f.cap_naira, 1000000), payer: f.payer === "receiver" ? "receiver" : "sender", updated_at: new Date().toISOString(), updated_by: u.user.id });
+      }
+      if (!out.length) return json({ error: "Nothing to save." }, 400);
+      const { error } = await db.from("platform_fees").upsert(out, { onConflict: "kind" });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+    if (action === "revenue") {
+      const now = new Date(Date.now() + 3600_000), day0 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 3600_000);
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 3600_000), d30 = new Date(day0.getTime() - 29 * 86400_000);
+      const { data: rows } = await db.from("fee_ledger").select("id, kind, company_id, media_buyer_id, amount_naira, fee_naira, ref, created_at").gte("created_at", d30.toISOString() < monthStart.toISOString() ? d30.toISOString() : monthStart.toISOString()).order("created_at", { ascending: false }).limit(5000);
+      const all = rows ?? [];
+      const inRange = (r, from)=>new Date(r.created_at) >= from;
+      const tot = (list)=>list.reduce((t, r)=>t + Number(r.fee_naira || 0), 0);
+      const byKind = (list)=>({ deposit: tot(list.filter((r)=>r.kind === "deposit")), transfer: tot(list.filter((r)=>r.kind === "transfer")), wallet: tot(list.filter((r)=>r.kind === "wallet")) });
+      const month = all.filter((r)=>inRange(r, monthStart)), last30 = all.filter((r)=>inRange(r, d30)), today = all.filter((r)=>inRange(r, day0));
+      const perCo = new Map();
+      for (const r of month) perCo.set(r.company_id, (perCo.get(r.company_id) ?? 0) + Number(r.fee_naira || 0));
+      const days = [];
+      for (let i = 29; i >= 0; i--) { const from = new Date(day0.getTime() - i * 86400_000), to = new Date(from.getTime() + 86400_000); days.push({ date: new Date(from.getTime() + 3600_000).toISOString().slice(0, 10), fees: tot(all.filter((r)=>{ const t = new Date(r.created_at); return t >= from && t < to; })) }); }
+      return json({
+        today: { total: tot(today), ...byKind(today) }, month: { total: tot(month), ...byKind(month), count: month.length }, last30: { total: tot(last30), ...byKind(last30) },
+        top_companies: [...perCo.entries()].sort((x, y)=>y[1] - x[1]).slice(0, 10).map(([id, fee])=>({ company: coName.get(id) ?? "—", fee })),
+        days,
+        recent: all.slice(0, 40).map((r)=>({ at: r.created_at, kind: r.kind, company: coName.get(r.company_id) ?? "—", buyer: buyerName.get(r.media_buyer_id) ?? null, amount: Number(r.amount_naira), fee: Number(r.fee_naira) }))
+      });
+    }
     return json({
       error: "Unknown action"
     }, 400);

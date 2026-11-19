@@ -209,11 +209,72 @@ Deno.serve(async (req)=>{
           status: 200
         });
       }
-      // Company-level DVA (admin depositing their own money) -- always
-      // auto-confirmed on arrival, no order to match against since it was
-      // never tied to a customer order in the first place.
+      // Two kinds of dedicated account now:
+      //  - the COMPANY account is what customers are sent to pay for orders (any of the company's media buyers);
+      //  - a media buyer's own account is their wallet top-up account, usable from any bank.
+      const paystackFee = Number(data.fees ?? 0) / 100;
+      const findOrder = async (scope, strict)=>{
+        const own = (q)=>scope.buyerId ? q.eq("media_buyer_id", scope.buyerId) : q.eq("company_id", scope.companyId);
+        // 1. The narration carries the order's payment code.
+        const { data: codeOrders } = await own(supabase.from("orders").select("id, payment_narration_code, order_value_naira").not("payment_narration_code", "is", null).in("order_status", ["pending", "valid", "delivered"]));
+        for (const o of codeOrders ?? []){
+          if (o.payment_narration_code && narration.toUpperCase().includes(o.payment_narration_code)) {
+            // A code proves which order, not that the whole price was paid: part payments are left for a person.
+            return Number(o.order_value_naira ?? 0) - amountNaira > 1 ? null : o.id;
+          }
+        }
+        // 2. Sender name + exact amount among pending payments.
+        const { data: pending } = await own(supabase.from("payments").select("id, order_id, orders!inner(customer_name)").eq("status", "pending").eq("amount_naira", amountNaira));
+        const nm = (pending ?? []).filter((p)=>sameName(senderName, normalizeName(p.orders?.customer_name)));
+        if (nm.length === 1) return nm[0].order_id;
+        // 3. Unpaid orders worth exactly this amount: the sender's name picks one.
+        const { data: open } = await own(supabase.from("orders").select("id, customer_name, order_status, payments(status)").in("order_status", ["pending", "valid"]).eq("order_value_naira", amountNaira));
+        const unpaid = (open ?? []).filter((o)=>!(o.payments ?? []).some((p)=>p.status === "confirmed"));
+        const byName = unpaid.filter((o)=>sameName(senderName, normalizeName(o.customer_name)));
+        if (byName.length === 1) return byName[0].id;
+        // Only on the company's customer account: a single order at this price that customer care already confirmed is taken as the one.
+        if (!strict && unpaid.length === 1 && unpaid[0].order_status === "valid") return unpaid[0].id;
+        return null;
+      };
+      const confirmOrder = async (orderId)=>{
+        const { data: ordRow } = await supabase.from("orders").select("company_id, media_buyer_id").eq("id", orderId).maybeSingle();
+        const { error } = await supabase.from("payments").update({
+          status: "confirmed",
+          paid_at: new Date().toISOString(),
+          paystack_reference: reference,
+          channel: data.channel,
+          raw_event: event,
+          ...sender
+        }).eq("order_id", orderId);
+        if (error) { console.error("paystack-webhook update error:", error.message); return; }
+        // The order may have had no pending payment row to update; make sure a confirmed one exists.
+        const { data: confirmedRow } = await supabase.from("payments").select("id").eq("order_id", orderId).eq("status", "confirmed").limit(1);
+        if (!confirmedRow || !confirmedRow.length) {
+          await supabase.from("payments").insert({
+            company_id: ordRow?.company_id ?? null,
+            order_id: orderId,
+            media_buyer_id: ordRow?.media_buyer_id ?? null,
+            amount_naira: amountNaira,
+            status: "confirmed",
+            paid_at: new Date().toISOString(),
+            channel: data.channel,
+            paystack_reference: reference,
+            raw_event: event,
+            ...sender
+          });
+        }
+        // A matched payment is the proof of delivery: mark the order delivered (never reopen a cancelled/returned one).
+        await supabase.from("orders").update({
+          order_status: "delivered",
+          delivered_at: new Date().toISOString()
+        }).eq("id", orderId).in("order_status", ["pending", "valid"]);
+        await notifyPaymentConfirmed(orderId);
+      };
       const { data: company } = await supabase.from("companies").select("id").eq("paystack_customer_code", customerCode).maybeSingle();
       if (company) {
+        const orderId = await findOrder({ companyId: company.id }, false);
+        if (orderId) { await confirmOrder(orderId); return new Response("ok", { status: 200 }); }
+        // No order matched: the money is real, so it sits in the company funding wallet. An admin can match it to an order later.
         const { error } = await supabase.from("payments").insert({
           company_id: company.id,
           order_id: null,
@@ -225,12 +286,11 @@ Deno.serve(async (req)=>{
           paid_at: new Date().toISOString(),
           paystack_reference: reference,
           raw_event: event,
+          held_reason: "No order matched this deposit",
           ...sender
         });
-        if (error) console.error("paystack-webhook admin_topup insert error:", error.message);
-        return new Response("ok", {
-          status: 200
-        });
+        if (error) console.error("paystack-webhook company deposit insert error:", error.message);
+        return new Response("ok", { status: 200 });
       }
       const { data: buyer } = await supabase.from("media_buyers").select("id, company_id").eq("paystack_customer_code", customerCode).maybeSingle();
       if (!buyer) {
@@ -245,107 +305,35 @@ Deno.serve(async (req)=>{
           raw_event: event,
           ...sender
         });
-        return new Response("ok", {
-          status: 200
-        });
+        return new Response("ok", { status: 200 });
       }
-      // 1. Narration contains the order's code -- exact match.
-      let matchedOrderId = null;
-      const { data: codeOrders } = await supabase.from("orders").select("id, payment_narration_code, customer_name").eq("media_buyer_id", buyer.id).not("payment_narration_code", "is", null);
-      for (const o of codeOrders ?? []){
-        if (o.payment_narration_code && narration.toUpperCase().includes(o.payment_narration_code)) {
-          matchedOrderId = o.id;
-          break;
-        }
-      }
-      // A code in the narration proves which order it is for, but not that the whole price was paid.
-      // Part payments are left for a person to reconcile instead of marking the order delivered.
-      if (matchedOrderId) {
-        const { data: ord } = await supabase.from("orders").select("order_value_naira").eq("id", matchedOrderId).maybeSingle();
-        if (ord && Number(ord.order_value_naira ?? 0) - amountNaira > 1) matchedOrderId = null;
-      }
-      // 2. Sender name + exact amount, among this buyer's pending payments.
-      if (!matchedOrderId) {
-        const { data: pending } = await supabase.from("payments").select("id, order_id, orders!inner(customer_name)").eq("media_buyer_id", buyer.id).eq("status", "pending").eq("amount_naira", amountNaira);
-        const nameMatches = (pending ?? []).filter((p)=>{
-          const custName = normalizeName(p.orders?.customer_name);
-          return sameName(senderName, custName);
-        });
-        if (nameMatches.length === 1) matchedOrderId = nameMatches[0].order_id;
-      }
-      // 3. Orders still waiting for this money: this buyer's unpaid orders worth exactly this amount (pay-on-delivery orders
-      //    have no waiting payment row). The sender's name picks the order; if the name does not match (a POS, someone paying
-      //    for a friend), a single order at this price that customer care has already confirmed (valid) is taken as the one.
-      if (!matchedOrderId) {
-        const { data: open } = await supabase.from("orders").select("id, customer_name, order_status, payments(status)").eq("media_buyer_id", buyer.id).in("order_status", [
-          "pending",
-          "valid"
-        ]).eq("order_value_naira", amountNaira);
-        const unpaid = (open ?? []).filter((o)=>!(o.payments ?? []).some((p)=>p.status === "confirmed"));
-        const byName = unpaid.filter((o)=>{
-          const custName = normalizeName(o.customer_name);
-          return sameName(senderName, custName);
-        });
-        if (byName.length === 1) matchedOrderId = byName[0].id;
-        else if (unpaid.length === 1 && unpaid[0].order_status === "valid") matchedOrderId = unpaid[0].id;
-      }
-      if (matchedOrderId) {
-        const { error } = await supabase.from("payments").update({
-          status: "confirmed",
-          paid_at: new Date().toISOString(),
-          paystack_reference: reference,
-          channel: data.channel,
-          raw_event: event,
-          ...sender
-        }).eq("order_id", matchedOrderId);
-        if (error) console.error("paystack-webhook update error:", error.message);
-        else {
-          // The order may have had no pending payment row to update; make sure a confirmed one exists.
-          const { data: confirmedRow } = await supabase.from("payments").select("id").eq("order_id", matchedOrderId).eq("status", "confirmed").limit(1);
-          if (!confirmedRow || !confirmedRow.length) {
-            await supabase.from("payments").insert({
-              company_id: buyer.company_id,
-              order_id: matchedOrderId,
-              media_buyer_id: buyer.id,
-              amount_naira: amountNaira,
-              status: "confirmed",
-              paid_at: new Date().toISOString(),
-              channel: data.channel,
-              paystack_reference: reference,
-              raw_event: event,
-              ...sender
-            });
-          }
-          // A matched payment is the proof of delivery: mark the order delivered (never reopen a cancelled/returned one).
-          await supabase.from("orders").update({
-            order_status: "delivered",
-            delivered_at: new Date().toISOString()
-          }).eq("id", matchedOrderId).in("order_status", [
-            "pending",
-            "valid"
-          ]);
-          await notifyPaymentConfirmed(matchedOrderId);
-        }
-      } else {
-        // No order could be matched (a POS or bank app often changes the sender name). The money is real, so it is held in
-        // the COMPANY funding wallet right away: stored as a company-level confirmed deposit that remembers which buyer's
-        // account it arrived in. The buyer cannot spend it. An admin can later match it to an order, which moves it out.
-        await supabase.from("payments").insert({
-          company_id: buyer.company_id,
-          order_id: null,
-          media_buyer_id: null,
-          amount_naira: amountNaira,
-          status: "confirmed",
-          source: "admin_topup",
-          channel: data.channel,
-          paid_at: new Date().toISOString(),
-          paystack_reference: reference,
-          raw_event: event,
-          held_for_buyer_id: buyer.id,
-          held_reason: "No order matched this deposit",
-          ...sender
-        });
-      }
+      // A media buyer's own account. Customers used to pay here, so a deposit that clearly belongs to one of their orders
+      // (the order's payment code, or the customer's name and the exact price) is still applied to that order.
+      const legacyOrder = await findOrder({ buyerId: buyer.id, companyId: buyer.company_id }, true);
+      if (legacyOrder) { await confirmOrder(legacyOrder); return new Response("ok", { status: 200 }); }
+      // Otherwise it is the buyer topping up their wallet from any bank. Paystack's fee and Revora's deposit fee come off what lands.
+      const credited = Math.max(0, Math.round((amountNaira - paystackFee) * 100) / 100);
+      const { data: seenTop } = await supabase.from("wallet_topups").select("id").eq("reference", reference).limit(1);
+      if (seenTop && seenTop.length) return new Response("ok", { status: 200 });
+      const { error: topErr } = await supabase.from("wallet_topups").insert({
+        company_id: buyer.company_id,
+        media_buyer_id: buyer.id,
+        amount_naira: credited,
+        reference,
+        status: "confirmed",
+        channel: "bank_transfer",
+        created_by: null,
+        confirmed_at: new Date().toISOString(),
+        charged_naira: amountNaira,
+        paystack_fee_naira: paystackFee
+      });
+      if (topErr) { console.error("paystack-webhook wallet top-up insert error:", topErr.message); return new Response("ok", { status: 200 }); }
+      const { data: fee } = await supabase.rpc("rv_fee", { p_kind: "deposit", p_amount: credited });
+      const take = Math.min(Number(fee ?? 0), credited);
+      if (take > 0) await supabase.rpc("rv_take_fee", { p_kind: "deposit", p_company: buyer.company_id, p_buyer: buyer.id, p_user: null, p_amount: credited, p_fee: take, p_ref: reference, p_note: "Deposit fee on bank transfer" });
+      const { data: bprof } = await supabase.from("profiles").select("id").eq("media_buyer_id", buyer.id).eq("role", "buyer").limit(1).maybeSingle();
+      await supabase.rpc("rv_notify", { p_company: buyer.company_id, p_category: "money", p_kind: "wallet_deposit", p_title: `💰 ${"₦" + Math.round(credited - take).toLocaleString("en-NG")} added to your wallet`,
+        p_body: `Bank transfer received${data.authorization?.sender_name ? " from " + data.authorization.sender_name : ""}. Fees: ₦${Math.round(paystackFee + take).toLocaleString("en-NG")}.`, p_url: "/dashboard_new.html?open=tab:wallet", p_severity: "success", p_data: { reference }, p_dedupe: "dva:" + reference, p_buyer: null, p_user: bprof?.id ?? null, p_push: true });
     }
     return new Response("ok", {
       status: 200

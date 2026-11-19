@@ -501,13 +501,29 @@ async function w2Statement() {
 
 // ---- Add money (card; the Paystack charge is added at checkout, Revora's deposit fee comes off what lands) ----
 function w2Add() {
+  const bank = W2.addMode === "bank";
+  const seg = `<div class="w2-seg"><button type="button" class="${bank ? "" : "on"}" onclick="W2.addMode='card';w2Draw()">Card</button><button type="button" class="${bank ? "on" : ""}" onclick="W2.addMode='bank';w2Draw();w2LoadDva()">Bank transfer</button></div>`;
+  if (bank) {
+    const d = W2.dva, admin = w2Admin();
+    const acct = d === undefined ? `<div class="w2-sk" style="height:140px"></div>` : d && d.account ? `<div class="w2-acct"><small>${escH(d.account.bank || "")}</small><div class="no">${escH(d.account.number)}</div><small>${escH(d.account.name || "")}</small>
+        <button type="button" class="w2-sbtn" onclick="w2CopyAcct()">Copy account number</button></div>` : `<div class="w2-empty">${d && d.error ? escH(d.error) : "You do not have an account number yet."}<br><button type="button" class="w2-cta" style="margin-top:12px" onclick="w2LoadDva(true)">Get my account number</button></div>`;
+    return `${w2Nav("Add money")}${seg}${acct}
+      <div class="w2-sum"><div class="w2-ln"><span>Paystack fee</span><span>Taken from what you send</span></div><div class="w2-ln"><span>Revora deposit fee</span><span>${escH(w2FeeText("deposit"))}</span></div></div>
+      <div class="w2-hint">${admin ? "This is your company account. A payment that matches a customer's order goes to that order; anything else lands in your funding wallet." : "Send from any bank, any time. The money is added to your wallet within a minute or two, minus the fees above, and you get a notification."}</div>`;
+  }
   const amt = Number(W2.addAmt || 50000), charged = w2Charge(amt), rf = w2Fee("deposit", amt);
-  return `${w2Nav("Add money")}<div class="w2-seg"><span class="on">Card</span><span class="soon">Bank transfer · soon</span></div>
+  return `${w2Nav("Add money")}${seg}
     <div class="w2-big"><small>Amount</small><input id="w2AddAmt" type="number" inputmode="numeric" min="1000" step="500" value="${amt}" oninput="W2.addAmt=this.value;w2AddSum()"><div class="w2-qs">${[10000, 20000, 50000, 100000].map((n) => `<button type="button" class="w2-chip${amt === n ? " on" : ""}" onclick="W2.addAmt=${n};w2Draw()">${n / 1000}k</button>`).join("")}</div></div>
     <div id="w2AddSum">${w2Lines([["You pay at checkout", `<b>${w2Money(charged)}</b>`], ["Paystack fee (added at checkout)", w2Money(charged - amt), "fee"], ["Revora deposit fee", "−" + w2Money(rf), "fee"], ["Lands in your wallet", w2Money(amt - rf), "tot g"]])}</div>
     <div class="w2-hint">Card, bank and USSD options appear on the Paystack page. The money is added as soon as the payment is confirmed.</div>
     <div id="w2Msg" class="w2-msg"></div><button type="button" class="w2-cta" id="w2AddGo" onclick="w2AddGo()">Continue to payment</button>`;
 }
+async function w2LoadDva(create) {
+  if (W2.dva !== undefined && !create) return;
+  const r = await sbFn("wallet-topup", { action: "dva", create: !!create }).catch((e) => ({ error: e.message }));
+  W2.dva = r && r.ok ? r : { error: r?.error || "Could not load your account number." }; if (W2.view === "add") w2Draw();
+}
+function w2CopyAcct() { try { navigator.clipboard.writeText(W2.dva.account.number); bvToast("Account number copied"); } catch { bvToast("Could not copy", "err"); } }
 function w2AddSum() {
   const amt = Number(W2.addAmt || 0), box = document.getElementById("w2AddSum"); if (!box) return;
   const charged = w2Charge(amt), rf = w2Fee("deposit", amt);
@@ -703,6 +719,7 @@ function w2Draw() {
   el.innerHTML = `<div class="rv-ui wl2" id="wlRoot2" data-view="${W2.view === "home" ? "home" : "pane"}"><div class="wl2-home">${w2Home()}</div><div class="wl2-pane">${w2Pane()}</div></div>`;
   if (W2.view === "meta") { const sel = document.getElementById("w2MBank"); if (sel) { sel.innerHTML = `<option value="">Loading banks…</option>`; Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.meta.bank) sel.value = W2.meta.bank; }); sel.onchange = () => { W2.meta.bank = sel.value; }; } }
   if (W2.view === "requests" && W2.legacy === undefined) w2LoadLegacy();
+  if (W2.view === "add" && W2.addMode === "bank" && W2.dva === undefined && !W2.dvaBusy) { W2.dvaBusy = true; w2LoadDva().finally(() => { W2.dvaBusy = false; }); }
   if (W2.view === "old") { const box = document.getElementById("w2Old"); if (box) { const back = document.createElement("div"); back.className = "w2-nav"; back.innerHTML = `<button type="button" class="w2-ibtn" onclick="w2Go('home')" aria-label="Back">${rvIc("back")}</button><h2>More tools</h2>`; box.appendChild(back); const inner = document.createElement("div"); box.appendChild(inner); renderWalletLegacy(inner); } }
 }
 
