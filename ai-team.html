@@ -448,6 +448,13 @@ $("sSave").onclick = async function () {
   $("sMsg").textContent = o.error ? o.error : "Saved.";
   if (!o.error) S.cap = Number($("sCap").value) || 0;
 };
+// When a new version of this page is published, say so (an open page never updates by itself).
+var VER = null;
+async function checkVersion() {
+  try { var r = await fetch(location.pathname, { method: "HEAD", cache: "no-store" }), v = r.headers.get("etag") || r.headers.get("last-modified") || r.headers.get("content-length");
+    if (!v) return; if (VER === null) VER = v; else if (v !== VER && !$("newv")) { var d = document.createElement("div"); d.id = "newv"; d.style.cssText = "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--card);padding:10px 14px;border-radius:12px;font-weight:600;display:flex;gap:12px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.25)"; d.innerHTML = 'A new version is ready <button style="height:30px;background:var(--brand);color:#fff;border-color:var(--brand)" onclick="location.reload()">Refresh</button>'; document.body.appendChild(d); } } catch (e) {}
+}
+checkVersion(); setInterval(checkVersion, 120000);
 (async function () {
   try {
     var ms = await loadPast();
