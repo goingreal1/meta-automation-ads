@@ -964,7 +964,8 @@ async function accountBalance(admin, a, actId, token) {
 async function handleMetaReport(slotHour, push = true) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const day = wat(0), from = new Date(`${day}T00:00:00+01:00`), to = new Date(from.getTime() + 86400000);
-  const label = slotHour === 12 ? "Midday report" : slotHour === 16 ? "Afternoon report" : slotHour === 20 ? "Evening report" : "Report";
+  const monthStart = day.slice(0, 8) + "01", mFrom = new Date(`${monthStart}T00:00:00+01:00`);
+  const label = slotHour === 12 ? "Midday report" : slotHour === 16 ? "4pm report" : slotHour === 20 ? "Today's report" : "Report";
   const slot = slotHour === 12 || slotHour === 16 || slotHour === 20 ? String(slotHour) : "x";
   const money = (n)=>"₦" + Math.round(n || 0).toLocaleString("en-NG");
   const { data: companies } = await admin.from("companies").select("id");
@@ -975,12 +976,14 @@ async function handleMetaReport(slotHour, push = true) {
     if (!usable.length) continue;
     const per = await Promise.allSettled(usable.map(async (a)=>{
       const actId = String(a.meta_ad_account_id).replace(/^act_/, ""), token = await resolveToken(admin, a), factor = factorOf(a);
-      const [rows, campIns, acctIns, balance] = await Promise.all([
+      const [rows, campIns, acctIns, balance, monthRows] = await Promise.all([
         graphGetAll(`act_${actId}/insights`, { level: "ad", time_range: JSON.stringify({ since: day, until: day }), fields: "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,actions" }, token, 12),
         insightsByLevel(actId, "campaign", "today", token, factor).catch(()=>({})),
         graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: day, until: day }), fields: "reach,impressions,spend" }, token).catch(()=>[]),
-        accountBalance(admin, a, actId, token)
+        accountBalance(admin, a, actId, token),
+        graphGetAll(`act_${actId}/insights`, { level: "account", time_range: JSON.stringify({ since: monthStart, until: day }), fields: "spend,actions" }, token).catch(()=>[])
       ]);
+      const mm = monthRows[0] ? insightRow(monthRows[0], factor) : { spend: 0, purchases: 0 };
       const camps = new Map();
       for (const r of rows){
         const m = insightRow(r, factor);
@@ -997,22 +1000,43 @@ async function handleMetaReport(slotHour, push = true) {
       }));
       const spend = [...camps.values()].reduce((t, x)=>t + x.spend, 0), purchases = [...camps.values()].reduce((t, x)=>t + x.purchases, 0);
       const ar = acctIns[0] ? num(acctIns[0].reach) : 0;
-      return { buyer: a.media_buyer_id, account: a.nickname, balance, spend: Math.round(spend), purchases, reach: Math.round(ar), campaigns: list };
+      return { buyer: a.media_buyer_id, account: a.nickname, balance, spend: Math.round(spend), purchases, reach: Math.round(ar), month_spend: Math.round(mm.spend), month_purchases: mm.purchases, campaigns: list };
     }));
     const okAccts = per.filter((r)=>r.status === "fulfilled").map((r)=>r.value);
     const { data: ords } = await admin.from("orders").select("media_buyer_id, order_status, order_value_naira").eq("company_id", c.id).gte("ordered_at", from.toISOString()).lt("ordered_at", to.toISOString());
+    const { data: mOrds } = await admin.from("orders").select("media_buyer_id, order_status").eq("company_id", c.id).gte("ordered_at", mFrom.toISOString()).lt("ordered_at", to.toISOString());
+    // Money received = logged funds + card top-ups + money Revora sent to Meta for the buyer (sends out of a buyer's own held balance are NOT counted again).
+    const [{ data: fl }, { data: tp }, { data: fr }] = await Promise.all([
+      admin.from("fund_logs").select("media_buyer_id, amount_naira, log_date").eq("company_id", c.id).gte("log_date", monthStart).lte("log_date", day),
+      admin.from("wallet_topups").select("media_buyer_id, amount_naira, confirmed_at").eq("company_id", c.id).eq("status", "confirmed").gte("confirmed_at", mFrom.toISOString()).lt("confirmed_at", to.toISOString()),
+      admin.from("fund_requests").select("media_buyer_id, amount_naira, transferred_at").eq("company_id", c.id).eq("paid_from", "company").eq("status", "transferred").gte("transferred_at", mFrom.toISOString()).lt("transferred_at", to.toISOString())
+    ]);
+    const recv = (buyer)=>{
+      const ok = (x)=>buyer === undefined || x.media_buyer_id === buyer, add = (rows, f, inDay)=>(rows ?? []).filter(ok).reduce((t, x)=>t + (inDay(f(x)) ? Number(x.amount_naira || 0) : 0), 0);
+      const inToday = (iso)=>String(iso).length === 10 ? iso === day : new Date(iso) >= from && new Date(iso) < to, any = ()=>true;
+      return {
+        today: add(fl, (x)=>x.log_date, inToday) + add(tp, (x)=>x.confirmed_at, inToday) + add(fr, (x)=>x.transferred_at, inToday),
+        month: add(fl, (x)=>x.log_date, any) + add(tp, (x)=>x.confirmed_at, any) + add(fr, (x)=>x.transferred_at, any)
+      };
+    };
     const make = (buyer)=>{
       const accts = okAccts.filter((x)=>buyer === undefined || x.buyer === buyer);
       const o = (ords ?? []).filter((x)=>x.order_status !== "cancelled" && (buyer === undefined || x.media_buyer_id === buyer));
       const t = { spend: accts.reduce((s, x)=>s + x.spend, 0), purchases: accts.reduce((s, x)=>s + x.purchases, 0), reach: accts.reduce((s, x)=>s + x.reach, 0), balance: accts.reduce((s, x)=>s + (x.balance ?? 0), 0), orders: o.length, orders_value: o.reduce((s, x)=>s + Number(x.order_value_naira || 0), 0) };
+      // Order count = CRM orders; when the CRM has none, the Meta purchases stand in. CPA = spend / order count.
+      t.order_count = t.orders || t.purchases; t.order_source = t.orders ? "crm" : "meta"; t.cpa = t.order_count ? Math.round(t.spend / t.order_count) : 0;
+      const rc = recv(buyer); t.fund_received = Math.round(rc.today);
+      const mo = (mOrds ?? []).filter((x)=>x.order_status !== "cancelled" && (buyer === undefined || x.media_buyer_id === buyer)).length;
+      const ms = accts.reduce((s, x)=>s + (x.month_spend || 0), 0), mp = accts.reduce((s, x)=>s + (x.month_purchases || 0), 0), moc = mo || mp;
+      t.month = { fund_received: Math.round(rc.month), spend: ms, order_count: moc, cpa: moc ? Math.round(ms / moc) : 0 };
       return { t, accts };
     };
     const emit = async (who, r, userId)=>{
       const best = r.accts.flatMap((x)=>x.campaigns).sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend)[0];
-      if (!(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0)) return;
+      if (!(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0 || r.t.fund_received > 0)) return;
       await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "meta_report",
-        p_title: `📈 ${label}${who ? " · " + who : ""}: ${money(r.t.spend)} spent · ${r.t.purchases} Meta purchase${r.t.purchases === 1 ? "" : "s"}`,
-        p_body: [`${r.t.reach.toLocaleString("en-NG")} people reached`, `Balance ${money(r.t.balance)}`, r.t.orders ? `${r.t.orders} CRM order${r.t.orders === 1 ? "" : "s"} · ${money(r.t.orders_value)}` : "No orders in the CRM", best && best.purchases > 0 ? `Best: ${String(best.name).slice(0, 50)} (${best.purchases})` : null].filter(Boolean).join(" · "),
+        p_title: `📈 ${label}${who ? " · " + who : ""}`,
+        p_body: [`Fund received: ${money(r.t.fund_received)}`, `Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)}`].concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []).join("\n"),
         p_url: "/dashboard_new.html?open=tab:campaigns", p_severity: "info",
         p_data: { report: { label, date: day, totals: r.t, accounts: r.accts.map(({ buyer, ...x })=>x) } },
         p_dedupe: `report:${day}:${slot}${userId ? ":" + userId : ""}`, p_buyer: null, p_user: userId ?? null, p_push: push });
