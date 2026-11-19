@@ -403,15 +403,17 @@ Deno.serve(async (req)=>{
       for (const a of adj ?? []) {
         if (/_fee$/.test(a.reason)) continue;
         const l = LABEL[a.reason] ?? [a.reason, 1], sign = l[1], amt = -Number(a.amount_naira);
-        rows.push({ id: a.id, kind: a.reason, title: a.note ? `${l[0]} · ${a.note.replace(/^(To|From) /, "")}` : l[0], amount: amt, fee: feeBy[a.ref] || 0, at: a.created_at, ref: a.ref, dir: amt >= 0 ? "in" : "out" });
+        // A credit that paid the deposit fee shows what actually landed (after the fee), with the money sent as "gross".
+        const dfee = a.reason === "given_by_company" ? (feeBy[a.ref] || 0) : 0;
+        rows.push({ id: a.id, kind: a.reason, title: a.note ? `${l[0]} · ${a.note.replace(/^(To|From) /, "")}` : l[0], amount: amt - dfee, gross: dfee ? amt : undefined, fee: feeBy[a.ref] || 0, at: a.created_at, ref: a.ref, dir: amt >= 0 ? "in" : "out" });
       }
-      let tpQ = admin.from("wallet_topups").select("id, reference, amount_naira, status, created_at, confirmed_at, channel, paystack_fee_naira").eq("company_id", me.company_id).eq("status", "confirmed");
+      let tpQ = admin.from("wallet_topups").select("id, reference, amount_naira, status, created_at, confirmed_at, channel, paystack_fee_naira, charged_naira").eq("company_id", me.company_id).eq("status", "confirmed");
       tpQ = mb ? tpQ.eq("media_buyer_id", mb) : tpQ.is("media_buyer_id", null);
       const { data: tps } = await lim(tpQ).order("created_at", { ascending: false }).limit(60);
       const tref = (tps ?? []).map((x)=>x.reference);
       const { data: fl } = tref.length ? await admin.from("fee_ledger").select("ref, fee_naira, kind").in("ref", tref).eq("kind", "deposit") : { data: [] };
       const flBy = Object.fromEntries((fl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
-      for (const x of tps ?? []) rows.push({ id: x.id, kind: "topup", title: "Money added", sub: x.channel ?? "card", amount: Number(x.amount_naira) - (flBy[x.reference] || 0), fee: (flBy[x.reference] || 0) + Number(x.paystack_fee_naira || 0), at: x.confirmed_at ?? x.created_at, ref: x.reference, dir: "in" });
+      for (const x of tps ?? []) rows.push({ id: x.id, kind: "topup", title: "Money added", sub: x.channel ?? "card", amount: Number(x.amount_naira) - (flBy[x.reference] || 0), gross: Number(x.charged_naira ?? x.amount_naira), fee: (flBy[x.reference] || 0) + Number(x.paystack_fee_naira || 0), at: x.confirmed_at ?? x.created_at, ref: x.reference, dir: "in" });
       let frQ = admin.from("fund_requests").select("id, amount_naira, transferred_at, destination_account_name, req_account_name, paid_from, requested_at").eq("company_id", me.company_id).eq("status", "transferred");
       frQ = mb ? frQ.eq("media_buyer_id", mb).eq("paid_from", "buyer") : frQ.eq("paid_from", "company");
       const { data: frs } = await (beforeIso ? frQ.lt("transferred_at", beforeIso) : frQ).order("transferred_at", { ascending: false }).limit(60);

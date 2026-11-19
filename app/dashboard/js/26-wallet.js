@@ -478,8 +478,8 @@ function w2Receipt() {
   const out = x.amount < 0, amount = Math.abs(x.amount);
   const lines = [["Date", escH(new Date(x.at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" }))]];
   if (x.sub) lines.push(["Details", escH(x.sub)]);
-  lines.push([out ? "Amount" : "Amount received", w2Money(amount)]);
-  if (x.fee > 0) lines.push(["Fees", w2Money(x.fee), "fee"]);
+  lines.push([out ? "Amount" : "Money sent to you", w2Money(out ? amount : (x.gross || amount + x.fee))]);
+  if (x.fee > 0) lines.push(["Fees", (out ? "+" : "−") + w2Money(x.fee), "fee"]);
   lines.push([out ? "Total paid" : "Credited to wallet", w2Money(out ? amount + x.fee : amount), "tot"]);
   lines.push(["Reference", escH(String(x.ref || x.id).slice(-10).toUpperCase())]);
   return `${w2Nav("Receipt", "activity")}<div class="w2-rcpt"><div class="w2-ok ${out ? "out" : ""}">${rvIc(out ? "arrup" : "check", 26)}</div><small>${escH(x.title)}</small><div class="n">${w2Money(amount)}</div></div>${w2Lines(lines)}
