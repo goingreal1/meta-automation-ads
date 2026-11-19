@@ -1384,6 +1384,49 @@ async function handleAddPagePost(userClient, body) {
     text: String(post.message ?? "").slice(0, 300)
   };
 }
+async function handleAddCarousel(userClient, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const raw = Array.isArray(body.cards) ? body.cards : [];
+  if (raw.length < 2 || raw.length > 10) throw new HttpError(400, "A carousel needs 2 to 10 cards.");
+  const cards = [];
+  for (const k of raw){
+    let url = String(k?.image_url ?? "");
+    if (!url && k?.creative_id) {
+      const { data: a } = await admin.from("creative_assets").select("public_url, asset_type").eq("id", k.creative_id).eq("company_id", account.company_id).maybeSingle();
+      if (!a || a.asset_type !== "image") throw new HttpError(400, "Each card must be an uploaded image (creative_id of an image).");
+      url = a.public_url;
+    }
+    if (!/^https:\/\//.test(url)) throw new HttpError(400, "Each card needs an image (image_url or creative_id).");
+    cards.push({
+      image_url: url,
+      headline: String(k.headline ?? "").slice(0, 80),
+      description: String(k.description ?? "").slice(0, 150),
+      link: k.link ? String(k.link) : undefined
+    });
+  }
+  const name = String(body.name ?? "").trim() || `Carousel (${cards.length} cards)`;
+  const { data, error } = await admin.from("creative_assets").insert({
+    company_id: account.company_id,
+    ad_account_id: account.id,
+    file_name: name,
+    storage_path: `carousel/${crypto.randomUUID()}`,
+    public_url: cards[0].image_url,
+    asset_type: "carousel",
+    carousel_cards: cards,
+    primary_text: String(body.primary_text ?? "").slice(0, 2000) || null,
+    product_id: body.product_id || null,
+    uploaded_by: "carousel",
+    test_status: "untested",
+    uploaded_at: new Date().toISOString()
+  }).select("id").single();
+  if (error) throw new HttpError(500, error.message);
+  return {
+    ok: true,
+    creative_id: data.id,
+    cards: cards.length
+  };
+}
 const isOurImage = (u)=>u.startsWith(`${SUPABASE_URL}/storage/v1/object/public/`);
 async function handleAdPreview(userClient, body) {
   const { account, actId } = await getAccount(userClient, body.ad_account_id);
@@ -2148,6 +2191,7 @@ Deno.serve(async (req)=>{
     if (body.action === "ad_preview") return json(await handleAdPreview(userClient, body));
     if (body.action === "page_posts") return json(await handlePagePosts(userClient, body));
     if (body.action === "add_page_post") return json(await handleAddPagePost(userClient, body));
+    if (body.action === "add_carousel") return json(await handleAddCarousel(userClient, body));
     if (body.action === "set_ad_image") return json(await handleSetAdImage(userClient, body));
     throw new HttpError(400, "Unknown action.");
   } catch (e) {
