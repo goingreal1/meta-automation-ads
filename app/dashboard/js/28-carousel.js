@@ -38,20 +38,19 @@
       const ov = bvOpenSheet(id, `
         <button class="bv-modal-close" data-sheet-close>✕</button>
         <h3 style="margin:0 0 4px">${editId ? "Edit carousel" : "Create carousel"}</h3>
-        <div style="color:var(--text2);font-size:12.5px;margin-bottom:10px">2 to 10 pictures. They swipe in the order below, card 1 first. Drag ⋮⋮ or use ↑ ↓ to reorder.</div>
+        <div style="color:var(--text2);font-size:12.5px;margin-bottom:10px">2 to 10 pictures. They swipe in the order below, card 1 first. Each card has its own headline; the primary text above is shared by the whole ad.</div>
         <div class="field"><label>Name</label><input class="cat-in" id="crN" value="${escH(S.name)}" placeholder="e.g. Hair story, 3 steps"></div>
-        <div class="field" style="margin-top:8px"><label>Text above the carousel (one text for the whole ad)</label><textarea class="cat-in" id="crP" rows="2" placeholder="The hook that makes people swipe">${escH(S.primary_text)}</textarea></div>
+        <div class="field" style="margin-top:8px"><label>Primary text (the main ad copy, shown above the carousel)</label><textarea class="cat-in" id="crP" rows="2" placeholder="The hook that makes people swipe">${escH(S.primary_text)}</textarea></div>
         <div class="cr-list" id="crList">${S.cards.map((k, i) => `
           <div class="cr-card" draggable="true" data-i="${i}">
             <div class="cr-grip" title="Drag to reorder">⋮⋮</div><div class="cr-n">${i + 1}</div>
             <img class="cr-img" src="${escH(k.image_url)}" alt="">
-            <div class="cr-f"><input class="cat-in" data-k="headline" data-i="${i}" value="${escH(k.headline || "")}" maxlength="80" placeholder="Card headline">
-              <input class="cat-in" data-k="description" data-i="${i}" value="${escH(k.description || "")}" maxlength="150" placeholder="Card description (optional)"></div>
+            <div class="cr-f"><input class="cat-in" data-k="headline" data-i="${i}" value="${escH(k.headline || "")}" maxlength="80" placeholder="Card headline (the bold line under this picture)"></div>
             <div class="cr-ctl"><button type="button" data-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" data-dn="${i}" ${i === S.cards.length - 1 ? "disabled" : ""}>↓</button><button type="button" data-rm="${i}" title="Remove">✕</button></div>
           </div>`).join("") || `<div style="color:var(--muted);font-size:12.5px;padding:8px 0">No cards yet. Add pictures below.</div>`}</div>
         ${S.cards.length < 10 ? `<div class="cr-add" id="crUp">+ Upload pictures</div><input type="file" id="crFiles" accept="image/jpeg,image/png" multiple style="display:none">` : ""}
         ${lib.length && S.cards.length < 10 ? `<div style="font-size:11.5px;color:var(--muted);margin:8px 0 2px">Or tap one of this product's pictures to add it:</div><div class="cr-tray">${lib.map(a => `<img src="${escH(a.public_url)}" data-lib="${escH(a.public_url)}" alt="">`).join("")}</div>` : ""}
-        ${S.cards.length >= 2 ? `<div style="font-size:12px;font-weight:600;margin-top:12px">Preview (swipe)</div><div class="cr-prev">${S.cards.map(k => `<div><img src="${escH(k.image_url)}" alt=""><b>${escH(k.headline || "Headline")}</b><small>${escH(k.description || "")}</small></div>`).join("")}</div>` : ""}
+        ${S.cards.length >= 2 ? `<div style="font-size:12px;font-weight:600;margin-top:12px">Preview (swipe)</div><div class="cr-prev">${S.cards.map(k => `<div><img src="${escH(k.image_url)}" alt=""><b>${escH(k.headline || "Headline")}</b></div>`).join("")}</div>` : ""}
         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:12.5px"><input type="checkbox" id="crFeed" ${S.feed_only ? "checked" : ""} style="margin-top:2px"><span><b>Feed only</b><br><span style="color:var(--muted)">Run only in Facebook and Instagram Feed. Meta often crops or refuses carousels in Reels and Stories.</span></span></label>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px"><button type="button" class="btn btn-g" id="crX">Cancel</button><button type="button" class="btn btn-a" id="crOk">${editId ? "Save changes" : "Save carousel"}</button></div>`, 640);
       if (keepScroll) ov.querySelector(".bv-modal").scrollTop = keepScroll;
