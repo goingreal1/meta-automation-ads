@@ -171,10 +171,13 @@ Deno.serve(async (req)=>{
       if (!ok) {
         // Money did not arrive: give it back to the wallet / let the funding request be sent again.
         if (code) {
+          const { data: wds } = await supabase.from("admin_withdrawals").select("id").eq("paystack_transfer_code", code).eq("status", "sent");
           await supabase.from("admin_withdrawals").update({
             status: "failed",
             transfer_error: why
           }).eq("paystack_transfer_code", code).eq("status", "sent");
+          // The money is back in the wallet, and so is Revora's fee.
+          for (const w of wds ?? []) await supabase.rpc("rv_refund_fee", { p_kind: "transfer", p_ref: String(w.id) });
           await supabase.from("fund_requests").update({
             status: "approved",
             paystack_transfer_code: null,
