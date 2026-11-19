@@ -10,6 +10,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "take_back", buyer_id, amount }                -> admin moves unused money from a buyer's wallet back to the company wallet
 //   POST { action: "request", amount, note? }                     -> a buyer asks the admin to fund their Revora wallet
 //   POST { action: "decide", id, decision: "approve"|"decline" }  -> admin answers; approving moves the money from the company wallet straight into the buyer's wallet
+//   POST { action: "fees", amount? }                              -> the platform fees; with an amount, what a card top-up would cost and what would land
+//   POST { action: "lookup", key }                                -> find a Revora user by phone number or email (exact match, masked)
+//   POST { action: "send", to_user, amount, pin, note? }          -> wallet to wallet, any company, charged the wallet fee
+//   POST { action: "activity", limit?, before? }                  -> the movements on my wallet, fees folded into each line
 //   POST (x-cron-secret) { action: "sweep" }                      -> confirms top-ups whose buyer closed the page before it redirected back
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -31,8 +35,50 @@ const json = (o, s = 200)=>new Response(JSON.stringify(o), {
     }
   });
 // Confirms one pending top-up with Paystack. Only the first caller flips pending -> confirmed, so a repeat can never credit twice.
+// Paystack's cut on a card payment in Nigeria: 1.5% + ₦100 (the ₦100 is waived under ₦2,500), at most ₦2,000. The customer pays it on top of the amount.
+function paystackCharge(net) {
+  const flat = net >= 2500 ? 100 : 0;
+  let gross = Math.ceil((net + flat) / 0.985);
+  if (gross - net > 2000) gross = net + 2000;
+  if (net < 2500) gross = Math.ceil(net / 0.985);
+  return gross;
+}
+const rvFee = async (kind, amount)=>Number((await admin.rpc("rv_fee", { p_kind: kind, p_amount: amount })).data ?? 0);
+// Take the deposit fee off a wallet the moment money lands in it. Safe to call twice for the same ref.
+async function takeDepositFee(companyId, buyerId, userId, amount, ref, note) {
+  const fee = await rvFee("deposit", amount);
+  if (fee > 0) await admin.rpc("rv_take_fee", { p_kind: "deposit", p_company: companyId, p_buyer: buyerId, p_user: userId, p_amount: amount, p_fee: fee, p_ref: ref, p_note: note });
+  return fee;
+}
+const safeEq = (a, b)=>{
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for(let i = 0; i < a.length; i++)d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+};
+async function pinHash(userId, pin, saltHex) {
+  const enc = new TextEncoder();
+  const mk = await crypto.subtle.importKey("raw", enc.encode(SERVICE_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const peppered = new Uint8Array(await crypto.subtle.sign("HMAC", mk, enc.encode(`${userId}:${pin}`)));
+  const base = await crypto.subtle.importKey("raw", peppered, "PBKDF2", false, ["deriveBits"]);
+  const salt = Uint8Array.from(saltHex.match(/../g) ?? [], (h)=>parseInt(h, 16));
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100000 }, base, 256));
+  return Array.from(bits).map((x)=>x.toString(16).padStart(2, "0")).join("");
+}
+async function checkPin(userId, pin) {
+  const { data: row } = await admin.from("transfer_pins").select("pin_hash, salt, failed_attempts, locked_until").eq("user_id", userId).maybeSingle();
+  if (!row) return { ok: false, error: "No transfer PIN is set yet. Set one under Settings, Security." };
+  if (row.locked_until && new Date(row.locked_until).getTime() > Date.now()) return { ok: false, error: "Too many wrong PINs. Try again in a few minutes." };
+  if (safeEq(await pinHash(userId, pin, row.salt), row.pin_hash)) {
+    if (row.failed_attempts || row.locked_until) await admin.from("transfer_pins").update({ failed_attempts: 0, locked_until: null }).eq("user_id", userId);
+    return { ok: true };
+  }
+  const n = Number(row.failed_attempts || 0) + 1, lock = n >= 5;
+  await admin.from("transfer_pins").update({ failed_attempts: lock ? 0 : n, locked_until: lock ? new Date(Date.now() + 15 * 60_000).toISOString() : null }).eq("user_id", userId);
+  return { ok: false, error: lock ? "Too many wrong PINs. Locked for 15 minutes." : `Wrong PIN. ${5 - n} ${5 - n === 1 ? "try" : "tries"} left.` };
+}
 async function settle(ref) {
-  const { data: row } = await admin.from("wallet_topups").select("id, amount_naira, status, company_id, media_buyer_id").eq("reference", ref).maybeSingle();
+  const { data: row } = await admin.from("wallet_topups").select("id, amount_naira, status, company_id, media_buyer_id, charged_naira, created_by").eq("reference", ref).maybeSingle();
   if (!row) return {
     ok: false,
     status: "unknown"
@@ -56,7 +102,7 @@ async function settle(ref) {
     ok: false,
     status: String(t.status ?? "pending")
   };
-  if (Number(t.amount) / 100 < Number(row.amount_naira)) return {
+  if (Number(t.amount) / 100 < Number(row.charged_naira ?? row.amount_naira)) return {
     ok: false,
     status: "amount_mismatch"
   };
@@ -65,6 +111,8 @@ async function settle(ref) {
     confirmed_at: new Date().toISOString(),
     channel: t.channel ?? null
   }).eq("id", row.id).eq("status", "pending").select("id");
+  // Revora's deposit fee comes off the money that just landed.
+  if (won?.length) await takeDepositFee(row.company_id, row.media_buyer_id, row.created_by ?? null, Number(row.amount_naira), ref, "Deposit fee on card top-up");
   // A top-up for the company wallet is also written as an ordinary company deposit, so every existing wallet screen counts it.
   if (won?.length && !row.media_buyer_id) {
     await admin.from("payments").insert({
@@ -93,9 +141,6 @@ Deno.serve(async (req)=>{
   if (req.method !== "POST") return json({
     error: "POST only"
   }, 405);
-  if (!PAYSTACK_SECRET_KEY) return json({
-    error: "Payments are not switched on yet."
-  }, 500);
   let b = {};
   try {
     b = await req.json();
@@ -105,6 +150,9 @@ Deno.serve(async (req)=>{
     }, 400);
   }
   const action = String(b?.action ?? "overview");
+  if (["start", "verify", "sweep"].includes(action) && !PAYSTACK_SECRET_KEY) return json({
+    error: "Card payments are not switched on yet."
+  }, 500);
   if (action === "sweep") {
     const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
     const given = req.headers.get("x-cron-secret") || "";
@@ -153,6 +201,7 @@ Deno.serve(async (req)=>{
       const out = {
         role: me.role
       };
+      out.me_wallet = Number((await admin.rpc("rv_wallet_balance_of", { p_user: me.id })).data ?? 0);
       if (me.role === "buyer" && me.media_buyer_id) {
         const { data: w } = await admin.rpc("buyer_wallet_balance", {
           p_buyer: me.media_buyer_id
@@ -220,10 +269,13 @@ Deno.serve(async (req)=>{
         buyerId = String(b.target);
       }
       const reference = `wt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
+      const charged = paystackCharge(amount);
       const { error: insErr } = await admin.from("wallet_topups").insert({
         company_id: me.company_id,
         media_buyer_id: buyerId,
         amount_naira: amount,
+        charged_naira: charged,
+        paystack_fee_naira: charged - amount,
         reference,
         status: "pending",
         created_by: me.id
@@ -241,7 +293,7 @@ Deno.serve(async (req)=>{
         },
         body: JSON.stringify({
           email: u.user.email,
-          amount: amount * 100,
+          amount: charged * 100,
           currency: "NGN",
           reference,
           ...callback ? {
@@ -267,7 +319,10 @@ Deno.serve(async (req)=>{
         ok: true,
         authorization_url: d.data.authorization_url,
         reference,
-        amount_naira: amount
+        amount_naira: amount,
+        charged_naira: charged,
+        paystack_fee_naira: charged - amount,
+        revora_fee_naira: await rvFee("deposit", amount)
       });
     }
     if (action === "verify") {
@@ -287,6 +342,70 @@ Deno.serve(async (req)=>{
         ok: s.ok,
         status: s.status
       });
+    }
+    if (action === "fees") {
+      const { data: fees } = await admin.from("platform_fees").select("kind, enabled, pct, flat_naira, min_naira, cap_naira, payer");
+      const out = { ok: true, fees: fees ?? [] };
+      const a = Math.round(Number(b?.amount));
+      if (Number.isFinite(a) && a > 0) {
+        const charged = paystackCharge(a), rf = await rvFee("deposit", a);
+        out.preview = { amount: a, card_charged: charged, paystack_fee: charged - a, revora_deposit_fee: rf, card_lands: a - rf, transfer_fee: await rvFee("transfer", a), wallet_fee: await rvFee("wallet", a) };
+      }
+      return json(out);
+    }
+    if (action === "lookup") {
+      const { data: found, error } = await admin.rpc("rv_find_user", { p_key: String(b?.key ?? ""), p_exclude: me.id });
+      if (error) return json({ error: "Could not search." }, 500);
+      return json({ ok: true, people: (found ?? []).map((x)=>({ user_id: x.user_id, name: x.name, role: x.role, company: x.company_name, hint: x.hint })) });
+    }
+    if (action === "send") {
+      const amount = Math.round(Number(b?.amount));
+      if (!Number.isFinite(amount) || amount < 100 || amount > 5_000_000) return json({ error: "Send between ₦100 and ₦5,000,000." }, 400);
+      const to = String(b?.to_user ?? "");
+      if (!/^[0-9a-f-]{36}$/i.test(to)) return json({ error: "Pick who to send to." }, 400);
+      const pin = String(b?.pin ?? "");
+      if (!/^\d{4,6}$/.test(pin)) return json({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+      const p = await checkPin(me.id, pin);
+      if (!p.ok) return json({ error: p.error }, 403);
+      const { data: res, error } = await admin.rpc("rv_wallet_send", { p_from: me.id, p_to: to, p_amount: amount, p_note: String(b?.note ?? "").slice(0, 200) });
+      if (error) return json({ error: String(error.message ?? "Could not send.").replace(/^.*?:\s*/, "").replace(/ , /g, ", ") }, 400);
+      return json(res);
+    }
+    if (action === "activity") {
+      const limit = Math.min(Math.max(Number(b?.limit) || 30, 1), 100), beforeIso = b?.before ? new Date(String(b.before)).toISOString() : null;
+      const mb = me.role === "buyer" ? me.media_buyer_id : null;
+      if (me.role === "buyer" && !mb) return json({ ok: true, items: [] });
+      const rows = [];
+      const feeBy = {};
+      const lim = (q)=>beforeIso ? q.lt("created_at", beforeIso) : q;
+      let adjQ = admin.from("wallet_adjustments").select("id, amount_naira, reason, ref, created_at, note").eq("company_id", me.company_id);
+      adjQ = mb ? adjQ.eq("media_buyer_id", mb) : adjQ.is("media_buyer_id", null);
+      const { data: adj } = await lim(adjQ).order("created_at", { ascending: false }).limit(200);
+      const refs = [];
+      for (const a of adj ?? []) { if (/_fee$/.test(a.reason)) { feeBy[a.ref] = (feeBy[a.ref] || 0) + Number(a.amount_naira); continue; } refs.push(a.ref); }
+      const LABEL = { given_by_company: ["From your admin", 1], given_to_buyer: ["Given to a buyer", -1], taken_back: ["Taken back by your admin", -1], taken_from_buyer: ["Taken back from a buyer", 1],
+        sent_to_user: ["Sent", -1], received_from_user: ["Received", 1], meta_overspend: ["Ad spend above the Meta balance", -1], sent_to_meta_from_balance: ["Deposited to Meta", -1], opening_balance: ["Opening balance", 1], balance_correction: ["Balance correction", -1], ad_account_fee: ["Ad account fee", 1] };
+      for (const a of adj ?? []) {
+        if (/_fee$/.test(a.reason)) continue;
+        const l = LABEL[a.reason] ?? [a.reason, 1], sign = l[1], amt = -Number(a.amount_naira);
+        rows.push({ id: a.id, kind: a.reason, title: a.note ? `${l[0]} · ${a.note.replace(/^(To|From) /, "")}` : l[0], amount: amt, fee: feeBy[a.ref] || 0, at: a.created_at, ref: a.ref, dir: amt >= 0 ? "in" : "out" });
+      }
+      let tpQ = admin.from("wallet_topups").select("id, reference, amount_naira, status, created_at, confirmed_at, channel, paystack_fee_naira").eq("company_id", me.company_id).eq("status", "confirmed");
+      tpQ = mb ? tpQ.eq("media_buyer_id", mb) : tpQ.is("media_buyer_id", null);
+      const { data: tps } = await lim(tpQ).order("created_at", { ascending: false }).limit(60);
+      const tref = (tps ?? []).map((x)=>x.reference);
+      const { data: fl } = tref.length ? await admin.from("fee_ledger").select("ref, fee_naira, kind").in("ref", tref).eq("kind", "deposit") : { data: [] };
+      const flBy = Object.fromEntries((fl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
+      for (const x of tps ?? []) rows.push({ id: x.id, kind: "topup", title: "Money added", sub: x.channel ?? "card", amount: Number(x.amount_naira) - (flBy[x.reference] || 0), fee: (flBy[x.reference] || 0) + Number(x.paystack_fee_naira || 0), at: x.confirmed_at ?? x.created_at, ref: x.reference, dir: "in" });
+      let frQ = admin.from("fund_requests").select("id, amount_naira, transferred_at, destination_account_name, req_account_name, paid_from, requested_at").eq("company_id", me.company_id).eq("status", "transferred");
+      frQ = mb ? frQ.eq("media_buyer_id", mb).eq("paid_from", "buyer") : frQ.eq("paid_from", "company");
+      const { data: frs } = await (beforeIso ? frQ.lt("transferred_at", beforeIso) : frQ).order("transferred_at", { ascending: false }).limit(60);
+      const frIds = (frs ?? []).map((x)=>x.id);
+      const { data: tfl } = frIds.length ? await admin.from("fee_ledger").select("ref, fee_naira").in("ref", frIds).eq("kind", "transfer") : { data: [] };
+      const tfBy = Object.fromEntries((tfl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
+      for (const x of frs ?? []) rows.push({ id: x.id, kind: "to_meta", title: "Sent to Meta", sub: x.destination_account_name || x.req_account_name || "", amount: -Number(x.amount_naira), fee: tfBy[x.id] || 0, at: x.transferred_at ?? x.requested_at, ref: x.id, dir: "out" });
+      rows.sort((x, y)=>new Date(y.at).getTime() - new Date(x.at).getTime());
+      return json({ ok: true, items: rows.slice(0, limit), more: rows.length > limit });
     }
     if (action === "request") {
       if (me.role !== "buyer" || !me.media_buyer_id) return json({
@@ -396,6 +515,7 @@ Deno.serve(async (req)=>{
           error: "Could not move the money."
         }, 500);
       }
+      await takeDepositFee(me.company_id, req0.media_buyer_id, null, amount, ref, "Deposit fee on approved request");
       return json({
         ok: true
       });
@@ -457,8 +577,12 @@ Deno.serve(async (req)=>{
       if (error) return json({
         error: "Could not move the money."
       }, 500);
+      // Money credited to a buyer's wallet pays the deposit fee like any other deposit.
+      let fee = 0;
+      if (toBuyer) fee = await takeDepositFee(me.company_id, buyer.id, null, amount, ref, "Deposit fee on funds from your admin");
       return json({
-        ok: true
+        ok: true,
+        fee
       });
     }
     return json({

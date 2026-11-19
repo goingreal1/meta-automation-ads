@@ -87,6 +87,7 @@ Deno.serve(async (req)=>{
     if (!profile) return json({
       error: "Unauthorized"
     }, 401);
+    let transferFee = 0;
     const { data: fr } = await supabase.from("fund_requests").select("*").eq("id", fund_request_id).maybeSingle();
     if (!fr) return json({
       error: "Funding request not found"
@@ -119,7 +120,9 @@ Deno.serve(async (req)=>{
         p_company: fr.company_id
       });
       const available = Number(bal ?? 0) + (fr.status === "approved" ? Number(fr.amount_naira) : 0);
-      if (Number(fr.amount_naira) > available) return json({
+      const { data: tfee } = await supabase.rpc("rv_fee", { p_kind: "transfer", p_amount: Number(fr.amount_naira) });
+      transferFee = Number(tfee ?? 0);
+      if (Number(fr.amount_naira) + transferFee > available) return json({
         error: `The funding wallet has ₦${Math.max(0, Math.round(available)).toLocaleString("en-NG")}, which cannot cover ₦${Math.round(Number(fr.amount_naira)).toLocaleString("en-NG")}. Add funds first.`
       }, 400);
     }
@@ -215,6 +218,8 @@ Deno.serve(async (req)=>{
       destination_bank_name: bankName,
       destination_account_name: accountName
     }).eq("id", fr.id);
+    // Revora's transfer fee comes off the wallet the money was sent from (this includes the bank's own charge).
+    if (transferFee > 0) await supabase.rpc("rv_take_fee", { p_kind: "transfer", p_company: fr.company_id, p_buyer: ownBalanceSend ? fr.media_buyer_id : null, p_user: profile.id, p_amount: Number(fr.amount_naira), p_fee: transferFee, p_ref: String(fr.id), p_note: "Transfer fee on send to Meta" });
     if (updErr) throw updErr;
     notifyTransferResult(fr.id);
     await supabase.from("transfer_receipts").insert({
