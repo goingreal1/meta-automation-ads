@@ -174,6 +174,11 @@ async function renderOverview(el) {
 
     <div class="rv-grid rv-kpis">${kpis.map((k) => `<div class="rv-card rv-kpi"><div class="lb">${k.l}</div><div class="v">${k.v}</div><div class="sub">${k.neutral ? `<span class="rv-d fl">${k.d.t.replace(/^[▲▼] /, (m) => m)}</span>` : dd(k.d)}${k.novs ? "" : `<span class="rv-vs">vs previous ${n === 1 ? "day" : n + " days"}</span>`}</div>${k.s.length ? `<div class="sp2">${ovSpark(k.s, k.col)}</div>` : ""}</div>`).join("")}</div>
 
+    ${mx.length ? `<section class="rv-card" style="margin:16px 0"><div class="rv-cp" style="padding-bottom:6px"><div class="rv-ct" style="margin-bottom:0"><h3>All metrics</h3><span class="rv-mut3 rv-hm" style="font-size:13px">Every number from Meta for this period.</span></div></div>
+      ${reachMsg}
+      <div class="rv-mx" style="margin-top:10px">${mx.map((m) => `<div class="${m[3] ? "hi" : ""}"><div class="l">${m[0]}</div><div class="v">${m[1]}</div><div>${dd(m[2])}</div></div>`).join("")}</div>
+      <div class="rv-mut3" style="font-size:12px;padding:10px 20px 14px">${RC ? "People reached is asked of Meta for the whole period, so nobody is counted twice. If you run more than one ad account, a person seen in two of them is counted in both." : "People reached could not be loaded from Meta just now."}</div></section>` : ""}
+
     <div class="rv-grid rv-two">
       <section class="rv-card rv-cp"><div class="rv-ct"><h3>${hasAds ? "Spend and orders" : "Orders per day"}</h3>${hasAds ? `<span class="rv-pill n rv-lgd" style="margin-left:6px"><span style="width:8px;height:8px;border-radius:2px;background:#bcd3f7;display:inline-block"></span>Spend</span><span class="rv-pill n rv-lgd"><span style="width:8px;height:8px;border-radius:50%;background:var(--text,#1c1e21);display:inline-block"></span>Orders</span>` : ""}<button type="button" class="l rv-hm" onclick="bvGoToTab('${hasAds ? "performance" : "orders"}')">Open report</button></div><div class="rv-chart" id="rvChart"></div></section>
       <section class="rv-card rv-cp"><div class="rv-ct"><h3>Needs your attention</h3>${attn.length ? `<span class="rv-pill bad n" style="margin-left:auto">${attn.length}</span>` : ""}</div>
@@ -199,10 +204,7 @@ async function renderOverview(el) {
       </div>
     </div>
 
-    ${mx.length ? `<section class="rv-card" style="margin-top:16px"><div class="rv-cp" style="padding-bottom:6px"><div class="rv-ct" style="margin-bottom:0"><h3>All metrics</h3><span class="rv-mut3 rv-hm" style="font-size:13px">Every number from Meta for this period.</span></div></div>
-      ${reachMsg}
-      <div class="rv-mx" style="margin-top:10px">${mx.map((m) => `<div class="${m[3] ? "hi" : ""}"><div class="l">${m[0]}</div><div class="v">${m[1]}</div><div>${dd(m[2])}</div></div>`).join("")}</div>
-      <div class="rv-mut3" style="font-size:12px;padding:10px 20px 14px">${RC ? "People reached is asked of Meta for the whole period, so nobody is counted twice. If you run more than one ad account, a person seen in two of them is counted in both." : "People reached could not be loaded from Meta just now."}</div></section>` : ""}
+
   </div>`;
   requestAnimationFrame(ovDrawChart);
 }
