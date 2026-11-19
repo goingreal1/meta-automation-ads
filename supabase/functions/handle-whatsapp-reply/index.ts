@@ -538,6 +538,7 @@ Deno.serve(async (req)=>{
     // Same webhook URL as inbound messages, but a different payload shape.
     const statuses = change?.value?.statuses;
     if (!message && Array.isArray(statuses) && statuses.length) {
+      await supabase.from("wa_status_log").insert(statuses.map((x)=>({ wa_message_id: x?.id ?? null, recipient: x?.recipient_id ?? null, status: x?.status ?? null, error: x?.errors?.[0] ?? null }))).then(()=>{}, ()=>{});
       await applyStatusUpdates(supabase, statuses).catch((err)=>console.error("applyStatusUpdates error:", err));
       return new Response("ok", {
         status: 200
