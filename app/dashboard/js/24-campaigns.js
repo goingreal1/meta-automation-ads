@@ -204,6 +204,172 @@ function cpMobileHtml() {
     ${rows.length ? rows.map((r) => cpMRow(lvl, r)).join("") + `<div class="cp-mtot"><b>Total · ${rows.length} ${word}${rows.length === 1 ? "" : "s"}</b><span>${fN(tot.spend)} spent${tot.label ? ` · ${tot.results.toLocaleString("en-NG")} ${tot.label.toLowerCase()}` : ""}</span></div>` : `<div class="rv-empty" style="padding:20px 14px">${am.q ? "Nothing matches your search." : "Nothing here for this filter."}</div>`}`;
 }
 
+
+// ---- desktop: the classic tables (Campaigns / Ad sets / Ads tabs; tick campaigns and their ad sets and ads show in the next tab) ----
+function amCampaignTable(rows, tot, allChecked) {
+  const d = am.data;
+  const tr = r => {
+    const on = r.status === "ACTIVE";
+    const busy = am.busy.has(r.id);
+    const sets = d.adsets.filter(s => s.campaign_id === r.id && !["DELETED", "ARCHIVED"].includes(s.effective_status)).length;
+    const ads = d.ads.filter(a => a.campaign_id === r.id && !["DELETED", "ARCHIVED"].includes(a.effective_status)).length;
+    const web = r.kind === "purchase";
+    return `<tr class="${on ? "" : "off"}${am.sel.campaigns.has(r.id) ? " sel" : ""}" onclick="amTapRow(event,'campaigns','${r.id}')">
+      <td class="c-chk"><input type="checkbox" ${am.sel.campaigns.has(r.id) ? "checked" : ""} onchange="amToggleSel('campaigns','${r.id}',this.checked)" aria-label="Select"></td>
+      <td><a class="am-link" onclick="amDrill('campaigns','${r.id}')" title="View ad sets"><span class="am-name-t">${escH(r.name)}</span><span class="am-sub">${sets} ad set${sets === 1 ? "" : "s"} · ${ads} ad${ads === 1 ? "" : "s"}</span></a>${busy ? '<span class="spin"></span>' : ""}</td>
+      <td class="c-type">${web ? '<span class="tp web">Website</span>' : r.kind === "messaging" ? '<span class="tp wa">WhatsApp</span>' : '<span class="tp">—</span>'}</td>
+      <td class="num">${r.daily_budget ? fN(r.daily_budget) : "—"}</td>
+      <td class="num"><b>${fN(r.spend)}</b></td>
+      <td class="num">${r.results != null ? Number(r.results).toLocaleString("en-NG") + (web ? " purchases" : " chats") : "—"}</td>
+      <td class="num">${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</td>
+      <td class="c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('campaign','${r.id}',this)"><span class="sw-track"></span></label></td>
+    </tr>`;
+  };
+  return `<div class="am-card"><div class="am-scroll"><table class="am-tbl no-card"><thead><tr>
+    <th class="c-chk"><input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('campaigns',this.checked)" aria-label="Select all"></th>
+    <th>Campaign</th><th>Type</th><th class="num">Budget / day</th><th class="num">Spent</th><th class="num">Results</th><th class="num">Cost / result</th><th class="c-sw">Active</th></tr></thead>
+    <tbody>${rows.map(tr).join("")}</tbody>
+    <tfoot><tr><td></td><td>Total · ${rows.length} campaign${rows.length === 1 ? "" : "s"}</td><td></td><td></td><td class="num"><b>${fN(tot.spend)}</b></td><td class="num">${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</td><td class="num">${tot.cpr != null ? fN(tot.cpr) : "—"}</td><td></td></tr></tfoot>
+  </table></div></div>`;
+}
+function amHeadLabels(rows) {
+  const kinds = new Set(rows.map(r => r.kind));
+  if (kinds.size === 1 && kinds.has("messaging")) return { res: "Conversations", cpr: "Cost / conversation" };
+  if (kinds.size === 1 && kinds.has("purchase")) return { res: "Purchases", cpr: "Cost / purchase" };
+  return { res: "Results", cpr: "Cost / result" };
+}
+function amFmtResult(r) {
+  if (r.results == null) return "—";
+  return String(r.results);
+}
+function amRowHtml(level, r) {
+  const d = am.data;
+  const on = r.status === "ACTIVE";
+  const busy = am.busy.has(r.id);
+  const checkable = level !== "ads";
+  const checked = checkable && am.sel[level].has(r.id);
+  let sub = "";
+  if (level === "adsets") sub = escH(d.campaigns.find(c => c.id === r.campaign_id)?.name || "");
+  if (level === "ads") sub = escH(d.adsets.find(s => s.id === r.adset_id)?.name || "");
+  if (level !== "ads" && r.daily_budget) sub += `${sub ? " · " : ""}${fN(r.daily_budget)}/day`;
+  const flag = level === "ads" && r.suggestion?.kill && on;
+  const thumb = level === "ads" && r.thumbnail_url ? `<img class="am-thumb" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
+  const next = level === "campaigns" ? "View ad sets" : level === "adsets" ? "View ads" : "";
+  const acts = level === "ads" ? `<span class="am-acts"><a onclick="amPreviewAd('${r.id}')">👁 Preview</a>${r.picture_url ? `<a onclick="amFitImage('${r.id}')" title="Re-fit the whole image so Meta doesn't crop it">⤢ Fit image</a>` : ""}</span>` : "";
+  const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}${acts}<span class="am-acts"><a onclick="event.stopPropagation();cpSelect('${level}','${r.id}')">Details ›</a></span>`;
+  return `
+    <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}" ${next ? `onclick="amTapRow(event,'${level}','${r.id}')"` : ""}>
+      <div class="am-top">
+        <div class="am-c am-c-chk">${checkable ? `<input type="checkbox" ${checked ? "checked" : ""} onchange="amToggleSel('${level}','${r.id}',this.checked)" aria-label="Select">` : ""}</div>
+        <div class="am-c am-c-sw"><label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)"><span class="sw-track"></span></label></div>
+        <div class="am-c am-c-name">${thumb}<div class="am-name">${next ? `<a class="am-link" onclick="amDrill('${level}','${r.id}')" title="${next}">${nameInner}</a>` : nameInner}</div></div>
+        <div class="am-c am-c-st">${busy ? '<span class="spin"></span>' : amDelivery(r)}</div>
+        ${level === "ads" ? `<div class="am-c am-c-msg" data-label="WhatsApp message">${r.wa_prefill != null
+          ? `<span class="am-msg-t" title="${escH("Greeting: " + (r.wa_greeting || "—") + "\nPre-filled: " + (r.wa_prefill || "—"))}">${escH(r.wa_prefill || "—")}</span><a class="am-msg-edit" onclick="amOpenMsgEdit('${r.id}')" title="Change the greeting and pre-filled message on Meta">✎ Edit</a>`
+          : `<span style="color:var(--muted);">—</span>`}</div>` : ""}
+      </div>
+      <div class="am-metrics">
+        <div class="am-c am-c-res" data-label="${escH(r.result_label || "Results")}"><b>${amFmtResult(r)}</b></div>
+        <div class="am-c am-c-cpr" data-label="${escH(amCostLabel(r.kind))}"><b>${r.cost_per_result != null ? fN(r.cost_per_result) : "—"}</b></div>
+        ${am.showLpv ? `<div class="am-c am-c-lpv" data-label="Landing page views"><b>${r.kind === "purchase" ? Number(r.landing_page_views || 0).toLocaleString("en-NG") : "—"}</b></div>
+        <div class="am-c am-c-clpv" data-label="Cost / landing page view"><b>${r.kind === "purchase" && r.cost_per_landing_page_view != null ? fN(r.cost_per_landing_page_view) : "—"}</b></div>` : ""}
+        <div class="am-c am-c-spend" data-label="Spent"><b>${fN(r.spend)}</b></div>
+        <div class="am-c am-c-reach" data-label="Reach">${Number(r.reach).toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-freq" data-label="Frequency">${r.reach ? Number(r.frequency).toFixed(2) + "×" : "—"}</div>
+        <div class="am-c am-c-imp" data-label="Impressions">${Number(r.impressions).toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-clk" data-label="Link clicks">${Number(r.clicks).toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-ctr" data-label="CTR">${r.impressions ? Number(r.ctr).toFixed(2) + "%" : "—"}</div>
+      </div>
+      ${flag ? `<div class="am-flagline">⚠ ${escH(r.suggestion.reason)} <button type="button" class="btn btn-g am-flagbtn" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause this ad</button></div>` : ""}
+    </div>`;
+}
+function amSetQuery(v) {
+  am.q = v;
+  amDraw();
+  const el = document.querySelector(".am-search");
+  if (el) { el.focus(); el.setSelectionRange(v.length, v.length); }
+}
+
+
+// The full numbers grid for whatever is in view: the ticked rows of this tab, or every row listed. One row shows its own numbers (with reach and
+// frequency); several rows are added up (reach and frequency cannot be added, so they are left out).
+CP.mxOpen = true;
+function cpAgg(rows) {
+  if (rows.length === 1) return rows[0];
+  const sum = (k) => rows.reduce((t, r) => t + (Number(r[k]) || 0), 0);
+  const msg = rows.filter((r) => r.kind === "messaging"), pur = rows.filter((r) => r.kind === "purchase"), pick = msg.length ? msg : pur;
+  const results = pick.reduce((t, r) => t + (r.results || 0), 0), pspend = pick.reduce((t, r) => t + r.spend, 0), lpv = pur.reduce((t, r) => t + (Number(r.landing_page_views) || 0), 0), wspend = pur.reduce((t, r) => t + r.spend, 0);
+  const imp = sum("impressions"), clk = sum("clicks");
+  return { spend: sum("spend"), impressions: imp, clicks: clk, ctr: imp ? clk / imp * 100 : 0, cpm: imp ? sum("spend") / imp * 1000 : null, reach: null, frequency: null,
+    kind: msg.length ? "messaging" : pur.length ? "purchase" : "other", result_label: msg.length ? "Conversations" : pur.length ? "Purchases" : "Results", results: pick.length ? results : null,
+    cost_per_result: results > 0 ? pspend / results : null, landing_page_views: pur.length ? lpv : null, cost_per_landing_page_view: lpv > 0 ? wspend / lpv : null, conversations: sum("conversations"), purchases: sum("purchases") };
+}
+function cpToggleMx() { CP.mxOpen = !CP.mxOpen; amDraw(); }
+function cpMxCard(lvl, rows) {
+  if (!rows.length) return "";
+  const ticked = lvl === "ads" ? [] : rows.filter((r) => am.sel[lvl].has(r.id)), scope = ticked.length ? ticked : rows;
+  const word = lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad", n = scope.length;
+  const title = ticked.length ? (n === 1 ? escH(scope[0].name) : `${n} ${word}s selected`) : `All ${n} ${word}${n === 1 ? "" : "s"} listed`;
+  const tiles = cpMetrics(cpAgg(scope));
+  return `<div class="cp-mx"><div class="cp-mxh"><div><b>${title}</b><span class="rv-mut3"> · every number from Meta</span></div><button type="button" class="rv-lnk" onclick="cpToggleMx()">${CP.mxOpen ? "Hide numbers" : "Show numbers"}</button></div>
+    ${CP.mxOpen ? `<div class="rv-mg">${tiles.map((t) => `<div class="${t[2] ? "hi" : ""}"><div class="l">${escH(t[0])}</div><div class="v">${t[1]}</div></div>`).join("")}</div>${n > 1 ? `<div class="rv-mut3" style="font-size:12px;padding:8px 20px 0">Reach and frequency are not added up across rows. Open a single row to see them.</div>` : ""}` : ""}</div>`;
+}
+function cpOldHtml() {
+  const d = am.data;
+  const lvl = am.level;
+  const counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
+  const tabs = [["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]];
+  const tabsHtml = `<div class="am-tabs">${tabs.map(([k, l]) => `<button type="button" class="am-tab${lvl === k ? " active" : ""}" onclick="amSetLevel('${k}')">${l} <span class="am-tab-n">${counts[k]}</span></button>`).join("")}</div>`;
+
+  const chips = [];
+  if (lvl !== "campaigns" && am.sel.campaigns.size) {
+    const names = [...am.sel.campaigns].map(id => d.campaigns.find(c => c.id === id)?.name).filter(Boolean);
+    chips.push(`<span class="am-chip">Campaign: ${escH(names.join(", "))} <a onclick="amClearSel('campaigns')" aria-label="Clear">✕</a></span>`);
+  }
+  if (lvl === "ads" && am.sel.adsets.size) {
+    const names = [...am.sel.adsets].map(id => d.adsets.find(s => s.id === id)?.name).filter(Boolean);
+    chips.push(`<span class="am-chip">Ad set: ${escH(names.join(", "))} <a onclick="amClearSel('adsets')" aria-label="Clear">✕</a></span>`);
+  }
+
+  const rows = amRows(lvl);
+  am.showLpv = rows.some(r => r.kind === "purchase");
+  const tot = amTotals(rows);
+  const hl = amHeadLabels(rows);
+  const allChecked = lvl !== "ads" && rows.length > 0 && rows.every(r => am.sel[lvl].has(r.id));
+  const head = `
+    <div class="am-row am-head">
+      <div class="am-top">
+        <div class="am-c am-c-chk">${lvl !== "ads" ? `<input type="checkbox" ${allChecked ? "checked" : ""} onchange="amSelectAll('${lvl}',this.checked)" aria-label="Select all">` : ""}</div>
+        <div class="am-c am-c-sw"></div><div class="am-c am-c-name">${lvl === "campaigns" ? "Campaign" : lvl === "adsets" ? "Ad set" : "Ad"}</div><div class="am-c am-c-st">Delivery</div>${lvl === "ads" ? '<div class="am-c am-c-msg">WhatsApp message</div>' : ""}
+      </div>
+      <div class="am-metrics"><div class="am-c am-c-res">${escH(hl.res)}</div><div class="am-c am-c-cpr">${escH(hl.cpr)}</div>${am.showLpv ? '<div class="am-c am-c-lpv">Landing page views</div><div class="am-c am-c-clpv">Cost / landing page view</div>' : ""}<div class="am-c am-c-spend">Spent</div><div class="am-c am-c-reach">Reach</div><div class="am-c am-c-freq">Frequency</div><div class="am-c am-c-imp">Impressions</div><div class="am-c am-c-clk">Link clicks</div><div class="am-c am-c-ctr">CTR</div></div>
+    </div>`;
+  const foot = rows.length ? `
+    <div class="am-row am-foot">
+      <div class="am-top"><div class="am-c am-c-chk"></div><div class="am-c am-c-sw"></div><div class="am-c am-c-name">Total · ${rows.length} ${lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad"}${rows.length === 1 ? "" : "s"}</div><div class="am-c am-c-st"></div>${lvl === "ads" ? '<div class="am-c am-c-msg"></div>' : ""}</div>
+      <div class="am-metrics">
+        <div class="am-c am-c-res" data-label="${escH(tot.label || "Results")}"><b>${tot.label ? tot.results.toLocaleString("en-NG") : "—"}</b></div>
+        <div class="am-c am-c-cpr" data-label="${escH(hl.cpr)}"><b>${tot.cpr != null ? fN(tot.cpr) : "—"}</b></div>
+        ${am.showLpv ? `<div class="am-c am-c-lpv" data-label="Landing page views"><b>${tot.hasWeb ? tot.lpv.toLocaleString("en-NG") : "—"}</b></div><div class="am-c am-c-clpv" data-label="Cost / landing page view"><b>${tot.cpl != null ? fN(tot.cpl) : "—"}</b></div>` : ""}
+        <div class="am-c am-c-spend" data-label="Spent"><b>${fN(tot.spend)}</b></div>
+        <div class="am-c am-c-reach" data-label="Reach" title="Reach overlaps between rows, so it is not added up">—</div>
+        <div class="am-c am-c-freq" data-label="Frequency">—</div>
+        <div class="am-c am-c-imp" data-label="Impressions">${tot.imp.toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-clk" data-label="Link clicks">${tot.clk.toLocaleString("en-NG")}</div>
+        <div class="am-c am-c-ctr" data-label="CTR"></div>
+      </div>
+    </div>` : "";
+
+  const bulk = lvl === "campaigns" && am.sel.campaigns.size ? `<div class="am-bulk"><b>${am.sel.campaigns.size} selected</b><button type="button" class="btn btn-g" onclick="amBulk('PAUSED')">Pause</button><button type="button" class="btn btn-g" onclick="amBulk('ACTIVE')">Turn on</button><span class="am-grow"></span><a onclick="amClearSel('campaigns')">Clear</a></div>` : "";
+  const body = lvl === "campaigns" && rows.length ? amCampaignTable(rows, tot, allChecked)
+    : rows.length
+    ? `<div class="am-table${lvl === "ads" ? " ads" : ""}${am.showLpv ? " lpv" : ""}">${head}${rows.map(r => amRowHtml(lvl, r)).join("")}${foot}</div>`
+    : `<div class="empty">${lvl === "campaigns" ? "No campaigns match this filter." : "Nothing here for this selection."}</div>`;
+
+  const filt = `<div class="cp-otb"><input class="am-search" type="search" placeholder="Search ${lvl === "campaigns" ? "campaigns" : lvl === "adsets" ? "ad sets" : "ads"}" value="${escH(am.q || "")}" oninput="amSetQuery(this.value)" aria-label="Search"><select class="am-filter" onchange="amSetFilter(this.value)" aria-label="Status filter"><option value="live" ${am.filter === "live" ? "selected" : ""}>Live: active, in review, preparing</option><option value="paused" ${am.filter === "paused" ? "selected" : ""}>Paused</option><option value="all" ${am.filter === "all" ? "selected" : ""}>All</option></select></div>`;
+  return `${filt}${cpMxCard(lvl, rows)}${tabsHtml}${chips.length ? `<div class="am-chips">${chips.join("")}</div>` : ""}${bulk}${body}`;
+}
+
 // ---- the whole screen ----
 function amDraw() {
   const root = amEl(); if (!root) return;
@@ -242,12 +408,9 @@ function amDraw() {
     ...(T.hasWeb ? [tile("Page views", ovNum(T.lpv), "website ads"), tile("Cost / page view", T.cpl != null ? fN2(T.cpl) : "—", "website spend ÷ page views"), tile("Page view rate", T.lpvRate != null ? T.lpvRate.toFixed(0) + "%" : "—", "page views ÷ link clicks")] : []),
   ].join("")}</div>`;
   root.innerHTML = head + bal + tools + summary + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
-    <div class="rv-split ${CP.mDetail ? "m-detail" : ""}">
+    <div class="rv-split cp-old ${CP.mDetail ? "m-detail" : ""}">
       <section class="rv-card rv-mlist">${cpMobileHtml()}</section>
-      <section class="rv-card rv-tree"><div class="tb"><div class="rv-fld">${rvIc("search")}<input type="search" placeholder="Search campaigns, ad sets, ads" value="${escH(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search"></div>
-        <div class="rv-seg rv-w100">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}${am.filter === k ? `<em>${nCamp}</em>` : ""}</button>`).join("")}</div>
-        <div class="rv-row" style="margin-top:10px">${CP.selectMode ? `<b style="font-size:13px">${am.sel.campaigns.size} selected</b><div class="rv-sp"></div><button type="button" class="rv-btn s" ${am.sel.campaigns.size ? "" : "disabled"} onclick="amBulk('PAUSED')">Pause</button><button type="button" class="rv-btn s" ${am.sel.campaigns.size ? "" : "disabled"} onclick="amBulk('ACTIVE')">Turn on</button><button type="button" class="rv-btn s" onclick="cpSelectMode(false)">Done</button>` : `<span class="rv-mut3" style="font-size:12.5px">${nCamp} campaign${nCamp === 1 ? "" : "s"}</span><div class="rv-sp"></div><button type="button" class="rv-lnk" onclick="cpSelectMode(true)">Select several</button>`}</div></div>
-        <div class="rv-tl" id="cpTreeList">${cpTreeHtml()}</div></section>
+      <section class="rv-card rv-old">${cpOldHtml()}</section>
       <section class="rv-card rv-dt" id="cpDetail">${cpDetailHtml()}</section>
     </div>`;
   const tl = document.getElementById("cpTreeList"); if (tl && st) tl.scrollTop = st;
