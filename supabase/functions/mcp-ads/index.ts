@@ -2345,6 +2345,48 @@ const TOOLS = [
     }
   },
   {
+    name: "add_carousel",
+    title: "Create a carousel ad",
+    description: "Build a carousel creative (a swipeable ad with 2 to 10 cards). Each card has a picture (creative_id of an uploaded IMAGE from list_creatives, or an https image_url), a short headline (max 80), an optional description (max 150) and, for website ads, an optional link for that card. primary_text is the text above the carousel. It is saved like any creative (creative_type 'carousel'): assign it to a plan with assign_creative / plan_campaign. Carousels work for WhatsApp, Messenger and website destinations, NOT lead forms. Video cards and music are not supported yet.",
+    inputSchema: OBJ({
+      ...accountProp,
+      name: str("Name for this carousel."),
+      primary_text: str("Text shown above the carousel."),
+      product_id: str("Optional product."),
+      cards: {
+        type: "array",
+        description: "2 to 10 cards.",
+        items: OBJ({
+          creative_id: str("Uploaded image id from list_creatives."),
+          image_url: str("Or a public https image link."),
+          headline: str("Card headline."),
+          description: str("Card description."),
+          link: str("Website link for this card (website ads only).")
+        })
+      }
+    }, [
+      "cards"
+    ]),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true
+    },
+    write: true,
+    run: async (a, c)=>{
+      const acct = await pickAccount(a, c);
+      if ("error" in acct) return acct;
+      return await fn("ads-manager", {
+        action: "add_carousel",
+        ad_account_id: acct.id,
+        name: a?.name,
+        primary_text: a?.primary_text,
+        product_id: a?.product_id,
+        cards: a?.cards
+      }, c);
+    }
+  },
+  {
     name: "duplicate_ad",
     title: "Duplicate an ad or ad set",
     description: "Copy an ad or ad set inside the same campaign. For a WINNER: the original keeps running and the copy goes live (to scale it). For a BAD ad: set pause_original true to relaunch it as a fresh copy and switch the old one off.",

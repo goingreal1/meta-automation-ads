@@ -252,6 +252,77 @@ async function ensureMetaMedia(supabase, accountId, creative, maxWaitMs = 90 * 1
 }
 async function createAdCreative(accountId, pageId, igUserId, creative, media, destinationLink, ctaType, destinationType, productName) {
   try {
+    // Carousel: 2-10 swipeable cards, each with its own picture, headline and (optional) link.
+    if (creative.asset_type === "carousel") {
+      const cards = Array.isArray(creative.carousel_cards) ? creative.carousel_cards.filter((x)=>x?.image_url).slice(0, 10) : [];
+      if (cards.length < 2) return {
+        error: "A carousel needs at least 2 cards with pictures."
+      };
+      if (destinationType === "form") return {
+        error: "Carousel ads cannot open a lead form. Use WhatsApp, Messenger or a website link."
+      };
+      const wa = destinationType === "whatsapp";
+      const ms = destinationType === "messenger" || destinationType === "instagram";
+      const baseLink = wa ? "https://api.whatsapp.com/send" : ms ? "https://fb.com/messenger_doc/" : destinationLink;
+      const cardCta = (link)=>wa ? {
+          type: "WHATSAPP_MESSAGE",
+          value: {
+            app_destination: "WHATSAPP"
+          }
+        } : ms ? {
+          type: destinationType === "instagram" ? "INSTAGRAM_MESSAGE" : "MESSAGE_PAGE",
+          value: {
+            app_destination: destinationType === "instagram" ? "INSTAGRAM_DIRECT" : "MESSENGER"
+          }
+        } : {
+          type: ctaType,
+          value: {
+            link
+          }
+        };
+      const cr = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          name: `Carousel-${creative.file_name}-${Date.now()}`,
+          object_story_spec: {
+            page_id: pageId,
+            ...igUserId ? {
+              instagram_user_id: igUserId
+            } : {},
+            link_data: {
+              link: baseLink,
+              message: creative.primary_text || "",
+              multi_share_end_card: false,
+              multi_share_optimized: false,
+              child_attachments: cards.map((k)=>{
+                const link = wa || ms ? baseLink : String(k.link || destinationLink);
+                return {
+                  link,
+                  picture: k.image_url,
+                  name: String(k.headline ?? "").slice(0, 80) || void 0,
+                  description: String(k.description ?? "").slice(0, 150) || void 0,
+                  call_to_action: cardCta(link)
+                };
+              })
+            }
+          },
+          contextual_multi_ads: {
+            enroll_status: "OPT_OUT"
+          },
+          access_token: META_ACCESS_TOKEN
+        })
+      });
+      const cd = await cr.json();
+      if (!cd.id) return {
+        error: JSON.stringify(cd.error || cd)
+      };
+      return {
+        id: cd.id
+      };
+    }
     // Existing post ("boost a post" style): the post keeps its own picture, text, button and link.
     if (creative.asset_type === "post" && creative.meta_post_id) {
       const pr = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
@@ -1318,7 +1389,7 @@ async function launchAdSetGroup(supabase, creativeGroup) {
     // slowest video, and it is capped so the launch can still finish and clean up after itself.
     const mediaBudgetMs = Math.max(15e3, 95e3 - (Date.now() - launchStartedAt));
     const prepared = await Promise.all(creativeGroup.map(async (copy)=>{
-      const media = copy.asset_type === "post" ? {
+      const media = copy.asset_type === "post" || copy.asset_type === "carousel" ? {
         imageUrl: copy.public_url || null
       } : await ensureMetaMedia(supabase, accountId, copy, mediaBudgetMs);
       if (!media || media.error) return {
