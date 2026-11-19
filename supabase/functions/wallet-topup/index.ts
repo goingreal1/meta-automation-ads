@@ -161,7 +161,7 @@ Deno.serve(async (req)=>{
     if (b?.path) {
       // read-only look at a few Paystack endpoints (a transfer, the balance ledger)
       const path = String(b.path);
-      if (!/^\/(transfer\/[A-Za-z0-9_]+|balance|balance\/ledger(\?[a-z_=0-9&]+)?)$/.test(path)) return json({ error: "Path not allowed." }, 400);
+      if (!/^\/(transfer\/[A-Za-z0-9_]+|balance|balance\/ledger(\?[a-z_=0-9&]+)?|transaction\?[A-Za-z_=0-9&]+)$/.test(path)) return json({ error: "Path not allowed." }, 400);
       const rr = await fetch(`${PAYSTACK_BASE}${path}`, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } });
       return json({ http: rr.status, body: await rr.json().catch(()=>null) });
     }
