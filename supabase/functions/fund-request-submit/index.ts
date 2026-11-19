@@ -37,6 +37,33 @@ async function ps(path) {
   if (!r.ok || j?.status === false) throw new Error(j?.message || `Paystack failed (${r.status})`);
   return j;
 }
+const safeEq = (a, b)=>{
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for(let i = 0; i < a.length; i++)d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+};
+async function pinHash(userId, pin, saltHex) {
+  const enc = new TextEncoder();
+  const mk = await crypto.subtle.importKey("raw", enc.encode(SERVICE_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const peppered = new Uint8Array(await crypto.subtle.sign("HMAC", mk, enc.encode(`${userId}:${pin}`)));
+  const base = await crypto.subtle.importKey("raw", peppered, "PBKDF2", false, ["deriveBits"]);
+  const salt = Uint8Array.from(saltHex.match(/../g) ?? [], (h)=>parseInt(h, 16));
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100000 }, base, 256));
+  return Array.from(bits).map((x)=>x.toString(16).padStart(2, "0")).join("");
+}
+async function checkPin(userId, pin) {
+  const { data: row } = await admin.from("transfer_pins").select("pin_hash, salt, failed_attempts, locked_until").eq("user_id", userId).maybeSingle();
+  if (!row) return { ok: false, error: "No transfer PIN is set yet. Set one under Settings, Security." };
+  if (row.locked_until && new Date(row.locked_until).getTime() > Date.now()) return { ok: false, error: "Too many wrong PINs. Try again in a few minutes." };
+  if (safeEq(await pinHash(userId, pin, row.salt), row.pin_hash)) {
+    if (row.failed_attempts || row.locked_until) await admin.from("transfer_pins").update({ failed_attempts: 0, locked_until: null }).eq("user_id", userId);
+    return { ok: true };
+  }
+  const n = Number(row.failed_attempts || 0) + 1, lock = n >= 5;
+  await admin.from("transfer_pins").update({ failed_attempts: lock ? 0 : n, locked_until: lock ? new Date(Date.now() + 15 * 60_000).toISOString() : null }).eq("user_id", userId);
+  return { ok: false, error: lock ? "Too many wrong PINs. Locked for 15 minutes." : `Wrong PIN. ${5 - n} ${5 - n === 1 ? "try" : "tries"} left.` };
+}
 const normName = (v)=>v.trim().toLowerCase().replace(/\s+/g, " ");
 // Who owns this account at the bank, and is it a Meta/Facebook account (or on the company's approved list)?
 async function verify(companyId, accountNumber, bankCode) {
@@ -188,6 +215,11 @@ Deno.serve(async (req)=>{
   const note = String(b?.note ?? "").trim().slice(0, 300) || null;
   // Send from the buyer's own held balance: no admin approval, Meta accounts only (verified above). The amount is set aside at once so it cannot be spent twice.
   if (b?.from_balance === true) {
+    // Money leaving the wallet needs the person's transfer PIN, every time.
+    const pin = String(b?.pin ?? "");
+    if (!/^\d{4,6}$/.test(pin)) return json({ error: "Enter your 4 to 6 digit transfer PIN." }, 400);
+    const pinOk = await checkPin(me.id, pin);
+    if (!pinOk.ok) return json({ error: pinOk.error }, 403);
     const { data: bal } = await admin.rpc("buyer_wallet_balance", { p_buyer: me.media_buyer_id });
     const { data: tfee } = await admin.rpc("rv_fee", { p_kind: "transfer", p_amount: amount });
     const fee0 = Number(tfee ?? 0);

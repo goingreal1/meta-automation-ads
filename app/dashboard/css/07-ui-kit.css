@@ -442,3 +442,5 @@
 .rv-ui .w2-row.static { flex-wrap: wrap; } .rv-ui .w2-row.static .w2-btns { flex: 1 0 calc(100% - 50px); justify-content: flex-end; margin-left: 50px; flex-wrap: wrap; min-width: 0; }
 .rv-ui .w2-list { overflow: hidden; } .rv-ui .w2-row > .w2-t { min-width: 0; }
 @media (min-width: 901px) { .rv-ui .w2-row.static .w2-btns { flex: none; margin-left: 0; } }
+.rv-ui .w2-name { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--c-card); border: 1px solid var(--c-line); border-radius: 14px; padding: 11px 14px; } .rv-ui .w2-name small { color: var(--c-ink3); width: 100%; } .rv-ui .w2-name b { flex: 1; min-width: 0; font-size: 15px; }
+.rv-ui .w2-name.ok { border-color: var(--c-ok); background: var(--c-okbg); } .rv-ui .w2-name.bad { border-color: var(--c-bad); background: var(--c-badbg); color: var(--c-bad); }

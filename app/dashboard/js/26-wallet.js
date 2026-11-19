@@ -631,7 +631,8 @@ function w2Meta() {
     ${W2.acc && W2.acc.length ? `<div class="w2-strip" style="margin-bottom:10px">${W2.acc.slice(0, 6).map((a) => `<div class="w2-mini${a.low_threshold != null && a.available <= a.low_threshold ? " low" : ""}"><small>${escH(a.name)}</small><b>${w2Money(a.available)}</b></div>`).join("")}</div>` : ""}
     <div class="w2-big"><small>Amount</small><input id="w2MAmt" type="number" inputmode="numeric" min="100" step="100" placeholder="0" value="${amt || ""}" oninput="W2.meta.amount=this.value;w2MetaUpdate()"><div class="w2-qs">${[5000, 10000, 20000].map((n) => `<button type="button" class="w2-chip${amt === n ? " on" : ""}" onclick="W2.meta.amount=${n};w2Draw()">${n / 1000}k</button>`).join("")}</div></div>
     <label class="w2-f">Bank shown by Meta<select id="w2MBank"><option value="">Loading banks…</option></select></label>
-    <label class="w2-f">Account number from Meta<input id="w2MAcct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${escH(m.acct || "")}" oninput="W2.meta.acct=this.value"></label>
+    <label class="w2-f">Account number from Meta<input id="w2MAcct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${escH(m.acct || "")}" oninput="W2.meta.acct=this.value;w2Resolve('meta')"></label>
+    <div id="w2Name"></div>
     <div id="w2MSum">${w2MetaSum(amt, fee, total, short, mine)}</div>
     <div id="w2Msg" class="w2-msg"></div><button type="button" class="w2-cta" id="w2MGo" ${amt >= 100 && !short ? "" : "disabled"} onclick="w2MetaGo()">Send ${amt > 0 ? w2Money(amt) : ""} to Meta</button>`;
 }
@@ -643,16 +644,18 @@ function w2MetaUpdate() {
   const box = document.getElementById("w2MSum"); if (box) box.innerHTML = w2MetaSum(amt, fee, total, short, mine);
   const go = document.getElementById("w2MGo"); if (go) { go.disabled = !(amt >= 100 && !short); go.textContent = "Send " + (amt > 0 ? w2Money(amt) : "") + " to Meta"; }
 }
-async function w2MetaGo() {
-  const amt = Math.round(Number(W2.meta.amount || 0)), bank = document.getElementById("w2MBank")?.value, acct = (document.getElementById("w2MAcct")?.value || "").replace(/\s+/g, ""), msg = document.getElementById("w2Msg"), btn = document.getElementById("w2MGo");
+function w2MetaGo() {
+  const amt = Math.round(Number(W2.meta.amount || 0)), bank = document.getElementById("w2MBank")?.value, acct = (document.getElementById("w2MAcct")?.value || "").replace(/\s+/g, ""), msg = document.getElementById("w2Msg");
   if (!bank) { msg.textContent = "Pick the bank Meta shows."; return; }
   if (!/^\d{10}$/.test(acct)) { msg.textContent = "The account number is 10 digits."; return; }
-  btn.disabled = true; btn.textContent = "Checking the account and sending…";
-  const r = await sbFn("fund-request-submit", { from_balance: true, amount_naira: amt, account_number: acct, bank_code: bank, note: "Sent from wallet" }).catch((e) => ({ error: e.message }));
-  if (r.verified === false) { msg.textContent = "Nothing was sent. " + (r.reason || "That account was not accepted."); btn.disabled = false; btn.textContent = "Send to Meta"; return; }
-  if (r.error) { msg.textContent = r.error; btn.disabled = false; btn.textContent = "Send to Meta"; return; }
-  W2.meta.done = { amount: amt, fee: w2Fee("transfer", amt), account_name: r.account_name }; if (W2.ov) W2.ov.me_wallet = Number(W2.ov.me_wallet || 0) - amt - w2Fee("transfer", amt); w2Draw(); w2LoadActs();
-  if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank");
+  if (W2.meta.name && !W2.meta.nameOk) { msg.textContent = "That account is not a Meta account, so nothing can be sent to it."; return; }
+  w2Pin(`Send ${w2Money(amt)} to ${W2.meta.name || "Meta"}`, async (pin) => {
+    const r = await sbFn("fund-request-submit", { from_balance: true, amount_naira: amt, account_number: acct, bank_code: bank, note: "Sent from wallet", pin }).catch((e) => ({ error: e.message }));
+    if (r.verified === false) return "Nothing was sent. " + (r.reason || "That account was not accepted.");
+    if (r.error) return r.error;
+    W2.meta.done = { amount: amt, fee: w2Fee("transfer", amt), account_name: r.account_name || W2.meta.name }; if (W2.ov) W2.ov.me_wallet = Number(W2.ov.me_wallet || 0) - amt - w2Fee("transfer", amt); w2Draw(); w2LoadActs();
+    if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank"); return "";
+  });
 }
 
 // ---- Requests (admins answer them; buyers see theirs) ----
@@ -717,8 +720,8 @@ function w2Draw() {
   const el = W2.el; if (!el) return;
   const keep = { k: document.getElementById("w2Key")?.value, a: document.getElementById("w2SAmt")?.value };
   el.innerHTML = `<div class="rv-ui wl2" id="wlRoot2" data-w2="${W2.view === "home" ? "home" : "pane"}"><div class="wl2-home">${w2Home()}</div><div class="wl2-pane">${w2Pane()}</div></div>`;
-  if (W2.view === "withdraw") { const sel = document.getElementById("w2WBank"); if (sel) { Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.wd.bank) sel.value = W2.wd.bank; }); sel.onchange = () => { W2.wd.bank = sel.value; }; } }
-  if (W2.view === "meta") { const sel = document.getElementById("w2MBank"); if (sel) { sel.innerHTML = `<option value="">Loading banks…</option>`; Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.meta.bank) sel.value = W2.meta.bank; }); sel.onchange = () => { W2.meta.bank = sel.value; }; } }
+  if (W2.view === "withdraw") { const sel = document.getElementById("w2WBank"); if (sel) { Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.wd.bank) sel.value = W2.wd.bank; }); sel.onchange = () => { W2.wd.bank = sel.value; w2Resolve("wd"); }; } }
+  if (W2.view === "meta") { const sel = document.getElementById("w2MBank"); if (sel) { sel.innerHTML = `<option value="">Loading banks…</option>`; Promise.resolve(bvLoadBanks(sel)).then(() => { if (W2.meta.bank) sel.value = W2.meta.bank; }); sel.onchange = () => { W2.meta.bank = sel.value; w2Resolve("meta"); }; } }
   if (W2.view === "requests" && W2.legacy === undefined) w2LoadLegacy();
   if (W2.view === "add" && W2.addMode === "bank" && W2.dva === undefined && !W2.dvaBusy) { W2.dvaBusy = true; w2LoadDva().finally(() => { W2.dvaBusy = false; }); }
   if (W2.view === "old") { const box = document.getElementById("w2Old"); if (box) { const back = document.createElement("div"); back.className = "w2-nav"; back.innerHTML = `<button type="button" class="w2-ibtn" onclick="w2Go('home')" aria-label="Back">${rvIc("back")}</button><h2>More tools</h2>`; box.appendChild(back); const inner = document.createElement("div"); box.appendChild(inner); renderWalletLegacy(inner); } }
@@ -738,7 +741,8 @@ function w2Withdraw() {
     <div class="w2-hint">${meta ? "Send to Meta's bank account from the funding wallet. In Ads Manager open Billing → Add funds → Bank transfer for the account number and bank. Only a Meta account is accepted." : admin ? "Pay out to any Nigerian bank account. Revora checks the account name with the bank first." : "Pay out to a bank account in your own name. Revora checks that the name on the account matches yours, and refuses any other account."}</div>
     <div class="w2-big"><small>Amount · available ${w2Money(mine)}</small><input id="w2WAmt" type="number" inputmode="numeric" min="100" step="100" placeholder="0" value="${amt || ""}" oninput="W2.wd.amount=this.value;w2WdUpdate()"></div>
     <label class="w2-f">Bank<select id="w2WBank"><option value="">Loading banks…</option></select></label>
-    <label class="w2-f">Account number<input id="w2WAcct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${escH(d.acct || "")}" oninput="W2.wd.acct=this.value"></label>
+    <label class="w2-f">Account number<input id="w2WAcct" type="text" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${escH(d.acct || "")}" oninput="W2.wd.acct=this.value;w2Resolve('wd')"></label>
+    <div id="w2Name"></div>
     <div id="w2WSum">${w2WdSum(amt, fee, total, short, mine)}</div>
     <div id="w2Msg" class="w2-msg"></div><button type="button" class="w2-cta" id="w2WGo" ${amt >= 100 && !short ? "" : "disabled"} onclick="w2WdGo()">Withdraw ${amt > 0 ? w2Money(amt) : ""}</button>`;
 }
@@ -755,10 +759,30 @@ function w2WdGo() {
   if (!bank) { msg.textContent = "Pick the bank."; return; }
   if (!/^\d{10}$/.test(acct)) { msg.textContent = "The account number is 10 digits."; return; }
   if (!(amt >= 100)) return;
-  w2Pin(`Withdraw ${w2Money(amt)}`, async (pin) => {
+  if (d.name && d.nameOk === false) { msg.textContent = "That account is not a Meta account, so nothing can be sent to it."; return; }
+  w2Pin(`Withdraw ${w2Money(amt)}${d.name ? " to " + d.name : ""}`, async (pin) => {
     const r = await sbFn("wallet-topup", { action: "withdraw", amount: amt, bank_code: bank, account_number: acct, mode: w2Admin() && d.mode === "meta" ? "meta" : "bank", pin }).catch((e) => ({ error: e.message }));
     if (r.error) return r.error;
     W2.wd.done = { amount: amt, fee: Number(r.fee || 0), account_name: r.account_name, bank_name: r.bank_name }; if (W2.ov) W2.ov.me_wallet = Number(W2.ov.me_wallet || 0) - amt - Number(r.fee || 0);
     w2Draw(); w2LoadActs(); if (r.receipt?.id) window.open("receipt.html?r=" + r.receipt.id, "_blank"); return "";
   });
+}
+
+// Show who owns the bank account (from the bank itself) as soon as the bank and a 10-digit number are in, so people see where the money goes.
+let w2ResolveTimer = null;
+function w2Resolve(kind) {
+  clearTimeout(w2ResolveTimer);
+  w2ResolveTimer = setTimeout(async () => {
+    const st = kind === "meta" ? W2.meta : W2.wd, bank = document.getElementById(kind === "meta" ? "w2MBank" : "w2WBank")?.value, acct = (document.getElementById(kind === "meta" ? "w2MAcct" : "w2WAcct")?.value || "").replace(/\s+/g, ""), box = document.getElementById("w2Name");
+    st.name = ""; st.nameOk = false; if (!box) return;
+    if (!bank || !/^\d{10}$/.test(acct)) { box.innerHTML = ""; return; }
+    box.innerHTML = `<div class="w2-name">Checking the account…</div>`;
+    const r = await sbFn("wallet-topup", { action: "resolve", account_number: acct, bank_code: bank }).catch((e) => ({ error: e.message }));
+    if (!document.getElementById("w2Name")) return;
+    if (r.error || !r.ok) { box.innerHTML = `<div class="w2-name bad">${escH(r.error || "Could not check that account.")}</div>`; return; }
+    st.name = r.name; st.isMeta = !!r.is_meta;
+    const needMeta = kind === "meta" || (W2.wd.mode === "meta" && w2Admin());
+    st.nameOk = needMeta ? !!r.is_meta : true;
+    box.innerHTML = `<div class="w2-name ${st.nameOk ? "ok" : "bad"}"><small>Account name</small><b>${escH(r.name)}</b>${needMeta ? (r.is_meta ? '<span class="w2-pill ok">Meta · verified</span>' : '<span class="w2-pill no">Not a Meta account</span>') : ""}</div>`;
+  }, 350);
 }
