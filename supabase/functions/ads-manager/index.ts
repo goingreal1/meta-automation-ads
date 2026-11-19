@@ -168,6 +168,7 @@ function actionValue(actions, types) {
   }
   return 0;
 }
+const firstValue = (arr)=>num((arr ?? [])[0]?.value);
 // factor > 1 on a Revora-managed ad account: every money figure is shown with Revora's markup, so numbers, kill rules and balances agree.
 const factorOf = (a)=>a?.billing_mode === "managed" ? 1 + num(a?.markup_pct) / 100 : 1;
 function insightRow(r, factor = 1) {
@@ -190,7 +191,25 @@ function insightRow(r, factor = 1) {
     purchases,
     cost_per_purchase: purchases > 0 ? spend / purchases : null,
     landing_page_views: landingPageViews,
-    cost_per_landing_page_view: landingPageViews > 0 ? spend / landingPageViews : null
+    cost_per_landing_page_view: landingPageViews > 0 ? spend / landingPageViews : null,
+    // more of what Meta reports: outbound clicks, the buying funnel, post engagement, video watching, and what purchases were worth
+    outbound_clicks: firstValue(r.outbound_clicks),
+    add_to_cart: actionValue(r.actions, ["omni_add_to_cart", "add_to_cart", "offsite_conversion.fb_pixel_add_to_cart"]),
+    initiate_checkout: actionValue(r.actions, ["omni_initiated_checkout", "initiate_checkout", "offsite_conversion.fb_pixel_initiate_checkout"]),
+    view_content: actionValue(r.actions, ["omni_view_content", "view_content", "offsite_conversion.fb_pixel_view_content"]),
+    post_engagement: actionValue(r.actions, ["post_engagement"]),
+    reactions: actionValue(r.actions, ["post_reaction"]),
+    comments: actionValue(r.actions, ["comment"]),
+    shares: actionValue(r.actions, ["post"]),
+    saves: actionValue(r.actions, ["onsite_conversion.post_save"]),
+    video_plays: firstValue(r.video_play_actions),
+    video_thruplays: firstValue(r.video_thruplay_watched_actions),
+    video_p25: firstValue(r.video_p25_watched_actions),
+    video_p50: firstValue(r.video_p50_watched_actions),
+    video_p75: firstValue(r.video_p75_watched_actions),
+    video_p100: firstValue(r.video_p100_watched_actions),
+    video_avg_seconds: firstValue(r.video_avg_time_watched_actions),
+    purchase_value: actionValue(r.action_values, PURCHASE_ACTIONS) * factor
   };
 }
 const EMPTY = insightRow({});
@@ -219,7 +238,7 @@ async function insightsByLevel(actId, level, range, token, factor = 1, status = 
   const set = statusSet(status, level);
   const rows = await graphGetAll(`act_${actId}/insights`, {
     level,
-    fields: `${idField},spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,cpm,actions`,
+    fields: `${idField},spend,impressions,reach,frequency,clicks,inline_link_clicks,ctr,cpm,actions,action_values,outbound_clicks,video_play_actions,video_thruplay_watched_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_avg_time_watched_actions`,
     ...rangeParams(range),
     ...(set ? { filtering: JSON.stringify([{ field: `${level === "campaign" ? "campaign" : level}.effective_status`, operator: "IN", value: set }]) } : {})
   }, token);
