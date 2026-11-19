@@ -406,7 +406,14 @@ Deno.serve(async (req)=>{
     // The buyer's own payment account: shown to the customer when the order is placed and again when the rider is on the way.
     let acct = null;
     if (o.media_buyer_id && (event === "order_received" || event === "out_for_delivery" && !courierOrder)) {
-      let { data: b } = await admin.from("media_buyers").select("name, dedicated_account_number, dedicated_account_bank").eq("id", o.media_buyer_id).maybeSingle();
+      // Customers pay the company's account number; a company without one yet falls back to the media buyer's own.
+      let { data: coA } = o.company_id ? await admin.from("companies").select("name, dedicated_account_number, dedicated_account_bank").eq("id", o.company_id).maybeSingle() : { data: null };
+      if (o.company_id && coA && !coA.dedicated_account_number) {
+        await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-company-account`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ company_id: o.company_id }) }).catch(()=>{});
+        coA = (await admin.from("companies").select("name, dedicated_account_number, dedicated_account_bank").eq("id", o.company_id).maybeSingle()).data;
+      }
+      if (coA?.dedicated_account_number) acct = { bank: coA.dedicated_account_bank || "", number: coA.dedicated_account_number, holder: coA.name || brand };
+      let { data: b } = acct ? { data: null } : await admin.from("media_buyers").select("name, dedicated_account_number, dedicated_account_bank").eq("id", o.media_buyer_id).maybeSingle();
       if (b && !b.dedicated_account_number) {
         await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-account`, {
           method: "POST",

@@ -139,6 +139,14 @@ Deno.serve(async (req)=>{
       error: "Order not found"
     }, 404);
     const buyer = order.media_buyers;
+    // Customers pay the COMPANY's account number. A company without one yet falls back to the media buyer's.
+    const { data: ordCo } = await supabase.from("orders").select("company_id").eq("id", order.id).maybeSingle();
+    let { data: coAcct } = ordCo?.company_id ? await supabase.from("companies").select("dedicated_account_number, dedicated_account_bank").eq("id", ordCo.company_id).maybeSingle() : { data: null };
+    if (ordCo?.company_id && !coAcct?.dedicated_account_number) {
+      await fetch(`${SUPABASE_URL}/functions/v1/paystack-create-company-account`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` }, body: JSON.stringify({ company_id: ordCo.company_id }) }).catch(()=>{});
+      coAcct = (await supabase.from("companies").select("dedicated_account_number, dedicated_account_bank").eq("id", ordCo.company_id).maybeSingle()).data;
+    }
+    const pay = coAcct?.dedicated_account_number ? { number: coAcct.dedicated_account_number, bank: coAcct.dedicated_account_bank } : { number: buyer?.dedicated_account_number, bank: buyer?.dedicated_account_bank };
     const amount = new Intl.NumberFormat("en-NG").format(Number(order.order_value_naira ?? 0));
     const results = {};
     if (type === "payment_request") {
@@ -148,7 +156,7 @@ Deno.serve(async (req)=>{
         ok: true,
         skipped: "payment is requested after delivery"
       });
-      if (!buyer?.dedicated_account_number) return json({
+      if (!pay.number) return json({
         error: "This media buyer has no payment account yet -- call paystack-create-account first."
       }, 400);
       if (order.customer_phone) {
@@ -156,8 +164,8 @@ Deno.serve(async (req)=>{
           await sendTemplate(order.customer_phone, TPL_CUSTOMER_REQUEST, [
             order.customer_name || "there",
             amount,
-            buyer.dedicated_account_bank || "",
-            buyer.dedicated_account_number,
+            pay.bank || "",
+            pay.number,
             order.payment_narration_code || ""
           ], TPL_CUSTOMER_REQUEST.endsWith("_v2") ? `PAID:${order.id}` : undefined);
           results.customer = "sent";
@@ -173,8 +181,8 @@ Deno.serve(async (req)=>{
               order.customer_name || "Customer",
               order.payment_narration_code || order.id.slice(0, 8),
               amount,
-              buyer.dedicated_account_bank || "",
-              buyer.dedicated_account_number
+              pay.bank || "",
+              pay.number
             ]);
             results.agent = "sent";
           } catch (err) {
