@@ -1093,6 +1093,11 @@ async function planAction(body, p) {
     const e = body.edits || {};
     if (typeof e.campaign_name === "string" && e.campaign_name.trim()) plan.campaign_name = e.campaign_name.trim().slice(0, 100);
     if (e.budget_type === "cbo" || e.budget_type === "abo") plan.budget_type = e.budget_type;
+    if (typeof e.cta === "string" && /^[A-Z_]{3,30}$/.test(e.cta.trim().toUpperCase()) && ![
+      "WHATSAPP_MESSAGE",
+      "MESSAGE_PAGE",
+      "INSTAGRAM_MESSAGE"
+    ].includes(String(plan.cta))) plan.cta = e.cta.trim().toUpperCase();
     if (typeof e.launch_paused === "boolean") plan.launch_paused = e.launch_paused;
     (Array.isArray(e.adsets) ? e.adsets : []).forEach((ea, i)=>{
       const a = plan.adsets[i];

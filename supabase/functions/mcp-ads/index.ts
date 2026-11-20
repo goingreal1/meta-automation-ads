@@ -1573,6 +1573,24 @@ const TOOLS = [
       start_time: str("Schedule the launch: when the campaign should start delivering, ISO 8601 WITH the timezone offset, for Lagos +01:00, for example 2026-11-03T08:00:00+01:00. Must be at least 15 minutes from now and within 6 months. Omit to launch immediately when approved. Not for drafts (launch_paused)."),
       end_time: str("Optional. When the campaign should stop on its own, same format as start_time. Needs start_time."),
       landing_url: str("Website link, for website orders or traffic"),
+      cta: {
+        type: "string",
+        enum: [
+          "SHOP_NOW",
+          "ORDER_NOW",
+          "BUY_NOW",
+          "LEARN_MORE",
+          "SIGN_UP",
+          "GET_OFFER",
+          "BOOK_TRAVEL",
+          "CONTACT_US",
+          "SUBSCRIBE",
+          "DOWNLOAD",
+          "APPLY_NOW",
+          "GET_QUOTE"
+        ],
+        description: "Optional. The call-to-action button on the ads (website, leads and traffic ads). Default Shop Now for sales. Not used for WhatsApp, Messenger or Instagram message ads."
+      },
       campaign_name: str("Optional name"),
       asset_ids: {
         type: "array",
@@ -1913,6 +1931,24 @@ const TOOLS = [
     inputSchema: OBJ({
       plan_id: str("Plan id"),
       campaign_name: str("New name"),
+      cta: {
+        type: "string",
+        enum: [
+          "SHOP_NOW",
+          "ORDER_NOW",
+          "BUY_NOW",
+          "LEARN_MORE",
+          "SIGN_UP",
+          "GET_OFFER",
+          "BOOK_TRAVEL",
+          "CONTACT_US",
+          "SUBSCRIBE",
+          "DOWNLOAD",
+          "APPLY_NOW",
+          "GET_QUOTE"
+        ],
+        description: "Optional. Change the call-to-action button on the ads (website, leads and traffic ads). Default Shop Now for sales. Not used for WhatsApp, Messenger or Instagram message ads."
+      },
       budget_type: {
         type: "string",
         enum: [
@@ -2008,6 +2044,7 @@ const TOOLS = [
         plan_id: a?.plan_id,
         edits: {
           campaign_name: a?.campaign_name,
+          cta: a?.cta,
           budget_type: a?.budget_type,
           launch_paused: a?.launch_paused,
           adsets: a?.adsets
