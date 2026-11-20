@@ -241,10 +241,12 @@ Deno.serve(async (req)=>{
     if (action === "revenue") {
       const now = new Date(Date.now() + 3600_000), day0 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 3600_000);
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 3600_000), d30 = new Date(day0.getTime() - 29 * 86400_000);
-      const { data: rows } = await db.from("fee_ledger").select("id, kind, company_id, media_buyer_id, amount_naira, fee_naira, ref, created_at").gte("created_at", d30.toISOString() < monthStart.toISOString() ? d30.toISOString() : monthStart.toISOString()).order("created_at", { ascending: false }).limit(5000);
+      const { data: rows } = await db.from("fee_ledger").select("id, kind, company_id, media_buyer_id, amount_naira, fee_naira, paystack_cost_naira, ref, created_at").gte("created_at", d30.toISOString() < monthStart.toISOString() ? d30.toISOString() : monthStart.toISOString()).order("created_at", { ascending: false }).limit(5000);
       const all = rows ?? [];
       const inRange = (r, from)=>new Date(r.created_at) >= from;
       const tot = (list)=>list.reduce((t, r)=>t + Number(r.fee_naira || 0), 0);
+      const cost = (list)=>list.reduce((t, r)=>t + Number(r.paystack_cost_naira || 0), 0);
+      const money = (list)=>({ paystack_cost: Math.round(cost(list) * 100) / 100, profit: Math.round((tot(list) - cost(list)) * 100) / 100 });
       const byKind = (list)=>({ deposit: tot(list.filter((r)=>r.kind === "deposit")), credit: tot(list.filter((r)=>r.kind === "credit")), transfer: tot(list.filter((r)=>r.kind === "transfer")), wallet: tot(list.filter((r)=>r.kind === "wallet" || r.kind === "wallet_send" || r.kind === "wallet_receive")) });
       const month = all.filter((r)=>inRange(r, monthStart)), last30 = all.filter((r)=>inRange(r, d30)), today = all.filter((r)=>inRange(r, day0));
       const perCo = new Map();
@@ -252,10 +254,10 @@ Deno.serve(async (req)=>{
       const days = [];
       for (let i = 29; i >= 0; i--) { const from = new Date(day0.getTime() - i * 86400_000), to = new Date(from.getTime() + 86400_000); days.push({ date: new Date(from.getTime() + 3600_000).toISOString().slice(0, 10), fees: tot(all.filter((r)=>{ const t = new Date(r.created_at); return t >= from && t < to; })) }); }
       return json({
-        today: { total: tot(today), ...byKind(today) }, month: { total: tot(month), ...byKind(month), count: month.length }, last30: { total: tot(last30), ...byKind(last30) },
+        today: { total: tot(today), ...money(today), ...byKind(today) }, month: { total: tot(month), ...money(month), ...byKind(month), count: month.length }, last30: { total: tot(last30), ...money(last30), ...byKind(last30) },
         top_companies: [...perCo.entries()].sort((x, y)=>y[1] - x[1]).slice(0, 10).map(([id, fee])=>({ company: coName.get(id) ?? "—", fee })),
         days,
-        recent: all.slice(0, 40).map((r)=>({ at: r.created_at, kind: r.kind, company: coName.get(r.company_id) ?? "—", buyer: buyerName.get(r.media_buyer_id) ?? null, amount: Number(r.amount_naira), fee: Number(r.fee_naira) }))
+        recent: all.slice(0, 40).map((r)=>({ at: r.created_at, kind: r.kind, company: coName.get(r.company_id) ?? "—", buyer: buyerName.get(r.media_buyer_id) ?? null, amount: Number(r.amount_naira), paystack_cost: Number(r.paystack_cost_naira || 0), fee: Number(r.fee_naira) }))
       });
     }
     return json({
