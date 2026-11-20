@@ -7,7 +7,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info"
 };
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
