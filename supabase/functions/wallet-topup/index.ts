@@ -467,6 +467,25 @@ Deno.serve(async (req)=>{
       const { data: wfl } = wIds.length ? await admin.from("fee_ledger").select("ref, fee_naira").in("ref", wIds).eq("kind", "transfer") : { data: [] };
       const wfBy = Object.fromEntries((wfl ?? []).map((x)=>[x.ref, Number(x.fee_naira)]));
       for (const x of wds ?? []) rows.push({ id: x.id, kind: "withdrawal", title: "Withdrawal", sub: [x.destination_account_name, x.destination_bank_name].filter(Boolean).join(" · "), amount: -Number(x.amount_naira), fee: wfBy[x.id] || 0, at: x.sent_at ?? x.created_at, ref: x.id, dir: "out" });
+      // Failed sends stay in the history and the statement as two honest lines, like a bank: the debit when it was sent (marked failed),
+      // then a credit "Refund" when it came back. They cancel each other out.
+      const refundAt = (a, b)=>{ const t = new Date(a ?? b).getTime(), r = new Date(b).getTime(); return new Date(Math.max(t, r + 1000)).toISOString(); };
+      let ffQ = admin.from("fund_requests").select("id, amount_naira, decided_at, requested_at, destination_account_name, req_account_name, transfer_error, paid_from").eq("company_id", me.company_id).eq("status", "declined").not("transfer_error", "is", null);
+      ffQ = mb ? ffQ.eq("media_buyer_id", mb).eq("paid_from", "buyer") : ffQ.eq("paid_from", "company");
+      const { data: ffs } = await (beforeIso ? ffQ.lt("requested_at", beforeIso) : ffQ).order("requested_at", { ascending: false }).limit(40);
+      for (const x of ffs ?? []) {
+        const who = x.destination_account_name || x.req_account_name || "";
+        rows.push({ id: x.id, kind: "to_meta", status: "failed", title: "Send to Meta · failed", sub: who, amount: -Number(x.amount_naira), fee: 0, at: x.requested_at, ref: x.id, dir: "out" });
+        rows.push({ id: x.id + ":refund", kind: "refund", title: "Refund · send to Meta failed", sub: who, amount: Number(x.amount_naira), fee: 0, at: refundAt(x.decided_at, x.requested_at), ref: x.id, dir: "in" });
+      }
+      let fwQ = admin.from("admin_withdrawals").select("id, amount_naira, created_at, destination_account_name, destination_bank_name").eq("company_id", me.company_id).eq("status", "failed");
+      fwQ = mb ? fwQ.eq("media_buyer_id", mb) : fwQ.is("media_buyer_id", null);
+      const { data: fws } = await lim(fwQ).order("created_at", { ascending: false }).limit(40);
+      for (const x of fws ?? []) {
+        const who = [x.destination_account_name, x.destination_bank_name].filter(Boolean).join(" · ");
+        rows.push({ id: x.id, kind: "withdrawal", status: "failed", title: "Withdrawal · failed", sub: who, amount: -Number(x.amount_naira), fee: 0, at: x.created_at, ref: x.id, dir: "out" });
+        rows.push({ id: x.id + ":refund", kind: "refund", title: "Refund · withdrawal failed", sub: who, amount: Number(x.amount_naira), fee: 0, at: refundAt(null, x.created_at), ref: x.id, dir: "in" });
+      }
       rows.sort((x, y)=>new Date(y.at).getTime() - new Date(x.at).getTime());
       return json({ ok: true, items: rows.slice(0, limit), more: rows.length > limit });
     }
