@@ -99,7 +99,7 @@
 @page{size:A4;margin:14mm 12mm}
 *{box-sizing:border-box}body{margin:0;background:#eef2f5;color:#0e1b24;font:13px/1.45 -apple-system,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .bar{position:sticky;top:0;background:#fff;border-bottom:1px solid #dde5ea;padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:5}
-.bar button{background:#1877f2;color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;cursor:pointer}.bar span{color:#5a6c77;font-size:13px}
+.bar button.back{background:#eaf1f6;color:#0e1b24}.bar .hint{flex:1;font-size:12px}.bar button{background:#1877f2;color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;cursor:pointer}.bar span{color:#5a6c77;font-size:13px}
 .page{max-width:900px;margin:18px auto;background:#fff;border-radius:16px;box-shadow:0 6px 30px rgba(10,30,50,.08);overflow:hidden}
 .hd{background:linear-gradient(135deg,#0b5ed7 0%,#1877f2 55%,#4aa3ff 100%);color:#fff;padding:26px 30px;display:flex;align-items:center;gap:16px}
 .hd img{width:54px;height:54px;border-radius:14px;background:#fff;padding:5px}.hd h1{margin:0;font-size:24px;letter-spacing:-.01em}.hd small{opacity:.85;display:block;font-size:12.5px;margin-top:2px}.hd .r{margin-left:auto;text-align:right;font-size:12px;opacity:.92}
@@ -114,13 +114,13 @@ td{padding:10px 8px;border-bottom:1px solid #edf2f5;vertical-align:top}tr{page-b
 @media print{body{background:#fff}.bar{display:none}.page{margin:0;border-radius:0;box-shadow:none;max-width:none}.in{padding:18px 0}.hd{border-radius:12px;margin-bottom:4px}.ft{padding:14px 0 0}}
 @media(max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}.meta{grid-template-columns:1fr}.in{padding:18px 14px}.hd{padding:20px 16px}table{font-size:11px}}
 </style></head><body>
-<div class="bar"><span>Tap “Save as PDF”, then choose <b>Save as PDF</b> as the printer.</span><button onclick="window.print()">Save as PDF</button></div>
+<div class="bar"><button class="back" onclick="goBack()">‹ Back</button><span class="hint">Tap “Save as PDF”, then pick <b>Save as PDF</b> as the printer.</span><button onclick="window.print()">Save as PDF</button></div>
 <div class="page"><div class="hd"><img src="${logo}" alt="Revora"><div><h1>Revora</h1><small>Wallet statement</small></div><div class="r">Generated<br><b>${ESC(new Date().toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" }))}</b></div></div>
 <div class="in"><div class="meta"><div><small>Account holder</small><b>${ESC(who)}</b></div><div><small>Business</small><b>${ESC(co || "—")}${role ? ` · ${ESC(role)}` : ""}</b></div><div><small>Period</small><b>${ESC(period)}</b></div><div><small>Wallet balance today</small><b>${bal == null ? "—" : NGN(bal)}</b></div></div>
 <div class="tiles"><div class="t p"><small>Money in</small><b>${NGN(inn)}</b></div><div class="t n"><small>Money out</small><b>${NGN(out)}</b></div><div class="t"><small>Fees</small><b>${NGN(fees)}</b></div><div class="t"><small>Transactions</small><b>${items.length}</b></div></div>
 ${items.length ? `<table><thead><tr><th>Date</th><th>Description</th><th>Status</th><th class="num">Amount</th><th class="num">Fee</th><th>Ref</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty">No transactions in this period.</div>`}
 </div><div class="ft"><div>A failed payment shows as a debit marked <b>Failed</b> followed by a <b>Refund</b> of the same amount, so it never changes your balance.<br>Ad spend that Revora bills against your wallet is not listed here.</div><div style="text-align:right"><b>Revora</b><br>revoracrm.app</div></div></div>
-<script>window.addEventListener("load",function(){setTimeout(function(){if(!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))window.print()},500)})<\/script></body></html>`;
+<script>function goBack(){try{window.close()}catch(e){}setTimeout(function(){location.href="${location.origin}/dashboard_new.html"},250)}window.addEventListener("load",function(){setTimeout(function(){if(!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))window.print()},500)})<\/script></body></html>`;
   }
   async function make(kind) {
     const w = kind === "pdf" ? window.open("", "_blank") : null;
