@@ -460,7 +460,7 @@ function w2Home() {
       <button type="button" class="w2-tile" onclick="w2Go('activity')"><i>${rvIc("list")}</i><span>Transactions<small>Everything in and out</small></span></button>
       ${admin ? `<button type="button" class="w2-tile" onclick="w2Go('team')"><i>${rvIc("users")}</i><span>Team wallets<small>Give or take back funds</small></span></button>` : `<button type="button" class="w2-tile" onclick="w2Go('withdraw')"><i>${rvIc("bank")}</i><span>Withdraw<small>To my own bank account</small></span></button><button type="button" class="w2-tile" onclick="w2Go('requests')"><i>${rvIc("inbox")}</i><span>Requests${pend ? ` · ${pend}` : ""}<small>Asked of your admin</small></span></button>`}
       <button type="button" class="w2-tile" onclick="w2Go('fees')"><i>${rvIc("tag")}</i><span>Fees<small>What Revora charges</small></span></button>
-      <button type="button" class="w2-tile" onclick="w2Statement()"><i>${rvIc("dl")}</i><span>Statement<small>Download as CSV</small></span></button>
+      <button type="button" class="w2-tile" onclick="w2Statement()"><i>${rvIc("dl")}</i><span>Statement<small>Print as PDF or CSV</small></span></button>
       ${admin ? `<button type="button" class="w2-tile" onclick="w2Go('old')"><i>${rvIc("bank")}</i><span>More tools<small>Collection accounts, auto-approve</small></span></button>` : ""}
     </div>`;
 }
