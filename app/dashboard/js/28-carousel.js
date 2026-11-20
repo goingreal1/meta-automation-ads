@@ -22,7 +22,7 @@
   const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
 
   window.bvCarouselSheet = async function (productId, editId, after) {
-    const p = (window.bvProductsCache || []).find(x => x.id === productId) || {};
+    const p = (window.bvProductsCache || []).find(x => x.id === productId) || ((window.bvCatData || {}).prods || []).find(x => x.id === productId) || {};
     const acct = p.ad_account_id || (typeof activeAccountId !== "undefined" ? activeAccountId : null);
     let lib = [];
     try { lib = await sbQuery("creative_assets", `select=id,public_url,display_name,file_name&product_id=eq.${productId}&asset_type=eq.image&order=uploaded_at.desc&limit=60`); } catch (e) {}
