@@ -280,12 +280,18 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
             link
           }
         };
-      const cr = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
+      // The ad's DESTINATION (Ads Manager > Destination) is always set: the main link, a display link, and an ad-level button. Without it Ads Manager shows the destination as unselected.
+      const mainCta = wa ? {
+          type: "WHATSAPP_MESSAGE",
+          value: {
+            app_destination: "WHATSAPP"
+          }
+        } : cardCta(baseLink);
+      let host = "";
+      try {
+        host = new URL(baseLink).hostname.replace(/^www\./, "");
+      } catch  {}
+      const makeBody = (withMainCta)=>({
           name: `Carousel-${creative.file_name}-${Date.now()}`,
           object_story_spec: {
             page_id: pageId,
@@ -294,9 +300,15 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
             } : {},
             link_data: {
               link: baseLink,
+              ...!wa && !ms && host ? {
+                caption: host
+              } : {},
               message: creative.primary_text || "",
               multi_share_end_card: false,
               multi_share_optimized: false,
+              ...withMainCta ? {
+                call_to_action: mainCta
+              } : {},
               child_attachments: cards.map((k)=>{
                 const link = wa || ms ? baseLink : String(k.link || destinationLink);
                 return {
@@ -313,9 +325,22 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
             enroll_status: "OPT_OUT"
           },
           access_token: META_ACCESS_TOKEN
-        })
-      });
-      const cd = await cr.json();
+        });
+      const post = async (withMainCta)=>{
+        const cr = await fetch(`${META_GRAPH_BASE}/act_${accountId}/adcreatives`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(makeBody(withMainCta))
+        });
+        return await cr.json();
+      };
+      let cd = await post(true);
+      if (!cd.id) {
+        console.error("Carousel creative with destination button refused, retrying without it:", JSON.stringify(cd.error || cd));
+        cd = await post(false);
+      }
       if (!cd.id) return {
         error: JSON.stringify(cd.error || cd)
       };
