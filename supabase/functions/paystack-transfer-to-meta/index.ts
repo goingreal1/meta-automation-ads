@@ -220,6 +220,7 @@ Deno.serve(async (req)=>{
     }).eq("id", fr.id);
     // Revora's transfer fee comes off the wallet the money was sent from (this includes the bank's own charge).
     if (transferFee > 0) await supabase.rpc("rv_take_fee", { p_kind: "transfer", p_company: fr.company_id, p_buyer: ownBalanceSend ? fr.media_buyer_id : null, p_user: profile.id, p_amount: Number(fr.amount_naira), p_fee: transferFee, p_ref: String(fr.id), p_note: "Transfer fee on send to Meta" });
+    await supabase.rpc("rv_log_paystack_cost", { p_company: fr.company_id, p_buyer: ownBalanceSend ? fr.media_buyer_id : null, p_user: profile.id, p_amount: Number(fr.amount_naira), p_ref: String(fr.id) }); // Paystack's own charge, so profit is exact even when no Revora fee is taken
     if (updErr) throw updErr;
     notifyTransferResult(fr.id);
     await supabase.from("transfer_receipts").insert({
