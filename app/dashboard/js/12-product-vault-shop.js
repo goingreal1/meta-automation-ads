@@ -6,7 +6,7 @@ const BV_CTAS = [["SHOP_NOW", "Shop Now"], ["ORDER_NOW", "Order Now"], ["LEARN_M
 async function bvRenderProductVault(productId) {
   const box = document.getElementById("vaultBox"); if (!box) return;
   const p = (window.bvProductsCache || []).find(x => x.id === productId) || {};
-  const assets = await sbQuery("creative_assets", `select=id,file_name,display_name,public_url,asset_type,primary_text,headline,description,cta_type,test_status,carousel_cards,feed_only,meta_post_id&product_id=eq.${productId}&order=uploaded_at.desc`).catch(() => []);
+  const assets = await sbQuery("creative_assets", `select=id,file_name,display_name,public_url,asset_type,primary_text,headline,description,cta_type,test_status,carousel_cards,feed_only,meta_post_id&product_id=eq.${productId}&or=(uploaded_by.is.null,uploaded_by.neq.ai_chat)&order=uploaded_at.desc`).catch(() => []);
   const complete = assets.filter(a => (a.primary_text || "").trim() && (a.headline || "").trim()).length;
   const hasLink = !!(p.landing_page_url || (p.destination_type === "whatsapp" && p.whatsapp_number));
   const ready = assets.length >= 5 && complete >= 5 && hasLink;

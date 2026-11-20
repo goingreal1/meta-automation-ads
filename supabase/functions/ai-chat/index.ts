@@ -3698,7 +3698,7 @@ async function buildAdminContext(companyId, sinceIso) {
     supabase.from("orders").select("id, media_buyer_id, ad_set_id, creative_id, order_status, order_value_naira, possible_duplicate, followup_attempts, ordered_at").eq("company_id", companyId).gte("ordered_at", sinceIso).limit(2e3),
     supabase.from("voice_calls").select("status, needs_human").eq("company_id", companyId).gte("created_at", sinceIso).limit(2e3),
     supabase.from("pending_approvals").select("id").eq("company_id", companyId).eq("status", "pending"),
-    supabase.from("creative_assets").select("id, headline, file_name").eq("company_id", companyId).limit(500)
+    supabase.from("creative_assets").select("id, headline, file_name").eq("company_id", companyId).or("uploaded_by.is.null,uploaded_by.neq.ai_chat").limit(500)
   ]);
   const adSetById = new Map((adSets || []).map((a)=>[
       a.id,
@@ -3782,7 +3782,7 @@ async function buildBuyerContext(companyId, mediaBuyerId, sinceIso) {
   };
   const [{ data: adSets }, { data: creatives }, { data: orders }] = await Promise.all([
     supabase.from("ad_sets").select("id, adset_name, creative_id, status").eq("company_id", companyId).eq("media_buyer_id", mediaBuyerId).limit(300),
-    supabase.from("creative_assets").select("id, headline, file_name").eq("company_id", companyId).limit(300),
+    supabase.from("creative_assets").select("id, headline, file_name").eq("company_id", companyId).or("uploaded_by.is.null,uploaded_by.neq.ai_chat").limit(300),
     supabase.from("orders").select("id, order_status, order_value_naira, ad_set_id, creative_id, ordered_at, delivery_agent_id, assignment_status").eq("company_id", companyId).eq("media_buyer_id", mediaBuyerId).gte("ordered_at", sinceIso).limit(1e3)
   ]);
   const adSetIds = (adSets || []).map((a)=>a.id);

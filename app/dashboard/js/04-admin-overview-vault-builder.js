@@ -130,7 +130,7 @@ function bvPrefillFromShopDefaults(p) {
 // ── TAB: CREATIVE VAULT ───────────────────────────────────────────────────────
 async function renderVault(el) {
   const [assets, products] = await Promise.all([
-    sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100"),
+    sbQuery("creative_assets", "select=*,products(product_name)&order=uploaded_at.desc&limit=100&or=(uploaded_by.is.null,uploaded_by.neq.ai_chat)"),
     sbQuery("products", "is_active=eq.true&select=id,product_name,destination_type,landing_page_url,whatsapp_number,ad_primary_text,ad_headline,ad_description,ad_cta_type"),
   ]);
 

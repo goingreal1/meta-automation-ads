@@ -25,7 +25,7 @@
     const p = (window.bvProductsCache || []).find(x => x.id === productId) || ((window.bvCatData || {}).prods || []).find(x => x.id === productId) || {};
     const acct = p.ad_account_id || (typeof activeAccountId !== "undefined" ? activeAccountId : null);
     let lib = [];
-    try { lib = await sbQuery("creative_assets", `select=id,public_url,display_name,file_name&product_id=eq.${productId}&asset_type=eq.image&order=uploaded_at.desc&limit=60`); } catch (e) {}
+    try { lib = await sbQuery("creative_assets", `select=id,public_url,display_name,file_name&product_id=eq.${productId}&asset_type=eq.image&or=(uploaded_by.is.null,uploaded_by.neq.ai_chat)&order=uploaded_at.desc&limit=60`); } catch (e) {}
     const S = { name: "", primary_text: p.ad_primary_text || "", feed_only: true, cards: [] };
     if (editId) {
       const r = (await sbQuery("creative_assets", `select=id,file_name,primary_text,carousel_cards,feed_only,ad_account_id&id=eq.${editId}`).catch(() => []))?.[0];
