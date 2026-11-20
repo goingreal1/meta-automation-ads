@@ -158,7 +158,8 @@ Deno.serve(async (req)=>{
       const t = event.data ?? {};
       const code = String(t.transfer_code ?? ""), ref = String(t.reference ?? "");
       const ok = event.event === "transfer.success";
-      const why = ok ? null : String(t.reason ?? t.failures ?? event.event.replace("transfer.", "")).slice(0, 200);
+      // t.reason is the text WE sent with the transfer, not why it failed, so never show it as the failure reason.
+      const why = ok ? null : String(t.failures ?? t.gateway_response ?? `Paystack ${event.event.replace("transfer.", "")} the transfer: the receiving bank refused it. Open the transfer in your Paystack dashboard for the bank's reason.`).slice(0, 200);
       const { data: rcs } = await supabase.from("transfer_receipts").select("id, status, kind").or(`paystack_transfer_code.eq.${code},paystack_reference.eq.${ref}`).limit(5);
       for (const r of rcs ?? []){
         if (r.status === "delivered" && !ok) continue; // a later reversal is handled below only if it follows a failure
@@ -178,6 +179,9 @@ Deno.serve(async (req)=>{
           }).eq("paystack_transfer_code", code).eq("status", "sent");
           // The money is back in the wallet, and so is Revora's fee.
           for (const w of wds ?? []) await supabase.rpc("rv_refund_fee", { p_kind: "transfer", p_ref: String(w.id) });
+          const { data: frs } = await supabase.from("fund_requests").select("id").eq("paystack_transfer_code", code).eq("status", "transferred");
+          // The send did not arrive, so Revora's fee goes back too.
+          for (const f of frs ?? []) await supabase.rpc("rv_refund_fee", { p_kind: "transfer", p_ref: String(f.id) });
           await supabase.from("fund_requests").update({
             status: "approved",
             paystack_transfer_code: null,
