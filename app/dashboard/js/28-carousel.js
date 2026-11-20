@@ -21,6 +21,19 @@
   .cr-strip{display:flex;gap:4px}.cr-strip img{width:34px;height:34px;border-radius:7px;object-fit:cover}`;
   const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st);
 
+  // Card pictures go straight to storage and belong ONLY to the carousel: they are not added to the creative library as separate creatives.
+  async function uploadCardImage(file) {
+    try {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error("Use a JPG or PNG picture.");
+      const hdr = { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json", apikey: ANON };
+      const sign = await fetch(`${SUPA_URL}/functions/v1/media`, { method: "POST", headers: hdr, body: JSON.stringify({ action: "sign", folder: "creative-vault", filename: String(file.name || "card").replace(/[^\w.\-]+/g, "-"), contentType: file.type, size: file.size }) }).then(r => r.json());
+      if (!sign.uploadUrl) throw new Error(sign.error || "Couldn't start the upload.");
+      const put = await fetch(sign.uploadUrl, { method: "PUT", headers: sign.headers || { "Content-Type": file.type }, body: file });
+      if (!put.ok) throw new Error(`Upload failed (${put.status}).`);
+      return { url: sign.publicUrl };
+    } catch (e) { return { error: e.message || String(e) }; }
+  }
+
   window.bvCarouselSheet = async function (productId, editId, after) {
     const p = (window.bvProductsCache || []).find(x => x.id === productId) || ((window.bvCatData || {}).prods || []).find(x => x.id === productId) || {};
     const acct = p.ad_account_id || (typeof activeAccountId !== "undefined" ? activeAccountId : null);
@@ -77,10 +90,9 @@
         sync(); const files = Array.from(fi.files || []).slice(0, 10 - S.cards.length); if (!files.length) return;
         for (let n = 0; n < files.length; n++) {
           up.textContent = `Uploading ${n + 1} of ${files.length}…`;
-          const fd = new FormData(); fd.append("file", files[n]); fd.append("product_id", productId); fd.append("ad_account_id", acct); fd.append("uploaded_by", "dashboard");
-          const r = await bvCreUpload(fd);
-          if (r?.error || !r?.asset?.public_url) { bvToast(`"${files[n].name}": ${r?.error || "upload failed"}`, "err"); continue; }
-          S.cards.push({ image_url: r.asset.public_url, headline: "", description: "" });
+          const r = await uploadCardImage(files[n]);
+          if (r.error) { bvToast(`"${files[n].name}": ${r.error}`, "err"); continue; }
+          S.cards.push({ image_url: r.url, headline: "", description: "" });
         }
         draw();
       };
