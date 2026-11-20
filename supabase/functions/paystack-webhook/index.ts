@@ -179,11 +179,25 @@ Deno.serve(async (req)=>{
           }).eq("paystack_transfer_code", code).eq("status", "sent");
           // The money is back in the wallet, and so is Revora's fee.
           for (const w of wds ?? []) await supabase.rpc("rv_refund_fee", { p_kind: "transfer", p_ref: String(w.id) });
-          const { data: frs } = await supabase.from("fund_requests").select("id").eq("paystack_transfer_code", code).eq("status", "transferred");
-          // The send did not arrive, so Revora's fee goes back too.
-          for (const f of frs ?? []) await supabase.rpc("rv_refund_fee", { p_kind: "transfer", p_ref: String(f.id) });
+          const { data: frs } = await supabase.from("fund_requests").select("id, company_id, media_buyer_id, amount_naira").eq("paystack_transfer_code", code).eq("status", "transferred");
+          // REVERSE RULE: a send that did not arrive goes back to the wallet it came from, with Revora's fee. The request is closed as declined
+          // (an "approved" request still counts as spent in the wallet), and the person is told. They send a fresh request with the right Meta account.
+          for (const f of frs ?? []){
+            await supabase.rpc("rv_refund_fee", { p_kind: "transfer", p_ref: String(f.id) });
+            await supabase.rpc("rv_notify", {
+              p_company: f.company_id,
+              p_category: "money",
+              p_kind: "transfer_reversed",
+              p_title: `↩️ ₦${Math.round(Number(f.amount_naira)).toLocaleString("en-NG")} send to Meta failed and is back in your wallet`,
+              p_body: "The bank refused the payment, so Paystack reversed it. The money and Revora's fee are back in your wallet. Get a fresh Meta payment account number and send again.",
+              p_severity: "warning",
+              p_data: { fund_request_id: f.id },
+              p_dedupe: `reversed:${f.id}`,
+              p_buyer: f.media_buyer_id
+            });
+          }
           await supabase.from("fund_requests").update({
-            status: "approved",
+            status: "declined",
             paystack_transfer_code: null,
             paystack_transfer_reference: null,
             transferred_at: null,
