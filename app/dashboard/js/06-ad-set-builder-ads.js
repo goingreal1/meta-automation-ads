@@ -15,7 +15,7 @@ async function bvOpenReuseCreativeModal() {
   document.body.appendChild(overlay);
   let assets = [];
   try {
-    assets = await sbQuery("creative_assets", `select=*${productId ? `&product_id=eq.${productId}` : ""}&order=uploaded_at.desc&limit=200`);
+    assets = await sbQuery("creative_assets", `select=*${productId ? `&product_id=eq.${productId}` : ""}&order=uploaded_at.desc&limit=200&or=(uploaded_by.is.null,uploaded_by.neq.ai_chat)`);
   } catch (e) { assets = (window.bvVaultAssetsCache || []).filter(a => !productId || a.product_id === productId); }
   assets = (assets || []).filter(a => a.public_url);
   window.bvVaultAssetsCache = [...assets, ...(window.bvVaultAssetsCache || []).filter(a => !assets.some(x => x.id === a.id))];

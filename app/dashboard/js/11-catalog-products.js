@@ -28,7 +28,7 @@ function bvCatStatus(p) {
 async function renderCatalog(el) {
   const [prods, assets, sites] = await Promise.all([
     sbQuery("products", "order=created_at.desc"),
-    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name,display_name,test_status,uploaded_at,carousel_cards,meta_post_id&order=uploaded_at.desc&limit=600").catch(() => []),
+    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name,display_name,test_status,uploaded_at,carousel_cards,meta_post_id&order=uploaded_at.desc&limit=600&or=(uploaded_by.is.null,uploaded_by.neq.ai_chat)").catch(() => []),
     sbQuery("sites", "select=id,name,slug,status,product_id").catch(() => []),
   ]);
   window.bvCatData = { prods: prods || [], assets: assets || [], sites: sites || [] };
@@ -193,7 +193,7 @@ async function bvCatProduct(el) {
 async function renderProducts(el) {
   const [prods, creatives] = await Promise.all([
     sbQuery("products", "order=created_at.desc"),
-    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name,display_name,test_status"),
+    sbQuery("creative_assets", "select=id,product_id,asset_type,public_url,file_name,display_name,test_status&or=(uploaded_by.is.null,uploaded_by.neq.ai_chat)"),
   ]);
   const creativesByProduct = {};
   (creatives || []).forEach(c => {
