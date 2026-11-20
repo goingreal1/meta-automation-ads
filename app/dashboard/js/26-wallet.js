@@ -424,10 +424,10 @@ function w2Day(iso) {
   return same(d, t) ? "Today" : same(d, y) ? "Yesterday" : d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 function w2Row(x) {
-  const out = x.amount < 0, ic = x.kind === "to_meta" ? "arrup" : x.kind === "sent_to_user" ? "send" : out ? "arrup" : "arrdn";
+  const out = x.amount < 0, ic = x.kind === "refund" ? "arrdn" : x.kind === "to_meta" ? "arrup" : x.kind === "sent_to_user" ? "send" : out ? "arrup" : "arrdn";
   const idx = (W2.acts || []).indexOf(x);
   return `<button type="button" class="w2-row" onclick="w2Go('receipt', ${idx})"><span class="w2-ic ${out ? "out" : "in"}">${rvIc(ic)}</span>
-    <span class="w2-t"><b>${escH(x.title)}</b><small>${escH(x.sub ? x.sub + " · " : "")}${new Date(x.at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</small></span>
+    <span class="w2-t"><b>${escH(x.title)}</b><small>${escH(x.sub ? x.sub + " · " : "")}${new Date(x.at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}${x.status === "failed" ? ' · <span style="color:var(--danger,#d33)">failed</span>' : ""}</small></span>
     <span class="w2-a ${out ? "" : "pos"}">${w2Signed(x.amount)}${x.fee > 0 ? `<small>fee ${w2Money(x.fee)}</small>` : ""}</span></button>`;
 }
 function w2Groups(items) {
@@ -480,7 +480,7 @@ function w2Receipt() {
   if (x.sub) lines.push(["Details", escH(x.sub)]);
   lines.push([out ? "Amount" : "Money sent to you", w2Money(out ? amount : (x.gross || amount + x.fee))]);
   if (x.fee > 0) lines.push(["Fees", (out ? "+" : "−") + w2Money(x.fee), "fee"]);
-  lines.push([out ? "Total paid" : "Credited to wallet", w2Money(out ? amount + x.fee : amount), "tot"]);
+  if (x.status === "failed") lines.push(["Status", "Failed. The money was refunded to your wallet."]); else lines.push([out ? "Total paid" : x.kind === "refund" ? "Refunded to wallet" : "Credited to wallet", w2Money(out ? amount + x.fee : amount), "tot"]);
   lines.push(["Reference", escH(String(x.ref || x.id).slice(-10).toUpperCase())]);
   return `${w2Nav("Receipt", "activity")}<div class="w2-rcpt"><div class="w2-ok ${out ? "out" : ""}">${rvIc(out ? "arrup" : "check", 26)}</div><small>${escH(x.title)}</small><div class="n">${w2Money(amount)}</div></div>${w2Lines(lines)}
     <button type="button" class="w2-cta" onclick="w2Copy(${W2.sel})">Copy receipt</button>`;
@@ -493,7 +493,7 @@ function w2Copy(i) {
 async function w2Statement() {
   const r = await sbFn("wallet-topup", { action: "activity", limit: 100 }).catch(() => null);
   if (!r || !r.ok || !r.items.length) { bvToast("Nothing to export yet", "err"); return; }
-  const rows = [["Date", "Description", "Details", "Amount", "Fee"], ...r.items.map((x) => [new Date(x.at).toISOString(), x.title, x.sub || "", x.amount, x.fee || 0])];
+  const rows = [["Date", "Description", "Details", "Status", "Amount", "Fee", "Balance effect"], ...r.items.map((x) => [new Date(x.at).toISOString(), x.title, x.sub || "", x.status === "failed" ? "Failed" : x.kind === "refund" ? "Refunded" : "Completed", x.amount, x.fee || 0, x.amount])];
   const csv = rows.map((l) => l.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "revora-wallet-statement.csv"; a.click();
 }
