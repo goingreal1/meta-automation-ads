@@ -153,6 +153,7 @@ Deno.serve(async (req)=>{
       }).eq("id", wid);
       // Revora's transfer fee comes off the wallet the money left.
       if (fee > 0) await supabase.rpc("rv_take_fee", { p_kind: "transfer", p_company: profile.company_id, p_buyer: isBuyer && !isAdmin ? profile.media_buyer_id : null, p_user: uid, p_amount: Number(amount_naira), p_fee: fee, p_ref: String(wid), p_note: mode === "meta" ? "Transfer fee on send to Meta" : "Transfer fee on withdrawal" });
+      await supabase.rpc("rv_log_paystack_cost", { p_company: profile.company_id, p_buyer: isBuyer && !isAdmin ? profile.media_buyer_id : null, p_user: uid, p_amount: Number(amount_naira), p_ref: String(wid) }); // Paystack's own charge, so profit is exact even when no Revora fee is taken
       // One receipt per transfer. The webhook moves it to delivered or failed when the bank confirms.
       await supabase.from("transfer_receipts").insert({
         company_id: profile.company_id,
