@@ -5,9 +5,10 @@ Description: >
   and a deploy role that can only touch stack "revora-heavy" and resources named revora-*.
 
 Parameters:
-  GitHubRepo:
+  GitHubSubject:
     Type: String
-    Default: goingreal1/meta-automation-ads
+    Default: "repo:goingreal1@318745284/meta-automation-ads@1339908198:ref:refs/heads/main"
+    Description: Exact OIDC sub claim allowed to assume the role. GitHub now includes the immutable owner and repo IDs (owner@id/repo@id). Main branch of this one repo only, no wildcards.
   CreateOidcProvider:
     Type: String
     AllowedValues: ["true", "false"]
@@ -50,7 +51,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/main"
+                token.actions.githubusercontent.com:sub: !Ref GitHubSubject
       Policies:
         - PolicyName: deploy-revora-heavy
           PolicyDocument:
