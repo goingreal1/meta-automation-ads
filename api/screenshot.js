@@ -7,7 +7,7 @@ const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 
 const SECRET = process.env.SHOT_SECRET || "";
-const MAX_SLICES = 11, SLICE_H = 1300, W = 390;
+const MAX_SLICES = 22, SLICE_H = 1300, W = 390;
 
 function okUrl(u) {
   let x; try { x = new URL(u); } catch (_) { return null; }
