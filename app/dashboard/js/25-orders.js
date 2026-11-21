@@ -12,7 +12,7 @@ const ORD = { tab: "all", q: "", product: "", buyer: "", days: "", sel: null, ro
 const ORD_TABS = [["all", "All"], ["new", "New"], ["confirmed", "Confirmed"], ["out", "Out for delivery"], ["delivered", "Delivered"], ["returned", "Returned"], ["cancelled", "Cancelled"]];
 const ORD_TAB_Q = {
   all: "",
-  new: "order_status=eq.pending",
+  new: "order_status=eq.pending&or=(payment_status.is.null,payment_status.neq.pending)",
   confirmed: "order_status=eq.valid&and=(or(delivery_stage.is.null,delivery_stage.neq.on_the_way))",
   out: "order_status=eq.valid&delivery_stage=eq.on_the_way",
   delivered: "order_status=eq.delivered",
@@ -23,6 +23,7 @@ const ORD_TAB_Q = {
 // What a person calls the state of an order.
 function ordState(o) {
   const s = o.order_status || "pending";
+  if (s === "pending" && o.payment_status === "pending") return { k: "unpaid", l: "Awaiting payment", c: "bad" };
   if (s === "pending") return { k: "new", l: "New", c: "warn" };
   if (s === "valid" && o.delivery_stage === "on_the_way") return { k: "out", l: "Out for delivery", c: "br" };
   if (s === "valid") return { k: "confirmed", l: "Confirmed", c: "br" };
@@ -46,6 +47,8 @@ const ordDay = (iso) => { const d = new Date(iso), now = new Date(); if (d.toDat
 // Money chip: paid online, deposit taken, or cash on delivery.
 function ordPay(o) {
   const p = o.payment;
+  if (o.payment_status === "paid") return { k: "PAID", c: "ok", note: "Paid online" + (o.paid_at ? " " + ordDay(o.paid_at) : "") + (o.seller_net_naira != null ? `. ${fN(o.seller_net_naira)} went to your wallet after fees.` : "") };
+  if (o.payment_status === "pending") return { k: "UNPAID", c: "bad", note: "The customer chose to pay online but has not paid yet. Do not deliver until it shows PAID." };
   if (p && p.status === "confirmed") return { k: "PAID", c: "ok", note: "Paid online" + (p.paid_at ? " " + ordDay(p.paid_at) : "") };
   if (o.deposit_amount_naira > 0 && /paid|success|confirmed/i.test(o.deposit_status || "")) return { k: "DEPOSIT", c: "br", note: `Deposit of ${fN(o.deposit_amount_naira)} received` };
   if (p && p.status === "unmatched") return { k: "CHECK", c: "bad", note: "A deposit arrived that could not be matched to this order. Check before collecting cash too." };

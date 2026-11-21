@@ -283,6 +283,30 @@ Deno.serve(async (req)=>{
       mediaBuyerId = buyerRow?.id ?? null;
     }
     if (!mediaBuyerId && siteRow?.media_buyer_id) mediaBuyerId = siteRow.media_buyer_id;
+    // A booking: the service, its price and the time slot are all checked HERE against the product's own settings.
+    let bookingInfo = null;
+    if (payload.booking && typeof payload.booking === 'object') {
+      const fail = (m, code = 400)=>new Response(JSON.stringify({ error: m }), { status: code, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      const { data: bp } = finalProductId ? await supabase.from('products').select('id, company_id, product_name, currency, booking_settings, product_type, accept_online, is_active').eq('id', finalProductId).maybeSingle() : { data: null };
+      if (!bp || bp.product_type !== 'booking' || !bp.booking_settings || bp.is_active === false) return fail("This is not a bookable service.");
+      const cfg = bp.booking_settings;
+      const svc = (Array.isArray(cfg.services) ? cfg.services : []).find((x)=>String(x.id) === String(payload.booking.service_id));
+      if (!svc) return fail("Please choose a service.");
+      const startsAt = new Date(String(payload.booking.starts_at ?? ''));
+      if (isNaN(startsAt.getTime())) return fail("Please choose a date and time.");
+      const dur = Math.max(10, Math.min(600, Math.round(Number(svc.duration_min) || 60))), endsAt = new Date(startsAt.getTime() + dur * 60000);
+      const lead = Number(cfg.lead_hours ?? 2), adv = Number(cfg.advance_days ?? 30);
+      if (startsAt.getTime() < Date.now() + lead * 3600000 - 60000) return fail("That time is too soon. Please pick a later time.");
+      if (startsAt.getTime() > Date.now() + (adv + 1) * 86400000) return fail("That date is too far ahead.");
+      const off = Number(cfg.utc_offset_min ?? 60), local = new Date(startsAt.getTime() + off * 60000);
+      const mins = local.getUTCHours() * 60 + local.getUTCMinutes(), tm = (v, d)=>{ const m = /^(\d{1,2}):(\d{2})$/.exec(String(v ?? d)); return m ? Number(m[1]) * 60 + Number(m[2]) : 0; };
+      const openM = tm(cfg.open, '09:00'), closeM = tm(cfg.close, '18:00'), step = Math.max(5, Number(cfg.step_min) || 30);
+      const days = Array.isArray(cfg.days) ? cfg.days.map(Number) : [1, 2, 3, 4, 5, 6];
+      if (!days.includes(local.getUTCDay()) || mins < openM || mins + dur > closeM || (mins - openM) % step !== 0) return fail("That time is not available. Please pick another.");
+      bookingInfo = { product: bp, svc, startsAt, endsAt, dur, price: Number(svc.price) || 0, capacity: Math.max(1, Number(cfg.capacity) || 1), notes: String(payload.booking.notes ?? '').slice(0, 500) };
+      order_value_naira = bookingInfo.price; quantity = 1;
+      product_name = `${bp.product_name} - ${svc.name}`;
+    }
     // Paying online: the price is worked out HERE from the product (never from the browser), and the product must allow online payment.
     const payOnline = String(payment_method ?? '') === 'Pay online';
     let onlineAmount = 0;
@@ -296,6 +320,7 @@ Deno.serve(async (req)=>{
         if (tr) { total = Number(tr.price_naira); qty = Number(tr.quantity); }
       }
       if (cartLines) total = cartLines.reduce((t, l)=>t + l.line_total_naira, 0);
+      if (bookingInfo) total = bookingInfo.price;
       if (!(total >= 100)) return new Response(JSON.stringify({ error: "This order has no payable amount." }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
       order_value_naira = Math.round(total);
       onlineAmount = order_value_naira;
@@ -346,6 +371,16 @@ Deno.serve(async (req)=>{
     if (dbError) {
       throw new Error(`Database error: ${dbError.message}`);
     }
+    if (bookingInfo && orderRow?.id) {
+      const { error: bErr } = await supabase.rpc('rv_create_booking', { p_company: companyId, p_product: bookingInfo.product.id, p_order: orderRow.id, p_service: bookingInfo.svc.name, p_duration: bookingInfo.dur, p_price: bookingInfo.price,
+        p_start: bookingInfo.startsAt.toISOString(), p_end: bookingInfo.endsAt.toISOString(), p_name: customer_name, p_phone: phone, p_email: email ?? null, p_notes: bookingInfo.notes, p_status: payOnline ? 'pending_payment' : 'confirmed', p_hold_minutes: 20, p_capacity: bookingInfo.capacity });
+      if (bErr) {
+        await supabase.from('orders').update({ order_status: 'cancelled', payment_status: null }).eq('id', orderRow.id);
+        const taken = /slot_taken/.test(bErr.message);
+        return new Response(JSON.stringify({ error: taken ? "That time was just taken. Please pick another time." : "Could not save your booking. Please try again." }), { status: taken ? 409 : 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      }
+      if (!payOnline) await supabase.rpc('rv_notify', { p_company: companyId, p_category: 'orders', p_kind: 'booking_new', p_title: '📅 New booking', p_body: `${customer_name} booked ${bookingInfo.svc.name} for ${new Date(bookingInfo.startsAt.getTime() + Number(bookingInfo.product.booking_settings.utc_offset_min ?? 60) * 60000).toISOString().replace('T', ' ').slice(0, 16)}.`, p_url: '/dashboard_new.html?open=tab:bookings', p_severity: 'success', p_dedupe: 'booking:' + orderRow.id });
+    }
     // Tie this visit's journey to the order it ended in.
     if (payload.session_key && siteRow?.id && orderRow?.id) await supabase.from('site_sessions').update({ ordered: true, order_id: orderRow.id, last_seen_at: new Date().toISOString() }).eq('site_id', siteRow.id).eq('session_key', String(payload.session_key).slice(0, 64)).then(()=>{}, ()=>{});
     if (cartLines && orderRow?.id) {
@@ -362,7 +397,7 @@ Deno.serve(async (req)=>{
         })));
       if (itemsError) console.error(`receive-order: failed to save order_items for ${orderRow.id}:`, itemsError.message);
     }
-    if (orderRow?.id && !payOnline && (!siteRow || siteRow.settings?.confirmation_call === true)) {
+    if (orderRow?.id && !payOnline && !bookingInfo && (!siteRow || siteRow.settings?.confirmation_call === true)) {
       const callRequest = fetch(`${SUPABASE_URL}/functions/v1/place-order-call`, {
         method: "POST",
         headers: {
@@ -432,7 +467,8 @@ Deno.serve(async (req)=>{
       capi_sent: capiSuccess,
       payment,
       narration_code: narrationCodeOut,
-      order_value_naira
+      order_value_naira,
+      ...(bookingInfo ? { booking: { service: bookingInfo.svc.name, starts_at: bookingInfo.startsAt.toISOString() } } : {})
     }), {
       headers: {
         "Content-Type": "application/json",

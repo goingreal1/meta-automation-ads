@@ -5,6 +5,25 @@ const BV_CUR = { NG: "NGN", KE: "KES", GH: "GHS", ZA: "ZAR", UG: "UGX", TZ: "TZS
 const BV_CUR_LIST = ["NGN", "KES", "GHS", "ZAR", "UGX", "TZS", "XAF", "XOF", "RWF", "ZMW", "ETB", "EGP", "USD", "GBP", "CAD", "EUR"];
 const bvCurOf = (cc) => BV_CUR[cc] || "USD";
 const bvCurOpts = (sel) => BV_CUR_LIST.map((c) => `<option value="${c}"${c === sel ? " selected" : ""}>${c}</option>`).join("");
+// ── Booking products: services, weekly hours, capacity ──
+const BV_DAYS = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]];
+const bvBookingDefaults = (name, price) => ({ services: [{ id: "s1", name: name || "Appointment", duration_min: 60, price: Number(price) || 0 }], days: [1, 2, 3, 4, 5, 6], open: "09:00", close: "18:00", step_min: 30, capacity: 1, advance_days: 30, lead_hours: 2, utc_offset_min: 60 });
+function bvBookingRow(sv) { return `<div class="bk-row" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:6px;margin-bottom:6px"><input class="cat-in bk-n" placeholder="Service (e.g. Box braids)" value="${escH(sv.name || "")}"><input class="cat-in bk-m" type="number" min="10" step="5" placeholder="Minutes" value="${sv.duration_min || 60}"><input class="cat-in bk-p" type="number" min="0" placeholder="Price" value="${sv.price ?? ""}"><button type="button" class="btn btn-g" onclick="this.closest('.bk-row').remove()" aria-label="Remove">✕</button></div>`; }
+function bvBookingAddRow() { document.getElementById("bk_svcs").insertAdjacentHTML("beforeend", bvBookingRow({})); }
+function bvBookingEditorHtml(p) {
+  const c = { ...bvBookingDefaults(p.product_name, p.default_order_value_naira), ...(p.booking_settings || {}) };
+  return `<div class="cat-lbl">Services <span style="font-weight:500">(what customers can book, how long it takes, the price in ${escH(p.currency || "NGN")})</span></div><div id="bk_svcs">${(c.services || []).map(bvBookingRow).join("")}</div>
+    <button type="button" class="btn btn-g" onclick="bvBookingAddRow()" style="margin-bottom:8px">+ Add a service</button>
+    <div class="cat-lbl">Days you take bookings</div><div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-bottom:6px">${BV_DAYS.map(([d, n]) => `<label style="display:flex;gap:5px;align-items:center"><input type="checkbox" class="bk-day" value="${d}" ${(c.days || []).map(Number).includes(d) ? "checked" : ""}> ${n}</label>`).join("")}</div>
+    <div class="cat-row2"><div><div class="cat-lbl">Opens</div><input class="cat-in" id="bk_open" type="time" value="${escH(c.open)}"></div><div><div class="cat-lbl">Closes</div><input class="cat-in" id="bk_close" type="time" value="${escH(c.close)}"></div></div>
+    <div class="cat-row2"><div><div class="cat-lbl">Time slots every</div><select class="cat-in" id="bk_step">${[15, 30, 60].map((m) => `<option value="${m}" ${Number(c.step_min) === m ? "selected" : ""}>${m} minutes</option>`).join("")}</select></div><div><div class="cat-lbl">Clients at the same time</div><input class="cat-in" id="bk_cap" type="number" min="1" max="50" value="${c.capacity || 1}"></div></div>
+    <div class="cat-row2"><div><div class="cat-lbl">Book up to (days ahead)</div><input class="cat-in" id="bk_adv" type="number" min="1" max="60" value="${c.advance_days || 30}"></div><div><div class="cat-lbl">Notice needed (hours)</div><input class="cat-in" id="bk_lead" type="number" min="0" max="72" value="${c.lead_hours ?? 2}"></div></div>`;
+}
+function bvBookingRead(p) {
+  const old = { ...bvBookingDefaults(p.product_name, p.default_order_value_naira), ...(p.booking_settings || {}) };
+  const services = [...document.querySelectorAll("#bk_svcs .bk-row")].map((r, i) => ({ id: "s" + (i + 1), name: r.querySelector(".bk-n").value.trim(), duration_min: Math.max(10, Number(r.querySelector(".bk-m").value) || 60), price: Math.max(0, Number(r.querySelector(".bk-p").value) || 0) })).filter((x) => x.name);
+  return { ...old, services, days: [...document.querySelectorAll(".bk-day:checked")].map((x) => Number(x.value)), open: document.getElementById("bk_open").value || "09:00", close: document.getElementById("bk_close").value || "18:00", step_min: Number(document.getElementById("bk_step").value) || 30, capacity: Math.max(1, Number(document.getElementById("bk_cap").value) || 1), advance_days: Math.min(60, Math.max(1, Number(document.getElementById("bk_adv").value) || 30)), lead_hours: Math.max(0, Number(document.getElementById("bk_lead").value) || 0) };
+}
 
 // ── TAB: PRODUCTS ─────────────────────────────────────────────────────────────
 
@@ -71,7 +90,8 @@ function bvCatAdd() {
   bvCloseModal();
   const o = document.createElement("div"); o.id = "bvModalOverlay"; o.className = "bv-overlay"; o.onclick = e => { if (e.target === o) bvCloseModal(); };
   o.innerHTML = `<div class="bv-modal" style="max-width:420px;"><div class="ph"><div class="ph-title">Add a product</div><button type="button" class="btn btn-g" onclick="bvCloseModal()">✕</button></div>
-    <div class="cat-lbl">Product name</div><input class="cat-in" id="ca_name" placeholder="e.g. Lunessa">
+    <div class="cat-lbl">What are you selling?</div><select class="cat-in" id="ca_type"><option value="physical">A product we deliver</option><option value="booking">Appointments and bookings (salon, spa, clinic, consultation)</option></select>
+    <div class="cat-lbl">Name</div><input class="cat-in" id="ca_name" placeholder="e.g. Lunessa, or Tresses Salon">
     <div class="cat-lbl">Country you sell in</div><select class="cat-in" id="ca_cc" onchange="document.getElementById('ca_curl').textContent=bvCurOf(this.value)">${BV_COUNTRIES.map(([c, n]) => `<option value="${c}">${escH(n)}</option>`).join("")}</select>
     <div class="cat-lbl">Price (<span id="ca_curl">NGN</span>)</div><input class="cat-in" id="ca_price" type="number" min="0" placeholder="12500">
     <div class="cat-lbl">What it is, in one line <span style="font-weight:500">(the AI reads this)</span></div><input class="cat-in" id="ca_desc" placeholder="e.g. Herbal drink for bloating and constipation">
@@ -84,7 +104,7 @@ function bvCatAdd() {
     if (!name) { msg.innerHTML = '<div class="msg err">Give it a name.</div>'; return; }
     if (!(price > 0)) { msg.innerHTML = '<div class="msg err">Enter the price.</div>'; return; }
     const b = document.getElementById("ca_go"); b.disabled = true; b.textContent = "Adding…";
-    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, currency: bvCurOf(document.getElementById("ca_cc").value), target_countries: [document.getElementById("ca_cc").value], is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
+    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, ...(document.getElementById("ca_type").value === "booking" ? { product_type: "booking", is_service: false, booking_settings: bvBookingDefaults(name, price) } : {}), currency: bvCurOf(document.getElementById("ca_cc").value), target_countries: [document.getElementById("ca_cc").value], is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
     if (error) { msg.innerHTML = `<div class="msg err">${escH(error.message)}</div>`; b.disabled = false; b.textContent = "Add product"; return; }
     bvCloseModal(); bvCatOpen(data.id);
   };
@@ -118,6 +138,7 @@ async function bvCatProduct(el) {
         <div><div class="cat-lbl">In stock <span style="font-weight:500">(blank = not tracked)</span></div><input class="cat-in" id="cd_stock" type="number" min="0" value="${p.stock_on_hand ?? ""}"></div></div>
       <div class="cat-lbl">What it is (the AI reads this, so be clear)</div><textarea class="cat-in" id="cd_desc">${escH(p.description || "")}</textarea>
       <div class="cat-lbl">Top benefits</div><textarea class="cat-in" id="cd_benefits" style="min-height:60px">${escH(p.benefits || "")}</textarea>
+      ${p.product_type === "booking" ? `<div class="cat-lbl" style="margin-top:14px;font-size:14px"><b>Booking settings</b></div>${bvBookingEditorHtml(p)}` : ""}
       <div class="cat-lbl">Where people order</div>
       <div class="cat-row2"><select class="cat-in" id="cd_dest"><option value="whatsapp" ${p.destination_type !== "website" ? "selected" : ""}>WhatsApp chat</option><option value="website" ${p.destination_type === "website" ? "selected" : ""}>Website order form</option></select>
         <input class="cat-in" id="cd_wa" placeholder="WhatsApp number, e.g. 2348012345678" value="${escH(p.whatsapp_number || "")}"></div>
@@ -154,7 +175,7 @@ async function bvCatProduct(el) {
       const name = g("cd_name").trim(), price = Number(g("cd_price"));
       const msg = document.getElementById("cd_msg");
       if (!name || !(price >= 0)) { msg.innerHTML = '<div class="msg err">Name and price are needed.</div>'; return; }
-      const fields = { product_name: name, default_order_value_naira: price, currency: g("cd_cur") || "NGN", accept_online: !!document.getElementById("cd_online")?.checked && (g("cd_cur") || "NGN") === "NGN", stock_on_hand: g("cd_stock") === "" ? null : Number(g("cd_stock")), description: g("cd_desc").trim() || null, benefits: g("cd_benefits").trim() || null,
+      const fields = { ...(p.product_type === "booking" ? { booking_settings: bvBookingRead(p) } : {}), product_name: name, default_order_value_naira: price, currency: g("cd_cur") || "NGN", accept_online: !!document.getElementById("cd_online")?.checked && (g("cd_cur") || "NGN") === "NGN", stock_on_hand: g("cd_stock") === "" ? null : Number(g("cd_stock")), description: g("cd_desc").trim() || null, benefits: g("cd_benefits").trim() || null,
         destination_type: g("cd_dest"), whatsapp_number: g("cd_wa").replace(/[^\d]/g, "") || null, landing_page_url: g("cd_url").trim() || null, safety_notes: g("cd_safety").trim() || null,
         target_countries: (cc => cc.length ? cc : null)([...document.querySelectorAll(".cd_cc:checked")].map(x => x.value)), is_active: document.getElementById("cd_active").checked, ...(document.getElementById("cd_nafdac") ? { nafdac_reg_no: g("cd_nafdac").trim() || null } : {}) };
       save.disabled = true; save.textContent = "Saving…";

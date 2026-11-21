@@ -144,6 +144,11 @@ Deno.serve(async (req)=>{
         else {
           const { data: r, error } = await supabase.rpc("rv_credit_online_sale", { p_order: ord.id, p_reference: d.reference, p_gross: Number(d.amount) / 100, p_paystack_fee: Number(d.fees ?? 0) / 100 });
           if (error) console.error("paystack-webhook order_sale error:", error.message);
+          else if (r?.ok) {
+            // a booking paid online is now confirmed
+            const { data: bk } = await supabase.from("bookings").update({ status: "confirmed", hold_until: null, updated_at: new Date().toISOString() }).eq("order_id", ord.id).in("status", ["pending_payment", "cancelled"]).select("id, company_id, service_name, starts_at, customer_name").maybeSingle();
+            if (bk) await supabase.rpc("rv_notify", { p_company: bk.company_id, p_category: "orders", p_kind: "booking_paid", p_title: "📅 Paid booking", p_body: `${bk.customer_name ?? "A customer"} paid for ${bk.service_name}.`, p_url: "/dashboard_new.html?open=tab:bookings", p_severity: "success", p_dedupe: "bookingpaid:" + bk.id });
+          }
         }
       }
       return new Response("ok", { status: 200 });

@@ -103,6 +103,7 @@
       el.innerHTML = '<div class="rv-empty">Order form &mdash; choose a product for this site (Site settings) to show it here.</div>';
       return;
     }
+    if (product.product_type === "booking" && product.booking_settings) { mountBooking(el, d, opts, product); return; }
     var hasTiers = product.tiers && product.tiers.length;
     var selectedTier = hasTiers ? (product.tiers.find(function (t) { return t.is_default; }) || product.tiers.find(function (t) { return t.badge; }) || product.tiers[0]).id : null;
     var qty = 1;
@@ -404,6 +405,118 @@
     try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
   }
   // Entry point used by mountAll: housing projects get the rental application, everything else the order form.
+
+  // ── Booking form: pick a service, a date and a free time, then book (and pay online when the seller allows it) ──
+  function mountBooking(el, d, opts, product) {
+    var site = d.site, cfg = product.booking_settings || {};
+    var svcs = (Array.isArray(cfg.services) ? cfg.services : []).filter(function (x) { return x && x.name; });
+    if (!svcs.length) { el.innerHTML = '<div class="rv-empty">Booking form &mdash; add at least one service in the product settings.</div>'; return; }
+    var off = Number(cfg.utc_offset_min == null ? 60 : cfg.utc_offset_min), step = Math.max(5, Number(cfg.step_min) || 30), cap = Math.max(1, Number(cfg.capacity) || 1);
+    var days = Array.isArray(cfg.days) ? cfg.days.map(Number) : [1, 2, 3, 4, 5, 6], adv = Math.min(60, Number(cfg.advance_days || 30)), lead = Number(cfg.lead_hours == null ? 2 : cfg.lead_hours);
+    function tm(v, def) { var m = /^(\d{1,2}):(\d{2})$/.exec(String(v || def)); return m ? Number(m[1]) * 60 + Number(m[2]) : 0; }
+    var openM = tm(cfg.open, "09:00"), closeM = tm(cfg.close, "18:00");
+    var onlineOk = !!product.accept_online && (!product.currency || product.currency === "NGN");
+    var st = { svc: svcs[0], date: null, time: null, taken: [], loading: false };
+    var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    function p2(n) { return (n < 10 ? "0" : "") + n; }
+    function dateList() {
+      var nl = new Date(Date.now() + off * 60000), out = [];
+      for (var i = 0; i <= adv && out.length < 28; i++) {
+        var dt = new Date(Date.UTC(nl.getUTCFullYear(), nl.getUTCMonth(), nl.getUTCDate() + i));
+        if (days.indexOf(dt.getUTCDay()) < 0) continue;
+        out.push({ key: dt.getUTCFullYear() + "-" + p2(dt.getUTCMonth() + 1) + "-" + p2(dt.getUTCDate()), dow: DOW[dt.getUTCDay()], day: dt.getUTCDate(), mon: MON[dt.getUTCMonth()] });
+      }
+      return out;
+    }
+    function toUtc(key, mins) { var a = key.split("-"); return Date.UTC(Number(a[0]), Number(a[1]) - 1, Number(a[2]), 0, mins) - off * 60000; }
+    function dur() { return Math.max(10, Number(st.svc.duration_min) || 60); }
+    function slots() {
+      if (!st.date) return [];
+      var out = [];
+      for (var m = openM; m + dur() <= closeM; m += step) {
+        var s0 = toUtc(st.date, m), e0 = s0 + dur() * 60000;
+        if (s0 < Date.now() + lead * 3600000) continue;
+        var busy = st.taken.filter(function (t) { return t.s < e0 && t.e > s0; }).length >= cap;
+        out.push({ m: m, ms: s0, busy: busy, label: p2(Math.floor(m / 60) % 24) + ":" + p2(m % 60) });
+      }
+      return out;
+    }
+    function loadTaken() {
+      if (!st.date || opts.preview) { st.taken = []; draw(); return; }
+      st.loading = true; draw();
+      var from = new Date(toUtc(st.date, 0) - 86400000).toISOString(), to = new Date(toUtc(st.date, 0) + 2 * 86400000).toISOString();
+      fetch(SUPABASE_URL + "/rest/v1/rpc/rv_booking_taken", { method: "POST", headers: { "Content-Type": "application/json", apikey: ANON, Authorization: "Bearer " + ANON }, body: JSON.stringify({ p_product: product.id, p_from: from, p_to: to }) })
+        .then(function (r) { return r.json(); }).then(function (rows) {
+          st.taken = (Array.isArray(rows) ? rows : []).map(function (x) { return { s: new Date(x.starts_at).getTime(), e: new Date(x.ends_at).getTime() }; });
+        }).catch(function () { st.taken = []; }).then(function () { st.loading = false; draw(); });
+    }
+    var chip = function (on, dis) { return "border:1.5px solid " + (on ? "var(--rv-accent,#1a7f5a)" : "var(--rv-border,#ddd)") + ";background:" + (on ? "var(--rv-accent-bg,#e6f4ee)" : "#fff") + ";border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;cursor:" + (dis ? "not-allowed" : "pointer") + ";" + (dis ? "opacity:.4;text-decoration:line-through;" : ""); };
+    var msgEl = null;
+    function draw() {
+      var keep = {}; var f0 = el.querySelector("form"); if (f0) ["name", "phone", "email", "notes", "payment"].forEach(function (n) { if (f0.elements[n]) keep[n] = f0.elements[n].value; });
+      var ds = dateList(), sl = slots();
+      var svcHtml = svcs.map(function (x) { return '<button type="button" data-svc="' + esc(x.id) + '" style="' + chip(x.id === st.svc.id) + 'text-align:left;display:flex;flex-direction:column;gap:2px"><b>' + esc(x.name) + '</b><span style="font-size:12px;opacity:.8">' + (Number(x.duration_min) || 60) + " min · " + fmt(Number(x.price) || 0, product.currency) + "</span></button>"; }).join("");
+      var dateHtml = ds.map(function (x) { return '<button type="button" data-date="' + x.key + '" style="' + chip(x.key === st.date) + 'min-width:62px;text-align:center;line-height:1.25"><span style="font-size:11px;opacity:.7">' + x.dow + '</span><br><b style="font-size:17px">' + x.day + '</b><br><span style="font-size:11px;opacity:.7">' + x.mon + "</span></button>"; }).join("");
+      var timeHtml = !st.date ? '<div style="font-size:13px;opacity:.7">Pick a date to see the free times.</div>' : st.loading ? '<div style="font-size:13px;opacity:.7">Checking free times…</div>' : sl.length ? sl.map(function (x) { return '<button type="button" ' + (x.busy ? "disabled" : 'data-time="' + x.m + '"') + ' style="' + chip(String(x.m) === String(st.time), x.busy) + '">' + x.label + "</button>"; }).join("") : '<div style="font-size:13px;opacity:.7">No free times on this day. Please pick another date.</div>';
+      var payOpts = (onlineOk ? "<option>Pay online</option>" : "") + "<option>Pay at the appointment</option>";
+      el.innerHTML = '<form novalidate>' +
+        '<div class="rv-field"><label>Service</label><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">' + svcHtml + "</div></div>" +
+        '<div class="rv-field"><label>Date</label><div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">' + dateHtml + "</div></div>" +
+        '<div class="rv-field"><label>Time</label><div style="display:flex;flex-wrap:wrap;gap:8px">' + timeHtml + "</div></div>" +
+        '<div class="rv-field"><label>Your name</label><input name="name" autocomplete="name" placeholder="Full name" required></div>' +
+        '<div class="rv-field"><label>Phone number</label><input name="phone" type="tel" autocomplete="tel" placeholder="080..." required></div>' +
+        '<div class="rv-field"><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="you@email.com" required></div>' +
+        '<div class="rv-field"><label>Anything we should know? <span style="font-weight:400;color:#8c887c">(optional)</span></label><input name="notes" placeholder=""></div>' +
+        '<div class="rv-field"><label>Payment</label><select name="payment">' + payOpts + "</select></div>" +
+        '<div class="rv-total"><span>' + esc(st.svc.name) + '</span><strong class="rv-tot">' + fmt(Number(st.svc.price) || 0, product.currency) + "</strong></div>" +
+        '<button type="submit" class="rv-btn">' + (onlineOk ? "Book and pay" : "Book appointment") + "</button>" +
+        '<div class="rv-msg"></div><div class="rv-note">🔒 Your details are kept private</div></form>';
+      var f = el.querySelector("form"); msgEl = el.querySelector(".rv-msg");
+      Object.keys(keep).forEach(function (n) { if (f.elements[n]) f.elements[n].value = keep[n]; });
+      el.querySelectorAll("[data-svc]").forEach(function (b) { b.addEventListener("click", function () { st.svc = svcs.filter(function (x) { return String(x.id) === b.dataset.svc; })[0] || st.svc; st.time = null; draw(); }); });
+      el.querySelectorAll("[data-date]").forEach(function (b) { b.addEventListener("click", function () { st.date = b.dataset.date; st.time = null; loadTaken(); }); });
+      el.querySelectorAll("[data-time]").forEach(function (b) { b.addEventListener("click", function () { st.time = b.dataset.time; var all = el.querySelectorAll("[data-time]"); all.forEach(function (x) { x.setAttribute("style", chip(x === b, false)); }); }); });
+      if (!opts.preview) f.addEventListener("focusin", function () { if (st.__ft) return; st.__ft = true; track("form_start", site && site.id, d.page && d.page.slug); });
+      f.addEventListener("submit", submit);
+    }
+    function say(t) { if (msgEl) { msgEl.textContent = t; msgEl.classList.add("on"); } }
+    function submit(e) {
+      e.preventDefault();
+      var f = el.querySelector("form").elements, btn = el.querySelector(".rv-btn");
+      if (msgEl) msgEl.classList.remove("on");
+      var name = f.name.value.trim(), phone = f.phone.value.trim(), email = f.email.value.trim();
+      if (!st.date || st.time == null) return say("Please choose a date and a time.");
+      if (!name || !phone || !email) return say("Please fill in your name, phone number and email.");
+      if (phone.replace(/\D/g, "").length < 10) return say("Please enter a valid phone number.");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return say("Please enter a valid email address.");
+      if (opts.preview) return say("Preview mode — bookings are not sent.");
+      var payment = f.payment.value, eventId = uuid(), ref = eventId.slice(0, 8).toUpperCase(), startMs = toUtc(st.date, Number(st.time)), price = Number(st.svc.price) || 0;
+      var thanksUrl = global.location.origin + (site.thanks_slug != null ? "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") : global.location.pathname) + "?ref=" + ref + "&paid=1";
+      var payload = {
+        event_id: eventId, customer_name: name, phone: phone, email: email, customer_address: "Booking - no delivery", customer_city: "-", customer_state: "-", customer_country: "NG",
+        payment_method: payment === "Pay online" ? "Pay online" : "Pay at the appointment", product_id: product.id, product_name: product.product_name + " - " + st.svc.name, quantity: 1, order_value_naira: price, currency: product.currency || "NGN",
+        booking: { service_id: st.svc.id, starts_at: new Date(startMs).toISOString(), notes: f.notes.value.trim() },
+        site_id: site.id, site_page_id: d.page.id, ad_set_id: attr("asid") || null, creative_id: attr("crid") || null, buyer: attr("buyer"), fbclid: attr("fbclid"), ad_id: attr("ad_id"), fbp: cookie("_fbp"), fbc: cookie("_fbc"),
+        session_key: sessionKey(), mas: attr("mas"), mcm: attr("mcm"), mpl: attr("mpl"), return_url: payment === "Pay online" ? thanksUrl : undefined
+      };
+      btn.disabled = true; var old = btn.textContent; btn.textContent = "Booking…";
+      fetch(SUPABASE_URL + "/functions/v1/receive-order", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + ANON }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res.error) throw new Error(res.error);
+          sset("rv_last_ref", ref); sset("rv_last_value", String(price)); sset("rv_last_payment", payment);
+          if (res.pay_url) { global.location.href = res.pay_url; return; }
+          track("order", site && site.id, d.page && d.page.slug);
+          if (site.purchase_event === "submit") firePurchase(price, product.currency || "NGN", eventId, payload.product_name, 1);
+          if (site.thanks_slug != null) { global.location.href = "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") + "?ref=" + ref; return; }
+          var when = new Date(startMs + off * 60000), dow = DOW[when.getUTCDay()] + " " + when.getUTCDate() + " " + MON[when.getUTCMonth()] + ", " + p2(when.getUTCHours()) + ":" + p2(when.getUTCMinutes());
+          el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>You are booked!</h2><p>' + esc(st.svc.name) + " · " + esc(dow) + ". We have your details and will message you on WhatsApp to confirm. Your booking reference is <b>" + esc(ref) + "</b>.</p></div>";
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        })
+        .catch(function (err) { say(err.message || "Something went wrong, please try again."); btn.disabled = false; btn.textContent = old; if (/taken|available|soon/i.test(err.message || "")) loadTaken(); });
+    }
+    draw();
+  }
   function mountForm(el, d, opts) {
     var p = d && d.product;
     if (p && p.is_service) {
