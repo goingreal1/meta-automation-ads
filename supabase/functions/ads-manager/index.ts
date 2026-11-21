@@ -1986,59 +1986,129 @@ async function guardRun(admin, items, flag, status, order, token, deadline) {
   }
   return items.every((i)=>i[flag]);
 }
-// -- When do purchases (and spend) happen? Meta's hour-of-day breakdown, last N days, for every account of a company -----------------------
-// Hours are in each ad account's own time zone, as Meta reports them. One row per campaign per hour comes back, so it stays small.
+// -- When do purchases (and spend) happen? Meta's hour-of-day breakdown, for every account of a company -----------------------------------
+// Hours are in each ad account's own time zone, as Meta reports them (the hour the ad was seen/clicked, not the hour the person ordered).
+const emptyHours = ()=>Array.from({ length: 24 }, ()=>({ spend: 0, purchases: 0 }));
+async function hourlyForAccount(admin, a, since, until) {
+  const actId = String(a.meta_ad_account_id ?? "").replace(/^act_/, "");
+  const token = await resolveToken(admin, a);
+  const info = await graphGet(`act_${actId}`, { fields: "timezone_name" }, token).catch(()=>({}));
+  const rows = await graphGetAll(`act_${actId}/insights`, {
+    level: "campaign",
+    fields: "campaign_id,campaign_name,spend,actions",
+    breakdowns: "hourly_stats_aggregated_by_advertiser_time_zone",
+    time_range: JSON.stringify({ since, until }),
+    limit: "500"
+  }, token, 12);
+  const pur = (acts)=>{ for (const t of PURCHASE_ACTIONS){ const x = (acts ?? []).find((q)=>q.action_type === t); if (x) return Number(x.value) || 0; } return 0; };
+  const hours = emptyHours(), camps = new Map();
+  for (const r of rows){
+    const h = Number(String(r.hourly_stats_aggregated_by_advertiser_time_zone ?? "").slice(0, 2));
+    if (!(h >= 0 && h < 24)) continue;
+    const sp = Number(r.spend) || 0, pc = pur(r.actions);
+    hours[h].spend += sp; hours[h].purchases += pc;
+    const c = camps.get(r.campaign_id) ?? { campaign: r.campaign_name, spend: 0, purchases: 0, hours: emptyHours() };
+    c.spend += sp; c.purchases += pc; c.hours[h].spend += sp; c.hours[h].purchases += pc;
+    camps.set(r.campaign_id, c);
+  }
+  return { hours, camps: [...camps.values()], tz: info.timezone_name ?? null, rows: rows.length };
+}
+const sumHours = (list)=>{ const h = emptyHours(); for (const x of list) x.forEach((v, i)=>{ h[i].spend += v.spend; h[i].purchases += v.purchases; }); return h; };
+const hFmt = (x)=>({ spend: Math.round(x.spend * 100) / 100, purchases: x.purchases, cpa: x.purchases ? Math.round(x.spend / x.purchases * 100) / 100 : null });
+const windowsOf = (hours)=>Array.from({ length: 8 }, (_, i)=>{ const part = hours.slice(i * 3, i * 3 + 3).reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 }); return { from: i * 3, label: `${String(i * 3).padStart(2, "0")}:00-${String(i * 3 + 3).padStart(2, "0")}:00`, ...hFmt(part) }; });
 async function handleHourlyReport(companyId, days = 30) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, currency").eq("company_id", companyId).eq("status", "active");
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, media_buyer_id").eq("company_id", companyId).eq("status", "active");
   const until = new Date().toISOString().slice(0, 10), since = new Date(Date.now() - (days - 1) * 86400_000).toISOString().slice(0, 10);
-  const hours = Array.from({ length: 24 }, ()=>({ spend: 0, purchases: 0 }));
-  const camps = new Map();
-  const notes = [];
-  const pur = (acts)=>{ for (const t of PURCHASE_ACTIONS){ const x = (acts ?? []).find((a)=>a.action_type === t); if (x) return Number(x.value) || 0; } return 0; };
+  const all = [], camps = [], notes = [];
   for (const a of accts ?? []){
-    const actId = String(a.meta_ad_account_id ?? "").replace(/^act_/, "");
-    if (!/^\d+$/.test(actId)) continue;
-    const label = a.nickname || a.name || actId;
+    if (!/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, ""))) continue;
+    const label = a.nickname || a.name || a.id;
     try {
-      const token = await resolveToken(admin, a);
-      const info = await graphGet(`act_${actId}`, { fields: "timezone_name" }, token).catch(()=>({}));
-      const rows = await graphGetAll(`act_${actId}/insights`, {
-        level: "campaign",
-        fields: "campaign_id,campaign_name,spend,actions",
-        breakdowns: "hourly_stats_aggregated_by_advertiser_time_zone",
-        time_range: JSON.stringify({ since, until }),
-        limit: "500"
-      }, token, 12);
-      notes.push(`${label}: ${rows.length} rows, ${info.timezone_name ?? "time zone ?"}`);
-      for (const r of rows){
-        const h = Number(String(r.hourly_stats_aggregated_by_advertiser_time_zone ?? "").slice(0, 2));
-        if (!(h >= 0 && h < 24)) continue;
-        const sp = Number(r.spend) || 0, pc = pur(r.actions);
-        hours[h].spend += sp; hours[h].purchases += pc;
-        const k = r.campaign_id;
-        const c = camps.get(k) ?? { account: label, campaign: r.campaign_name, spend: 0, purchases: 0, hours: Array.from({ length: 24 }, ()=>({ spend: 0, purchases: 0 })) };
-        c.spend += sp; c.purchases += pc; c.hours[h].spend += sp; c.hours[h].purchases += pc;
-        camps.set(k, c);
-      }
-    } catch (e) {
-      notes.push(`${label}: ${String(e.message ?? e).slice(0, 140)}`);
-    }
+      const r = await hourlyForAccount(admin, a, since, until);
+      all.push(r.hours); r.camps.forEach((c)=>camps.push({ account: label, ...c }));
+      notes.push(`${label}: ${r.rows} rows, ${r.tz ?? "time zone ?"}`);
+    } catch (e) { notes.push(`${label}: ${String(e.message ?? e).slice(0, 140)}`); }
   }
-  const round = (n)=>Math.round(n * 100) / 100;
-  const fmt = (x)=>({ spend: round(x.spend), purchases: x.purchases, cpa: x.purchases ? round(x.spend / x.purchases) : null });
-  const windows = Array.from({ length: 8 }, (_, i)=>{ const part = hours.slice(i * 3, i * 3 + 3).reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 }); return { window: `${String(i * 3).padStart(2, "0")}:00-${String(i * 3 + 3).padStart(2, "0")}:00`, ...fmt(part) }; });
-  const withBuys = [...camps.values()].filter((c)=>c.purchases > 0).sort((x, y)=>y.purchases - x.purchases);
+  const hours = sumHours(all);
   return {
     ok: true, days, since, until, notes,
-    total: fmt(hours.reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 })),
-    by_hour: hours.map((x, h)=>({ hour: h, ...fmt(x) })),
-    by_window: windows,
-    campaigns_with_purchases: withBuys.map((c)=>({
-        account: c.account, campaign: c.campaign, ...fmt(c),
-        purchase_hours: c.hours.map((x, h)=>x.purchases ? `${h}h:${x.purchases}` : null).filter(Boolean).join(" ")
-      }))
+    total: hFmt(hours.reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 })),
+    by_hour: hours.map((x, h)=>({ hour: h, ...hFmt(x) })),
+    by_window: windowsOf(hours),
+    campaigns_with_purchases: camps.filter((c)=>c.purchases > 0).sort((x, y)=>y.purchases - x.purchases).map((c)=>({ account: c.account, campaign: c.campaign, ...hFmt(c), purchase_hours: c.hours.map((x, h)=>x.purchases ? `${h}h:${x.purchases}` : null).filter(Boolean).join(" ") }))
   };
+}
+// -- 3x a week (cron): tell each person, in plain words, when their purchases land and what to do about it --------------------------------
+const hr12 = (h)=>{ const x = ((h % 24) + 24) % 24; return x === 0 ? "12 AM" : x < 12 ? `${x} AM` : x === 12 ? "12 PM" : `${x - 12} PM`; };
+const winText = (w)=>`${hr12(w.from)} to ${hr12(w.from + 3)}`;
+function explainTiming(hours, days, realTimes) {
+  const tot = hours.reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 });
+  const wins = windowsOf(hours), avg = tot.purchases ? tot.spend / tot.purchases : null;
+  const lines = [];
+  if (tot.purchases < 8) {
+    lines.push(`Only ${tot.purchases} purchase${tot.purchases === 1 ? "" : "s"} in ${days} days, which is too few to see a time-of-day pattern. Revora is keeping track and will say more as results build up.`);
+    const where = wins.filter((w)=>w.purchases > 0).map((w)=>`${winText(w)} (${w.purchases})`).join(", ");
+    if (where) lines.push(`So far they came in these windows: ${where}.`);
+    return { title: "🕒 Purchase timing: too early to tell", lines, enough: false, tot };
+  }
+  const best = wins.filter((w)=>w.purchases >= 2 && w.cpa).sort((x, y)=>x.cpa - y.cpa)[0];
+  const costly = wins.filter((w)=>tot.spend > 0 && w.spend / tot.spend >= 0.15 && w.purchases / tot.purchases <= (w.spend / tot.spend) / 2).sort((x, y)=>y.spend - x.spend)[0];
+  lines.push(`Last ${days} days: ₦${Math.round(tot.spend).toLocaleString("en-NG")} spent, ${tot.purchases} purchases, about ₦${Math.round(avg).toLocaleString("en-NG")} each.`);
+  if (best) lines.push(`Best time: ${winText(best)}. ${best.purchases} purchases at ₦${Math.round(best.cpa).toLocaleString("en-NG")} each${avg && best.cpa < avg * 0.7 ? `, ${(avg / best.cpa).toFixed(1)}x cheaper than your average` : ""}.`);
+  if (costly) lines.push(`Costly time: ${winText(costly)}. ₦${Math.round(costly.spend).toLocaleString("en-NG")} spent (${Math.round(costly.spend / tot.spend * 100)}% of your money) for ${costly.purchases} purchase${costly.purchases === 1 ? "" : "s"}.`);
+  if (realTimes && realTimes.n >= 3) lines.push(`Revora saw ${realTimes.n} purchases arrive in real time. Most came ${realTimes.top}.`);
+  const act = [];
+  if (best && avg && best.cpa < avg * 0.7) act.push(`Have your ads fully delivering before ${hr12(best.from)}: start new campaigns about 3 hours earlier, and scale the ad sets that already win then.`);
+  if (costly) act.push(tot.purchases >= 30 ? `Watch the ad sets that spend most during ${winText(costly)}; if they keep losing there, ask Revora to switch ads off at those hours.` : `Do not cut ${winText(costly)} yet. ${tot.purchases} purchases is still a small sample.`);
+  if (!act.length) act.push("Spend is spread evenly with no clear winner or loser time. Keep running as you are.");
+  lines.push("What to do: " + act.join(" "));
+  lines.push("Note: Meta credits a purchase to the hour the ad was seen, not the hour the person ordered.");
+  return { title: best ? `🕒 Your best time to sell is ${winText(best)}` : "🕒 Purchase timing report", lines, enough: true, tot, best, costly };
+}
+async function handlePurchaseTimingDigest(dryRun = false) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const days = 30, until = new Date().toISOString().slice(0, 10), since = new Date(Date.now() - (days - 1) * 86400_000).toISOString().slice(0, 10);
+  const stamp = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, media_buyer_id, billing_mode").eq("status", "active");
+  const byCo = new Map();
+  for (const a of accts ?? []) if (/^\d+$/.test(String(a.meta_ad_account_id ?? "").replace(/^act_/, ""))) byCo.set(a.company_id, [...(byCo.get(a.company_id) ?? []), a]);
+  const out = [], deadline = Date.now() + 110_000;
+  for (const [companyId, list] of byCo){
+    if (Date.now() > deadline) { out.push({ note: "time budget reached, rest next run" }); break; }
+    const per = new Map();
+    for (const a of list){
+      try { per.set(a.id, await hourlyForAccount(admin, a, since, until)); } catch (_) { /* skip an account Meta will not read */ }
+    }
+    const scopes = [{ key: `co:${companyId}`, buyer: null, accounts: list }];
+    for (const b of new Set(list.map((a)=>a.media_buyer_id).filter(Boolean))) scopes.push({ key: `mb:${b}`, buyer: b, accounts: list.filter((a)=>a.media_buyer_id === b) });
+    for (const sc of scopes){
+      const parts = sc.accounts.map((a)=>per.get(a.id)).filter(Boolean);
+      if (!parts.length) continue;
+      const hours = sumHours(parts.map((p)=>p.hours));
+      if (!hours.some((h)=>h.purchases > 0 || h.spend > 0)) continue;
+      // The real arrival times Revora has recorded (since the purchase log began).
+      const { data: ev } = await admin.from("meta_purchase_events").select("seen_at, added").in("ad_account_id", sc.accounts.map((a)=>a.id)).gte("seen_at", new Date(Date.now() - days * 86400_000).toISOString());
+      let real = null;
+      if ((ev ?? []).length) {
+        const b = emptyHours();
+        for (const e of ev) b[new Date(new Date(e.seen_at).getTime() + 3600_000).getUTCHours()].purchases += e.added;
+        const w = windowsOf(b).sort((x, y)=>y.purchases - x.purchases)[0];
+        real = { n: b.reduce((t, x)=>t + x.purchases, 0), top: `between ${winText(w)}` };
+      }
+      const ex = explainTiming(hours, days, real);
+      if (dryRun) { out.push({ scope: sc.key, title: ex.title, lines: ex.lines }); continue; }
+      await admin.from("purchase_timing_reports").insert({ company_id: companyId, media_buyer_id: sc.buyer, period_days: days, report: { hours, ...ex, real } });
+      if (sc.buyer === null) {
+        // Company-wide: owners/admins hear it only when they have more than one buyer, so a single buyer is not told twice.
+        const buyers = new Set(list.map((a)=>a.media_buyer_id).filter(Boolean));
+        if (buyers.size === 1 && list.every((a)=>a.media_buyer_id)) continue;
+      }
+      await notifyRpc(admin, { p_company: companyId, p_category: "insights", p_kind: "purchase_timing", p_title: ex.title, p_body: ex.lines.join("\n"), p_severity: "info", p_data: { scope: sc.key, enough: ex.enough }, p_dedupe: `timing:${sc.key}:${stamp}`, p_buyer: sc.buyer });
+      out.push({ scope: sc.key, sent: true });
+    }
+  }
+  return { ok: true, dry_run: dryRun, results: out };
 }
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
@@ -2382,6 +2452,13 @@ Deno.serve(async (req)=>{
         return json({ status: r.status, ...(await r.json().catch(()=>({}))) });
       }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
+    }
+    if (body.action === "purchase_timing_digest") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      const given = req.headers.get("x-cron-secret") ?? "";
+      if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
+      return json(await handlePurchaseTimingDigest(body.dry_run === true));
     }
     if (body.action === "hourly_report") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
