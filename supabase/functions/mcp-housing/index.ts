@@ -611,7 +611,110 @@ const TOOLS = [
         property_views: ev("property_view"),
         application_starts: ev("application_start"),
         submissions: ev("application_submit"),
-        fees_paid: ev("fee_paid")
+        fees_paid: ev("fee_paid"),
+        tour_requests: ev("tour_request")
+      };
+    }
+  },
+  {
+    name: "housing_tours_list",
+    title: "List tour requests",
+    description: "List tour requests, newest first. Filter by project, property, status (requested, confirmed, completed, no_show, cancelled) or from_date (YYYY-MM-DD, the tour day).",
+    inputSchema: obj({
+      product_id: {
+        type: "string"
+      },
+      property_id: {
+        type: "string"
+      },
+      status: {
+        type: "string"
+      },
+      from_date: {
+        type: "string"
+      },
+      limit: {
+        type: "number"
+      }
+    }),
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    run: async (a, c)=>{
+      need(c, REVIEW_ROLES);
+      let q = admin.from("tours").select("id, ref, product_id, property_id, visitor_name, visitor_phone, visitor_email, tour_date, tour_time, notes, status, possible_duplicate, created_at, properties(title, state, city, address)").eq("company_id", c.companyId).order("tour_date", {
+        ascending: true
+      }).order("tour_time", {
+        ascending: true
+      }).limit(Math.min(Number(a.limit) || 50, 200));
+      for (const k of [
+        "product_id",
+        "property_id"
+      ])if (a[k]) {
+        if (!isId(a[k])) throw new Error(`${k} is not valid.`);
+        q = q.eq(k, a[k]);
+      }
+      if (a.status) q = q.eq("status", a.status);
+      if (a.from_date) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.from_date))) throw new Error("from_date must look like 2026-11-22.");
+        q = q.gte("tour_date", a.from_date);
+      }
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      return {
+        count: (data ?? []).length,
+        tours: data ?? []
+      };
+    }
+  },
+  {
+    name: "housing_tour_update",
+    title: "Update a tour request",
+    write: true,
+    description: "Confirm, complete or cancel a tour. Identify it by id or ref (e.g. TOUR-00012). status is requested, confirmed, completed, no_show or cancelled.",
+    inputSchema: obj({
+      id: {
+        type: "string"
+      },
+      ref: {
+        type: "string"
+      },
+      status: {
+        type: "string"
+      }
+    }),
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    },
+    run: async (a, c)=>{
+      need(c, REVIEW_ROLES);
+      let q = admin.from("tours").select("id").eq("company_id", c.companyId);
+      if (a.id && isId(a.id)) q = q.eq("id", a.id);
+      else if (a.ref) q = q.eq("ref", String(a.ref).toUpperCase());
+      else throw new Error("Give the tour id or ref.");
+      const { data: t } = await q.maybeSingle();
+      if (!t) throw new Error("Tour not found in your account.");
+      if (![
+        "requested",
+        "confirmed",
+        "completed",
+        "no_show",
+        "cancelled"
+      ].includes(a.status)) throw new Error("status must be requested, confirmed, completed, no_show or cancelled.");
+      const { error } = await admin.from("tours").update({
+        status: a.status,
+        updated_at: new Date().toISOString()
+      }).eq("id", t.id);
+      if (error) throw new Error(error.message);
+      return {
+        ok: true,
+        id: t.id
       };
     }
   }
@@ -771,7 +874,138 @@ async function publicAction(b) {
     });
     return thanks(p, prop, row.ref, ins.payment_method);
   }
+  if (act === "public_tour_slots") {
+    const p = await publicProject(b.product_id);
+    if (!isId(b.property_id)) throw new Error("Please choose a property.");
+    const { data: prop } = await admin.from("properties").select("id, availability").eq("id", b.property_id).eq("product_id", p.id).maybeSingle();
+    if (!prop || prop.availability !== "available") throw new Error("Sorry, this property is no longer available for tours.");
+    const cfg = tourConfig(p);
+    const days = tourDays(cfg);
+    const { data: taken } = await admin.from("tours").select("tour_date, tour_time").eq("property_id", prop.id).in("status", ["requested", "confirmed"]).gte("tour_date", days[0] ?? "9999-01-01").lte("tour_date", days[days.length - 1] ?? "0001-01-01");
+    const count = {};
+    for (const r of taken ?? []) count[`${r.tour_date} ${r.tour_time}`] = (count[`${r.tour_date} ${r.tour_time}`] ?? 0) + 1;
+    return {
+      ok: true,
+      slots: cfg.slots,
+      capacity: cfg.capacity,
+      days: days.map((d)=>({
+          date: d,
+          times: cfg.slots.map((t)=>({
+              time: t,
+              full: (count[`${d} ${t}`] ?? 0) >= cfg.capacity
+            }))
+        })),
+      contact_phone: p.housing_settings?.contact_phone ?? null
+    };
+  }
+  if (act === "public_tour") {
+    const p = await publicProject(b.product_id);
+    if (!isId(b.property_id)) throw new Error("Please choose a property.");
+    const { data: prop } = await admin.from("properties").select("id, title, state, availability").eq("id", b.property_id).eq("product_id", p.id).maybeSingle();
+    if (!prop || prop.availability !== "available") throw new Error("Sorry, this property is no longer available for tours.");
+    const name = str(b.visitor_name, 200);
+    const email = str(b.visitor_email, 200)?.toLowerCase() ?? null;
+    const phone = str(b.visitor_phone, 40);
+    if (!name) throw new Error("Please enter your name.");
+    if (!phone) throw new Error("Please enter a phone number so we can confirm your tour.");
+    if (phone.replace(/\D/g, "").length < 10) throw new Error("Please enter a valid phone number.");
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That email address doesn't look right.");
+    const cfg = tourConfig(p);
+    const date = String(b.tour_date ?? "");
+    const time = String(b.tour_time ?? "");
+    if (!tourDays(cfg).includes(date) || !cfg.slots.includes(time)) throw new Error("That time isn't available. Please pick another.");
+    const eventId = str(b.event_id, 120);
+    if (eventId) {
+      const { data: ex } = await admin.from("tours").select("ref, tour_date, tour_time").eq("event_id", eventId).maybeSingle();
+      if (ex) return tourThanks(p, prop, ex.ref, ex.tour_date, ex.tour_time);
+    }
+    const { count: used } = await admin.from("tours").select("id", { count: "exact", head: true }).eq("property_id", prop.id).eq("tour_date", date).eq("tour_time", time).in("status", ["requested", "confirmed"]);
+    if ((used ?? 0) >= cfg.capacity) throw new Error("Sorry, that time was just taken. Please pick another.");
+    const since = new Date(Date.now() - 14 * 86400000).toISOString();
+    const { data: dup } = await admin.from("tours").select("id").eq("property_id", prop.id).eq("visitor_phone", phone).gte("created_at", since).in("status", ["requested", "confirmed"]).limit(1);
+    const { data: row, error } = await admin.from("tours").insert({
+      company_id: p.company_id,
+      product_id: p.id,
+      property_id: prop.id,
+      site_id: isId(b.site_id) ? b.site_id : null,
+      site_page_id: isId(b.site_page_id) ? b.site_page_id : null,
+      visitor_name: name,
+      visitor_phone: phone,
+      visitor_email: email,
+      tour_date: date,
+      tour_time: time,
+      notes: str(b.notes, 500),
+      possible_duplicate: !!dup?.length,
+      event_id: eventId,
+      fbclid: str(b.fbclid, 300)
+    }).select("id, ref").single();
+    if (error) throw new Error("We couldn't save your tour request. Please try again.");
+    await admin.from("housing_events").insert({
+      company_id: p.company_id,
+      product_id: p.id,
+      property_id: prop.id,
+      site_id: isId(b.site_id) ? b.site_id : null,
+      event: "tour_request",
+      state: prop.state
+    });
+    return tourThanks(p, prop, row.ref, date, time);
+  }
   throw new Error("bad_action");
+}
+// ---------- tours: fixed slots ----------
+// Project settings (products.housing_settings.tour) are all optional.
+function tourConfig(p) {
+  const t = p.housing_settings?.tour ?? {};
+  const slots = (Array.isArray(t.slots) ? t.slots : [
+    "10:00",
+    "12:00",
+    "14:00",
+    "16:00"
+  ]).map(String).filter((s)=>/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(s)).slice(0, 24).sort();
+  return {
+    slots: slots.length ? slots : [
+      "10:00",
+      "12:00",
+      "14:00",
+      "16:00"
+    ],
+    days: Array.isArray(t.days) && t.days.length ? t.days.map(Number).filter((d)=>d >= 0 && d <= 6) : [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    advance_days: Math.min(Math.max(Number(t.advance_days) || 14, 1), 60),
+    capacity: Math.min(Math.max(Number(t.capacity) || 2, 1), 50)
+  };
+}
+// Calendar days (YYYY-MM-DD) a visitor may book, starting tomorrow (so a same-day request never lands on a slot that has passed).
+// Days are counted on the UTC calendar; the visitor's date picker uses the same list, so the two always agree.
+function tourDays(cfg) {
+  const out = [];
+  const now = new Date();
+  for(let i = 1; i <= cfg.advance_days; i++){
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + i));
+    if (cfg.days.includes(d.getUTCDay())) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+function tourThanks(p, prop, ref, date, time) {
+  return {
+    ok: true,
+    ref,
+    property: {
+      id: prop.id,
+      title: prop.title
+    },
+    tour_date: date,
+    tour_time: time,
+    contact_phone: p.housing_settings?.contact_phone ?? null,
+    message: "Your tour request is in. We'll text you to confirm."
+  };
 }
 // The thank-you / payment screen: what was applied for, the fee, how to pay, and who to call or text with the receipt.
 function thanks(p, prop, ref, method) {

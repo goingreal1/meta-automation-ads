@@ -404,6 +404,96 @@
     wireCopy(el);
     try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
   }
+  /* ---------- Housing: tour booking ----------
+     <div data-rv-tour></div>  (optional: data-rv-property="<slug>", data-rv-apply="#application", data-rv-title, data-rv-button, data-rv-accent)
+     Fixed slots come from the project (mcp-housing public_tour_slots). The visitor picks a home, a day and a time, then leaves a name + phone.
+     After booking, a "Now apply" button points at data-rv-apply so tour -> application is one flow. */
+  function tMonth(d) { return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(d.slice(5, 7)) - 1]; }
+  function tDow(d) { return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(d + "T12:00:00Z").getUTCDay()]; }
+  function tClock(t) { var h = Number(t.slice(0, 2)); return (h % 12 || 12) + ":" + t.slice(3) + (h < 12 ? " AM" : " PM"); }
+  function mountTour(el, d, opts) {
+    var p0 = d && d.product; if (!p0) return;
+    opts = opts || {};
+    hDetect(p0.id, el.dataset.rvProperty || params.get("property")).then(function (h) {
+      if (!h) { if (opts.preview) el.innerHTML = '<div class="rv-empty">Tour form &mdash; shows on housing projects.</div>'; return; }
+      var ds = el.dataset, site = d.site, product = d.product;
+      hStyle(); el.classList.add("rv-form");
+      if (ds.rvAccent) { el.style.setProperty("--rv-accent", ds.rvAccent); el.style.setProperty("--rv-accent-dk", ds.rvAccent); el.style.setProperty("--rv-accent-bg", ds.rvAccent + "1a"); }
+      if (ds.rvRadius) el.style.setProperty("--rv-radius", ds.rvRadius + "px");
+      var title = ds.rvTitle != null ? ds.rvTitle : "Book a free tour", btnText = ds.rvButton || "Book my tour", applyHref = ds.rvApply || "#application";
+      var st = { prop: h.property || (h.properties.length === 1 ? h.properties[0] : null), date: null, time: null, slots: null, loading: false, err: "" };
+      var pill = function (on, dis) { return "border:1.5px solid " + (on ? "var(--rv-accent,#1a7f5a)" : "var(--rv-border,#ddd)") + ";background:" + (on ? "var(--rv-accent-bg,#e6f4ee)" : "#fff") + ";border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;cursor:" + (dis ? "not-allowed" : "pointer") + ";" + (dis ? "opacity:.4;text-decoration:line-through;" : ""); };
+      function loadSlots() {
+        st.slots = null; st.date = null; st.time = null; st.err = "";
+        if (!st.prop) return draw();
+        if (opts.preview) { // sample slots so the builder preview looks right
+          var base = new Date(); st.slots = { days: [1, 2, 3, 4, 5].map(function (i) { var x = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + i)).toISOString().slice(0, 10); return { date: x, times: ["10:00", "12:00", "14:00", "16:00"].map(function (t) { return { time: t, full: false }; }) }; }) };
+          return draw();
+        }
+        st.loading = true; draw();
+        hCall({ action: "public_tour_slots", product_id: product.id, property_id: st.prop.id })
+          .then(function (r) { st.slots = r; }).catch(function (e) { st.err = /^(request_failed|bad_|not_found)/.test(e.message) ? "Tours can't be booked right now." : e.message; })
+          .then(function () { st.loading = false; draw(); });
+      }
+      function draw() {
+        var keep = {}, f0 = el.querySelector("form"); if (f0) ["name", "phone", "email"].forEach(function (n) { keep[n] = f0.elements[n].value; });
+        var picker = !st.prop ? '<p class="rv-sub">Choose a home to tour.</p>' + h.properties.map(function (p, i) { return '<button type="button" class="rv-pick" data-i="' + i + '"><b>' + esc(p.title) + "</b><span>" + hMoney(p.monthly_rent, p.currency) + " / month &middot; " + esc([p.city, p.state].filter(Boolean).join(", ")) + "</span></button>"; }).join("") : "";
+        if (!st.prop) { el.innerHTML = '<div class="rv-card">' + (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") + (h.properties.length ? picker : '<p class="rv-sub">No homes are open for tours right now. Please check back soon.</p>') + "</div>"; bindPick(); return; }
+        var days = st.slots ? st.slots.days : [], day = days.filter(function (x) { return x.date === st.date; })[0];
+        var dayHtml = days.map(function (x) { return '<button type="button" data-date="' + x.date + '" style="' + pill(x.date === st.date) + 'min-width:62px;text-align:center;line-height:1.25"><span style="font-size:11px;opacity:.7">' + tDow(x.date) + '</span><br><b style="font-size:17px">' + Number(x.date.slice(8)) + '</b><br><span style="font-size:11px;opacity:.7">' + tMonth(x.date) + "</span></button>"; }).join("");
+        var timeHtml = st.loading ? '<div style="font-size:13px;opacity:.7">Checking free times…</div>' : st.err ? "" : !day ? '<div style="font-size:13px;opacity:.7">Pick a day to see the times.</div>' : day.times.map(function (x) { return '<button type="button" ' + (x.full ? "disabled" : 'data-time="' + x.time + '"') + ' style="' + pill(x.time === st.time, x.full) + '">' + tClock(x.time) + "</button>"; }).join("");
+        el.innerHTML = '<form class="rv-card" novalidate>' +
+          (!h.property && h.properties.length > 1 ? '<button type="button" class="rv-back">&larr; All homes</button>' : "") +
+          (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") +
+          '<div class="rv-prop"><div><b>' + esc(st.prop.title) + '</b><div style="font-size:12.5px;color:var(--rv-muted)">' + esc([st.prop.city, st.prop.state].filter(Boolean).join(", ")) + "</div></div><strong>" + hMoney(st.prop.monthly_rent, st.prop.currency) + "/mo</strong></div>" +
+          (st.err ? '<div class="rv-fine" style="margin:0 0 12px">' + esc(st.err) + "</div>" : '<div class="rv-field"><label>Day</label><div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px">' + (dayHtml || '<span style="font-size:13px;opacity:.7">Loading…</span>') + "</div></div>" +
+            '<div class="rv-field"><label>Time</label><div style="display:flex;flex-wrap:wrap;gap:8px">' + timeHtml + "</div></div>") +
+          '<div class="rv-field"><label>Your name</label><input name="name" autocomplete="name" required></div>' +
+          '<div class="rv-row"><div class="rv-field"><label>Mobile number</label><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>' +
+          '<div class="rv-field"><label>Email <span style="font-weight:400;color:#8c887c">(optional)</span></label><input name="email" type="email" autocomplete="email"></div></div>' +
+          '<button type="submit" class="rv-btn">' + esc(btnText) + "</button><div class=\"rv-msg\"></div>" +
+          '<div class="rv-note">Free, no obligation. We only use your number to confirm your tour.</div></form>';
+        var f = el.querySelector("form"); ["name", "phone", "email"].forEach(function (n) { if (keep[n]) f.elements[n].value = keep[n]; });
+        var back = el.querySelector(".rv-back"); if (back) back.addEventListener("click", function () { st.prop = null; draw(); });
+        el.querySelectorAll("[data-date]").forEach(function (b) { b.addEventListener("click", function () { st.date = b.dataset.date; st.time = null; draw(); }); });
+        el.querySelectorAll("[data-time]").forEach(function (b) { b.addEventListener("click", function () { st.time = b.dataset.time; el.querySelectorAll("[data-time]").forEach(function (x) { x.setAttribute("style", pill(x === b, false)); }); }); });
+        var eventId = st.eid || (st.eid = uuid()), busy = false;
+        f.addEventListener("submit", function (e) {
+          e.preventDefault(); if (busy) return;
+          var m = el.querySelector(".rv-msg"), btn = el.querySelector(".rv-btn"), q = f.elements;
+          function fail(t) { m.textContent = t; m.classList.add("on"); }
+          m.classList.remove("on");
+          if (!st.date || !st.time) return fail("Please choose a day and a time.");
+          var name = q.name.value.trim(), phone = q.phone.value.trim(), email = q.email.value.trim();
+          if (!name) return fail("Please enter your name.");
+          if (phone.replace(/\D/g, "").length < 10) return fail("Please enter a valid mobile number.");
+          if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("That email address doesn’t look right.");
+          if (opts.preview) return fail("Preview mode — tours are not sent.");
+          busy = true; btn.disabled = true; var old = btn.textContent; btn.textContent = "Booking…";
+          hCall({ action: "public_tour", product_id: product.id, property_id: st.prop.id, site_id: site && site.id, site_page_id: d.page && d.page.id,
+            visitor_name: name, visitor_phone: phone, visitor_email: email || undefined, tour_date: st.date, tour_time: st.time, event_id: eventId, fbclid: attr("fbclid") })
+            .then(function (r) {
+              hPx("Schedule", { content_ids: [st.prop.id], content_name: st.prop.title, content_type: "home_listing" }, { eventID: eventId });
+              tThanks(r);
+            }).catch(function (err) {
+              busy = false; btn.disabled = false; btn.textContent = old;
+              fail(/^(request_failed|bad_|not_found)/.test(err.message) ? "Something went wrong, please try again." : err.message);
+              if (/taken|available/i.test(err.message)) loadSlots();
+            });
+        });
+      }
+      function bindPick() { el.querySelectorAll(".rv-pick").forEach(function (b) { b.addEventListener("click", function () { st.prop = h.properties[Number(b.getAttribute("data-i"))]; if (!opts.preview) hTrack("property_view", product.id, st.prop); loadSlots(); }); }); }
+      function tThanks(r) {
+        var phone = hPhone(r.contact_phone), when = tDow(r.tour_date) + " " + tMonth(r.tour_date) + " " + Number(r.tour_date.slice(8)) + " at " + tClock(r.tour_time);
+        el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Tour requested</h2><p>' + esc((r.property && r.property.title) || "Your tour") + " &middot; " + esc(when) + ". We’ll text you to confirm.</p>" +
+          '<p style="font-size:13.5px;color:#6a675d">Love it? Apply now to hold your spot.</p>' +
+          '<a class="rv-lbtn" href="' + esc(applyHref) + '">Apply for this home</a>' + (phone ? '<a class="rv-lbtn ghost" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>" : "") +
+          '<div class="rv-ref">Reference: ' + esc(r.ref) + "</div></div>";
+        try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+      }
+      if (st.prop) { if (!opts.preview) hTrack("property_view", product.id, st.prop); loadSlots(); } else draw();
+    });
+  }
   // Entry point used by mountAll: housing projects get the rental application, everything else the order form.
 
   // ── Booking form: pick a service, a date and a free time, then book (and pay online when the seller allows it) ──
@@ -593,6 +683,7 @@
       }
     } catch (e) {}
     root.querySelectorAll("[data-rv-form]").forEach(function (el) { mountForm(el, d, opts); });
+    root.querySelectorAll("[data-rv-tour]").forEach(function (el) { mountTour(el, d, opts); });
     root.querySelectorAll("[data-rv-bank]").forEach(function (el) { mountBank(el, d, opts); });
     root.querySelectorAll("[data-rv-ref]").forEach(function (el) { el.textContent = sget("rv_last_ref") || (opts && opts.preview ? "A1B2C3D4" : ""); });
     // thank-you page: count the Purchase that the order form stored (once)

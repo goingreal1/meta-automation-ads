@@ -246,6 +246,7 @@ async function render() {
     else if (activeTab === "wallet")    await renderWallet(c);
     else if (activeTab === "journeys")  await renderJourneys(c);
     else if (activeTab === "bookings")  await renderBookings(c);
+    else if (activeTab === "housing")   await renderHousing(c);
     else if (activeTab === "hq")        await renderHq(c);
     else if (activeTab === "catalog")   await renderCatalog(c);
     else if (activeTab === "vault")     await renderVault(c);
