@@ -1,5 +1,8 @@
 // Takes a live, phone-sized look at a public sales page and returns it as a stack of image slices (top to bottom), so the learner can SEE the
 // layout, colours and hooks, not only read the words. POST { url } with header x-shot-secret. Read-only; it only opens the page.
+// @sparticuz/chromium unpacks the system libraries Chrome needs (libnss3 and friends) only when it believes it runs on Lambda Node 20/22.
+// Vercel does not always say so, so say it before the library loads.
+if (!/(20|22)\.x/.test(process.env.AWS_EXECUTION_ENV || "")) process.env.AWS_EXECUTION_ENV = "AWS_Lambda_nodejs20.x";
 const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 
