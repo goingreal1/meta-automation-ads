@@ -769,7 +769,8 @@ async function publicAction(b) {
       project: {
         id: p.id,
         name: p.product_name,
-        currency: p.currency
+        currency: p.currency,
+        flow: flowOf(p)
       },
       properties: rows
     };
@@ -787,7 +788,8 @@ async function publicAction(b) {
         id: p.id,
         name: p.product_name,
         currency: p.currency,
-        contact_phone: p.housing_settings?.contact_phone ?? null
+        contact_phone: p.housing_settings?.contact_phone ?? null,
+        flow: flowOf(p)
       },
       property: data
     };
@@ -952,6 +954,11 @@ async function publicAction(b) {
   }
   throw new Error("bad_action");
 }
+// What visitors can do on the site: "both" (tour, then apply), "tour" (tour only) or "apply" (apply only). Set in Dashboard > Housing > Settings.
+function flowOf(p) {
+  const f = p.housing_settings?.flow;
+  return f === "tour" || f === "apply" ? f : "both";
+}
 // ---------- tours: fixed slots ----------
 // Project settings (products.housing_settings.tour) are all optional.
 function tourConfig(p) {
@@ -1004,6 +1011,7 @@ function tourThanks(p, prop, ref, date, time) {
     tour_date: date,
     tour_time: time,
     contact_phone: p.housing_settings?.contact_phone ?? null,
+    flow: flowOf(p),
     message: "Your tour request is in. We'll text you to confirm."
   };
 }

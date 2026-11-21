@@ -46,7 +46,7 @@ const hsProj = () => HS.products.find((p) => p.id === HS.pid) || HS.products[0] 
 
 async function renderHousing(c) {
   hsCss();
-  const { data: prods, error } = await supabaseClient.from("products").select("id, product_name, currency, housing_settings").eq("product_type", "housing").order("created_at", { ascending: true });
+  const { data: prods, error } = await supabaseClient.from("products").select("id, product_name, currency, housing_settings, payment_note, payment_link_url, bank_name, bank_account_number, bank_account_name").eq("product_type", "housing").order("created_at", { ascending: true });
   if (error) { c.innerHTML = `<div class="rv-ui hs"><div class="hs-empty">Could not load housing: ${escH(error.message)}</div></div>`; return; }
   HS.products = prods || [];
   if (!HS.products.length) { c.innerHTML = `<div class="rv-ui hs"><h2>Housing</h2><div class="hs-empty">No housing project yet. Ask Revora in chat to create one ("create a housing project"), then your homes, tours and applications show here.</div></div>`; return; }
@@ -60,10 +60,42 @@ async function renderHousing(c) {
 async function hsOpen(tab) {
   HS.tab = tab;
   const t = document.getElementById("hsTabs"); if (!t) return;
-  t.innerHTML = [["tours", "Tours"], ["apps", "Applications"], ["homes", "Homes"]].map(([k, n]) => `<button class="hs-chip${HS.tab === k ? " on" : ""}" data-t="${k}">${n}</button>`).join("");
+  t.innerHTML = [["tours", "Tours"], ["apps", "Applications"], ["homes", "Homes"], ["settings", "Settings"]].map(([k, n]) => `<button class="hs-chip${HS.tab === k ? " on" : ""}" data-t="${k}">${n}</button>`).join("");
   t.querySelectorAll("[data-t]").forEach((b) => (b.onclick = () => hsOpen(b.dataset.t)));
   const body = document.getElementById("hsBody"); if (body) body.innerHTML = typeof bvSkel === "function" ? bvSkel("list") : "";
-  if (tab === "tours") await hsTours(); else if (tab === "apps") await hsApps(); else await hsHomes();
+  if (tab === "tours") await hsTours(); else if (tab === "apps") await hsApps(); else if (tab === "settings") hsSettings(); else await hsHomes();
+}
+
+// ───────── Settings: what visitors can do, and how applicants pay ─────────
+function hsSettings() {
+  const body = document.getElementById("hsBody"), pr = hsProj(); if (!body || !pr) return;
+  const s = pr.housing_settings || {}, flow = ["both", "tour", "apply"].includes(s.flow) ? s.flow : "both";
+  const v = (x) => escH(x ?? "");
+  const opt = (k, title, desc) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border:1px solid var(--border,#d3dbe2);border-radius:12px;margin-bottom:8px;cursor:pointer"><input type="radio" name="hs_flow" value="${k}" ${flow === k ? "checked" : ""} style="width:auto;margin-top:3px"><span><b style="display:block;font-size:14px">${title}</b><small style="color:var(--muted,#5b6b78)">${desc}</small></span></label>`;
+  body.innerHTML = `<div class="hs-box"><h3>What can visitors do on your site?</h3>
+    ${opt("both", "Book a tour, then apply (recommended)", "Both buttons show. Tours bring in the leads; the paid application filters the serious ones.")}
+    ${opt("tour", "Book a tour only", "Only the tour form shows. Best for collecting as many leads as possible. Applications are hidden.")}
+    ${opt("apply", "Apply only", "Only the application form shows. Visitors pay the application fee without a tour first.")}</div>
+    <div class="hs-box"><h3>Contact number</h3><div class="sub" style="margin:0 0 8px">Shown to visitors after they book or apply (Call button).</div>
+    <div class="hs-f"><div class="full"><input id="hs_phone" type="tel" value="${v(s.contact_phone)}" placeholder="(803) 555-0123"></div></div></div>
+    <div class="hs-box"><h3>How applicants pay the application fee</h3><div class="sub" style="margin:0 0 8px">Shown right after someone applies. Fill in whatever you accept. Card details are never collected on your site.</div>
+    <div class="hs-f"><div class="full"><label>Payment instructions</label><textarea id="hs_note" rows="3" placeholder="Send $20 by Zelle to (803) 555-0123 and put your reference in the note. Then text us your receipt.">${v(pr.payment_note)}</textarea></div>
+    <div class="full"><label>Payment link (optional: Cash App, PayPal, Stripe link…)</label><input id="hs_link" value="${v(pr.payment_link_url)}" placeholder="https://"></div>
+    <div><label>Bank name (optional)</label><input id="hs_bank" value="${v(pr.bank_name)}"></div><div><label>Account name (optional)</label><input id="hs_bname" value="${v(pr.bank_account_name)}"></div>
+    <div class="full"><label>Account number (optional)</label><input id="hs_bnum" value="${v(pr.bank_account_number)}"></div></div></div>
+    <div class="hs-acts"><button class="go" id="hs_save">Save settings</button></div>`;
+  document.getElementById("hs_save").onclick = async (e) => {
+    const g = (id) => document.getElementById(id).value.trim() || null;
+    const link = g("hs_link"); if (link && !/^https:\/\//i.test(link)) return bvToast("The payment link must start with https://");
+    const f = document.querySelector('input[name="hs_flow"]:checked')?.value || "both";
+    const hsSet = { ...(pr.housing_settings || {}), flow: f, contact_phone: g("hs_phone") };
+    const cols = { payment_note: g("hs_note"), payment_link_url: link, bank_name: g("hs_bank"), bank_account_name: g("hs_bname"), bank_account_number: g("hs_bnum") };
+    e.target.disabled = true;
+    const { error } = await supabaseClient.from("products").update({ ...cols, housing_settings: hsSet }).eq("id", pr.id);
+    e.target.disabled = false;
+    if (error) return bvToast("Could not save: " + error.message.slice(0, 80));
+    pr.housing_settings = hsSet; Object.assign(pr, cols); bvToast("Saved. Your site follows this setting within a minute.");
+  };
 }
 
 // ───────── Tours ─────────

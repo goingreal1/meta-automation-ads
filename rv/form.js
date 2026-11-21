@@ -486,8 +486,8 @@
       function tThanks(r) {
         var phone = hPhone(r.contact_phone), when = tDow(r.tour_date) + " " + tMonth(r.tour_date) + " " + Number(r.tour_date.slice(8)) + " at " + tClock(r.tour_time);
         el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Tour requested</h2><p>' + esc((r.property && r.property.title) || "Your tour") + " &middot; " + esc(when) + ". We’ll text you to confirm.</p>" +
-          '<p style="font-size:13.5px;color:#6a675d">Love it? Apply now to hold your spot.</p>' +
-          '<a class="rv-lbtn" href="' + esc(applyHref) + '">Apply for this home</a>' + (phone ? '<a class="rv-lbtn ghost" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>" : "") +
+          (r.flow === "tour" ? "" : '<p style="font-size:13.5px;color:#6a675d">Love it? Apply now to hold your spot.</p>' +
+          '<a class="rv-lbtn" href="' + esc(applyHref) + '">Apply for this home</a>') + (phone ? '<a class="rv-lbtn ghost" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>" : "") +
           '<div class="rv-ref">Reference: ' + esc(r.ref) + "</div></div>";
         try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
       }
