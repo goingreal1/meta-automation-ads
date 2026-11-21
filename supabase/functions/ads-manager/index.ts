@@ -955,6 +955,7 @@ async function handlePurchaseAlerts() {
       const baseline = !(seenRows ?? []).length; // the first run only learns what is already there, so old purchases do not flood the bell
       for (const [adId, m] of buying){
         const prev = seen[adId] ?? 0;
+        if (m.purchases > prev && !baseline) await admin.from("meta_purchase_events").insert({ ad_account_id: a.id, company_id: a.company_id, ad_id: adId, day, added: m.purchases - prev, total_today: m.purchases, spend_today: Math.round(m.spend) }).then(()=>{}, ()=>{});
         if (m.purchases > prev && !baseline && sent < 30) {
           let name = adId, camp = "", campId = "";
           try { const o = await graphGet(adId, { fields: "name,campaign{id,name}" }, token); name = o.name ?? adId; camp = o.campaign?.name ?? ""; campId = o.campaign?.id ?? ""; } catch (_) { /* keep the id */ }
@@ -1985,6 +1986,60 @@ async function guardRun(admin, items, flag, status, order, token, deadline) {
   }
   return items.every((i)=>i[flag]);
 }
+// -- When do purchases (and spend) happen? Meta's hour-of-day breakdown, last N days, for every account of a company -----------------------
+// Hours are in each ad account's own time zone, as Meta reports them. One row per campaign per hour comes back, so it stays small.
+async function handleHourlyReport(companyId, days = 30) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, currency").eq("company_id", companyId).eq("status", "active");
+  const until = new Date().toISOString().slice(0, 10), since = new Date(Date.now() - (days - 1) * 86400_000).toISOString().slice(0, 10);
+  const hours = Array.from({ length: 24 }, ()=>({ spend: 0, purchases: 0 }));
+  const camps = new Map();
+  const notes = [];
+  const pur = (acts)=>{ for (const t of PURCHASE_ACTIONS){ const x = (acts ?? []).find((a)=>a.action_type === t); if (x) return Number(x.value) || 0; } return 0; };
+  for (const a of accts ?? []){
+    const actId = String(a.meta_ad_account_id ?? "").replace(/^act_/, "");
+    if (!/^\d+$/.test(actId)) continue;
+    const label = a.nickname || a.name || actId;
+    try {
+      const token = await resolveToken(admin, a);
+      const info = await graphGet(`act_${actId}`, { fields: "timezone_name" }, token).catch(()=>({}));
+      const rows = await graphGetAll(`act_${actId}/insights`, {
+        level: "campaign",
+        fields: "campaign_id,campaign_name,spend,actions",
+        breakdowns: "hourly_stats_aggregated_by_advertiser_time_zone",
+        time_range: JSON.stringify({ since, until }),
+        limit: "500"
+      }, token, 12);
+      notes.push(`${label}: ${rows.length} rows, ${info.timezone_name ?? "time zone ?"}`);
+      for (const r of rows){
+        const h = Number(String(r.hourly_stats_aggregated_by_advertiser_time_zone ?? "").slice(0, 2));
+        if (!(h >= 0 && h < 24)) continue;
+        const sp = Number(r.spend) || 0, pc = pur(r.actions);
+        hours[h].spend += sp; hours[h].purchases += pc;
+        const k = r.campaign_id;
+        const c = camps.get(k) ?? { account: label, campaign: r.campaign_name, spend: 0, purchases: 0, hours: Array.from({ length: 24 }, ()=>({ spend: 0, purchases: 0 })) };
+        c.spend += sp; c.purchases += pc; c.hours[h].spend += sp; c.hours[h].purchases += pc;
+        camps.set(k, c);
+      }
+    } catch (e) {
+      notes.push(`${label}: ${String(e.message ?? e).slice(0, 140)}`);
+    }
+  }
+  const round = (n)=>Math.round(n * 100) / 100;
+  const fmt = (x)=>({ spend: round(x.spend), purchases: x.purchases, cpa: x.purchases ? round(x.spend / x.purchases) : null });
+  const windows = Array.from({ length: 8 }, (_, i)=>{ const part = hours.slice(i * 3, i * 3 + 3).reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 }); return { window: `${String(i * 3).padStart(2, "0")}:00-${String(i * 3 + 3).padStart(2, "0")}:00`, ...fmt(part) }; });
+  const withBuys = [...camps.values()].filter((c)=>c.purchases > 0).sort((x, y)=>y.purchases - x.purchases);
+  return {
+    ok: true, days, since, until, notes,
+    total: fmt(hours.reduce((t, x)=>({ spend: t.spend + x.spend, purchases: t.purchases + x.purchases }), { spend: 0, purchases: 0 })),
+    by_hour: hours.map((x, h)=>({ hour: h, ...fmt(x) })),
+    by_window: windows,
+    campaigns_with_purchases: withBuys.map((c)=>({
+        account: c.account, campaign: c.campaign, ...fmt(c),
+        purchase_hours: c.hours.map((x, h)=>x.purchases ? `${h}h:${x.purchases}` : null).filter(Boolean).join(" ")
+      }))
+  };
+}
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -2327,6 +2382,13 @@ Deno.serve(async (req)=>{
         return json({ status: r.status, ...(await r.json().catch(()=>({}))) });
       }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
+    }
+    if (body.action === "hourly_report") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      const given = req.headers.get("x-cron-secret") ?? "";
+      if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
+      return json(await handleHourlyReport(String(body.company_id ?? ""), Math.min(Math.max(Number(body.days) || 30, 1), 90)));
     }
     if (body.action === "balance_guard") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
