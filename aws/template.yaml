@@ -26,7 +26,7 @@ Parameters:
     Description: Max simultaneous video conversions (a cost cap). -1 = no reservation (same rule as above).
   DashboardOrigins:
     Type: CommaDelimitedList
-    Default: "https://metaautomationads.vercel.app,https://revoracrm.app,https://dash.revoracrm.app"
+    Default: "https://metaautomationads.vercel.app,https://revoracrm.app,https://dash.revoracrm.app,https://revoracrm.online,https://dash.revoracrm.online,https://hq.revoracrm.online"
     Description: Browser origins allowed to call revora-transcode.
 
 Conditions:
