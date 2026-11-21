@@ -14,14 +14,30 @@ const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
 const MODEL = Deno.env.get("AI_TEAM_MODEL") ?? "gpt-4o-mini";
 const RUNWAY = Deno.env.get("RUNWAY_API_KEY") ?? "";
 const db = withR2(createClient(SUPABASE_URL, SERVICE));
+const ANTHROPIC = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+// Decisions that need judgement (the written meeting decision, ad set design) use Claude when its key is set; otherwise the usual model.
+async function decideJson(system: string, user: string): Promise<string> {
+  if (ANTHROPIC) {
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ANTHROPIC, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 4000, system: system + "\nReturn ONLY the JSON object, nothing else.", messages: [{ role: "user", content: user }] }) });
+      const o = await r.json().catch(() => ({}));
+      const t = String(o?.content?.[0]?.text ?? "");
+      const m = t.match(/\{[\s\S]*\}/);
+      if (r.ok && m) return m[0];
+    } catch (_) { /* fall back */ }
+  }
+  return await openaiStream([{ role: "system", content: system }, { role: "user", content: user }], async () => {}, true);
+}
+
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info", "Access-Control-Allow-Methods": "POST, OPTIONS" };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json", ...cors } });
 
 type Speaker = "team_lead" | "creative" | "media_buyer" | "customer_service";
 const AGENTS: Record<Speaker, { name: string; role: string; brief: string }> = {
   team_lead: { name: "Ada", role: "Team Lead", brief: "You lead the team. You read the numbers, decide what to push, how to position the product and how aggressive the creatives should be (bold hooks, urgency, strong offers, social proof). You push the others to commit to specific actions." },
-  creative: { name: "Zara", role: "Creative Agent", brief: "You make the ad images (videos later). You propose concrete image concepts: the scene, the angle, the headline text on the image, and the primary text. You make the team lead's direction visual and punchy." },
-  media_buyer: { name: "Tobi", role: "Media Buyer", brief: "You launch the campaigns at midnight from creatives that are already made. You say what to test, which products and how much budget, what you would kill early, and what worries you in the numbers." },
+  creative: { name: "Zara", role: "Creative Agent", brief: "You make the ad images (videos later). You propose concrete image concepts: the scene, the angle, the AGGRESSIVE hook text on the image, the call to action on the image (what the viewer does next, e.g. ORDER NOW - PAY ON DELIVERY), the offer line, and the primary text. Every image is three parts: hook band on top, the scene with the product pack clearly visible in the middle, call-to-action band and offer strip at the bottom. You study the winning ads the learner saw and write a stronger, new hook." },
+  media_buyer: { name: "Tobi", role: "Media Buyer", brief: "You launch the campaigns at midnight from creatives that are already made. You say what to test, which products and how much budget, which country (from the product's market, never assumed), the ad sets (one broad plus different age bands and real interests, each with a reason), what you would kill early, and what worries you in the numbers." },
   customer_service: { name: "Ife", role: "Customer Service", brief: "You talk to the customers. You only report what the numbers show (cancellations, deliveries, stock). If there is no customer feedback in the data, say so plainly; never invent customer quotes." },
 };
 const rules = (verified: boolean) => `Rules for everyone:
@@ -36,6 +52,10 @@ const rules = (verified: boolean) => `Rules for everyone:
 - CLAIMS: ${verified
     ? "This business has been verified by Revora. For each product you may use the claims listed in that product's approved_claims, in those words. Do not state any product claim that is not listed there, and never promise a cure or guaranteed result. If approved_claims is empty for a product, treat it as having no claims."
     : "This business is not verified yet, so make no product claims beyond the plain product description (what it is, the price, the offer, delivery and payment options). Never say a product cures, treats or fixes a condition. Bold hooks, urgency and strong offers are fine."}
+- HOOKS: the hook is the first thing on the picture and in the copy, so it must stop the thumb. Make it AGGRESSIVE and specific: name the exact reader and the fear or the curiosity ("40 AND IGNORING YOUR BP? WAKE UP.", "You can feel perfectly fine and still have high blood pressure"). Short, in capitals, confrontational, one idea. Never a soft slogan like "Take care of your health". Copy the STYLE of winning_ads_the_learner_saw and lessons_learned (not their words) and write a NEW hook for the new picture.
+- EVERY IMAGE HAS A CALL TO ACTION: after the hook the viewer must know what to do next. Every image brief has a hook (headline_on_image), a call to action (cta_on_image, for example "ORDER NOW - PAY ON DELIVERY" or "TAP ORDER NOW") and an offer line (offer_line, for example "PAY ON DELIVERY + FREE NATIONWIDE SHIPPING", only offers the product really has).
+- MARKETS: use each product's sells_in_countries from product_markets. A product named or linked for a country (for example "Kenya") sells there. Never assume Nigeria. If it is not set and not clear, the Media Buyer asks the BOSS before the launch. Do not copy a country from winning campaigns of another market.
+- TARGETING: the Media Buyer designs several ad sets for each launch: one BROAD ad set plus ad sets with different age bands (for example 25-60, 40-65, 30-50) and, where it makes sense, real interests. Base ages and interests on winners_ad settings in the briefing and lessons_learned, and say why each ad set exists.
 - Respect each product's own safety notes.`;
 
 async function openaiStream(messages: { role: string; content: unknown }[], onText: (t: string) => Promise<void>, json_mode = false): Promise<string> {
@@ -155,6 +175,31 @@ function nextStart(hour: number): Date {
 }
 const lagosIso = (d: Date) => new Date(d.getTime() + 3600_000).toISOString().replace(/\.\d+Z$/, "+01:00");
 
+// Tobi designs the ad sets for one launch: a broad one plus different age bands and real interests. Claude decides when its key is set.
+// deno-lint-ignore no-explicit-any
+async function designAdSets(companyId: string, prod: any, name: string, budget: number, countries: string[]) {
+  const broad = (b: number) => ({ label: "Broad 25-60", age_min: 25, age_max: 60, gender: "all", interest_keywords: [] as string[], budget_naira: b, why: "Broad audience: let Meta find the buyers." });
+  const n = Math.max(1, Math.min(4, Math.floor(budget / 2000)));
+  if (n === 1) return [broad(budget)];
+  try {
+    const x = await extraBriefing(companyId);
+    const raw = await decideJson(`You are Tobi, a senior media buyer. Design the ad sets for ONE launch. Return ONLY JSON {"ad_sets":[{"label": string, "age_min": number, "age_max": number, "gender": "all"|"male"|"female", "interest_keywords": [string], "why": string}]}. Exactly ${n} ad sets. The FIRST is BROAD: no interests and wide ages (copy the age range of the winning ads below when they show one, else 25-60). The others each test something different: a different age band (for example 40-65, 30-50, 35-60) and/or one to three real Meta interest names (short, common, English words a Meta interest search would find, that fit this product and its buyers). Ages stay within 18-65 and each band spans at least 15 years. "why" is one short sentence. Use the winners and lessons below; do not invent results.`,
+      `Product: ${JSON.stringify({ name, description: String(prod?.description ?? "").slice(0, 600), benefits: String(prod?.benefits ?? "").slice(0, 400) })}\nCountries: ${countries.join(", ")}\nWinning ads the learner saw:\n${JSON.stringify(x.winning_ads_the_learner_saw ?? []).slice(0, 7000)}\nLessons:\n${JSON.stringify(x.lessons_learned ?? []).slice(0, 2000)}`);
+    const o = JSON.parse(raw);
+    // deno-lint-ignore no-explicit-any
+    const sets: any[] = (Array.isArray(o?.ad_sets) ? o.ad_sets : []).slice(0, n);
+    if (!sets.length) return [broad(budget)];
+    const each = Math.floor(budget / sets.length / 100) * 100;
+    if (each < 1500) return [broad(budget)];
+    return sets.map((a, i) => {
+      const lo = Math.min(Math.max(Math.round(Number(a?.age_min) || 25), 18), 55), hi = Math.min(Math.max(Math.round(Number(a?.age_max) || 60), lo + 15), 65);
+      return { label: String(a?.label || `Ad set ${i + 1}`).slice(0, 50), age_min: lo, age_max: hi, gender: ["male", "female"].includes(a?.gender) ? a.gender : "all",
+        interest_keywords: i === 0 ? [] : (Array.isArray(a?.interest_keywords) ? a.interest_keywords : []).map((k: unknown) => String(k).slice(0, 40)).filter(Boolean).slice(0, 3),
+        budget_naira: i === sets.length - 1 ? budget - each * (sets.length - 1) : each, why: String(a?.why ?? "").slice(0, 160) };
+    });
+  } catch (_) { return [broad(budget)]; }
+}
+
 async function proposeLaunches(meetingId: string, companyId: string, userId: string) {
   const { data: m } = await db.from("ai_meetings").select("id, company_id, status, decision").eq("id", meetingId).maybeSingle();
   // deno-lint-ignore no-explicit-any
@@ -166,7 +211,7 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
   const cap = Number(team?.daily_budget_cap_naira ?? 0), hour = Number(team?.launch_hour_lagos ?? 0);
   const startAt = nextStart(hour);
   const { data: imgs } = await db.from("ai_team_images").select("brief, creative_id").eq("meeting_id", meetingId).eq("status", "approved");
-  const { data: prods } = await db.from("products").select("id, product_name, destination_type, landing_page_url, ad_account_id, is_active, target_countries").eq("company_id", companyId).eq("is_active", true);
+  const { data: prods } = await db.from("products").select("id, product_name, destination_type, landing_page_url, ad_account_id, is_active, target_countries, description, benefits").eq("company_id", companyId).eq("is_active", true);
   const todayStart = new Date(Math.floor((Date.now() + 3600_000) / 86400_000) * 86400_000 - 3600_000).toISOString();
   const { data: today } = await db.from("ai_launches").select("daily_budget_naira").eq("company_id", companyId).in("status", ["proposed", "scheduled"]).gte("created_at", todayStart);
   let committed = (today ?? []).reduce((a, r) => a + Number(r.daily_budget_naira || 0), 0);
@@ -186,7 +231,8 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
     if (committed + budget > cap) { await skip(`Over today's spend cap (₦${cap.toLocaleString()}); ₦${committed.toLocaleString()} is already committed.`); continue; }
     // Which country: what the meeting decided, else the product's own market, else Nigeria (the business default).
     const cc = (v: unknown) => (Array.isArray(v) ? v : []).map((x) => String(x).trim().toUpperCase()).filter((x) => /^[A-Z]{2}$/.test(x)).slice(0, 5);
-    const countries = cc(it?.countries).length ? cc(it?.countries) : cc(prod.target_countries).length ? cc(prod.target_countries) : ["NG"];
+    const countries = cc(it?.countries).length ? cc(it?.countries) : cc(prod.target_countries).length ? cc(prod.target_countries) : [];
+    if (!countries.length) { await skip("Which country should this run in? Set the product's countries in the Catalog (or tell the team in the meeting). The team does not assume Nigeria."); continue; }
     const { data: acct } = await db.from("ad_accounts").select("id, name, nickname, media_buyer_id, status").eq("id", prod.ad_account_id).maybeSingle();
     if (!acct || String(acct.status ?? "active").toLowerCase() !== "active") { await skip("The product's ad account is not active."); continue; }
     const { data: buyer } = acct.media_buyer_id ? await db.from("media_buyers").select("name").eq("id", acct.media_buyer_id).maybeSingle() : { data: null };
@@ -198,13 +244,16 @@ async function proposeLaunches(meetingId: string, companyId: string, userId: str
     if (prod.destination_type !== "whatsapp" && !url) { await skip("No landing page link for this product."); continue; }
     // deno-lint-ignore no-explicit-any
     const copies = mine.map((i: any) => ({ primary_text: String(i.brief?.primary_text ?? "").slice(0, 500) || name, headline: String(i.brief?.headline_on_image ?? "").slice(0, 80) }));
+    const adSets = await designAdSets(companyId, prod, name, budget, countries);
     const { data } = await db.from("ai_launches").insert({
       ...base, status: "proposed", product_id: prod.id, ad_account_id: acct.id, account_name: acct.nickname || acct.name, media_buyer_id: acct.media_buyer_id, buyer_name: buyer?.name ?? null,
       // deno-lint-ignore no-explicit-any
-      creative_ids: mine.map((i: any) => i.creative_id), destination: prod.destination_type ?? "website", landing_url: url, copies, countries,
+      creative_ids: mine.map((i: any) => i.creative_id), destination: prod.destination_type ?? "website", landing_url: url, copies, countries, ad_sets: adSets,
     }).select("*").single();
     committed += budget; out.push(data);
   }
+  const ready = out.filter((x) => x?.status === "proposed");
+  if (ready.length) await notify(companyId, "ai_team_launches", meetingId, "AI Team: a launch plan needs your approval", `Tobi prepared ${ready.length} launch${ready.length === 1 ? "" : "es"}: ${ready.map((x) => `${x.product_name} (₦${Number(x.daily_budget_naira).toLocaleString()}/day, ${(x.countries ?? []).join("/")})`).join("; ")}. Open the AI Team page to review the ad sets and approve. Nothing launches without you.`);
   return { ok: true, launches: out };
 }
 
@@ -223,11 +272,24 @@ async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
   };
   const fail = async (why: string) => { await db.from("ai_launches").update({ status: "failed", note: why.slice(0, 400), updated_at: new Date().toISOString() }).eq("id", l.id); return { error: why }; };
   const copies = (l.copies as { primary_text: string; headline?: string }[]) ?? [];
+  // The ad sets Tobi designed; each interest keyword is turned into the real Meta interest (id and name) first.
+  // deno-lint-ignore no-explicit-any
+  const specs: any[] = Array.isArray(l.ad_sets) && l.ad_sets.length ? l.ad_sets : [{ label: "AI Team", budget_naira: Number(l.daily_budget_naira) }];
+  const adsets = [];
+  for (const sp of specs) {
+    const interests: { id: string; name: string }[] = [];
+    for (const kw of (Array.isArray(sp.interest_keywords) ? sp.interest_keywords : []).slice(0, 3)) {
+      const r = await call("search_audiences", { ad_account_id: l.ad_account_id, query: String(kw), kind: "interest" }).catch(() => null);
+      const hit = (r?.results ?? [])[0]; if (hit?.id) interests.push({ id: String(hit.id), name: String(hit.name ?? kw) });
+    }
+    adsets.push({ label: String(sp.label ?? "AI Team").slice(0, 60), budget_naira: Number(sp.budget_naira) || Number(l.daily_budget_naira), ...(sp.age_min ? { age_min: sp.age_min, age_max: sp.age_max } : {}), ...(sp.gender ? { gender: sp.gender } : {}),
+      ...(Array.isArray(l.countries) && l.countries.length ? { countries: l.countries } : {}), ...(interests.length ? { interests } : {}) });
+  }
   const planned = await call("plan_campaign", {
     ad_account_id: l.ad_account_id, product_name: l.product_name, destination: l.destination ?? "website", objective: "sales", budget_type: "abo",
     ...(l.landing_url ? { landing_url: l.landing_url } : {}), campaign_name: `AI Team · ${l.product_name} · ${new Date(start.getTime() + 3600_000).toISOString().slice(0, 10)}`,
     asset_ids: l.creative_ids, copies, ads: (l.creative_ids as string[]).map((id, i) => ({ asset_id: id, copy_index: Math.min(i, copies.length - 1) })),
-    adsets: [{ label: "AI Team", budget_naira: Number(l.daily_budget_naira), ...(Array.isArray(l.countries) && l.countries.length ? { countries: l.countries } : {}) }], person_confirmed: true, start_time: lagosIso(start),
+    adsets, person_confirmed: true, start_time: lagosIso(start),
   });
   const planId = planned?.plan_id ?? planned?.plan?.id ?? planned?.id;
   if (!planId) return await fail(String(planned?.message ?? planned?.error ?? "The campaign plan could not be made.").slice(0, 300));
@@ -250,12 +312,12 @@ async function makeImages(meetingId: string, companyId: string): Promise<{ error
   const rows = [];
   for (const [bi, br0] of briefs.entries()) {
     const br = { ...br0, _i: bi };
-    const prompt = `${String(br.image_concept ?? br.angle ?? "").slice(0, 700)}. Professional square social media advertising photo for ${String(br.product ?? "the product").slice(0, 80)}, product clearly visible, clean composition, high quality, ${PEOPLE_RULE} No text, no logos, no watermarks.`;
+    const prompt = adLayout(br, `${String(br.image_concept ?? br.angle ?? "").slice(0, 600)} (advertising photo for ${String(br.product ?? "the product").slice(0, 80)})`).slice(0, 2900);
     const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
     if (r) rows.push(r.id);
   }
   // deno-lint-ignore no-explicit-any
-  (globalThis as any).EdgeRuntime?.waitUntil(Promise.all(rows.map((id) => generateImage(id, companyId))));
+  (globalThis as any).EdgeRuntime?.waitUntil(Promise.all(rows.map((id) => generateImage(id, companyId))).then(async () => { const { data: t } = await db.from("ai_teams").select("auto_launch").eq("company_id", companyId).maybeSingle(); if (!t?.auto_launch) await notify(companyId, "ai_team_images", meetingId, "AI Team: images ready to review", `Zara made ${rows.length} image${rows.length === 1 ? "" : "s"}. Open the AI Team page to approve the ones you like; then Tobi prepares the launch plan for your approval.`); }));
   return { started: rows.length };
 }
 
@@ -360,6 +422,25 @@ async function tick() {
 
 // The real, live numbers from Meta (not the stored daily table): every campaign today / yesterday / last 2 days / last 7 / last 30 days,
 // plus how the winning campaigns were built and what their ads say. Read through ads-manager with the internal key.
+// What each product's market is (from the Catalog) and what the learner has seen win: real winning ads with their copy, plus confirmed lessons.
+async function extraBriefing(companyId: string) {
+  const out: Record<string, unknown> = {};
+  try {
+    const { data: prods } = await db.from("products").select("product_name, target_countries, landing_page_url, destination_type").eq("company_id", companyId).eq("is_active", true);
+    out.product_markets = (prods ?? []).map((p) => ({ product: p.product_name, sells_in_countries: Array.isArray(p.target_countries) && p.target_countries.length ? p.target_countries : "NOT SET IN CATALOG (read the product name and link for a country; if still unclear ask the BOSS, never assume Nigeria)", landing_page: p.landing_page_url ? String(p.landing_page_url).slice(0, 90) : null }));
+  } catch (_) { /* optional */ }
+  try {
+    const { data: win } = await db.from("learn_anatomy").select("ad_name, campaign_name, purchases, spend, creative, adset_settings").eq("company_id", companyId).gt("purchases", 0).order("purchases", { ascending: false }).limit(8);
+    out.winning_ads_the_learner_saw = (win ?? []).map((w) => ({ ad: w.ad_name, campaign: w.campaign_name, purchases: w.purchases, spend_naira: Math.round(Number(w.spend) || 0), cost_per_purchase_naira: w.purchases ? Math.round(Number(w.spend) / Number(w.purchases)) : null,
+      headline: String((w.creative as { headline?: string } | null)?.headline ?? "").slice(0, 140), opening_of_primary_text: String((w.creative as { primary_text?: string } | null)?.primary_text ?? "").replace(/\s+/g, " ").slice(0, 220), cta: (w.creative as { cta?: string } | null)?.cta ?? null, targeting: w.adset_settings ?? null }));
+  } catch (_) { /* optional */ }
+  try {
+    const { data: les } = await db.from("learn_lessons").select("claim, how_to, confidence, scope, status").or(`company_id.eq.${companyId},scope.eq.global`).order("confidence", { ascending: false }).limit(10);
+    if (les?.length) out.lessons_learned = les.map((l) => ({ lesson: l.claim, how_to_use: l.how_to, confidence: l.confidence }));
+  } catch (_) { /* optional */ }
+  return out;
+}
+
 async function liveMeta(companyId: string): Promise<{ data?: unknown; images: { url: string; label: string }[]; note?: string }> {
   try {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 55_000);
@@ -382,6 +463,14 @@ async function liveMeta(companyId: string): Promise<{ data?: unknown; images: { 
     for (const a of o.accounts ?? []) (a.campaigns ?? []).splice(12);
     return { data: o, images: cand.filter((c) => c.k[2] > 0).slice(0, 4).map(({ url, label }) => ({ url, label })) };
   } catch (e) { return { images: [], note: "Live numbers from Meta could not be read for this meeting: " + String((e as Error)?.message ?? e).slice(0, 100) }; }
+}
+
+// Every ad picture has three parts so the viewer knows what to do after the hook: hook band, scene with the product, call-to-action band with the offer.
+// deno-lint-ignore no-explicit-any
+function adLayout(br: any, scene: string): string {
+  const t = (v: unknown, n: number) => String(v ?? "").replace(/["\n]+/g, " ").trim().slice(0, n);
+  const hook = t(br?.headline_on_image, 90), cta = t(br?.cta_on_image, 50) || "ORDER NOW - PAY ON DELIVERY", offer = t(br?.offer_line, 70);
+  return `${scene}. A finished, scroll-stopping square (1:1) social media ad made of THREE parts. TOP band: solid dark navy background with the hook ${hook ? `"${hook}"` : "(a short aggressive hook)"} in huge, bold, condensed capital letters, mostly yellow and white with the single most important word in red, filling the full width. MIDDLE: a photorealistic scene that matches the hook, with the product pack (a bottle or box) clearly visible and large in the foreground. BOTTOM: a bold red banner with the call to action "${cta}" in big white capital letters${offer ? `, and under it a dark rounded strip reading "${offer}"` : ""}. All text must be large, sharp and spelled exactly as written, with no extra words. ${PEOPLE_RULE} No logos or brand marks other than the product pack, no medical claims in the picture.`;
 }
 
 const PEOPLE_RULE = "PEOPLE IN PICTURES: show Black African people (natural Nigerian or Kenyan faces, skin tones, hair and clothing), of varied ages and genders. Where several people appear, mostly Black Africans and sometimes mixed with other ethnicities. Never show only white people unless the BOSS asks for it.";
@@ -424,7 +513,8 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
     const brief = { ...(brief0 ?? {}) } as Record<string, unknown>;
     delete brief.ads_last_7d; // the stored daily table lags and was wrong: the live Meta numbers below replace it
     const live = demo ? { images: [] as { url: string; label: string }[], data: undefined, note: undefined } : await liveMeta(companyId);
-    const briefing = JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...brief }).slice(0, 48000);
+    const extra = await extraBriefing(companyId);
+    const briefing = JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...extra, ...brief }).slice(0, 48000);
     // Who speaks, in order. After a person speaks, the next speaker answers them.
     const plan: Speaker[] = ["team_lead", "creative", "media_buyer", "customer_service", "team_lead", "creative", "media_buyer", "team_lead"];
     const count: Record<string, number> = {};
@@ -450,10 +540,7 @@ async function runMeeting(meetingId: string, companyId: string, topic: string, d
     if (!demo) {
       const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
       const transcript = (msgs ?? []).map((m) => `${AGENTS[m.speaker as Speaker]?.name ?? "BOSS"}: ${m.content}`).join("\n");
-      const raw = await openaiStream([
-        { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "countries": [string], "kill_rule": string}], "risks": [string]}. Use only products from the briefing. "countries" are two-letter country codes the launch targets, for example ["KE"] or ["NG"]; take them from what the meeting said or from the winning campaign for that product, and leave the list empty only if nobody said. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing}` },
-        { role: "user", content: `Meeting transcript:\n${transcript}` },
-      ], async () => {}, true);
+      const raw = await decideJson(`You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string (an AGGRESSIVE, specific hook in capitals), "cta_on_image": string (what the viewer does next, e.g. ORDER NOW - PAY ON DELIVERY), "offer_line": string (only real offers, e.g. PAY ON DELIVERY + FREE NATIONWIDE SHIPPING), "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "countries": [string], "kill_rule": string}], "risks": [string]}. Use only products from the briefing. "countries" are two-letter country codes the launch targets, for example ["KE"] or ["NG"]; take them from what the meeting said or from the winning campaign for that product, and leave the list empty only if nobody said. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing}` , `Meeting transcript:\n${transcript}`);
       try { decision = JSON.parse(raw); } catch { decision = { summary: raw.slice(0, 600) }; }
     }
     await db.from("ai_meetings").update({ status: "done", decision, ended_at: new Date().toISOString() }).eq("id", meetingId);
@@ -477,7 +564,8 @@ async function assembleBriefing(companyId: string) {
   delete brief.ads_last_7d; // the stored daily table lags: the live Meta numbers replace it
   const live = await liveMeta(companyId);
   const read = await readPictures(live.images);
-  return { briefing: JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, winning_pictures_described: read.text ?? null, winning_pictures_note: read.note ?? null, ...brief }).slice(0, 48000), images: live.images, verified: !!brief.claims_verified };
+  const extra = await extraBriefing(companyId);
+  return { briefing: JSON.stringify({ live_meta_from_ads_manager: live.data ?? null, live_meta_note: live.note ?? null, ...extra, winning_pictures_described: read.text ?? null, winning_pictures_note: read.note ?? null, ...brief }).slice(0, 48000), images: live.images, verified: !!brief.claims_verified };
 }
 
 async function liveTurn(meetingId: string, companyId: string, sp: Speaker, instruction: string, m: { topic: string; briefing: string; images: { url: string; label: string }[]; verified: boolean }) {
@@ -550,13 +638,13 @@ async function makeChatImage(meetingId: string, companyId: string, rowId: string
   const ask = `Meeting topic: ${topic}\nCreative agent said: ${said}`;
   winners = await loadPictures(winners.slice(0, 3));
   const user: unknown = winners.length ? [{ type: "text", text: ask + "\n\nThe pictures attached are the ads that are SELLING now. Keep what makes them work (the concept, the emotion, the composition style) but make a NEW picture, not a copy.\n" + winners.slice(0, 3).map((u, k) => `${k + 1}. ${u.label}`).join("\n") }, ...winners.slice(0, 3).map((u) => ({ type: "image_url", image_url: { url: u.url } }))] : ask;
-  const sys = { role: "system", content: `From the creative agent's message and the meeting, return ONLY JSON {"product": string, "angle": string, "headline_on_image": string, "image_prompt": string}. image_prompt is one complete, detailed prompt for a photorealistic square social media ad image (scene, people, lighting, mood, composition) built on the concept of the winning pictures when they are shown. ${PEOPLE_RULE} If headline_on_image is not empty the image must show that headline in large, clear, correctly spelled letters. No logos, no fake brand marks, no medical claims in the picture.` };
+  const sys = { role: "system", content: `From the creative agent's message and the meeting, return ONLY JSON {"product": string, "angle": string, "headline_on_image": string (an AGGRESSIVE, specific hook in capitals), "cta_on_image": string (what the viewer does next, e.g. ORDER NOW - PAY ON DELIVERY), "offer_line": string (only real offers, e.g. PAY ON DELIVERY + FREE NATIONWIDE SHIPPING), "image_prompt": string}. image_prompt describes ONLY the middle scene of the ad (people, setting, lighting, mood, the product pack in the foreground), built on the concept of the winning pictures when they are shown. The hook band and the call-to-action band are added around it automatically. No medical claims in the picture.` };
   let raw: string;
   try { raw = await openaiStream([sys, { role: "user", content: user }], async () => {}, true); }
   catch (_) { raw = await openaiStream([sys, { role: "user", content: ask }], async () => {}, true); }
-  let o: { product?: string; angle?: string; headline_on_image?: string; image_prompt?: string } = {};
+  let o: { product?: string; angle?: string; headline_on_image?: string; cta_on_image?: string; offer_line?: string; image_prompt?: string } = {};
   try { o = JSON.parse(raw); } catch { /* use the message itself */ }
-  const prompt = String(o.image_prompt || said).slice(0, 1500);
+  const prompt = adLayout(o, String(o.image_prompt || said).slice(0, 900)).slice(0, 2900);
   const { data: im } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: meetingId, brief: { product: o.product ?? "Product", angle: o.angle ?? "Sample", headline_on_image: o.headline_on_image ?? "", _chat: true }, prompt }).select("id").single();
   if (!im) return;
   await db.from("ai_meeting_messages").update({ attachment: { type: "image", image_id: im.id } }).eq("id", rowId);
@@ -612,10 +700,7 @@ async function liveRespond(meetingId: string, companyId: string) {
 async function makeDecision(meetingId: string, briefing: string): Promise<unknown> {
   const { data: msgs } = await db.from("ai_meeting_messages").select("speaker, content").eq("meeting_id", meetingId).order("seq");
   const transcript = (msgs ?? []).map((m) => `${AGENTS[m.speaker as Speaker]?.name ?? "BOSS"}: ${m.content}`).join("\n");
-  const raw = await openaiStream([
-    { role: "system", content: `You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string, "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "countries": [string], "kill_rule": string}], "risks": [string]}. THE BOSS'S INSTRUCTIONS IN THE TRANSCRIPT BEAT EVERYTHING: plan only what the BOSS asked for (the products, the countries, the budgets). "countries" are two-letter codes the launch targets, for example ["KE"] or ["NG"]; take them from the BOSS or from the product's target_countries or from the winning campaign for that product, and leave the list empty only if nobody said. If the BOSS asked for nothing to be launched, return an empty launch_plan. Use only products from the briefing. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing.slice(0, 20000)}` },
-    { role: "user", content: `Meeting transcript:\n${transcript}` },
-  ], async () => {}, true);
+  const raw = await decideJson(`You write the official decision of an AI marketing team meeting. Return ONLY JSON: {"summary": string (2-3 sentences), "angles": [string], "creative_briefs": [{"product": string, "angle": string, "image_concept": string, "headline_on_image": string (an AGGRESSIVE, specific hook in capitals), "cta_on_image": string (what the viewer does next, e.g. ORDER NOW - PAY ON DELIVERY), "offer_line": string (only real offers, e.g. PAY ON DELIVERY + FREE NATIONWIDE SHIPPING), "primary_text": string}], "launch_plan": [{"product": string, "creative_brief_index": number, "daily_budget_naira": number, "countries": [string], "kill_rule": string}], "risks": [string]}. THE BOSS'S INSTRUCTIONS IN THE TRANSCRIPT BEAT EVERYTHING: plan only what the BOSS asked for (the products, the countries, the budgets). "countries" are two-letter codes the launch targets, for example ["KE"] or ["NG"]; take them from the BOSS or from the product's target_countries or from the winning campaign for that product, and leave the list empty only if nobody said. If the BOSS asked for nothing to be launched, return an empty launch_plan. Use only products from the briefing. Max 5 creative_briefs. Only use product claims the briefing allows (approved_claims when claims_verified is true, otherwise none).\n\nBRIEFING:\n${briefing.slice(0, 20000)}` , `Meeting transcript:\n${transcript}`);
   try { return JSON.parse(raw); } catch { return { summary: raw.slice(0, 600) }; }
 }
 
