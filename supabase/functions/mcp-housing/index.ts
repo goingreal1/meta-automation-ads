@@ -466,7 +466,7 @@ const TOOLS = [
     },
     run: async (a, c)=>{
       need(c, REVIEW_ROLES);
-      let q = admin.from("applications").select("id, ref, product_id, property_id, applicant_name, applicant_email, applicant_phone, desired_move_in, occupants, answers, payment_method, fee_amount, currency, fee_status, review_status, payment_note, paid_at, possible_duplicate, created_at, properties(title, state, city, monthly_rent)").eq("company_id", c.companyId).order("created_at", {
+      let q = admin.from("applications").select("id, ref, product_id, property_id, applicant_name, applicant_email, applicant_phone, desired_move_in, occupants, answers, payment_method, fee_amount, currency, fee_status, review_status, payment_note, paid_at, possible_duplicate, emailed_at, email_error, created_at, properties(title, state, city, monthly_rent)").eq("company_id", c.companyId).order("created_at", {
         ascending: false
       }).limit(Math.min(Number(a.limit) || 50, 200));
       for (const k of [
@@ -875,7 +875,10 @@ async function publicAction(b) {
       event: "application_submit",
       state: prop.state
     });
-    return thanks(p, prop, row.ref, ins.payment_method);
+    const out = thanks(p, prop, row.ref, ins.payment_method);
+    out.emailed = Boolean(email && RESEND_API_KEY && RESEND_FROM);
+    if (email) queueApplicationEmail(p, prop, row, name, email, out);
+    return out;
   }
   if (act === "public_tour_slots") {
     const p = await publicProject(b.product_id);
@@ -1103,6 +1106,90 @@ ${s.contact_phone ? `<p style="margin:0;color:#475569;font-size:14px">Questions?
       email_error: String(e?.message || e).slice(0, 200)
     }).eq("id", row.id);
   }
+}
+// Application email: the same payment instructions the applicant sees on screen, plus their reference, so they keep it.
+async function sendApplicationEmail(p, prop, row, name, email, t) {
+  if (!RESEND_API_KEY || !RESEND_FROM) {
+    await admin.from("applications").update({
+      email_error: "email_not_configured"
+    }).eq("id", row.id);
+    return;
+  }
+  const s = p.housing_settings ?? {};
+  const brand = String(s.brand || "SC Rentals");
+  const fee = Number(t.fee?.amount) || 0;
+  const money = (n)=>`$${Number(n).toLocaleString("en-US")}`;
+  const pay = t.pay ?? null;
+  const link = pay?.payment_link_url && /^https:\/\//i.test(pay.payment_link_url) ? pay.payment_link_url : null;
+  const rows = pay ? [
+    [
+      "Bank",
+      pay.bank_name
+    ],
+    [
+      "Account number",
+      pay.account_number
+    ],
+    [
+      "Account name",
+      pay.account_name
+    ]
+  ].filter((r)=>r[1]) : [];
+  const payHtml = fee > 0 ? `<p style="margin:0 0 10px;color:#334155;line-height:1.55"><b>Next step: pay the ${escH(money(fee))} application fee.</b></p>
+${pay?.instructions ? `<p style="margin:0 0 14px;color:#475569;line-height:1.55;white-space:pre-wrap">${escH(pay.instructions)}</p>` : ""}
+${link ? `<p style="margin:0 0 16px"><a href="${escH(link)}" style="display:inline-block;background:#c2410c;color:#fff;text-decoration:none;font-weight:700;padding:14px 26px;border-radius:12px">Pay the application fee</a></p>` : ""}
+${rows.length ? `<table style="border-collapse:collapse;margin:0 0 14px;font-size:15px">${rows.map((r)=>`<tr><td style="padding:4px 14px 4px 0;color:#64748b">${escH(r[0])}</td><td style="padding:4px 0;font-weight:700;color:#0b1220">${escH(r[1])}</td></tr>`).join("")}</table>` : ""}
+${!pay?.instructions && !link && !rows.length ? `<p style="margin:0 0 14px;color:#475569">The property manager will contact you with payment details.</p>` : `<p style="margin:0 0 14px;color:#475569;line-height:1.55">Please use <b>${escH(row.ref)}</b> as your reference${s.contact_phone ? `, then call or text your receipt to ${escH(s.contact_phone)}` : ", then send your receipt to the property manager"}.</p>`}` : `<p style="margin:0 0 14px;color:#334155;line-height:1.55">No application fee is due. The property manager will be in touch.</p>`;
+  const html = `<div style="background:#f5f6f8;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e8ee">
+<div style="background:#0f2742;color:#fff;padding:20px 24px;font-size:18px;font-weight:700">${escH(brand)}</div>
+<div style="padding:26px 24px">
+<h1 style="margin:0 0 8px;font-size:22px;color:#0b1220">Application received, ${escH(String(name).split(" ")[0])}.</h1>
+<p style="margin:0 0 18px;color:#475569;line-height:1.55">Thank you for applying. Here is what happens next.</p>
+<div style="background:#f5f6f8;border-radius:12px;padding:16px 18px;margin:0 0 22px">
+<div style="font-weight:700;color:#0b1220">${escH(prop.title)}</div>
+<div style="color:#64748b;font-size:13px;margin-top:6px">Reference ${escH(row.ref)}</div>
+</div>
+${payHtml}
+${t.fee?.disclosure ? `<p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.5">${escH(t.fee.disclosure)}</p>` : ""}
+</div>
+<div style="padding:16px 24px;border-top:1px solid #e5e8ee;color:#94a3b8;font-size:12px">You received this because you applied at ${escH(brand)}. Please never email us ID or Social Security numbers. Equal Housing Opportunity.</div>
+</div></div>`;
+  const payload = {
+    from: RESEND_FROM,
+    to: [
+      email
+    ],
+    subject: `Your application for ${prop.title} (${row.ref})`,
+    html
+  };
+  if (typeof s.reply_to === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.reply_to)) payload.reply_to = s.reply_to;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const o = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(String(o?.message || `resend_${res.status}`).slice(0, 200));
+    await admin.from("applications").update({
+      emailed_at: new Date().toISOString(),
+      email_error: null
+    }).eq("id", row.id);
+  } catch (e) {
+    await admin.from("applications").update({
+      email_error: String(e?.message || e).slice(0, 200)
+    }).eq("id", row.id);
+  }
+}
+function queueApplicationEmail(p, prop, row, name, email, t) {
+  const job = sendApplicationEmail(p, prop, row, name, email, t).catch((e)=>console.error("application email", e));
+  try {
+    globalThis.EdgeRuntime?.waitUntil?.(job);
+  } catch  {}
 }
 // Fire and forget: the visitor's booking never waits for (or fails because of) the email.
 function queueTourEmail(p, prop, row, name, email, date, time) {

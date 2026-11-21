@@ -400,7 +400,7 @@
       btns += '<a class="rv-lbtn" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>";
       if (fee > 0) btns += '<a class="rv-lbtn ghost" href="sms:' + esc(phone) + "?&body=" + encodeURIComponent("Hi, I applied for " + ptitle + " and have paid the application fee. Reference " + r.ref) + '">Text receipt</a>';
     }
-    el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Application received</h2><p>' + esc(text) + '</p><div class="rv-bank">' + rows + "</div>" + btns + '<div class="rv-ref">Reference: ' + esc(r.ref) + "</div></div>";
+    el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Application received</h2><p>' + esc(text) + '</p><div class="rv-bank">' + rows + "</div>" + btns + (r.emailed ? '<p style="font-size:13px;color:#6a675d;margin-top:10px">We’ve also emailed you these payment details and your reference. Check your spam folder if you don’t see it.</p>' : "") + '<div class="rv-ref">Reference: ' + esc(r.ref) + "</div></div>";
     wireCopy(el);
     try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
   }

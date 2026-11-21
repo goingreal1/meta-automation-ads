@@ -167,6 +167,7 @@ function hsDrawApps() {
       <small>${escH(p.title || "Home")}${p.city ? " · " + escH(p.city) : ""} · ${escH(a.ref)} · ${new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</small>
       <small>${escH(a.applicant_phone || "")}${a.applicant_email ? " · " + escH(a.applicant_email) : ""}${a.desired_move_in ? " · move-in " + escH(a.desired_move_in) : ""}${a.occupants ? " · " + a.occupants + " people" : ""}</small>
       <small>Fee ${hsMoney(a.fee_amount, a.currency)}${a.payment_note ? " · " + escH(a.payment_note) : ""}</small>
+      ${!a.applicant_email ? "" : a.emailed_at ? `<small style="color:#15803d">Payment email sent</small>` : a.email_error ? `<small style="color:#b91c1c">Payment email not sent (${escH(a.email_error === "email_not_configured" ? "email isn't set up yet" : a.email_error)})</small>` : ""}
       <div class="hs-acts">${hsTel(a.applicant_phone)}${a.fee_status === "unpaid" ? `<button class="go" data-fee="paid" data-id="${a.id}">Mark fee paid</button>` : ""}
       ${a.review_status !== "under_review" ? `<button data-rv="under_review" data-id="${a.id}">In review</button>` : ""}${a.review_status !== "approved" ? `<button data-rv="approved" data-id="${a.id}">Approve</button>` : ""}${a.review_status !== "declined" ? `<button data-rv="declined" data-id="${a.id}">Decline</button>` : ""}</div></div></div>`;
   }
