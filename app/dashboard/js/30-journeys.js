@@ -156,6 +156,8 @@ function jyTimeline(events, s) {
   if (s && s.ordered) out.push({ t: tEnd, text: "Order placed", good: true });
   out.push({ t: tEnd, text: "Left the page after " + jyFmt(tEnd / 1000) });
   out.sort((a, b) => a.t - b.t);
+  // scroll steps that happen within two seconds of each other are one scroll: keep only the furthest
+  for (let i = out.length - 2; i >= 0; i--) if (/^Scrolled to|^Reached the bottom/.test(out[i].text) && /^Scrolled to|^Reached the bottom/.test(out[i + 1].text) && out[i + 1].t - out[i].t < 2000) out.splice(i, 1);
   return out.filter((x, i) => !(i && out[i - 1].text === x.text && x.t - out[i - 1].t < 1500));
 }
 function jyLoadScript(src) { return new Promise((res, rej) => { if ([...document.scripts].some((s) => s.src.endsWith(src))) return res(); const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
