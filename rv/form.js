@@ -437,7 +437,11 @@
       }
       function draw() {
         var keep = {}, f0 = el.querySelector("form"); if (f0) ["name", "phone", "email"].forEach(function (n) { keep[n] = f0.elements[n].value; });
-        var picker = !st.prop ? '<p class="rv-sub">Choose a home to tour.</p>' + h.properties.map(function (p, i) { return '<button type="button" class="rv-pick" data-i="' + i + '"><b>' + esc(p.title) + "</b><span>" + hMoney(p.monthly_rent, p.currency) + " / month &middot; " + esc([p.city, p.state].filter(Boolean).join(", ")) + "</span></button>"; }).join("") : "";
+        var many = h.properties.length > 4, groups = {};
+        if (many) h.properties.forEach(function (p, i) { var k = p.city || "Other"; (groups[k] = groups[k] || []).push({ p: p, i: i }); });
+        var picker = !st.prop && many ? '<div class="rv-field"><label for="rv-tp">Which home do you want to tour?</label><select id="rv-tp" style="width:100%;padding:14px;border:1.5px solid var(--rv-border,#ddd);border-radius:var(--rv-radius,12px);font:inherit;font-size:16px;background:#fff"><option value="">Select a home…</option>' +
+          Object.keys(groups).map(function (c) { return '<optgroup label="' + esc(c) + '">' + groups[c].map(function (x) { return '<option value="' + x.i + '">' + esc(x.p.title) + " — " + hMoney(x.p.monthly_rent, x.p.currency) + "/mo</option>"; }).join("") + "</optgroup>"; }).join("") + "</select></div>" :
+          !st.prop ? '<p class="rv-sub">Choose a home to tour.</p>' + h.properties.map(function (p, i) { return '<button type="button" class="rv-pick" data-i="' + i + '"><b>' + esc(p.title) + "</b><span>" + hMoney(p.monthly_rent, p.currency) + " / month &middot; " + esc([p.city, p.state].filter(Boolean).join(", ")) + "</span></button>"; }).join("") : "";
         if (!st.prop) { el.innerHTML = '<div class="rv-card">' + (title ? '<h3 class="rv-title">' + esc(title) + "</h3>" : "") + (h.properties.length ? picker : '<p class="rv-sub">No homes are open for tours right now. Please check back soon.</p>') + "</div>"; bindPick(); return; }
         var days = st.slots ? st.slots.days : [], day = days.filter(function (x) { return x.date === st.date; })[0];
         var dayHtml = days.map(function (x) { return '<button type="button" data-date="' + x.date + '" style="' + pill(x.date === st.date) + 'min-width:62px;text-align:center;line-height:1.25"><span style="font-size:11px;opacity:.7">' + tDow(x.date) + '</span><br><b style="font-size:17px">' + Number(x.date.slice(8)) + '</b><br><span style="font-size:11px;opacity:.7">' + tMonth(x.date) + "</span></button>"; }).join("");
@@ -482,7 +486,10 @@
             });
         });
       }
-      function bindPick() { el.querySelectorAll(".rv-pick").forEach(function (b) { b.addEventListener("click", function () { st.prop = h.properties[Number(b.getAttribute("data-i"))]; if (!opts.preview) hTrack("property_view", product.id, st.prop); loadSlots(); }); }); }
+      function bindPick() {
+        var tp = el.querySelector("#rv-tp");
+        if (tp) tp.addEventListener("change", function () { if (tp.value === "") return; st.prop = h.properties[Number(tp.value)]; if (!opts.preview) hTrack("property_view", product.id, st.prop); loadSlots(); });
+        el.querySelectorAll(".rv-pick").forEach(function (b) { b.addEventListener("click", function () { st.prop = h.properties[Number(b.getAttribute("data-i"))]; if (!opts.preview) hTrack("property_view", product.id, st.prop); loadSlots(); }); }); }
       function tThanks(r) {
         var phone = hPhone(r.contact_phone), when = tDow(r.tour_date) + " " + tMonth(r.tour_date) + " " + Number(r.tour_date.slice(8)) + " at " + tClock(r.tour_time);
         el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Tour requested</h2><p>' + esc((r.property && r.property.title) || "Your tour") + " &middot; " + esc(when) + ". We’ll text you to confirm.</p>" +
