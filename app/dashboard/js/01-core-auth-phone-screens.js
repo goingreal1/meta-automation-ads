@@ -95,8 +95,8 @@ async function init() {
   // it) RLS leaves empty anyway. Hide what's not theirs instead of leaving
   // them to discover that the hard way.
   const HIDDEN_TABS_BY_ROLE = {
-    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "catalog", "shop", "conversations", "websites", "website-leads", "approvals", "earnings"],
-    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "products", "catalog", "shop", "websites", "approvals", "earnings"],
+    delivery_agent: ["calllogs", "support", "forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "journeys", "products", "catalog", "shop", "conversations", "websites", "website-leads", "approvals", "earnings"],
+    customer_care: ["forms", "campaigns", "performance", "leaderboard", "vault", "wallet", "journeys", "products", "catalog", "shop", "websites", "approvals", "earnings"],
   };
   if (!["owner", "admin"].includes(profile.role)) document.querySelector('[data-tab="caredesk"]')?.style.setProperty("display", "none");
   for (const tab of HIDDEN_TABS_BY_ROLE[profile.role] || []) {
