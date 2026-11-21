@@ -316,6 +316,10 @@ Deno.serve(async (req)=>{
       } : {},
       fbclid: payload.fbclid || null,
       meta_ad_id: payload.ad_id || payload.meta_ad_id || null,
+      meta_adset_id: payload.mas ? String(payload.mas).slice(0, 40) : null,
+      meta_campaign_id: payload.mcm ? String(payload.mcm).slice(0, 40) : null,
+      placement: payload.mpl ? String(payload.mpl).slice(0, 40) : null,
+      session_key: payload.session_key ? String(payload.session_key).slice(0, 64) : null,
       order_status: 'pending'
     }, {
       onConflict: 'event_id'
@@ -323,6 +327,8 @@ Deno.serve(async (req)=>{
     if (dbError) {
       throw new Error(`Database error: ${dbError.message}`);
     }
+    // Tie this visit's journey to the order it ended in.
+    if (payload.session_key && siteRow?.id && orderRow?.id) await supabase.from('site_sessions').update({ ordered: true, order_id: orderRow.id, last_seen_at: new Date().toISOString() }).eq('site_id', siteRow.id).eq('session_key', String(payload.session_key).slice(0, 64)).then(()=>{}, ()=>{});
     if (cartLines && orderRow?.id) {
       await supabase.from('order_items').delete().eq('order_id', orderRow.id);
       const { error: itemsError } = await supabase.from('order_items').insert(cartLines.map((l)=>({

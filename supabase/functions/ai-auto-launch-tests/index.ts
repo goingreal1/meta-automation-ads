@@ -250,8 +250,13 @@ async function ensureMetaMedia(supabase, accountId, creative, maxWaitMs = 90 * 1
     thumbnailUrl: thumb.thumbnailUrl
   };
 }
+// Meta fills these in when someone clicks: every visit and order then knows its exact ad, ad set, campaign and placement.
+const RV_URL_TAGS = "ad_id={{ad.id}}&mas={{adset.id}}&mcm={{campaign.id}}&mpl={{placement}}&utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}";
 async function createAdCreative(accountId, pageId, igUserId, creative, media, destinationLink, ctaType, destinationType, productName) {
   try {
+    const tagField = !destinationType || destinationType === "website" || destinationType === "form" ? {
+      url_tags: RV_URL_TAGS
+    } : {};
     // Carousel: 2-10 swipeable cards, each with its own picture, headline and (optional) link.
     if (creative.asset_type === "carousel") {
       const cards = Array.isArray(creative.carousel_cards) ? creative.carousel_cards.filter((x)=>x?.image_url).slice(0, 10) : [];
@@ -324,6 +329,7 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
           contextual_multi_ads: {
             enroll_status: "OPT_OUT"
           },
+          ...tagField,
           access_token: META_ACCESS_TOKEN
         });
       const post = async (withMainCta)=>{
@@ -358,6 +364,7 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
         body: JSON.stringify({
           name: `Post-${creative.meta_post_id}-${Date.now()}`,
           object_story_id: creative.meta_post_id,
+          ...tagField,
           access_token: META_ACCESS_TOKEN
         })
       });
@@ -536,6 +543,7 @@ async function createAdCreative(accountId, pageId, igUserId, creative, media, de
         contextual_multi_ads: {
           enroll_status: "OPT_OUT"
         },
+        ...tagField,
         access_token: META_ACCESS_TOKEN
       })
     });
