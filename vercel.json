@@ -298,6 +298,11 @@
       "includeFiles": "node_modules/ffmpeg-static/**",
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/screenshot.js": {
+      "includeFiles": "node_modules/@sparticuz/chromium/bin/**",
+      "maxDuration": 60,
+      "memory": 2048
     }
   },
   "redirects": [
