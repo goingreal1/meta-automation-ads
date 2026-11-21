@@ -2475,6 +2475,32 @@ const TOOLS = [
     }
   },
   {
+    name: "get_lessons",
+    title: "What Revora has learned works",
+    description: "Lessons Revora's pattern finder drew from real winning and losing ads: this person's own business first, then general patterns seen across businesses (with no names or figures). Each lesson is a counted comparison (how many ads had it, how many won, versus the overall rate) with a confidence of low, medium or high. Use it before planning a campaign, writing copy or reviewing ads, and say which lesson you are using and how sure it is. Lessons are evidence, not rules: never launch anything because of one without the person's approval. An empty list means there is not enough data yet; say so plainly and do not invent patterns.",
+    inputSchema: OBJ({
+      min_confidence: {
+        type: "string",
+        enum: ["low", "medium", "high"],
+        description: "Only lessons at or above this confidence. Default low."
+      }
+    }),
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: false
+    },
+    run: async (a, c)=>{
+      const order = { low: 0, medium: 1, high: 2 };
+      const min = order[String(a?.min_confidence ?? "low")] ?? 0;
+      const { data } = await admin.from("learn_lessons").select("scope, segment, feature, value, direction, n, winners, rate, baseline, lift, confidence, status, claim, how_to, confirmed, last_checked").or(`scope.eq.global,company_id.eq.${c.companyId}`).neq("status", "retired").order("confirmed", { ascending: false }).limit(60);
+      const list = (data ?? []).filter((l)=>(order[l.confidence] ?? 0) >= min);
+      return {
+        lessons: list.map((l)=>({ from: l.scope === "company" ? "this business" : "across businesses", about: l.segment, lesson: l.claim, how_to_use: l.how_to, confidence: l.confidence, times_confirmed: l.confirmed, status: l.status })),
+        note: list.length ? "These are patterns from past results, not guarantees. Tell the person how sure each one is." : "Not enough winning and losing ads yet to find reliable patterns. It improves as more results come in."
+      };
+    }
+  },
+  {
     name: "duplicate_ad",
     title: "Duplicate an ad or ad set",
     description: "Copy an ad or ad set inside the same campaign. For a WINNER: the original keeps running and the copy goes live (to scale it). For a BAD ad: set pause_original true to relaunch it as a fresh copy and switch the old one off.",
