@@ -454,7 +454,7 @@
             '<div class="rv-field"><label>Time</label><div style="display:flex;flex-wrap:wrap;gap:8px">' + timeHtml + "</div></div>") +
           '<div class="rv-field"><label>Your name</label><input name="name" autocomplete="name" required></div>' +
           '<div class="rv-row"><div class="rv-field"><label>Mobile number</label><input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></div>' +
-          '<div class="rv-field"><label>Email <span style="font-weight:400;color:#8c887c">(optional)</span></label><input name="email" type="email" autocomplete="email"></div></div>' +
+          '<div class="rv-field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div></div>' +
           '<button type="submit" class="rv-btn">' + esc(btnText) + "</button><div class=\"rv-msg\"></div>" +
           '<div class="rv-note">Free, no obligation. We only use your number to confirm your tour.</div></form>';
         var f = el.querySelector("form"); ["name", "phone", "email"].forEach(function (n) { if (keep[n]) f.elements[n].value = keep[n]; });
@@ -471,7 +471,7 @@
           var name = q.name.value.trim(), phone = q.phone.value.trim(), email = q.email.value.trim();
           if (!name) return fail("Please enter your name.");
           if (phone.replace(/\D/g, "").length < 10) return fail("Please enter a valid mobile number.");
-          if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("That email address doesn’t look right.");
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Please enter a valid email so we can send your confirmation and the link to apply.");
           if (opts.preview) return fail("Preview mode — tours are not sent.");
           busy = true; btn.disabled = true; var old = btn.textContent; btn.textContent = "Booking…";
           hCall({ action: "public_tour", product_id: product.id, property_id: st.prop.id, site_id: site && site.id, site_page_id: d.page && d.page.id,
@@ -494,7 +494,7 @@
         var phone = hPhone(r.contact_phone), when = tDow(r.tour_date) + " " + tMonth(r.tour_date) + " " + Number(r.tour_date.slice(8)) + " at " + tClock(r.tour_time);
         el.innerHTML = '<div class="rv-thanks"><div class="rv-check">✓</div><h2>Tour requested</h2><p>' + esc((r.property && r.property.title) || "Your tour") + " &middot; " + esc(when) + ". We’ll text you to confirm.</p>" +
           (r.flow === "tour" ? "" : '<p style="font-size:13.5px;color:#6a675d">Love it? Apply now to hold your spot.</p>' +
-          '<a class="rv-lbtn" href="' + esc(applyHref) + '">Apply for this home</a>') + (phone ? '<a class="rv-lbtn ghost" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>" : "") +
+          '<a class="rv-lbtn" href="' + esc(applyHref) + '">Apply for this home</a>') + (r.emailed ? '<p style="font-size:13.5px;color:#6a675d">We’ve emailed you a confirmation' + (r.flow === "tour" ? " with the link to apply" : "") + ". Check your spam folder if you don’t see it.</p>" : "") + (phone ? '<a class="rv-lbtn ghost" href="tel:' + esc(phone) + '">Call ' + esc(r.contact_phone) + "</a>" : "") +
           '<div class="rv-ref">Reference: ' + esc(r.ref) + "</div></div>";
         try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
       }

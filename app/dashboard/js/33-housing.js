@@ -133,6 +133,7 @@ function hsDrawTours() {
     html += `<div class="hs-card"><div class="hs-t">${hsClock(r.tour_time)}</div><div class="hs-mid"><b>${escH(r.visitor_name)}${hsPill(HS_TOUR_ST, r.status)}${r.possible_duplicate ? ' <span class="rv-pill n">repeat</span>' : ""}</b>
       <small>${escH(p.title || "Home")}${p.city ? " · " + escH(p.city) : ""}${p.address ? " · " + escH(p.address) : ""}</small>
       <small>${escH(r.visitor_phone || "")}${r.visitor_email ? " · " + escH(r.visitor_email) : ""} · ${escH(r.ref)}</small>${r.notes ? `<small>“${escH(r.notes)}”</small>` : ""}
+      ${r.emailed_at ? `<small style="color:#15803d">Confirmation email sent</small>` : r.email_error ? `<small style="color:#b91c1c">Confirmation email not sent (${escH(r.email_error === "email_not_configured" ? "email isn't set up yet" : r.email_error)})</small>` : ""}
       <div class="hs-acts">${hsTel(r.visitor_phone)}${r.status === "requested" ? `<button data-s="confirmed" data-id="${r.id}">Confirm</button>` : ""}
       ${live(r) ? `<button data-s="completed" data-id="${r.id}">Toured</button><button data-s="no_show" data-id="${r.id}">No-show</button><button data-s="cancelled" data-id="${r.id}">Cancel</button>` : r.status === "cancelled" ? `<button data-s="requested" data-id="${r.id}">Reopen</button>` : ""}</div></div></div>`;
   }

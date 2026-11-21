@@ -645,7 +645,7 @@ const TOOLS = [
     },
     run: async (a, c)=>{
       need(c, REVIEW_ROLES);
-      let q = admin.from("tours").select("id, ref, product_id, property_id, visitor_name, visitor_phone, visitor_email, tour_date, tour_time, notes, status, possible_duplicate, created_at, properties(title, state, city, address)").eq("company_id", c.companyId).order("tour_date", {
+      let q = admin.from("tours").select("id, ref, product_id, property_id, visitor_name, visitor_phone, visitor_email, tour_date, tour_time, notes, status, possible_duplicate, emailed_at, email_error, created_at, properties(title, state, city, address)").eq("company_id", c.companyId).order("tour_date", {
         ascending: true
       }).order("tour_time", {
         ascending: true
@@ -904,7 +904,7 @@ async function publicAction(b) {
   if (act === "public_tour") {
     const p = await publicProject(b.product_id);
     if (!isId(b.property_id)) throw new Error("Please choose a property.");
-    const { data: prop } = await admin.from("properties").select("id, title, state, availability").eq("id", b.property_id).eq("product_id", p.id).maybeSingle();
+    const { data: prop } = await admin.from("properties").select("id, title, slug, address, city, state, availability, application_fee, currency").eq("id", b.property_id).eq("product_id", p.id).maybeSingle();
     if (!prop || prop.availability !== "available") throw new Error("Sorry, this property is no longer available for tours.");
     const name = str(b.visitor_name, 200);
     const email = str(b.visitor_email, 200)?.toLowerCase() ?? null;
@@ -912,7 +912,8 @@ async function publicAction(b) {
     if (!name) throw new Error("Please enter your name.");
     if (!phone) throw new Error("Please enter a phone number so we can confirm your tour.");
     if (phone.replace(/\D/g, "").length < 10) throw new Error("Please enter a valid phone number.");
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That email address doesn't look right.");
+    if (!email) throw new Error("Please enter your email so we can send your confirmation and the link to apply.");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("That email address doesn't look right.");
     const cfg = tourConfig(p);
     const date = String(b.tour_date ?? "");
     const time = String(b.tour_time ?? "");
@@ -951,6 +952,7 @@ async function publicAction(b) {
       event: "tour_request",
       state: prop.state
     });
+    queueTourEmail(p, prop, row, name, email, date, time);
     return tourThanks(p, prop, row.ref, date, time);
   }
   throw new Error("bad_action");
@@ -1002,6 +1004,113 @@ function tourDays(cfg) {
   }
   return out;
 }
+// ---------- tour confirmation email (with the link to apply) ----------
+// Needs two secrets on the project: RESEND_API_KEY and RESEND_FROM_EMAIL (an address on a domain verified in Resend,
+// for example "SC Rentals <tours@yourdomain.com>"). Without them nothing is sent and the tour is flagged "email_not_configured".
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const RESEND_FROM = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+const escH = (s)=>String(s ?? "").replace(/[&<>"']/g, (c)=>({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[c]);
+function longDate(d, t) {
+  const [y, m, dd] = String(d).split("-").map(Number);
+  const day = new Date(Date.UTC(y, m - 1, dd, 12)).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC"
+  });
+  const h = Number(String(t).slice(0, 2));
+  return `${day} at ${h % 12 || 12}:${String(t).slice(3, 5)} ${h < 12 ? "AM" : "PM"}`;
+}
+// Where the public site lives: housing_settings.site_url if the owner set it, otherwise the published site's own address.
+async function siteBase(p) {
+  const s = p.housing_settings?.site_url;
+  if (typeof s === "string" && /^https:\/\//i.test(s)) return s.replace(/\/+$/, "");
+  const { data: site } = await admin.from("sites").select("id, slug").eq("company_id", p.company_id).eq("product_id", p.id).eq("status", "published").limit(1).maybeSingle();
+  if (!site) return null;
+  const { data: doms } = await admin.from("site_domains").select("hostname, site_id").eq("company_id", p.company_id).eq("status", "active");
+  const d = (doms ?? []).find((x)=>x.site_id === site.id) ?? (doms ?? [])[0];
+  if (d) return `https://${d.hostname}${d.site_id === site.id ? "" : `/s/${site.slug}`}`;
+  return `https://revora-sites.vercel.app/s/${site.slug}`;
+}
+async function sendTourEmail(p, prop, row, name, email, date, time) {
+  if (!RESEND_API_KEY || !RESEND_FROM) {
+    await admin.from("tours").update({
+      email_error: "email_not_configured"
+    }).eq("id", row.id);
+    return;
+  }
+  const s = p.housing_settings ?? {};
+  const brand = String(s.brand || "SC Rentals");
+  const base = await siteBase(p);
+  const apply = base && prop.slug ? `${base}/home?property=${encodeURIComponent(prop.slug)}&apply=1#application` : null;
+  const fee = Number(prop.application_fee) || 0;
+  const where = [
+    prop.address,
+    prop.city,
+    prop.state
+  ].filter(Boolean).join(", ");
+  const money = (n)=>`$${Number(n).toLocaleString("en-US")}`;
+  const html = `<div style="background:#f5f6f8;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e5e8ee">
+<div style="background:#0f2742;color:#fff;padding:20px 24px;font-size:18px;font-weight:700">${escH(brand)}</div>
+<div style="padding:26px 24px">
+<h1 style="margin:0 0 8px;font-size:22px;color:#0b1220">Your tour request is in, ${escH(String(name).split(" ")[0])}.</h1>
+<p style="margin:0 0 18px;color:#475569;line-height:1.55">We have your request and will confirm it shortly.</p>
+<div style="background:#f5f6f8;border-radius:12px;padding:16px 18px;margin:0 0 22px">
+<div style="font-weight:700;color:#0b1220">${escH(prop.title)}</div>
+${where ? `<div style="color:#64748b;font-size:14px">${escH(where)}</div>` : ""}
+<div style="margin-top:10px;font-size:16px"><b>${escH(longDate(date, time))}</b></div>
+<div style="color:#64748b;font-size:13px;margin-top:4px">Reference ${escH(row.ref)}</div>
+</div>
+<p style="margin:0 0 14px;color:#334155;line-height:1.55"><b>Love it? Apply now to hold your spot.</b>${fee > 0 ? ` The application fee is ${escH(money(fee))}; payment details are shown right after you apply.` : " There is no application fee."}</p>
+${apply ? `<p style="margin:0 0 22px"><a href="${escH(apply)}" style="display:inline-block;background:#c2410c;color:#fff;text-decoration:none;font-weight:700;padding:14px 26px;border-radius:12px">Apply for this home</a></p>` : ""}
+${s.contact_phone ? `<p style="margin:0;color:#475569;font-size:14px">Questions? Call or text ${escH(s.contact_phone)}.</p>` : ""}
+</div>
+<div style="padding:16px 24px;border-top:1px solid #e5e8ee;color:#94a3b8;font-size:12px">You received this because you requested a tour at ${escH(brand)}. Equal Housing Opportunity.</div>
+</div></div>`;
+  const payload = {
+    from: RESEND_FROM,
+    to: [
+      email
+    ],
+    subject: `Your tour of ${prop.title}: ${longDate(date, time)}`,
+    html
+  };
+  if (typeof s.reply_to === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s.reply_to)) payload.reply_to = s.reply_to;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const out = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(String(out?.message || `resend_${res.status}`).slice(0, 200));
+    await admin.from("tours").update({
+      emailed_at: new Date().toISOString(),
+      email_error: null
+    }).eq("id", row.id);
+  } catch (e) {
+    await admin.from("tours").update({
+      email_error: String(e?.message || e).slice(0, 200)
+    }).eq("id", row.id);
+  }
+}
+// Fire and forget: the visitor's booking never waits for (or fails because of) the email.
+function queueTourEmail(p, prop, row, name, email, date, time) {
+  const job = sendTourEmail(p, prop, row, name, email, date, time).catch((e)=>console.error("tour email", e));
+  try {
+    globalThis.EdgeRuntime?.waitUntil?.(job);
+  } catch  {}
+}
 function tourThanks(p, prop, ref, date, time) {
   return {
     ok: true,
@@ -1014,6 +1123,7 @@ function tourThanks(p, prop, ref, date, time) {
     tour_time: time,
     contact_phone: p.housing_settings?.contact_phone ?? null,
     flow: flowOf(p),
+    emailed: Boolean(RESEND_API_KEY && RESEND_FROM),
     message: "Your tour request is in. We'll text you to confirm."
   };
 }
