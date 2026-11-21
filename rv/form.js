@@ -11,7 +11,7 @@
   function sset(k, v) { try { STORE && STORE.setItem(k, v); } catch (e) {} }
   var params = new URLSearchParams(global.location.search);
   // Attribution survives page-to-page navigation inside a funnel
-  ["buyer", "asid", "crid", "fbclid", "ad_id"].forEach(function (k) { var v = params.get(k); if (v) sset("rv_" + k, v); });
+  ["buyer", "asid", "crid", "fbclid", "ad_id", "mas", "mcm", "mpl", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"].forEach(function (k) { var v = params.get(k); if (v) sset("rv_" + k, v); });
   function attr(k) { return params.get(k) || sget("rv_" + k) || undefined; }
 
   function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -33,6 +33,7 @@
   function track(event, siteId, pageSlug) {
     try {
       if (!siteId) return;
+      if (event === "view") startSession(siteId, pageSlug);
       var ref = ""; try { ref = document.referrer ? new URL(document.referrer).hostname.replace(/^www\./, "") : ""; if (ref === global.location.hostname) ref = ""; } catch (e) {}
       var ua = navigator.userAgent || "", dev = /ipad|tablet/i.test(ua) ? "tablet" : /mobi|android|iphone/i.test(ua) ? "mobile" : "desktop";
       fetch(SUPABASE_URL + "/rest/v1/rpc/rv_track", {
@@ -42,6 +43,48 @@
           p_utm_source: params.get("utm_source") || null, p_utm_campaign: params.get("utm_campaign") || null, p_fbclid: !!attr("fbclid"), p_device: dev })
       }).catch(function () {});
     } catch (e) {}
+  }
+
+  // Visit journey (first-party): one row per visit with the Meta ad it came from, how long it stayed, how far it scrolled and what it clicked.
+  // The same pings show who is on the page right now. Inputs are never read, only counted.
+  var SK = null;
+  function sessionKey() {
+    if (SK) return SK;
+    SK = sget("rv_sk"); if (!SK) { SK = uuid(); sset("rv_sk", SK); }
+    return SK;
+  }
+  global.RVSessionKey = sessionKey;
+  var SESS = { on: false, dur: 0, scroll: 0, clicks: 0, cta: 0, form: false };
+  function startSession(siteId, pageSlug) {
+    if (SESS.on || !siteId) return; SESS.on = true;
+    var ref = ""; try { ref = document.referrer ? new URL(document.referrer).hostname.replace(/^www\./, "") : ""; if (ref === global.location.hostname) ref = ""; } catch (e) {}
+    var ua = navigator.userAgent || "", dev = /ipad|tablet/i.test(ua) ? "tablet" : /mobi|android|iphone/i.test(ua) ? "mobile" : "desktop";
+    function ping() {
+      try {
+        fetch(SUPABASE_URL + "/rest/v1/rpc/rv_session", {
+          method: "POST", keepalive: true,
+          headers: { "Content-Type": "application/json", apikey: ANON, Authorization: "Bearer " + ANON },
+          body: JSON.stringify({ p: { site: siteId, key: sessionKey(), vid: visitorId(), page: pageSlug || "", fbclid: attr("fbclid") || "", fbc: cookie("_fbc") || "", fbp: cookie("_fbp") || "",
+            ad: attr("ad_id") || "", adset: attr("mas") || "", camp: attr("mcm") || "", pl: attr("mpl") || "",
+            us: attr("utm_source") || "", um: attr("utm_medium") || "", uc: attr("utm_campaign") || "", ut: attr("utm_content") || "", uterm: attr("utm_term") || "",
+            ref: ref, path: global.location.pathname, dev: dev, vp: global.innerWidth + "x" + global.innerHeight,
+            dur: SESS.dur, scroll: SESS.scroll, clicks: SESS.clicks, cta: SESS.cta, form: SESS.form } })
+        }).catch(function () {});
+      } catch (e) {}
+    }
+    function scrollPct() { var d = document.documentElement, h = Math.max(d.scrollHeight, document.body ? document.body.scrollHeight : 0) - global.innerHeight; return h > 0 ? Math.min(100, Math.round((global.scrollY || d.scrollTop || 0) / h * 100)) : 100; }
+    global.addEventListener("scroll", function () { var v = scrollPct(); if (v > SESS.scroll) SESS.scroll = v; }, { passive: true });
+    document.addEventListener("click", function (e) {
+      SESS.clicks++;
+      var t = e.target && e.target.closest ? e.target.closest("a,button,[role=button],input[type=submit]") : null;
+      if (t && /order|buy|shop|get |checkout|whatsapp|submit|add to|pay|start|call|claim|yes/i.test((t.innerText || t.value || "") + " " + (t.getAttribute("href") || ""))) SESS.cta++;
+    }, true);
+    document.addEventListener("focusin", function (e) { if (e.target && /^(input|select|textarea)$/i.test(e.target.tagName)) SESS.form = true; }, true);
+    setInterval(function () { if (document.visibilityState === "visible") SESS.dur++; }, 1000);
+    setInterval(function () { if (document.visibilityState === "visible") ping(); }, 15000);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") ping(); });
+    global.addEventListener("pagehide", ping);
+    SESS.scroll = scrollPct(); ping();
   }
   global.RVTrack = track;
 
@@ -173,7 +216,8 @@
         quantity: tier ? tier.quantity : qty, order_value_naira: value, currency: product.currency || "NGN",
         site_id: site.id, site_page_id: d.page.id, form_data: Object.keys(formData).length ? formData : undefined, email: emailVal,
         ad_set_id: attr("asid") || null, creative_id: attr("crid") || null, buyer: attr("buyer"),
-        fbclid: attr("fbclid"), ad_id: attr("ad_id"), fbp: cookie("_fbp"), fbc: cookie("_fbc")
+        fbclid: attr("fbclid"), ad_id: attr("ad_id"), fbp: cookie("_fbp"), fbc: cookie("_fbc"),
+        session_key: sessionKey(), mas: attr("mas"), mcm: attr("mcm"), mpl: attr("mpl")
       };
       btn.disabled = true; var old = btn.textContent; btn.textContent = "Submitting…";
       fetch(SUPABASE_URL + "/functions/v1/receive-order", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + ANON }, body: JSON.stringify(payload) })
