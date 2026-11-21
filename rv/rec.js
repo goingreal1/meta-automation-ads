@@ -65,15 +65,33 @@
   // The replay itself.
   var GEO = null;
   try { fetch(BASE + "/api/geo").then(function (r) { return r.json(); }).then(function (j) { GEO = j; }).catch(function () {}); } catch (e) {}
+  // Chunk numbers and the start time belong to ONE visit: a new visit in the same tab starts again from 0.
+  var storedKey = sget("rv_rec_key");
+  if (storedKey !== KEY) { sset("rv_rec_key", KEY); sset("rv_rec_seq", "0"); sset("rv_rec_t0", String(Date.now())); }
   var buf = [], seq = parseInt(sget("rv_rec_seq") || "0", 10) || 0, stopped = false, t0 = parseInt(sget("rv_rec_t0") || "0", 10) || Date.now(), bytes = 0, stopFn = null;
   if (!sget("rv_rec_t0")) sset("rv_rec_t0", String(t0));
   function nextSeq() { var n = seq++; sset("rv_rec_seq", String(seq)); return n; }
-  function flush(final) {
-    if (!buf.length) return;
-    var events = buf; buf = [];
-    var body = { action: "rec_ingest", site: revoraSite ? revoraSite.site : "", project: PROJECT, key: KEY, seq: nextSeq(), host: g.location.hostname, events: events, final: !!final, geo: GEO };
-    post(body, !!final).then(function (r) { if (r.status >= 400 && r.status < 500) stopRec(); }).catch(function () {});
+  // One chunk is sent at a time. If the server says the visit is not registered yet (202 waiting), the SAME chunk is tried again shortly:
+  // the first chunk holds the picture of the page, and without it the replay is blank.
+  var pending = null, tries = 0;
+  function send(final) {
+    if (final && buf.length) { // leaving the page: send what is left right now, whatever is still in flight
+      var ev = buf; buf = [];
+      post({ action: "rec_ingest", site: revoraSite ? revoraSite.site : "", project: PROJECT, key: KEY, seq: nextSeq(), host: g.location.hostname, events: ev, final: true, geo: GEO }, true).catch(function () {});
+      return;
+    }
+    if (pending || !buf.length) return;
+    pending = { seq: nextSeq(), events: buf }; buf = []; tries = 0; attempt(!!final);
   }
+  function attempt(final) {
+    var body = { action: "rec_ingest", site: revoraSite ? revoraSite.site : "", project: PROJECT, key: KEY, seq: pending.seq, host: g.location.hostname, events: pending.events, final: final, geo: GEO };
+    post(body, final).then(function (r) {
+      if (r.status === 202 || r.status >= 500) { if (++tries < 8) return setTimeout(function () { attempt(final); }, 1500 * tries); pending = null; return; }
+      if (r.status >= 400) { pending = null; stopRec(); return; }
+      pending = null; if (buf.length) send(false);
+    }).catch(function () { if (++tries < 4) setTimeout(function () { attempt(final); }, 2000 * tries); else pending = null; });
+  }
+  function flush(final) { send(final); }
   function stopRec() { stopped = true; try { stopFn && stopFn(); } catch (e) {} }
   function start() {
     if (!g.rrweb || !g.rrweb.record) return;

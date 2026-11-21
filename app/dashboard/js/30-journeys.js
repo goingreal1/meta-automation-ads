@@ -188,6 +188,7 @@ async function jyOpenVisit(id) {
     const res = await sbFn("ads-manager", { action: "rec_get", session_id: id });
     const stage = document.getElementById("jyStage"); if (!stage) return;
     if (!res.events || res.events.length < 2) { stage.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">${escH(res.note || "This recording is empty or too short to play.")}</div>`; document.getElementById("jyTl").textContent = "Nothing was recorded."; return; }
+    if (!res.events.some((e) => e.type === 2)) { stage.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">The picture of the page was not saved for this visit, so there is nothing to draw. The visit details and what happened are still shown. New visits save it reliably.</div>`; const tl0 = jyTimeline(res.events, res.session || s); document.getElementById("jyTl").innerHTML = tl0.length ? tl0.map((e, i) => `<div class="jy-ev"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("") : "Nothing was recorded."; return; }
     stage.innerHTML = '<div id="jyPlayer"></div>';
     const avail = Math.max(260, (stage.clientWidth || 480) - 24), vp = String(res.session?.viewport || "390x800").split("x"), vw = Number(vp[0]) || 390, vh = Number(vp[1]) || 800, ratio = vh / vw;
     const width = ratio > 1.1 ? Math.min(avail, 340) : avail, height = Math.min(520, Math.round(width * ratio));
