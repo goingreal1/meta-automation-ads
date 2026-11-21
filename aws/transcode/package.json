@@ -1,0 +1,10 @@
+{
+  "name": "revora-transcode",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Converts uploaded videos to H.264/AAC mp4. Runs on AWS Lambda (see ../template.yaml).",
+  "main": "index.js",
+  "dependencies": {
+    "ffmpeg-static": "5.2.0"
+  }
+}

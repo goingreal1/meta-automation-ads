@@ -1,0 +1,62 @@
+name: Deploy AWS Lambdas (screenshot + transcode)
+
+# Deploys aws/ whenever it changes on main. No AWS keys are stored: GitHub proves who it is to AWS (OIDC) and assumes the role in AWS_ROLE_ARN.
+on:
+  push:
+    branches: [main]
+    paths: ["aws/**", ".github/workflows/deploy-aws.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # needed to ask AWS for a short-lived login
+  contents: read
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'af-south-1' }}
+  STACK_NAME: revora-heavy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build both functions (Linux x64 dependencies)
+        run: bash aws/build.sh
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Package (uploads the zips to S3)
+        working-directory: aws
+        run: |
+          aws cloudformation package \
+            --template-file template.yaml \
+            --s3-bucket "${{ vars.AWS_DEPLOY_BUCKET }}" \
+            --s3-prefix revora-heavy \
+            --output-template-file packaged.yaml
+      - name: Deploy
+        working-directory: aws
+        env:
+          SHOT_SECRET: ${{ secrets.SHOT_SECRET }}
+        run: |
+          aws cloudformation deploy \
+            --template-file packaged.yaml \
+            --stack-name "$STACK_NAME" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              "ShotSecret=$SHOT_SECRET" \
+              "ScreenshotReservedConcurrency=${{ vars.SCREENSHOT_RESERVED_CONCURRENCY || '-1' }}" \
+              "TranscodeReservedConcurrency=${{ vars.TRANSCODE_RESERVED_CONCURRENCY || '-1' }}"
+      - name: Show the URLs
+        run: |
+          aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[].[OutputKey,OutputValue]" --output text

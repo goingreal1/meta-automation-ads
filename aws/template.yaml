@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Revora heavy functions moved off Vercel: revora-screenshot (headless Chromium) and revora-transcode (ffmpeg).
+  Plain CloudFormation (no SAM CLI needed). Deployed by .github/workflows/deploy-aws.yml.
+
+Parameters:
+  ShotSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Shared secret the ads-manager edge function sends in the x-shot-secret header. Must equal the Supabase app_secrets row "shot_secret".
+  SupabaseUrl:
+    Type: String
+    Default: https://oicqtpjjwmgsiluvkmpu.supabase.co
+  SupabaseAnonKey:
+    Type: String
+    Default: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto
+    Description: Public (anon) key. It is already public in the dashboard code, so it is not a secret.
+  ScreenshotReservedConcurrency:
+    Type: Number
+    Default: -1
+    Description: Max simultaneous screenshots (a cost cap). -1 = no reservation. AWS only allows a reservation if the account keeps 10 unreserved, so a new account (quota 10) must use -1 until the quota is raised.
+  TranscodeReservedConcurrency:
+    Type: Number
+    Default: -1
+    Description: Max simultaneous video conversions (a cost cap). -1 = no reservation (same rule as above).
+  DashboardOrigins:
+    Type: CommaDelimitedList
+    Default: "https://metaautomationads.vercel.app,https://revoracrm.app,https://dash.revoracrm.app"
+    Description: Browser origins allowed to call revora-transcode.
+
+Conditions:
+  ReserveScreenshot: !Not [!Equals [!Ref ScreenshotReservedConcurrency, -1]]
+  ReserveTranscode: !Not [!Equals [!Ref TranscodeReservedConcurrency, -1]]
+
+Resources:
+  # ---------------------------------------------------------------- screenshot
+  ScreenshotLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/revora-screenshot
+      RetentionInDays: 14
+
+  ScreenshotRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "revora-screenshot-role-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-own-logs-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "${ScreenshotLogs.Arn}:*"
+
+  ScreenshotFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ScreenshotLogs
+    Properties:
+      FunctionName: revora-screenshot
+      Description: Phone-sized screenshots of public pages (replaces Vercel api/screenshot.js)
+      Runtime: nodejs22.x
+      Architectures: [x86_64]
+      Handler: index.handler
+      Code: ./screenshot-build
+      Role: !GetAtt ScreenshotRole.Arn
+      MemorySize: 2048
+      Timeout: 60
+      ReservedConcurrentExecutions: !If [ReserveScreenshot, !Ref ScreenshotReservedConcurrency, !Ref "AWS::NoValue"]
+      LoggingConfig:
+        LogGroup: !Ref ScreenshotLogs
+      Environment:
+        Variables:
+          SHOT_SECRET: !Ref ShotSecret
+
+  ScreenshotUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt ScreenshotFunction.Arn
+      AuthType: NONE   # public URL; the code checks x-shot-secret. Server-to-server only, so no CORS.
+
+  ScreenshotUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ScreenshotFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  ScreenshotInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ScreenshotFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  # ----------------------------------------------------------------- transcode
+  TranscodeLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/revora-transcode
+      RetentionInDays: 14
+
+  TranscodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "revora-transcode-role-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-own-logs-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "${TranscodeLogs.Arn}:*"
+
+  TranscodeFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: TranscodeLogs
+    Properties:
+      FunctionName: revora-transcode
+      Description: Converts uploaded videos to H.264/AAC mp4 (replaces Vercel api/transcode.js)
+      Runtime: nodejs22.x
+      Architectures: [x86_64]
+      Handler: index.handler
+      Code: ./transcode-build
+      Role: !GetAtt TranscodeRole.Arn
+      MemorySize: 1024
+      EphemeralStorage: { Size: 2048 }   # room for the downloaded original plus the converted copy
+      Timeout: 60
+      ReservedConcurrentExecutions: !If [ReserveTranscode, !Ref TranscodeReservedConcurrency, !Ref "AWS::NoValue"]
+      LoggingConfig:
+        LogGroup: !Ref TranscodeLogs
+      Environment:
+        Variables:
+          SUPABASE_URL: !Ref SupabaseUrl
+          SUPABASE_ANON_KEY: !Ref SupabaseAnonKey
+
+  TranscodeUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt TranscodeFunction.Arn
+      AuthType: NONE   # public URL; the code checks the person's Supabase login (or a server ticket)
+      Cors:
+        AllowOrigins: !Ref DashboardOrigins
+        AllowMethods: [POST]   # OPTIONS preflight is answered by AWS automatically
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 86400
+
+  TranscodeUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TranscodeFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  TranscodeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TranscodeFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+Outputs:
+  ScreenshotFunctionUrl:
+    Value: !GetAtt ScreenshotUrl.FunctionUrl
+    Description: Set as the SCREENSHOT_URL secret in Supabase (ends with a slash; the code uses it as is).
+  TranscodeFunctionUrl:
+    Value: !GetAtt TranscodeUrl.FunctionUrl
+    Description: Set as the TRANSCODE_URL secret in Supabase and as the dashboard transcode URL.

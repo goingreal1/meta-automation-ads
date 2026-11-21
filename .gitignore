@@ -12,3 +12,5 @@ sites/
 
 # sites-app build output
 sites-app/.vercel/
+aws/*-build/
+aws/**/node_modules/
