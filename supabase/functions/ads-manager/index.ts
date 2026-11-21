@@ -2755,6 +2755,17 @@ async function handleRecIngest(req, body) {
   const clean = (v)=>typeof v === "string" && v.trim() ? v.trim().slice(0, 80) : null;
   const country = (clean(bg.country) ?? hd("cf-ipcountry") ?? hd("x-vercel-ip-country") ?? "").toUpperCase();
   const geo = { country: /^[A-Z]{2}$/.test(country) ? country : null, city: clean(bg.city) ?? hd("cf-ipcity"), region: clean(bg.region) ?? hd("cf-region") };
+  // No location from the browser or headers: look the visitor's address up once per visit (never stored, only the place is).
+  if (!sess.country && !geo.country) {
+    const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+    if (/^[0-9a-fA-F:.]{3,45}$/.test(ip)) {
+      try {
+        const r = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country_code,city,region`, { signal: AbortSignal.timeout(2500) });
+        const j = await r.json();
+        if (j?.success) { geo.country = /^[A-Z]{2}$/.test(String(j.country_code)) ? j.country_code : null; geo.city = clean(j.city); geo.region = clean(j.region); }
+      } catch (_) { /* location is a nice-to-have */ }
+    }
+  }
   const upd = { has_recording: true, rec_chunks: Math.max(Number(sess.rec_chunks), seq + 1), rec_bytes: Number(sess.rec_bytes) + gz.length };
   if (!sess.country) { if (geo.country) upd.country = geo.country; if (geo.city) upd.city = geo.city; if (geo.region) upd.region = geo.region; }
   if (!sess.host && body.host) upd.host = String(body.host).toLowerCase().replace(/^www\./, "").slice(0, 120);
