@@ -131,6 +131,23 @@ Deno.serve(async (req)=>{
         status: 200
       });
     }
+    // An online sale: a customer paid for an order on a Revora page. The amount must match the order exactly; the seller's wallet is credited
+    // once (the database function is idempotent on the order), minus Paystack's charge and Revora's fee.
+    if (event?.event === "charge.success" && event?.data?.metadata?.kind === "order_sale") {
+      const d = event.data, md = d.metadata;
+      const orderId = typeof md?.order_id === "string" ? md.order_id : "";
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+        const { data: ord } = await supabase.from("orders").select("id, order_value_naira, currency, payment_status, paystack_reference").eq("id", orderId).maybeSingle();
+        if (!ord) console.error("paystack-webhook: order_sale for unknown order", orderId, d.reference);
+        else if (ord.paystack_reference !== d.reference) console.error("paystack-webhook: order_sale reference does not belong to the order", orderId, d.reference);
+        else if (Number(d.amount) !== Math.round(Number(ord.order_value_naira) * 100) || String(d.currency ?? "NGN").toUpperCase() !== "NGN") console.error("paystack-webhook: order_sale amount mismatch", orderId, d.amount, ord.order_value_naira);
+        else {
+          const { data: r, error } = await supabase.rpc("rv_credit_online_sale", { p_order: ord.id, p_reference: d.reference, p_gross: Number(d.amount) / 100, p_paystack_fee: Number(d.fees ?? 0) / 100 });
+          if (error) console.error("paystack-webhook order_sale error:", error.message);
+        }
+      }
+      return new Response("ok", { status: 200 });
+    }
     // Order-confirmation deposit paid through Paystack Checkout (started from a thank-you page). Only records the deposit on the
     // order; it never touches payments or the delivered status. Idempotent: an order already paid/refunded/forfeited is left alone.
     if (event?.event === "charge.success" && event?.data?.metadata?.kind === "order_deposit") {

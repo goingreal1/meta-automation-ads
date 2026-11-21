@@ -149,7 +149,7 @@
         : '<div class="rv-field"><label>Delivery address</label><input name="address" autocomplete="street-address" placeholder="House number, street" required></div>' +
           '<div class="rv-row"><div class="rv-field"><label>City</label><input name="city" autocomplete="address-level2" placeholder="City" required></div>' +
           '<div class="rv-field"><label>State</label><select name="state" required><option value="">Select state</option>' + stateOpts + "</select></div></div>" +
-          '<div class="rv-field"><label>Payment method</label><select name="payment"><option>Pay on delivery</option><option>Bank transfer</option></select></div>') +
+          '<div class="rv-field"><label>Payment method</label><select name="payment">' + (product.accept_online && (!product.currency || product.currency === "NGN") ? "<option>Pay online</option>" : "") + '<option>Pay on delivery</option><option>Bank transfer</option></select></div>') +
       '<div class="rv-total"><span>Order total</span><strong class="rv-tot">' + fmt(total(), product.currency) + "</strong></div>" +
       '<button type="submit" class="rv-btn">' + esc(btnText) + "</button>" +
       '<div class="rv-msg"></div>' +
@@ -208,6 +208,8 @@
       var tier = hasTiers ? product.tiers.find(function (x) { return x.id === selectedTier; }) : null;
       var eventId = uuid();
       var value = total();
+      var retRef = eventId.slice(0, 8).toUpperCase();
+      var retUrl = global.location.origin + (site.thanks_slug != null ? "/s/" + site.slug + (site.thanks_slug ? "/" + site.thanks_slug : "") : global.location.pathname) + "?ref=" + retRef + "&paid=1";
       var payload = {
         event_id: eventId, customer_name: name, phone: phone, customer_address: address, customer_city: city,
         customer_state: state, customer_country: "NG", payment_method: payment,
@@ -217,18 +219,24 @@
         site_id: site.id, site_page_id: d.page.id, form_data: Object.keys(formData).length ? formData : undefined, email: emailVal,
         ad_set_id: attr("asid") || null, creative_id: attr("crid") || null, buyer: attr("buyer"),
         fbclid: attr("fbclid"), ad_id: attr("ad_id"), fbp: cookie("_fbp"), fbc: cookie("_fbc"),
-        session_key: sessionKey(), mas: attr("mas"), mcm: attr("mcm"), mpl: attr("mpl")
+        session_key: sessionKey(), mas: attr("mas"), mcm: attr("mcm"), mpl: attr("mpl"),
+        return_url: payment === "Pay online" ? retUrl : undefined
       };
       btn.disabled = true; var old = btn.textContent; btn.textContent = "Submitting…";
       fetch(SUPABASE_URL + "/functions/v1/receive-order", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + ANON }, body: JSON.stringify(payload) })
         .then(function (r) { return r.json(); })
         .then(function (res) {
           if (res.error) throw new Error(res.error);
-          track("order", site && site.id, d.page && d.page.slug);
+          if (!res.pay_url) track("order", site && site.id, d.page && d.page.slug);
           var pname = tier ? product.product_name + " (" + tier.label + ")" : product.product_name, pqty = tier ? tier.quantity : qty;
           var ref = eventId.slice(0, 8).toUpperCase();
           sset("rv_last_ref", ref); sset("rv_last_value", String(value)); sset("rv_last_payment", payment);
           var counts = site.purchase_event === "submit";
+          // Paying online: send the customer to Paystack (the sale is counted on the thank-you page they come back to).
+          if (res.pay_url) {
+            if (counts && site.thanks_slug != null) { try { global.sessionStorage.setItem("rv_pending_purchase", JSON.stringify({ value: value, cur: product.currency || "NGN", eventId: eventId, name: pname, qty: pqty, site: site.id })); } catch (e) {} }
+            global.location.href = res.pay_url; return;
+          }
           // With a thank-you page the Purchase is counted THERE (once, with the same event id the server sends, so Meta de-duplicates);
           // without one it is counted right here.
           if (site.thanks_slug != null) {

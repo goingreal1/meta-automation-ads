@@ -5,6 +5,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "
 const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const META_PIXEL_ID = Deno.env.get("META_PIXEL_ID") ?? "";
 const META_GRAPH_BASE = "https://graph.facebook.com/v18.0";
+const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY") ?? "";
 async function hashData(value) {
   if (!value) return undefined;
   let normalized = value.trim().toLowerCase();
@@ -282,6 +283,23 @@ Deno.serve(async (req)=>{
       mediaBuyerId = buyerRow?.id ?? null;
     }
     if (!mediaBuyerId && siteRow?.media_buyer_id) mediaBuyerId = siteRow.media_buyer_id;
+    // Paying online: the price is worked out HERE from the product (never from the browser), and the product must allow online payment.
+    const payOnline = String(payment_method ?? '') === 'Pay online';
+    let onlineAmount = 0;
+    if (payOnline) {
+      const { data: pr } = finalProductId ? await supabase.from('products').select('id, company_id, product_name, default_order_value_naira, currency, accept_online').eq('id', finalProductId).maybeSingle() : { data: null };
+      if (!pr || !pr.accept_online) return new Response(JSON.stringify({ error: "Online payment is not available for this product." }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      if (String(pr.currency || 'NGN').toUpperCase() !== 'NGN') return new Response(JSON.stringify({ error: "Online payment is only available for naira products for now." }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      let unit = Number(pr.default_order_value_naira || 0), qty = Math.max(1, parseInt(String(quantity)) || 1), total = unit * qty;
+      if (tier_id) {
+        const { data: tr } = await supabase.from('product_tiers').select('id, quantity, price_naira').eq('id', tier_id).eq('product_id', pr.id).eq('is_active', true).maybeSingle();
+        if (tr) { total = Number(tr.price_naira); qty = Number(tr.quantity); }
+      }
+      if (cartLines) total = cartLines.reduce((t, l)=>t + l.line_total_naira, 0);
+      if (!(total >= 100)) return new Response(JSON.stringify({ error: "This order has no payable amount." }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      order_value_naira = Math.round(total);
+      onlineAmount = order_value_naira;
+    }
     const { data: orderRow, error: dbError } = await supabase.from('orders').upsert({
       company_id: companyId,
       product_id: finalProductId,
@@ -320,7 +338,8 @@ Deno.serve(async (req)=>{
       meta_campaign_id: payload.mcm ? String(payload.mcm).slice(0, 40) : null,
       placement: payload.mpl ? String(payload.mpl).slice(0, 40) : null,
       session_key: payload.session_key ? String(payload.session_key).slice(0, 64) : null,
-      order_status: 'pending'
+      order_status: 'pending',
+      ...(payOnline ? { payment_status: 'pending' } : {})
     }, {
       onConflict: 'event_id'
     }).select('id').single();
@@ -343,7 +362,7 @@ Deno.serve(async (req)=>{
         })));
       if (itemsError) console.error(`receive-order: failed to save order_items for ${orderRow.id}:`, itemsError.message);
     }
-    if (orderRow?.id && (!siteRow || siteRow.settings?.confirmation_call === true)) {
+    if (orderRow?.id && !payOnline && (!siteRow || siteRow.settings?.confirmation_call === true)) {
       const callRequest = fetch(`${SUPABASE_URL}/functions/v1/place-order-call`, {
         method: "POST",
         headers: {
@@ -357,6 +376,23 @@ Deno.serve(async (req)=>{
       const edgeRuntime = globalThis.EdgeRuntime;
       if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(callRequest);
       else await callRequest;
+    }
+    if (payOnline && orderRow?.id) {
+      if (!PAYSTACK_SECRET_KEY) return new Response(JSON.stringify({ error: "Online payment is not set up yet." }), { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      const digits = String(phone ?? '').replace(/\D/g, '');
+      const payEmail = email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(email)) ? String(email) : `${digits || orderRow.id.slice(0, 8)}@orders.revora.app`;
+      const reference = `rvs_${orderRow.id.replace(/-/g, '').slice(0, 16)}_${Date.now().toString(36)}`;
+      let callback = String(payload.return_url ?? '');
+      if (!/^https:\/\/[^\s]+$/.test(callback)) callback = '';
+      const r = await fetch('https://api.paystack.co/transaction/initialize', { method: 'POST', headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: payEmail, amount: onlineAmount * 100, currency: 'NGN', reference, ...(callback ? { callback_url: callback } : {}), metadata: { kind: 'order_sale', order_id: orderRow.id, company_id: companyId, custom_fields: [{ display_name: 'Order', variable_name: 'order', value: String(product_name ?? '').slice(0, 80) }] } }) });
+      const d = await r.json().catch(()=>null);
+      if (!r.ok || !d?.status || !d?.data?.authorization_url) {
+        await supabase.from('orders').update({ payment_status: null, order_status: 'cancelled' }).eq('id', orderRow.id);
+        return new Response(JSON.stringify({ error: "Could not start the payment. Please try again." }), { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      }
+      await supabase.from('orders').update({ paystack_reference: reference }).eq('id', orderRow.id);
+      return new Response(JSON.stringify({ success: true, event_id, order_id: orderRow.id, pay_url: d.data.authorization_url, order_value_naira }), { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
     }
     let payment = null;
     // The payment reference code is always returned (even without a media buyer), so a manual "Pay now" button can show it.
