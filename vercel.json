@@ -391,7 +391,7 @@
       "permanent": true
     },
     {
-      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)(?:\\.html)?",
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)",
       "has": [
         {
           "type": "host",
@@ -402,7 +402,29 @@
       "permanent": false
     },
     {
-      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)(?:\\.html)?",
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "revoracrm.app"
+        }
+      ],
+      "destination": "https://dash.revoracrm.app/$1",
+      "permanent": false
+    },
+    {
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)",
+      "has": [
+        {
+          "type": "host",
+          "value": "revoracrm.online"
+        }
+      ],
+      "destination": "https://dash.revoracrm.online/$1",
+      "permanent": false
+    },
+    {
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
       "has": [
         {
           "type": "host",
