@@ -76,6 +76,9 @@ function hsSettings() {
     ${opt("both", "Book a tour, then apply (recommended)", "Both buttons show. Tours bring in the leads; the paid application filters the serious ones.")}
     ${opt("tour", "Book a tour only", "Only the tour form shows. Best for collecting as many leads as possible. Applications are hidden.")}
     ${opt("apply", "Apply only", "Only the application form shows. Visitors pay the application fee without a tour first.")}</div>
+    <div class="hs-box"><h3>Homepage banner photo</h3><div class="sub" style="margin:0 0 8px">The big photo behind the headline on your homepage. Use a bright, wide photo of a nice home (landscape, at least 1600 px wide). Use a photo you own or have rights to.</div>
+    <div id="hs_hero_prev" style="height:120px;border-radius:12px;background:#e9edf1 center/cover no-repeat;margin-bottom:8px;display:grid;place-items:center;color:#8896a3;font-size:13px"></div>
+    <div class="hs-acts"><input id="hs_hero_file" type="file" accept="image/*" style="width:auto"><button id="hs_hero_rm" type="button">Remove photo</button></div></div>
     <div class="hs-box"><h3>Contact number</h3><div class="sub" style="margin:0 0 8px">Shown to visitors after they book or apply (Call button).</div>
     <div class="hs-f"><div class="full"><input id="hs_phone" type="tel" value="${v(s.contact_phone)}" placeholder="(803) 555-0123"></div></div></div>
     <div class="hs-box"><h3>How applicants pay the application fee</h3><div class="sub" style="margin:0 0 8px">Shown right after someone applies. Fill in whatever you accept. Card details are never collected on your site.</div>
@@ -84,11 +87,22 @@ function hsSettings() {
     <div><label>Bank name (optional)</label><input id="hs_bank" value="${v(pr.bank_name)}"></div><div><label>Account name (optional)</label><input id="hs_bname" value="${v(pr.bank_account_name)}"></div>
     <div class="full"><label>Account number (optional)</label><input id="hs_bnum" value="${v(pr.bank_account_number)}"></div></div></div>
     <div class="hs-acts"><button class="go" id="hs_save">Save settings</button></div>`;
+  let hero = s.hero_image || "";
+  const drawHero = () => { const el = document.getElementById("hs_hero_prev"); if (!el) return; el.style.backgroundImage = hero ? `url('${hero.replace(/'/g, "%27")}')` : ""; el.textContent = hero ? "" : "No banner photo yet"; };
+  drawHero();
+  document.getElementById("hs_hero_rm").onclick = () => { hero = ""; drawHero(); };
+  document.getElementById("hs_hero_file").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 20 * 1024 * 1024) return bvToast("That photo is over 20 MB.");
+    const el = document.getElementById("hs_hero_prev"); el.textContent = "Uploading…";
+    try { hero = await window.rvUpload(supabaseClient, "site-media", f); } catch (err) { bvToast("Upload failed: " + (err.message || err)); }
+    e.target.value = ""; drawHero();
+  };
   document.getElementById("hs_save").onclick = async (e) => {
     const g = (id) => document.getElementById(id).value.trim() || null;
     const link = g("hs_link"); if (link && !/^https:\/\//i.test(link)) return bvToast("The payment link must start with https://");
     const f = document.querySelector('input[name="hs_flow"]:checked')?.value || "both";
-    const hsSet = { ...(pr.housing_settings || {}), flow: f, contact_phone: g("hs_phone") };
+    const hsSet = { ...(pr.housing_settings || {}), flow: f, contact_phone: g("hs_phone"), hero_image: hero || null };
     const cols = { payment_note: g("hs_note"), payment_link_url: link, bank_name: g("hs_bank"), bank_account_name: g("hs_bname"), bank_account_number: g("hs_bnum") };
     e.target.disabled = true;
     const { error } = await supabaseClient.from("products").update({ ...cols, housing_settings: hsSet }).eq("id", pr.id);

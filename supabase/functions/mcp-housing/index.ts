@@ -770,7 +770,8 @@ async function publicAction(b) {
         id: p.id,
         name: p.product_name,
         currency: p.currency,
-        flow: flowOf(p)
+        flow: flowOf(p),
+        hero: typeof p.housing_settings?.hero_image === "string" && /^https:\/\//i.test(p.housing_settings.hero_image) ? p.housing_settings.hero_image : null
       },
       properties: rows
     };
