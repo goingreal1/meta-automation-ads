@@ -1,0 +1,3 @@
+-- Recordings are kept 60 days: remove the files in R2 and the visit rows (replaces the DB-only retention job).
+select cron.unschedule('site-sessions-retention-60d') where exists (select 1 from cron.job where jobname = 'site-sessions-retention-60d');
+select cron.schedule('rec-cleanup-daily','40 2 * * *', $$select net.http_post(url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ads-manager', headers:=jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')), body:='{"action":"rec_cleanup"}'::jsonb, timeout_milliseconds:=120000)$$);
