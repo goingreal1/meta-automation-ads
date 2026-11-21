@@ -2161,40 +2161,42 @@ function learnRow(r) {
     extra: { video_3s: val(r.actions, ["video_view"]), thruplay: val(r.video_thruplay_watched_actions, ["video_view"]), video_p100: val(r.video_p100_watched_actions, ["video_view"]), frequency: learnNum(r.frequency), add_to_cart: val(r.actions, ["add_to_cart", "omni_add_to_cart"]), checkout: val(r.actions, ["initiate_checkout", "omni_initiated_checkout"]) }
   };
 }
-async function learnAccount(admin, a, deadline) {
-  const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
-  const token = await resolveToken(admin, a);
-  const cutoff = Math.floor((Date.now() - 120 * 86400_000) / 1000);
-  const filt = JSON.stringify([{ field: "updated_time", operator: "GREATER_THAN", value: cutoff }]);
-  const [camps, sets, ads] = await Promise.all([
-    graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,buying_type,special_ad_categories,daily_budget,lifetime_budget,bid_strategy,spend_cap,start_time,stop_time,created_time,smart_promotion_type", filtering: filt }, token),
-    graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,bid_amount,targeting,promoted_object,destination_type,attribution_spec,start_time,end_time,created_time,pacing_type,is_dynamic_creative", filtering: filt }, token),
-    graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,object_story_spec,object_story_id,effective_object_story_id,asset_feed_spec,degrees_of_freedom_spec,call_to_action_type,url_tags}", filtering: filt }, token)
-  ]);
-  const base = { ad_account_id: a.id, company_id: a.company_id, synced_at: new Date().toISOString() };
-  const rows = [];
-  const urls = new Set();
-  for (const c of camps) rows.push({ ...base, level: "campaign", meta_id: c.id, parent_id: null, campaign_id: c.id, name: c.name, status: c.status, effective_status: c.effective_status, created_time: c.created_time ?? null, settings: c, creative: null, landing_url: null });
-  for (const x of sets) rows.push({ ...base, level: "adset", meta_id: x.id, parent_id: x.campaign_id, campaign_id: x.campaign_id, name: x.name, status: x.status, effective_status: x.effective_status, created_time: x.created_time ?? null, settings: x, creative: null, landing_url: null });
-  for (const x of ads){
-    const sm = summarizeCreative(x.creative);
-    const land = (sm?.links ?? []).map(normUrl).find(Boolean) ?? null;
-    for (const l of sm?.links ?? []){ const n = normUrl(l); if (n) urls.add(n); }
-    const { creative, ...rest } = x;
-    rows.push({ ...base, level: "ad", meta_id: x.id, parent_id: x.adset_id, campaign_id: x.campaign_id, name: x.name, status: x.status, effective_status: x.effective_status, created_time: x.created_time ?? null, settings: rest, creative: sm, landing_url: land });
+const ymd = (d)=>d.toISOString().slice(0, 10);
+const FLDS = "spend,impressions,reach,clicks,inline_link_clicks,frequency,actions,action_values,video_thruplay_watched_actions,video_p100_watched_actions";
+async function learnDaily(admin, a, actId, token, first, deadline, cur) {
+  const base = { ad_account_id: a.id, company_id: a.company_id };
+  const save = async (level, rs)=>{
+    const rows = rs.filter((r)=>r[level + "_id"] && r.date_start).map((r)=>({ ...base, level, object_id: r[level === "adset" ? "adset_id" : "campaign_id"], day: r.date_start, ...learnRow(r), synced_at: new Date().toISOString() }));
+    for(let i = 0; i < rows.length; i += 300) await admin.from("learn_daily").upsert(rows.slice(i, i + 300), { onConflict: "ad_account_id,level,object_id,day" });
+    return rows.length;
+  };
+  const win = async (since, until)=>{
+    let n = 0;
+    for (const lv of ["campaign", "adset"]){
+      const rs = await graphGetAll(`act_${actId}/insights`, { level: lv, fields: `${lv}_id,` + FLDS, time_increment: "1", time_range: JSON.stringify({ since, until }) }, token, 30).catch(()=>[]);
+      n += await save(lv, rs);
+    }
+    return n;
+  };
+  if (!first) { await win(ymd(new Date(Date.now() - 4 * 86400_000)), ymd(new Date())); return true; }
+  // First read: walk back in 30-day windows to the oldest day Meta still keeps (about 37 months). Progress is saved after every window,
+  // so a long history is finished over several runs and nothing is ever read twice.
+  const limit = new Date(Date.now() - 36 * 30.4 * 86400_000);
+  let end = cur.daily_to ? new Date(cur.daily_to) : new Date();
+  while (end > limit){
+    if (Date.now() > deadline) return false;
+    const start = new Date(end.getTime() - 29 * 86400_000);
+    await win(ymd(start < limit ? limit : start), ymd(end));
+    end = new Date(start.getTime() - 86400_000);
+    cur.daily_to = ymd(end);
+    await admin.from("ad_accounts").update({ learn_cursor: cur }).eq("id", a.id);
   }
-  for(let i = 0; i < rows.length; i += 200) await admin.from("learn_objects").upsert(rows.slice(i, i + 200), { onConflict: "ad_account_id,level,meta_id" });
-  // Pages to read: remember which company uses each.
-  for (const u of urls){
-    const { data: ex } = await admin.from("learn_pages").select("url_norm, company_ids").eq("url_norm", u).maybeSingle();
-    if (!ex) await admin.from("learn_pages").insert({ url_norm: u, company_ids: [a.company_id] });
-    else if (!(ex.company_ids ?? []).includes(a.company_id)) await admin.from("learn_pages").update({ company_ids: [...ex.company_ids, a.company_id] }).eq("url_norm", u);
-  }
-  // Results: ad totals, then campaign breakdowns.
+  return true;
+}
+async function learnBreakdowns(admin, a, actId, token, preset, winLabel, deadline) {
   const ins = [];
-  const flds = "spend,impressions,reach,clicks,inline_link_clicks,frequency,actions,action_values,video_thruplay_watched_actions,video_p100_watched_actions";
-  const put = (level, id, breakdown, bucket, r)=>ins.push({ ad_account_id: a.id, company_id: a.company_id, level, object_id: id, breakdown, bucket: String(bucket).slice(0, 80), win: "30d", ...learnRow(r), synced_at: new Date().toISOString() });
-  const adTotals = await graphGetAll(`act_${actId}/insights`, { level: "ad", fields: "ad_id," + flds, date_preset: "last_30d" }, token, 12).catch(()=>[]);
+  const put = (level, id, breakdown, bucket, r)=>ins.push({ ad_account_id: a.id, company_id: a.company_id, level, object_id: id, breakdown, bucket: String(bucket).slice(0, 80), win: winLabel, ...learnRow(r), synced_at: new Date().toISOString() });
+  const adTotals = await graphGetAll(`act_${actId}/insights`, { level: "ad", fields: "ad_id," + FLDS, date_preset: preset }, token, 40).catch(()=>[]);
   for (const r of adTotals) put("ad", r.ad_id, "total", "all", r);
   const BR = [
     ["hour", "hourly_stats_aggregated_by_advertiser_time_zone", (r)=>String(r.hourly_stats_aggregated_by_advertiser_time_zone ?? "").slice(0, 2)],
@@ -2204,21 +2206,80 @@ async function learnAccount(admin, a, deadline) {
     ["placement", "publisher_platform,platform_position", (r)=>`${r.publisher_platform}|${r.platform_position}`],
     ["device", "device_platform", (r)=>r.device_platform]
   ];
+  let all = true;
   for (const [name, brk, bucket] of BR){
-    if (Date.now() > deadline) break;
-    const rs = await graphGetAll(`act_${actId}/insights`, { level: "campaign", fields: "campaign_id," + flds, breakdowns: brk, date_preset: "last_30d" }, token, 12).catch(()=>[]);
+    if (Date.now() > deadline) { all = false; break; }
+    const rs = await graphGetAll(`act_${actId}/insights`, { level: "campaign", fields: "campaign_id," + FLDS, breakdowns: brk, date_preset: preset }, token, 40).catch(()=>[]);
     for (const r of rs) if (bucket(r)) put("campaign", r.campaign_id, name, bucket(r), r);
   }
   for(let i = 0; i < ins.length; i += 300) await admin.from("learn_insights").upsert(ins.slice(i, i + 300), { onConflict: "ad_account_id,level,object_id,breakdown,bucket,win" });
-  await admin.from("ad_accounts").update({ learn_synced_at: new Date().toISOString() }).eq("id", a.id);
-  return { objects: rows.length, insights: ins.length, pages: urls.size };
+  return all;
+}
+// Meta's Activity History: budget changes, pauses, duplications, edits. Read from the start the first time, then only what is new.
+async function learnActivity(admin, a, actId, token, first, cur, deadline) {
+  const since = first ? 0 : Math.max(0, Number(cur.activity_since) || 0);
+  const rows = await graphGetAll(`act_${actId}/activities`, { fields: "event_time,event_type,translated_event_type,object_id,object_name,object_type,actor_name,extra_data", since: String(since), limit: "500" }, token, 60).catch(()=>[]);
+  const j = (x)=>{ try { return typeof x === "string" ? JSON.parse(x) : x ?? null; } catch (_) { return { text: String(x).slice(0, 300) }; } };
+  const ev = rows.map((r)=>{ const ex = j(r.extra_data); return { ad_account_id: a.id, company_id: a.company_id, event_key: `${r.event_time}|${r.event_type}|${r.object_id}|${JSON.stringify(ex ?? "").length}`, event_time: r.event_time, event_type: r.event_type, translated: r.translated_event_type ?? null, object_id: r.object_id ?? null, object_type: r.object_type ?? null, object_name: r.object_name ?? null, actor: r.actor_name ?? null, old_value: ex?.old_value ?? ex?.old ?? null, new_value: ex?.new_value ?? ex?.new ?? null, raw: ex }; });
+  for(let i = 0; i < ev.length; i += 300) await admin.from("learn_events").upsert(ev.slice(i, i + 300), { onConflict: "ad_account_id,event_key" });
+  cur.activity_since = Math.floor(Date.now() / 1000) - 86400;
+  return ev.length;
+}
+async function learnAccount(admin, a, deadline) {
+  const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
+  const token = await resolveToken(admin, a);
+  const first = !a.learn_backfill_done_at;
+  const cur = (a.learn_cursor && typeof a.learn_cursor === "object") ? { ...a.learn_cursor } : {};
+  const base = { ad_account_id: a.id, company_id: a.company_id, synced_at: new Date().toISOString() };
+  const out = { mode: first ? "first full read" : "update" };
+  // 1) Structure: everything on the first read, then only what changed since the last visit.
+  if (!first || !cur.structure_done) {
+    const since = first ? null : Math.floor(Math.max(0, new Date(a.learn_synced_at ?? 0).getTime() - 86400_000) / 1000);
+    const p = since != null ? { filtering: JSON.stringify([{ field: "updated_time", operator: "GREATER_THAN", value: since }]) } : {};
+    const [camps, sets, ads] = await Promise.all([
+      graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,buying_type,special_ad_categories,daily_budget,lifetime_budget,bid_strategy,spend_cap,start_time,stop_time,created_time,updated_time,smart_promotion_type", ...p }, token, 60),
+      graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,bid_amount,targeting,promoted_object,destination_type,attribution_spec,start_time,end_time,created_time,updated_time,pacing_type,is_dynamic_creative", ...p }, token, 60),
+      graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,updated_time,creative{id,object_story_spec,object_story_id,effective_object_story_id,asset_feed_spec,degrees_of_freedom_spec,call_to_action_type,url_tags}", ...p }, token, 80)
+    ]);
+    const rows = [], urls = new Set();
+    for (const c of camps) rows.push({ ...base, level: "campaign", meta_id: c.id, parent_id: null, campaign_id: c.id, name: c.name, status: c.status, effective_status: c.effective_status, created_time: c.created_time ?? null, settings: c, creative: null, landing_url: null });
+    for (const x of sets) rows.push({ ...base, level: "adset", meta_id: x.id, parent_id: x.campaign_id, campaign_id: x.campaign_id, name: x.name, status: x.status, effective_status: x.effective_status, created_time: x.created_time ?? null, settings: x, creative: null, landing_url: null });
+    for (const x of ads){
+      const sm = summarizeCreative(x.creative);
+      for (const l of sm?.links ?? []){ const n = normUrl(l); if (n) urls.add(n); }
+      const { creative, ...rest } = x;
+      rows.push({ ...base, level: "ad", meta_id: x.id, parent_id: x.adset_id, campaign_id: x.campaign_id, name: x.name, status: x.status, effective_status: x.effective_status, created_time: x.created_time ?? null, settings: rest, creative: sm, landing_url: (sm?.links ?? []).map(normUrl).find(Boolean) ?? null });
+    }
+    for(let i = 0; i < rows.length; i += 200) await admin.from("learn_objects").upsert(rows.slice(i, i + 200), { onConflict: "ad_account_id,level,meta_id" });
+    for (const u of urls){
+      const { data: ex } = await admin.from("learn_pages").select("url_norm, company_ids").eq("url_norm", u).maybeSingle();
+      if (!ex) await admin.from("learn_pages").insert({ url_norm: u, company_ids: [a.company_id] });
+      else if (!(ex.company_ids ?? []).includes(a.company_id)) await admin.from("learn_pages").update({ company_ids: [...ex.company_ids, a.company_id] }).eq("url_norm", u);
+    }
+    cur.structure_done = true; out.objects = rows.length; out.pages = urls.size;
+  }
+  // 2) Daily history (whole history the first time; the last few days afterwards).
+  const dailyDone = await learnDaily(admin, a, actId, token, first, deadline, cur);
+  // 3) Totals and breakdowns: lifetime the first time, then refreshed weekly over the last 30 days.
+  let bkDone = true;
+  const bkAge = a.learn_breakdowns_at ? Date.now() - new Date(a.learn_breakdowns_at).getTime() : Infinity;
+  if (first ? (dailyDone && !cur.bk_done) : bkAge > 7 * 86400_000) {
+    bkDone = await learnBreakdowns(admin, a, actId, token, first ? "maximum" : "last_30d", first ? "all" : "30d", deadline);
+    if (bkDone) { cur.bk_done = true; await admin.from("ad_accounts").update({ learn_breakdowns_at: new Date().toISOString() }).eq("id", a.id); }
+  } else if (first) bkDone = !!cur.bk_done;
+  // 4) Activity History (scaling, pauses, duplicates, edits).
+  if (!first || (dailyDone && bkDone && !cur.act_done)) { out.events = await learnActivity(admin, a, actId, token, first, cur, deadline); if (first) cur.act_done = true; }
+  const finished = !first || (dailyDone && bkDone && cur.act_done);
+  await admin.from("ad_accounts").update({ learn_synced_at: new Date().toISOString(), learn_cursor: cur, ...(first && finished ? { learn_backfill_done_at: new Date().toISOString() } : {}) }).eq("id", a.id);
+  out.full_read_complete = first ? finished : true;
+  return out;
 }
 async function handleLearnSync(maxAccounts = 2) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-  const deadline = Date.now() + 110_000;
+  const deadline = Date.now() + 70_000;
   const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
   const off = new Set((cos ?? []).map((c)=>c.id));
-  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, billing_mode").eq("status", "active").order("learn_synced_at", { ascending: true, nullsFirst: true }).limit(40);
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, billing_mode, learn_synced_at, learn_backfill_done_at, learn_cursor, learn_breakdowns_at").eq("status", "active").order("learn_backfill_done_at", { ascending: true, nullsFirst: true }).order("learn_synced_at", { ascending: true, nullsFirst: true }).limit(40);
   const out = [];
   for (const a of (accts ?? []).filter((x)=>!off.has(x.company_id) && /^\d+$/.test(String(x.meta_ad_account_id ?? "").replace(/^act_/, ""))).slice(0, maxAccounts)){
     if (Date.now() > deadline) break;
@@ -2316,6 +2377,41 @@ async function handleLearnPages(limit = 8) {
     }
   }
   return { ok: true, pages: out };
+}
+// Live pictures of the landing pages: a phone-sized, top-to-bottom stack of images (made by the Vercel function api/screenshot) stored privately.
+async function handleLearnShots(limit = 3) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "shot_secret").maybeSingle();
+  if (!sec?.value) return { ok: false, error: "shot_secret missing" };
+  const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
+  const off = new Set((cos ?? []).map((c)=>c.id));
+  const { data: pages } = await admin.from("learn_pages").select("url_norm, final_url, content_hash, shot_hash, shot_at, company_ids").eq("status", "ok").order("shot_at", { ascending: true, nullsFirst: true }).limit(60);
+  const todo = (pages ?? []).filter((p)=>(p.company_ids ?? []).some((c)=>!off.has(c)) && (!p.shot_at || (p.shot_hash !== p.content_hash && Date.now() - new Date(p.shot_at).getTime() > 6 * 86400_000))).slice(0, limit);
+  const out = [], deadline = Date.now() + 100_000;
+  for (const p of todo){
+    if (Date.now() > deadline) break;
+    try {
+      const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), 70_000);
+      const r = await fetch("https://metaautomationads.vercel.app/api/screenshot", { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-shot-secret": sec.value }, body: JSON.stringify({ url: p.final_url || p.url_norm }) }).finally(()=>clearTimeout(to));
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok || !j.slices?.length) throw new Error(j.error || `screenshot HTTP ${r.status}`);
+      const dir = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(p.url_norm)))).map((b)=>b.toString(16).padStart(2, "0")).join("").slice(0, 16) + "/" + Date.now();
+      const shots = [];
+      for (const [i, sl] of j.slices.entries()){
+        const bytes = Uint8Array.from(atob(sl.b64), (c)=>c.charCodeAt(0));
+        const path = `${dir}/${String(i).padStart(2, "0")}.jpg`;
+        const { error } = await admin.storage.from("learn-shots").upload(path, bytes, { contentType: "image/jpeg", upsert: true });
+        if (error) throw new Error(error.message);
+        shots.push({ path, y: sl.y, h: sl.h });
+      }
+      await admin.from("learn_pages").update({ shots, shot_at: new Date().toISOString(), shot_hash: p.content_hash, page_height: j.page_height ?? null }).eq("url_norm", p.url_norm);
+      out.push({ url: p.url_norm, slices: shots.length, height: j.page_height });
+    } catch (e) {
+      await admin.from("learn_pages").update({ shot_at: new Date().toISOString() }).eq("url_norm", p.url_norm);
+      out.push({ url: p.url_norm, error: String(e.message ?? e).slice(0, 140) });
+    }
+  }
+  return { ok: true, shots: out };
 }
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
@@ -2660,12 +2756,12 @@ Deno.serve(async (req)=>{
       }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
-    if (body.action === "learn_sync" || body.action === "learn_pages") {
+    if (body.action === "learn_sync" || body.action === "learn_pages" || body.action === "learn_shots") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       const given = req.headers.get("x-cron-secret") ?? "";
       if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
-      return json(body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6)) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
+      return json(body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6)) : body.action === "learn_shots" ? await handleLearnShots(Math.min(Number(body.limit) || 3, 6)) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
     }
     if (body.action === "purchase_timing_digest") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
