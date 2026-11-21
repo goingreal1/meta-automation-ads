@@ -17,7 +17,7 @@ const WA_TOKEN = Deno.env.get("BEOLIV_WHATSAPP_ACCESS_TOKEN") ?? "";
 const WA_PHONE_ID = Deno.env.get("BEOLIV_WHATSAPP_PHONE_NUMBER_ID") ?? "";
 const TPL_APPROVAL = Deno.env.get("WHATSAPP_TPL_POST_APPROVAL") ?? "revora_post_approval_v1";
 const TPL_APPROVAL_BTN = Deno.env.get("WHATSAPP_TPL_POST_APPROVAL_BTN") ?? "revora_post_approval_v2";
-const HQ_URL = "https://hq.revoracrm.app";
+const HQ_URL = "https://hq.revoracrm.online";
 const db = createClient(SUPABASE_URL, SERVICE);
 const CORS = {
   "Access-Control-Allow-Origin": "*",

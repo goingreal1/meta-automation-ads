@@ -419,7 +419,7 @@
           "value": "revora-sites.vercel.app"
         }
       ],
-      "destination": "https://metaautomationads.vercel.app/",
+      "destination": "https://dash.revoracrm.online/",
       "permanent": false
     },
     {
@@ -430,7 +430,7 @@
           "value": "revora-sites.vercel.app"
         }
       ],
-      "destination": "https://metaautomationads.vercel.app/$1.html",
+      "destination": "https://dash.revoracrm.online/$1.html",
       "permanent": false
     },
     {
@@ -441,7 +441,7 @@
           "value": "revora-sites.vercel.app"
         }
       ],
-      "destination": "https://metaautomationads.vercel.app/$1.html",
+      "destination": "https://dash.revoracrm.online/$1.html",
       "permanent": false
     }
   ],

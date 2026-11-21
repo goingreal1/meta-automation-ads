@@ -2386,7 +2386,7 @@ async function handleLearnPages(limit = 8) {
     try {
       const u = safeFetchUrl(pg.url_norm);
       const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), 12_000);
-      const res = await fetch(u.toString(), { redirect: "follow", signal: ctl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraLearner/1.0; +https://revoracrm.app)", Accept: "text/html,application/xhtml+xml" } }).finally(()=>clearTimeout(to));
+      const res = await fetch(u.toString(), { redirect: "follow", signal: ctl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraLearner/1.0; +https://revoracrm.online)", Accept: "text/html,application/xhtml+xml" } }).finally(()=>clearTimeout(to));
       const fin = safeFetchUrl(res.url || u.toString());
       const ct = res.headers.get("content-type") ?? "";
       const reader = res.body?.getReader(); let html = "", bytes = 0; const dec = new TextDecoder();

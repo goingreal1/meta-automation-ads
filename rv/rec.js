@@ -1,5 +1,5 @@
 /* Revora session recorder. Works on pages built in Revora and on any other website:
-     <script async src="https://revoracrm.app/rv/rec.js" data-project="rp_xxxxxxxxxxxxxx"></script>
+     <script async src="https://revoracrm.online/rv/rec.js" data-project="rp_xxxxxxxxxxxxxx"></script>
    It records how the page is used (scrolling, taps, mouse, page changes) as a replay, never what is typed: every input is masked.
    Add class "rv-norec" (or data-rv-norec) to any element you never want recorded. Visitors who send "Do Not Track" are not recorded. */
 (function (g) {
@@ -7,7 +7,7 @@
   if (g.__rvRec) return; g.__rvRec = true;
   var SUPA = "https://oicqtpjjwmgsiluvkmpu.supabase.co";
   var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
-  var THIS = document.currentScript, BASE = "https://revoracrm.app";
+  var THIS = document.currentScript, BASE = "https://revoracrm.online";
   try { if (THIS && THIS.src) BASE = THIS.src.replace(/\/rv\/rec\.js.*$/, ""); } catch (e) {}
   var PROJECT = (THIS && THIS.getAttribute("data-project")) || g.RV_PROJECT || "";
   if (navigator.doNotTrack === "1" || g.doNotTrack === "1") return;
