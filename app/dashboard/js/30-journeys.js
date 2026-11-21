@@ -236,8 +236,8 @@ async function jyOpenVisit(id) {
 async function jyCountsLoad() {
   if (JYC.loading) return; JYC.loading = true;
   try {
-    const rows = await sbQuery("site_sessions", `select=meta_ad_id,ordered&meta_ad_id=not.is.null&started_at=gte.${new Date(Date.now() - 60 * 86400000).toISOString()}&limit=5000`).catch(() => []);
-    const m = {}; (rows || []).forEach((r) => { const x = m[r.meta_ad_id] || (m[r.meta_ad_id] = { n: 0, o: 0 }); x.n++; if (r.ordered) x.o++; });
+    const rows = await sbQuery("site_sessions", `select=meta_ad_id,meta_adset_id,meta_campaign_id,ordered&meta_ad_id=not.is.null&started_at=gte.${new Date(Date.now() - 60 * 86400000).toISOString()}&limit=5000`).catch(() => []);
+    const m = {}; (rows || []).forEach((r) => { [r.meta_ad_id, r.meta_adset_id, r.meta_campaign_id].filter(Boolean).forEach((k) => { const x = m[k] || (m[k] = { n: 0, o: 0 }); x.n++; if (r.ordered) x.o++; }); });
     JYC.map = m; JYC.loaded = true;
   } finally { JYC.loading = false; }
 }
@@ -249,7 +249,7 @@ async function jyAdPanel(adId, nameHint) {
   jyCss();
   bvOpenSheet("jyAd", `<div class="jy"><div class="jy-sheetbar"><div style="flex:1;min-width:0"><b id="jyAdT">${escH(nameHint || "Ad visits")}</b><div class="sub" id="jyAdS">Loading…</div></div><button class="jy-x" data-sheet-close onclick="bvCloseSheet('jyAd')" aria-label="Close">✕</button></div>
     <div style="padding:6px 18px 18px"><div class="jy-chips" id="jyAdF"></div><div id="jyAdL"><div class="jy-empty"><span class="spin"></span></div></div></div></div>`, 720);
-  const rows = await sbQuery("site_sessions", `select=*&meta_ad_id=eq.${encodeURIComponent(adId)}&order=started_at.desc&limit=200`).catch(() => []);
+  const rows = await sbQuery("site_sessions", `select=*&or=(meta_ad_id.eq.${encodeURIComponent(adId)},meta_adset_id.eq.${encodeURIComponent(adId)},meta_campaign_id.eq.${encodeURIComponent(adId)})&order=started_at.desc&limit=200`).catch(() => []);
   await jyNames([adId]); rows.forEach((r) => { if (!JY.rows.some((x) => x.id === r.id)) JY.rows.push(r); });
   const t = document.getElementById("jyAdT"); if (!t) return; t.textContent = JY.names[adId] || nameHint || "Ad " + adId;
   const ord = rows.filter((r) => r.ordered).length, avg = rows.length ? rows.reduce((a, r) => a + (r.duration_s || 0), 0) / rows.length : 0;
