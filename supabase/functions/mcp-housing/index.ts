@@ -987,7 +987,8 @@ function tourConfig(p) {
       6
     ],
     advance_days: Math.min(Math.max(Number(t.advance_days) || 14, 1), 60),
-    capacity: Math.min(Math.max(Number(t.capacity) || 2, 1), 50)
+    // 0 means "no limit": any time slot can take unlimited bookings.
+    capacity: Number(t.capacity) === 0 ? 1000000 : Math.min(Math.max(Number(t.capacity) || 2, 1), 1000000)
   };
 }
 // Calendar days (YYYY-MM-DD) a visitor may book, starting tomorrow (so a same-day request never lands on a slot that has passed).

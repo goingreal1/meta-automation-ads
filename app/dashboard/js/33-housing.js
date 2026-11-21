@@ -182,7 +182,7 @@ async function hsHomes() {
   if (error) { document.getElementById("hsBody").innerHTML = `<div class="hs-empty">Could not load homes: ${escH(error.message)}</div>`; return; }
   HS.props = data || []; hsDrawHomes();
 }
-function hsTourCfg() { const t = (hsProj()?.housing_settings || {}).tour || {}; return { slots: Array.isArray(t.slots) && t.slots.length ? t.slots : ["10:00", "12:00", "14:00", "16:00"], days: Array.isArray(t.days) && t.days.length ? t.days.map(Number) : [0, 1, 2, 3, 4, 5, 6], advance_days: t.advance_days || 14, capacity: t.capacity || 2 }; }
+function hsTourCfg() { const t = (hsProj()?.housing_settings || {}).tour || {}; return { slots: Array.isArray(t.slots) && t.slots.length ? t.slots : ["10:00", "12:00", "14:00", "16:00"], days: Array.isArray(t.days) && t.days.length ? t.days.map(Number) : [0, 1, 2, 3, 4, 5, 6], advance_days: t.advance_days || 14, capacity: t.capacity === 0 ? 0 : (t.capacity || 2) }; }
 function hsDrawHomes() {
   const body = document.getElementById("hsBody"); if (!body) return;
   const cfg = hsTourCfg(), DN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -190,7 +190,7 @@ function hsDrawHomes() {
   let html = `<div class="hs-box"><h3>Tour times (fixed slots)</h3><div class="sub" style="margin:0 0 8px">Visitors pick one of these times on your site. Times are the property's local time.</div>
     <div class="hs-days">${DN.map((n, i) => `<label><input type="checkbox" class="hs-day" value="${i}" ${cfg.days.includes(i) ? "checked" : ""}> ${n}</label>`).join("")}</div>
     <div class="hs-f"><div class="full"><label>Times (24-hour, separated by commas)</label><input id="hsSlots" value="${escH(cfg.slots.join(", "))}" placeholder="10:00, 12:00, 14:00, 16:00"></div>
-    <div><label>Tours allowed per time slot</label><input id="hsCap" type="number" min="1" max="50" value="${cfg.capacity}"></div><div><label>Bookable up to (days ahead)</label><input id="hsAdv" type="number" min="1" max="60" value="${cfg.advance_days}"></div></div>
+    <div><label>Tours allowed per time slot (0 = no limit)</label><input id="hsCap" type="number" min="0" value="${cfg.capacity}"></div><div><label>Bookable up to (days ahead)</label><input id="hsAdv" type="number" min="1" max="60" value="${cfg.advance_days}"></div></div>
     <div class="hs-acts"><button class="go" id="hsSaveTour">Save tour times</button></div></div>
     <div class="hs-top"><div class="hs-day" style="margin:0">Your homes (${HS.props.length})</div><button class="hs-chip on" id="hsAdd">+ Add a home</button></div>`;
   if (!HS.props.length) html += `<div class="hs-empty">No homes yet. Tap “Add a home”.</div>`;
@@ -216,7 +216,7 @@ function hsDrawHomes() {
     const slots = document.getElementById("hsSlots").value.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean).map((s) => (/^\d:\d{2}$/.test(s) ? "0" + s : s));
     if (!days.length) return bvToast("Pick at least one day.");
     if (!slots.length || slots.some((s) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(s))) return bvToast("Times must look like 10:00, 14:30 (24-hour).");
-    const pr = hsProj(), tour = { slots: [...new Set(slots)].sort(), days, capacity: Math.min(50, Math.max(1, Number(document.getElementById("hsCap").value) || 2)), advance_days: Math.min(60, Math.max(1, Number(document.getElementById("hsAdv").value) || 14)) };
+    const pr = hsProj(), tour = { slots: [...new Set(slots)].sort(), days, capacity: document.getElementById("hsCap").value.trim() === "" ? 2 : Math.min(100000, Math.max(0, Math.round(Number(document.getElementById("hsCap").value) || 0))), advance_days: Math.min(60, Math.max(1, Number(document.getElementById("hsAdv").value) || 14)) };
     e.target.disabled = true;
     const hsSet = { ...(pr.housing_settings || {}), tour };
     const { error } = await supabaseClient.from("products").update({ housing_settings: hsSet }).eq("id", pr.id);
