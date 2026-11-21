@@ -196,19 +196,37 @@ async function jyOpenVisit(id) {
     const tl = jyTimeline(res.events, res.session || s), box = document.getElementById("jyTl");
     box.innerHTML = tl.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
     box.querySelectorAll(".jy-ev").forEach((el) => (el.onclick = () => { try { player.goto(Math.max(0, tl[Number(el.dataset.i)].t - 500), true); } catch (x) {} }));
-    if (jyLive(res.session || s)) {
-      // Live visitor: keep pulling new pieces of the recording and feed them to the player.
-      const stage2 = document.getElementById("jyStage"); let last = res.events[res.events.length - 1].timestamp;
-      const bar = document.createElement("div"); bar.style.cssText = "margin-top:8px;font-size:12px;color:#9fb3c4;text-align:center"; bar.innerHTML = '<span style="color:#4ade80;font-weight:700">● LIVE</span> new activity appears as it happens <a style="color:#7db4ff;cursor:pointer;margin-left:8px" id="jyJump">Jump to live</a>'; stage2.parentNode.appendChild(bar);
-      document.getElementById("jyJump").onclick = () => { try { player.goto(Math.max(0, last - res.events[0].timestamp - 300), true); } catch (x) {} };
+    if (jyLive(res.session || s) || jyLive(s)) {
+      // Live visitor: every few seconds fetch what was recorded since, rebuild the player with it and jump to the newest moment.
+      let events = res.events, follow = true, busy = false;
+      const bar = document.createElement("div"); bar.style.cssText = "margin-bottom:8px;font-size:12px;color:#c9d6e2;display:flex;gap:10px;align-items:center;flex-wrap:wrap";
+      bar.innerHTML = '<span style="color:#4ade80;font-weight:700">● LIVE</span><span id="jyLiveTxt">following the visitor</span><span id="jyLiveSp" style="display:none" class="spin"></span><label style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="jyFollow" checked> Follow live</label>';
+      stage.parentNode.insertBefore(bar, stage);
+      document.getElementById("jyFollow").onchange = (e) => { follow = e.target.checked; };
+      const mount = (evs) => {
+        const host = document.getElementById("jyPlayer"); if (!host) return null;
+        host.innerHTML = "";
+        const np = new P({ target: host, props: { events: evs, width, height, autoPlay: true, skipInactive: false } });
+        try { np.goto(Math.max(0, evs[evs.length - 1].timestamp - evs[0].timestamp - 3000), true); } catch (x) {}
+        return np;
+      };
       const t = setInterval(async () => {
         if (!document.getElementById("jyPlayer")) return clearInterval(t);
-        const more = await sbFn("ads-manager", { action: "rec_get", session_id: id }).catch(() => null);
-        if (!more || !more.events) return;
-        const add = more.events.filter((e) => e.timestamp > last); if (!add.length) return;
-        add.forEach((e) => { try { player.addEvent(e); } catch (x) {} }); last = add[add.length - 1].timestamp;
-        const tl2 = jyTimeline(more.events, more.session || s); box.innerHTML = tl2.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
-      }, 8000);
+        if (busy) return; busy = true;
+        const sp = document.getElementById("jyLiveSp"); if (sp) sp.style.display = "";
+        try {
+          const more = await sbFn("ads-manager", { action: "rec_get", session_id: id });
+          if (more && more.events && more.events.length > events.length) {
+            events = more.events;
+            const tl2 = jyTimeline(events, more.session || s); box.innerHTML = tl2.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
+            if (follow) mount(events);
+            const tx = document.getElementById("jyLiveTxt"); if (tx) tx.textContent = "updated " + new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          } else if (more && more.session && !jyLive(more.session)) {
+            const tx = document.getElementById("jyLiveTxt"); if (tx) tx.textContent = "visitor has left, this is the full replay";
+            clearInterval(t);
+          }
+        } catch (x) {} finally { busy = false; if (sp) sp.style.display = "none"; }
+      }, 5000);
     }
     document.getElementById("jyTlToggle").onclick = () => { const h = box.style.display === "none"; box.style.display = h ? "" : "none"; document.getElementById("jyTlToggle").textContent = h ? "Hide ▴" : "Show ▾"; };
   } catch (e) { const b = document.getElementById("jyStage"); if (b) b.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">Could not load the recording: ${escH(e.message || e)}</div>`; }

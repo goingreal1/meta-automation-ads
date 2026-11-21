@@ -88,7 +88,7 @@
       sampling: { scroll: 150, mousemove: 60, input: "last" },
       checkoutEveryNms: 120000
     });
-    setInterval(function () { if (!stopped) flush(false); }, 10000);
+    setInterval(function () { if (!stopped) flush(false); }, 4000);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(true); });
     g.addEventListener("pagehide", function () { flush(true); });
   }
