@@ -1,4 +1,5 @@
 {
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/(.*)",
@@ -390,25 +391,25 @@
       "permanent": true
     },
     {
-      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)(?:\\.html)?",
       "has": [
         {
           "type": "host",
           "value": "revoracrm.app"
         }
       ],
-      "destination": "https://dash.revoracrm.app/$1.html",
+      "destination": "https://dash.revoracrm.app/$1",
       "permanent": false
     },
     {
-      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)(?:\\.html)?",
       "has": [
         {
           "type": "host",
           "value": "revoracrm.online"
         }
       ],
-      "destination": "https://dash.revoracrm.online/$1.html",
+      "destination": "https://dash.revoracrm.online/$1",
       "permanent": false
     },
     {
