@@ -2404,7 +2404,7 @@ async function handleLearnPages(limit = 8) {
   }
   return { ok: true, pages: out };
 }
-// Live pictures of the landing pages: a phone-sized, top-to-bottom stack of images (made by the Vercel function api/screenshot) stored privately.
+// Live pictures of the landing pages: a phone-sized, top-to-bottom stack of images (made by the AWS Lambda revora-screenshot; SCREENSHOT_URL secret, Vercel api/screenshot as the temporary fallback) stored privately.
 async function handleLearnShots(limit = 3, only = null) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "shot_secret").maybeSingle();
@@ -2418,7 +2418,7 @@ async function handleLearnShots(limit = 3, only = null) {
     if (Date.now() > deadline) break;
     try {
       const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), 70_000);
-      const r = await fetch("https://metaautomationads.vercel.app/api/screenshot", { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-shot-secret": sec.value }, body: JSON.stringify({ url: p.final_url || p.url_norm }) }).finally(()=>clearTimeout(to));
+      const r = await fetch(Deno.env.get("SCREENSHOT_URL") || "https://metaautomationads.vercel.app/api/screenshot", { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-shot-secret": sec.value }, body: JSON.stringify({ url: p.final_url || p.url_norm }) }).finally(()=>clearTimeout(to));
       const j = await r.json().catch(()=>({}));
       if (!r.ok || !j.slices?.length) throw new Error(j.error || `screenshot HTTP ${r.status}`);
       const dir = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(p.url_norm)))).map((b)=>b.toString(16).padStart(2, "0")).join("").slice(0, 16) + "/" + Date.now();
