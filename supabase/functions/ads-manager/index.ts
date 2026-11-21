@@ -2565,6 +2565,156 @@ async function handleLearnVision(limit = 4) {
   }
   return { ok: true, ...out };
 }
+// ======================= PATTERN FINDER: what do winning ads have in common that losing ads lack? =======================================
+// Daily job. Evidence first, wording second: every lesson is a counted comparison, never a guess.
+//  - WINNER: sold or got messages at a cost clearly below its own account's median cost per result. LOSER: spent well past that cost for nothing.
+//  - FEATURES: creative format, wording style, audience, budget setup, placements, landing page traits, and (once described) what the picture shows.
+//  - A feature value becomes a lesson when its win rate beats (or trails) the overall rate by enough ads (z score) and enough lift.
+//  - Lessons are kept per business (private) and across businesses (global, no names). Every run re-checks old lessons; ones that stop holding fade.
+const PL = { minDecided: 20, minGroup: 8, z: 1.5, lift: 1.3 };
+const bucketOf = (n, cuts, labels)=>{ for (let i = 0; i < cuts.length; i++) if (n < cuts[i]) return labels[i]; return labels[cuts.length]; };
+function adFeatures(a) {
+  const cr = a.creative ?? {}, cs = a.campaign_settings ?? {}, ss = a.adset_settings ?? {}, tg = ss.targeting ?? {};
+  const f = {};
+  f["Creative format"] = cr.kind ?? null;
+  f["Button"] = cr.cta ?? null;
+  const dest = String(ss.destination_type ?? "").toUpperCase();
+  f["Where it sends people"] = /WHATSAPP/.test(dest) || /WHATSAPP/.test(cr.message_destination ?? "") ? "WhatsApp" : /MESSENGER/.test(dest) ? "Messenger" : /INSTAGRAM/.test(dest) ? "Instagram chat" : /ON_AD/.test(dest) ? "Lead form" : "Website";
+  f["Campaign goal"] = cs.objective ?? null;
+  f["Budget set on"] = (cs.daily_budget || cs.lifetime_budget) ? "campaign (CBO)" : "ad set (ABO)";
+  f["Optimisation goal"] = ss.optimization_goal ?? null;
+  f["Bid strategy"] = cs.bid_strategy ?? ss.bid_strategy ?? null;
+  f["Placements"] = (tg.facebook_positions || tg.instagram_positions) ? ((tg.facebook_positions ?? []).length + (tg.instagram_positions ?? []).length <= 3 ? "a few chosen" : "many chosen") : "automatic";
+  const amin = Number(tg.age_min) || 18, amax = Number(tg.age_max) || 65;
+  f["Youngest age targeted"] = bucketOf(amin, [25, 35, 45], ["18-24", "25-34", "35-44", "45+"]);
+  f["Age range width"] = bucketOf(amax - amin, [15, 30], ["narrow (under 15 years)", "medium (15-29 years)", "wide (30+ years)"]);
+  const gn = tg.genders ?? [];
+  f["Gender"] = gn.length === 1 ? (gn[0] === 1 ? "men only" : "women only") : "all genders";
+  f["Country"] = (tg.geo_locations?.countries ?? [])[0] ?? null;
+  const pt = String(cr.primary_text ?? "");
+  if (pt) {
+    f["Ad text length"] = bucketOf(pt.length, [300, 800], ["short (under 300 characters)", "medium (300-800)", "long (800+)"]);
+    f["Ad text uses tick marks"] = /[✅✔☑]/.test(pt) ? "yes" : "no";
+    f["Ad text mentions pay on delivery"] = /pay on delivery|cash on delivery|\bcod\b|pay when/i.test(pt) ? "yes" : "no";
+    f["Ad text opens with a question"] = /\?/.test(pt.split(/\n/)[0] ?? "") ? "yes" : "no";
+    f["Ad text mentions a price"] = /(₦|NGN|KSh|\$)\s?\d|\b\d{1,3},\d{3}\b/.test(pt) ? "yes" : "no";
+    f["Ad text creates urgency"] = /limited|hurry|today only|before (it|stock)|running out|last chance|selling fast|don'?t wait/i.test(pt) ? "yes" : "no";
+  }
+  const hl = String(cr.headline ?? "");
+  if (hl) f["Headline in all capitals"] = hl.replace(/[^A-Za-z]/g, "").length > 4 && hl === hl.toUpperCase() ? "yes" : "no";
+  if (a.page_title || a.page_words) {
+    f["Landing page length"] = bucketOf(Number(a.page_words) || 0, [800, 1500, 2500], ["short (under 800 words)", "medium (800-1500)", "long (1500-2500)", "very long (2500+)"]);
+    const sg = a.page_signals ?? {};
+    f["Page has testimonials"] = sg.testimonials ? "yes" : "no";
+    f["Page offers pay on delivery"] = sg.pay_on_delivery ? "yes" : "no";
+    f["Page has a money-back guarantee"] = sg.guarantee ? "yes" : "no";
+    f["Page creates urgency"] = sg.urgency ? "yes" : "no";
+    f["Page has free delivery"] = sg.free_delivery ? "yes" : "no";
+    f["Page has an order form on it"] = (sg.forms ?? 0) > 0 ? "yes" : "no";
+    f["Page has video"] = (sg.videos ?? 0) > 0 ? "yes" : "no";
+  }
+  const md = (a.media ?? []).map((m)=>m.seen).filter((d)=>d && d.style)[0];
+  if (md) {
+    f["What the creative looks like"] = md.style;
+    f["Creative shows people"] = md.people && !/^none/i.test(md.people) ? "yes" : "no";
+    f["Words on the creative"] = bucketOf(String(md.text_on_media ?? "").length, [20, 120], ["almost none", "some", "a lot"]);
+  }
+  return Object.fromEntries(Object.entries(f).filter(([, v])=>v != null && v !== ""));
+}
+const HOWTO = {
+  "Creative format": "Use more of this format in the next test, and put less budget behind the formats that trail.",
+  "Button": "Make this button your default for similar offers.",
+  "Where it sends people": "Test sending more traffic to this destination.",
+  "Budget set on": "Prefer this budget setup when launching similar campaigns.",
+  "Placements": "Keep this placement style for similar campaigns.",
+  "Landing page length": "Match this page length when you build or choose a page.",
+  "Ad text length": "Aim for this length when writing ad text.",
+  "What the creative looks like": "Make more creatives in this style and fewer in the styles that trail."
+};
+function pctText(x) { return Math.round(x * 100) + "%"; }
+async function handleLearnPatterns(dryRun = false) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: off } = await admin.from("companies").select("id").eq("learning_enabled", false);
+  const skip = new Set((off ?? []).map((c)=>c.id));
+  const rows = [];
+  for (let from = 0;; from += 1000){
+    const { data } = await admin.from("learn_anatomy").select("*").range(from, from + 999);
+    if (!data?.length) break; rows.push(...data); if (data.length < 1000) break;
+  }
+  const ads = rows.filter((a)=>!skip.has(a.company_id) && Number(a.spend) > 0);
+  // Result type and per-account median cost per result.
+  const resultOf = (a)=>{ const dest = a.adset_settings?.destination_type ?? ""; const msg = /WHATSAPP|MESSENGER|INSTAGRAM/i.test(dest) || /WHATSAPP/i.test(a.creative?.message_destination ?? ""); return msg ? Number(a.messages) || 0 : Number(a.purchases) || 0; };
+  const byAcct = new Map();
+  for (const a of ads) byAcct.set(a.ad_account_id, [...(byAcct.get(a.ad_account_id) ?? []), a]);
+  const decided = [];
+  for (const [, list] of byAcct){
+    const cpas = list.filter((a)=>resultOf(a) >= 1).map((a)=>Number(a.spend) / resultOf(a)).sort((x, y)=>x - y);
+    if (cpas.length < 3) continue;
+    const med = cpas[Math.floor(cpas.length / 2)];
+    for (const a of list){
+      const r = resultOf(a), sp = Number(a.spend);
+      if (r >= 1 && sp / r <= med * 0.9 && sp >= med * 0.5) decided.push({ a, win: true });
+      else if (r === 0 && sp >= med * 2) decided.push({ a, win: false });
+    }
+  }
+  const report = { ads_read: rows.length, with_spend: ads.length, decided: decided.length, winners: decided.filter((d)=>d.win).length };
+  // Ads judged on purchases and ads judged on messages are different worlds, so they are compared only with their own kind.
+  const SEG = (d)=>{ const dest = d.a.adset_settings?.destination_type ?? ""; return /WHATSAPP|MESSENGER|INSTAGRAM/i.test(dest) || /WHATSAPP/i.test(d.a.creative?.message_destination ?? "") ? "conversation ads (judged on messages)" : "sales ads (judged on purchases)"; };
+  const compute = (set, scope, companyId, segment)=>{
+    const N = set.length; if (N < PL.minDecided) return [];
+    const W = set.filter((d)=>d.win).length, base = W / N; if (base < 0.05 || base > 0.95) return [];
+    const groups = new Map();
+    for (const d of set){
+      for (const [k, v] of Object.entries(adFeatures(d.a))){
+        const key = k + "\u0000" + v; const g = groups.get(key) ?? { k, v, n: 0, w: 0, cos: new Set(), camps: new Set() };
+        g.n++; if (d.win) g.w++; g.cos.add(d.a.company_id); g.camps.add(d.a.campaign_id); groups.set(key, g);
+      }
+    }
+    const out = [];
+    for (const g of groups.values()){
+      if (g.n < PL.minGroup || N - g.n < PL.minGroup) continue;
+      // Ads in one campaign tend to look alike, so a pattern must show up in several campaigns (and, across businesses, in more than one business).
+      if (g.camps.size < 3) continue;
+      if (scope === "global" && g.cos.size < 2) continue;
+      const rate = g.w / g.n, z = (rate - base) / Math.sqrt(base * (1 - base) / g.n), lift = rate / base;
+      const positive = z >= PL.z && lift >= PL.lift, negative = z <= -PL.z && lift <= 1 / PL.lift;
+      if (!positive && !negative) continue;
+      const confidence = Math.abs(z) >= 2.5 && g.n >= 30 && g.camps.size >= 8 ? "high" : Math.abs(z) >= 2 && g.n >= 15 && g.camps.size >= 5 ? "medium" : "low";
+      const claim = positive ? `${g.k}: "${g.v}" wins more often. ${pctText(rate)} of ${g.n} ${segment} with it were winners, against ${pctText(base)} overall (${lift.toFixed(1)}x), across ${g.camps.size} campaigns.` : `${g.k}: "${g.v}" wins less often. Only ${pctText(rate)} of ${g.n} ${segment} with it were winners, against ${pctText(base)} overall, across ${g.camps.size} campaigns.`;
+      out.push({ scope, company_id: companyId, segment, feature: g.k, value: g.v, direction: positive ? "positive" : "negative", n: g.n, winners: g.w, rate, baseline: base, lift, z, companies: g.cos.size, confidence, claim, how_to: positive ? (HOWTO[g.k] ?? "Try more of this in your next test.") : "Test it against a better-performing alternative before spending more on it." });
+    }
+    return out.sort((x, y)=>Math.abs(y.z) - Math.abs(x.z)).slice(0, 25);
+  };
+  let found = [];
+  const segs = [...new Set(decided.map(SEG))];
+  for (const sg of segs){
+    const inSeg = decided.filter((d)=>SEG(d) === sg);
+    found = found.concat(compute(inSeg, "global", null, sg));
+    const byCo = new Map();
+    for (const d of inSeg) byCo.set(d.a.company_id, [...(byCo.get(d.a.company_id) ?? []), d]);
+    for (const [co, set] of byCo) found = found.concat(compute(set, "company", co, sg));
+  }
+  report.segments = Object.fromEntries(segs.map((sg)=>{ const x = decided.filter((d)=>SEG(d) === sg); return [sg, { decided: x.length, winners: x.filter((d)=>d.win).length }]; }));
+  report.lessons_found = found.length;
+  if (dryRun) return { ok: true, ...report, preview: found.slice(0, 12).map((l)=>({ scope: l.scope, confidence: l.confidence, claim: l.claim })) };
+  // Save, and re-check what was learned before.
+  const { data: old } = await admin.from("learn_lessons").select("id, scope, company_id, segment, feature, value, confirmed, failed, status").neq("status", "retired");
+  const keyOf = (l)=>`${l.scope}|${l.company_id ?? ""}|${l.segment ?? "all"}|${l.feature}|${l.value}`;
+  const seen = new Set();
+  for (const l of found){
+    seen.add(keyOf(l));
+    const prev = (old ?? []).find((o)=>keyOf(o) === keyOf(l));
+    const row = { ...l, status: "active", last_checked: new Date().toISOString(), evidence: { decided: N0(decided), win_rate_overall: Math.round(report.winners / Math.max(report.decided, 1) * 100) / 100 } };
+    const { error } = prev ? await admin.from("learn_lessons").update({ ...row, confirmed: (prev.confirmed ?? 0) + 1 }).eq("id", prev.id) : await admin.from("learn_lessons").insert({ ...row, confirmed: 1 });
+    if (error) console.error("learn_lessons save:", error.message);
+  }
+  for (const o of old ?? []) if (!seen.has(keyOf(o))) {
+    const failed = (o.failed ?? 0) + 1;
+    await admin.from("learn_lessons").update({ failed, status: failed >= 2 ? "retired" : "weak", last_checked: new Date().toISOString() }).eq("id", o.id);
+  }
+  return { ok: true, ...report };
+}
+const N0 = (d)=>d.length;
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -2919,6 +3069,12 @@ Deno.serve(async (req)=>{
       if (error) throw new HttpError(500, error.message);
       const buf = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192));
       return json({ ok: true, count: (pg?.shots ?? []).length, y: sh.y, h: sh.h, b64: btoa(bin) });
+    }
+    if (body.action === "learn_patterns") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      if (!secret?.value || (req.headers.get("x-cron-secret") ?? "") !== secret.value) throw new HttpError(401, "Not allowed.");
+      return json(await handleLearnPatterns(body.dry_run === true));
     }
     if (body.action === "learn_sync" || body.action === "learn_pages" || body.action === "learn_shots" || body.action === "learn_vision") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);

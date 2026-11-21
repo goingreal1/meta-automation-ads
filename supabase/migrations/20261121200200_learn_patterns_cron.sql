@@ -1,0 +1,1 @@
+select cron.schedule('learn-patterns-daily','20 3 * * *', $$select net.http_post(url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ads-manager', headers:=jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')), body:='{"action":"learn_patterns"}'::jsonb, timeout_milliseconds:=140000)$$);
