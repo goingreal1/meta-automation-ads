@@ -1948,6 +1948,129 @@ async function notifyInbox(admin, row) {
 // Campaigns created before the AI inbox existed are never announced.
 const LIVE_ANNOUNCE_AFTER = new Date("2026-10-06T00:00:00Z").getTime();
 // -- scheduled sweep (cron, every 5 minutes) --
+// -- Low-balance guard (cron every 5 min) -------------------------------------------------------------------------------------------
+// Prepaid account below its floor (default ₦50): switch OFF every ACTIVE campaign, its ad sets and its ads, and remember exactly which.
+// Balance back to its resume line (default ₦1,000): switch ON only those, ads and ad sets first and the campaign last. Older campaigns
+// that were already off are never touched. A balance that cannot be read (or a card account) never triggers anything.
+async function guardSet(admin, id, level, status, token) {
+  const res = await fetch(`${GRAPH}/${id}`, {
+    method: "POST",
+    body: new URLSearchParams({
+      status,
+      access_token: token
+    })
+  });
+  const d = await res.json().catch(()=>({}));
+  if (!res.ok || d.error || d.success === false) throw new Error(d?.error?.message || "Meta refused the change.");
+  const table = level === "campaign" ? "campaigns" : level === "adset" ? "ad_sets" : null;
+  if (table) await admin.from(table).update({
+    status: status === "ACTIVE" ? "active" : "paused"
+  }).eq(level === "campaign" ? "meta_campaign_id" : "meta_adset_id", id).then(()=>{}, ()=>{});
+}
+async function guardRun(admin, items, flag, status, order, token, deadline) {
+  for (const level of order){
+    const todo = items.filter((i)=>i.level === level && !i[flag]);
+    for(let k = 0; k < todo.length; k += 5){
+      if (Date.now() > deadline) return false;
+      await Promise.allSettled(todo.slice(k, k + 5).map(async (i)=>{
+        try {
+          await guardSet(admin, i.id, level, status, token);
+          i[flag] = true;
+          delete i.e;
+        } catch (e) {
+          i.e = String(e.message ?? e).slice(0, 120);
+        }
+      }));
+    }
+  }
+  return items.every((i)=>i[flag]);
+}
+const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
+async function handleBalanceGuard(dryRun = false) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const deadline = Date.now() + 100_000;
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, media_buyer_id, billing_mode, guard_pause_below_naira, guard_resume_at_naira").eq("auto_pause_low_balance", true).eq("status", "active");
+  const out = [];
+  for (const a of (accts ?? []).filter((x)=>x.billing_mode !== "managed")){
+    if (Date.now() > deadline) break;
+    const actId = String(a.meta_ad_account_id ?? "").replace(/^act_/, "");
+    if (!/^\d+$/.test(actId)) continue;
+    const label = a.nickname || a.name || actId;
+    try {
+      const token = await resolveToken(admin, a);
+      const d = await graphGet(`act_${actId}`, {
+        fields: "is_prepay_account,funding_source_details"
+      }, token);
+      const bal = d.is_prepay_account === true ? parseAvailable(d.funding_source_details?.display_string) : null;
+      if (bal == null) {
+        out.push({ account: label, skipped: "balance not readable (or a card account)" });
+        continue;
+      }
+      const low = Number(a.guard_pause_below_naira ?? 50), resume = Number(a.guard_resume_at_naira ?? 1000);
+      const { data: open } = await admin.from("balance_guard_pauses").select("*").eq("ad_account_id", a.id).is("restored_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      const tell = async (kind, title, body, row)=>notifyRpc(admin, { p_company: a.company_id, p_category: "money", p_kind: kind, p_title: title, p_body: body, p_severity: kind === "guard_pause" ? "warning" : "info", p_data: { ad_account_id: a.id }, p_dedupe: `${kind}:${row}`, p_buyer: a.media_buyer_id ?? null });
+      if (!open && bal < low) {
+        const camps = (await graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,status", effective_status: JSON.stringify(["ACTIVE", "WITH_ISSUES", "IN_PROCESS"]) }, token)).filter((c)=>c.status === "ACTIVE");
+        if (!camps.length) {
+          out.push({ account: label, balance: bal, note: "low, nothing running" });
+          continue;
+        }
+        const ids = new Set(camps.map((c)=>c.id));
+        const [sets, ads] = await Promise.all([
+          graphGetAll(`act_${actId}/adsets`, { fields: "id,name,status,campaign_id", effective_status: JSON.stringify(["ACTIVE", "WITH_ISSUES", "IN_PROCESS", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]) }, token),
+          graphGetAll(`act_${actId}/ads`, { fields: "id,name,status,campaign_id", effective_status: JSON.stringify(AD_STATES) }, token)
+        ]);
+        const items = [
+          ...camps.map((c)=>({ level: "campaign", id: c.id, name: c.name })),
+          ...sets.filter((x)=>x.status === "ACTIVE" && ids.has(x.campaign_id)).map((x)=>({ level: "adset", id: x.id, name: x.name })),
+          ...ads.filter((x)=>x.status === "ACTIVE" && ids.has(x.campaign_id)).map((x)=>({ level: "ad", id: x.id, name: x.name }))
+        ];
+        if (dryRun) {
+          out.push({ account: label, balance: bal, would_pause: { campaigns: camps.length, adsets: items.filter((i)=>i.level === "adset").length, ads: items.filter((i)=>i.level === "ad").length } });
+          continue;
+        }
+        const { data: row } = await admin.from("balance_guard_pauses").insert({ ad_account_id: a.id, company_id: a.company_id, balance_at_pause: bal, items }).select("id").single();
+        const done = await guardRun(admin, items, "p", "PAUSED", ["campaign", "adset", "ad"], token, deadline);
+        await admin.from("balance_guard_pauses").update({ items }).eq("id", row.id);
+        const n = items.filter((i)=>i.level === "campaign").length;
+        if (done) await tell("guard_pause", `⏸️ ${label}: balance is ${gMoney(bal)}, so ${n} campaign${n === 1 ? "" : "s"} switched off`, `The balance fell below ${gMoney(low)}. Revora switched off the running campaigns, their ad sets and ads. Add funds (at least ${gMoney(resume)}) and they switch back on by themselves. Campaigns that were already off stay off.`, row.id);
+        out.push({ account: label, balance: bal, paused: items.filter((i)=>i.p).length, of: items.length });
+      } else if (open) {
+        const items = Array.isArray(open.items) ? open.items : [];
+        if (bal >= resume) {
+          if (dryRun) {
+            out.push({ account: label, balance: bal, would_resume: items.length });
+            continue;
+          }
+          const done = await guardRun(admin, items, "r", "ACTIVE", ["ad", "adset", "campaign"], token, deadline);
+          await admin.from("balance_guard_pauses").update({ items, ...done ? { restored_at: new Date().toISOString() } : {} }).eq("id", open.id);
+          if (done) {
+            const n = items.filter((i)=>i.level === "campaign").length;
+            await tell("guard_resume", `▶️ ${label}: balance is back, ${n} campaign${n === 1 ? "" : "s"} switched on`, `The balance is ${gMoney(bal)} again. Revora switched back on only the campaigns (and their ad sets and ads) it had switched off.`, open.id);
+          }
+          out.push({ account: label, balance: bal, resumed: items.filter((i)=>i.r).length, of: items.length, finished: done });
+        } else if (!dryRun && items.some((i)=>!i.p)) {
+          // The pause did not finish last time (Meta busy): carry on.
+          const done = await guardRun(admin, items, "p", "PAUSED", ["campaign", "adset", "ad"], token, deadline);
+          await admin.from("balance_guard_pauses").update({ items }).eq("id", open.id);
+          out.push({ account: label, balance: bal, continued_pause: done });
+        } else out.push({ account: label, balance: bal, note: "paused, waiting for funds" });
+      } else out.push({ account: label, balance: bal, note: "fine" });
+    } catch (e) {
+      out.push({ account: label, error: String(e.message ?? e).slice(0, 160) });
+    }
+  }
+  return { ok: true, dry_run: dryRun, accounts: out };
+}
+async function handleSetBalanceGuard(userClient, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { error } = await admin.from("ad_accounts").update({
+    auto_pause_low_balance: body.enabled === true
+  }).eq("id", account.id);
+  if (error) throw new HttpError(500, error.message);
+  return { ok: true, enabled: body.enabled === true };
+}
 async function handleAutoKill(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const { data: ruleRows } = await admin.from("kill_rules").select("*").or("enabled.eq.true,lpv_enabled.eq.true");
@@ -2205,6 +2328,13 @@ Deno.serve(async (req)=>{
       }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
+    if (body.action === "balance_guard") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      const given = req.headers.get("x-cron-secret") ?? "";
+      if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
+      return json(await handleBalanceGuard(body.dry_run === true));
+    }
     if (body.action === "auto_kill") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
@@ -2232,6 +2362,7 @@ Deno.serve(async (req)=>{
     if (body.action === "targeting_search") return json(await handleTargetingSearch(userClient, body));
     if (body.action === "reach_estimate") return json(await handleReachEstimate(userClient, body));
     if (body.action === "ad_preview") return json(await handleAdPreview(userClient, body));
+    if (body.action === "set_balance_guard") return json(await handleSetBalanceGuard(userClient, body));
     if (body.action === "page_posts") return json(await handlePagePosts(userClient, body));
     if (body.action === "add_page_post") return json(await handleAddPagePost(userClient, body));
     if (body.action === "update_carousel") return json(await handleUpdateCarousel(userClient, body));
