@@ -16,7 +16,8 @@ const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 const VERSION = "1.0.0";
 const DIRECT = `${SUPABASE_URL}/functions/v1/mcp`;
 // Revora's own address (a Vercel rewrite to this function). It carries the Revora favicon and logo, so Claude and ChatGPT show our brand.
-const SITE = "https://metaautomationads.vercel.app";
+const SITE = "https://metaautomationads.vercel.app"; // the connector address (OAuth metadata): unchanged so existing connectors keep working
+const LINKS = "https://dash.revoracrm.online"; // links handed to people (approve, edit, set up)
 const BRANDED = `${SITE}/mcp`;
 const SUPPORTED = [
   "2025-06-18",
@@ -672,7 +673,7 @@ const RES_META_APPS = {
     prefersBorder: true
   }
 };
-const SETUP_NEEDED = `This Revora login has not finished setting up yet. Tell the person to open ${SITE}/setup-company.html and choose Personal or Company (it takes a minute), then come back and ask again.`;
+const SETUP_NEEDED = `This Revora login has not finished setting up yet. Tell the person to open ${LINKS}/setup-company.html and choose Personal or Company (it takes a minute), then come back and ask again.`;
 const LIMITS = {
   write_per_day: 80,
   launch_per_day: 5
@@ -858,7 +859,7 @@ async function callTool(name, args, c, client) {
         }
       ]
     };
-    const link = `${SITE}/launch-approve.html?p=${planId}`;
+    const link = `${LINKS}/launch-approve.html?p=${planId}`;
     const { data: full } = await admin.from("ai_plans").select("plan").eq("id", planId).maybeSingle();
     const pl2 = full?.plan ?? {};
     const sets = Array.isArray(pl2.adsets) ? pl2.adsets : [];
@@ -917,7 +918,7 @@ async function callTool(name, args, c, client) {
         plan_id: planId,
         expires_at: new Date(Date.now() + 24 * 3600_000).toISOString()
       });
-      if (!le) editLink = `${SITE}/ads.html?t=${tok}`;
+      if (!le) editLink = `${LINKS}/ads.html?t=${tok}`;
       const { data: pf } = await admin.from("profiles").select("whatsapp_number").eq("id", c.userId).maybeSingle();
       const { data: sw } = await admin.from("app_secrets").select("value").eq("key", "launch_whatsapp").maybeSingle();
       waExpected = !!String(pf?.whatsapp_number ?? "").replace(/\D/g, "") && String(sw?.value ?? "on").toLowerCase() !== "off";

@@ -13,4 +13,4 @@ Disallow: /setup-company.html
 Disallow: /reset-password.html
 Disallow: /oauth/
 Disallow: /s/
-Sitemap: https://revoracrm.app/sitemap.xml
+Sitemap: https://revoracrm.online/sitemap.xml

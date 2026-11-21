@@ -3,7 +3,7 @@
 // turns them into the same ready-made blocks the visual builder uses (rv-* classes + data-rv-form), so the page is mobile-ready,
 // takes orders for the linked product, fires the product's pixel, and can still be opened in the builder.
 // No AI call happens here. Modes: page_brief, page_build, page_get, page_edit, page_publish, page_import_html.
-const SITE = "https://metaautomationads.vercel.app";
+const SITE = "https://dash.revoracrm.online";
 const FONT_Q = {
   "Inter": "Inter:wght@400;500;600;700;800",
   "Poppins": "Poppins:wght@400;500;600;700;800",

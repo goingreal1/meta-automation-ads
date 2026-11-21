@@ -167,7 +167,7 @@ Deno.serve(async (req)=>{
         "PHONE",
         "CITY"
       ]).map((x)=>String(x).toUpperCase()).filter((x)=>allowed.includes(x));
-      const privacy = /^https:\/\//.test(String(b.privacy_url ?? "")) ? String(b.privacy_url) : "https://metaautomationads.vercel.app/privacy.html";
+      const privacy = /^https:\/\//.test(String(b.privacy_url ?? "")) ? String(b.privacy_url) : "https://revoracrm.online/privacy.html";
       const params = {
         name,
         questions: JSON.stringify(fields.map((type)=>({

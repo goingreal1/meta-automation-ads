@@ -20,7 +20,7 @@ import { unzip, planImport, swapPixel, hoistPixel } from "./import_plan.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const admin = withR2(createClient(SUPABASE_URL, SERVICE_KEY));
-const SITE = "https://metaautomationads.vercel.app"; // dashboard + builder (never serves customer pages in links we hand out)
+const SITE = "https://dash.revoracrm.online"; // dashboard + builder (never serves customer pages in links we hand out)
 const SITES = "https://revora-sites.vercel.app"; // isolated project that serves customer pages only (RV_SITE_ORIGIN)
 const CORS = {
   "Access-Control-Allow-Origin": "*",

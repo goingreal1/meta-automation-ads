@@ -194,7 +194,7 @@ Deno.serve(async (req)=>{
     const { type } = body;
     // ---- daily money report (12pm / 4pm / 8pm) ----
     const REPORT_TPL = Deno.env.get("WHATSAPP_TPL_DAILY_REPORT") ?? "revora_daily_report_v2";
-    const REPORT_URL = "https://dash.revoracrm.app/dashboard_new.html?open=tab:wallet";
+    const REPORT_URL = "https://dash.revoracrm.online/dashboard_new.html?open=tab:wallet";
     const REPORT_TEXT = "Here is your *{{1}}*:\n\nFund received: *₦{{2}}*\nSent to Meta: *₦{{3}}*\nAd spend: *₦{{4}}*\nOrder count: *{{5}}*\nCPA: *₦{{6}}*\nBalance: *₦{{7}}*\n\nThis month: {{8}}\n\nThis is your automatic Revora ad report. Tap below to see every campaign, ad set and ad.";
     if ((type === "report_template" || type === "daily_report") && !caller.service) return json({ error: "Server use only." }, 403);
     if (type === "report_template") {

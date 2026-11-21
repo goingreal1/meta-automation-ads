@@ -19,7 +19,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const admin = withR2(createClient(SUPABASE_URL, SERVICE_KEY));
-const SITE = "https://metaautomationads.vercel.app";
+const SITE = "https://dash.revoracrm.online";
 const BUCKET = "creative-vault";
 // Ad pictures and videos live on Cloudflare R2 (not Supabase Storage). If R2 is not configured the old bucket is used.
 const R2A = Deno.env.get("R2_ACCOUNT_ID") ?? "", R2B = Deno.env.get("R2_BUCKET") ?? "";
