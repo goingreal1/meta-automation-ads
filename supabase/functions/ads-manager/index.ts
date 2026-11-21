@@ -2380,14 +2380,14 @@ async function handleLearnPages(limit = 8) {
   return { ok: true, pages: out };
 }
 // Live pictures of the landing pages: a phone-sized, top-to-bottom stack of images (made by the Vercel function api/screenshot) stored privately.
-async function handleLearnShots(limit = 3) {
+async function handleLearnShots(limit = 3, only = null) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const { data: sec } = await admin.from("app_secrets").select("value").eq("key", "shot_secret").maybeSingle();
   if (!sec?.value) return { ok: false, error: "shot_secret missing" };
   const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
   const off = new Set((cos ?? []).map((c)=>c.id));
-  const { data: pages } = await admin.from("learn_pages").select("url_norm, final_url, content_hash, shot_hash, shot_at, company_ids").eq("status", "ok").order("shot_at", { ascending: true, nullsFirst: true }).limit(60);
-  const todo = (pages ?? []).filter((p)=>(p.company_ids ?? []).some((c)=>!off.has(c)) && (!p.shot_at || (p.shot_hash !== p.content_hash && Date.now() - new Date(p.shot_at).getTime() > 6 * 86400_000))).slice(0, limit);
+  const { data: pages } = only ? await admin.from("learn_pages").select("url_norm, final_url, content_hash, shot_hash, shot_at, company_ids").eq("url_norm", only) : await admin.from("learn_pages").select("url_norm, final_url, content_hash, shot_hash, shot_at, company_ids").eq("status", "ok").order("shot_at", { ascending: true, nullsFirst: true }).limit(60);
+  const todo = only ? (pages ?? []) : (pages ?? []).filter((p)=>(p.company_ids ?? []).some((c)=>!off.has(c)) && (!p.shot_at || (p.shot_hash !== p.content_hash && Date.now() - new Date(p.shot_at).getTime() > 6 * 86400_000))).slice(0, limit);
   const out = [], deadline = Date.now() + 100_000;
   for (const p of todo){
     if (Date.now() > deadline) break;
@@ -2413,6 +2413,136 @@ async function handleLearnShots(limit = 3) {
     }
   }
   return { ok: true, shots: out };
+}
+// ---- What creatives and pages LOOK like: pictures, video frames and a Claude vision description of each -----------------------------------
+const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+async function claudeVision(images, instruction, model = "claude-haiku-5-5") {
+  if (!ANTHROPIC_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
+  const content = [...images.map((i)=>({ type: "image", source: { type: "base64", media_type: i.type, data: i.b64 } })), { type: "text", text: instruction }];
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model, max_tokens: 1500, messages: [{ role: "user", content }] }) });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j?.error?.message || `Claude HTTP ${r.status}`);
+  const text = (j.content ?? []).map((c)=>c.text ?? "").join("");
+  const m = text.match(/\{[\s\S]*\}/);
+  try { return m ? JSON.parse(m[0]) : { summary: text.slice(0, 800) }; } catch (_) { return { summary: text.slice(0, 800) }; }
+}
+const b64of = (buf)=>{ let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192)); return btoa(bin); };
+async function fetchImage(url) {
+  const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraLearner/1.0)" } });
+  if (!r.ok) throw new Error(`image HTTP ${r.status}`);
+  const type = (r.headers.get("content-type") ?? "image/jpeg").split(";")[0];
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) throw new Error(`not an image (${type})`);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  if (buf.length > 4_500_000) throw new Error("image too large");
+  return { buf, type };
+}
+const AD_PROMPT = `You are studying one advertising creative for a direct-response ad learning system. Describe ONLY what you can see. Reply with JSON only, no other text:
+{"summary":"2 sentences on what this ad shows","text_on_media":"every word visible on the image, exactly as written","people":"who is shown and what they are doing (age range, gender, expression), or none","product":"is the product visible, and how (pack, in hand, on table)","setting":"where it is","style":"one of: ugc_selfie, studio, before_after, testimonial_screenshot, chat_screenshot, text_only, meme, lifestyle, doctor_authority, news_style, other","colors":"main colours","hook":"what grabs attention in the first second","emotion":"fear, hope, curiosity, trust, urgency, etc.","cta_visible":"any button or call to action drawn on it","claims":"health or result claims made on the image","quality":"1 to 5 for clarity and professionalism","notes":"anything else a media buyer should know"}
+If several images are given they are frames of one video in time order: describe how the video develops (hook, middle, end) in "summary".`;
+const PAGE_PROMPT = `You are studying a sales landing page for a direct-response ad learning system. The images are the page seen on a phone, top to bottom, in order. Describe ONLY what you can see. Reply with JSON only:
+{"above_the_fold":"what a visitor sees first, with the exact headline","structure":["each section in order, one line each"],"visual_style":"look and feel, fonts, colours, spacing","colors":"main colours","hooks":["every attention-grabbing line or visual, exact words"],"offer":"how price, packages and discount are shown","order_form":"where it is and what it asks for","cta_buttons":["exact button texts and colours"],"social_proof":["types used: chat screenshots, before/after, ratings, counters, doctor, media logos"],"trust":["guarantees, delivery, payment on delivery, certificates"],"urgency":"how urgency or scarcity is created","strengths":["what is done well"],"weaknesses":["what could be better"],"overall":"2 sentences for a media buyer"}`;
+async function learnMediaDiscover(admin, cap = 30) {
+  const { data: ads } = await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, creative").eq("level", "ad").order("synced_at", { ascending: false }).limit(400);
+  const cand = (ads ?? []).filter((a)=>a.creative && ["image", "image_feed", "video", "video_feed", "carousel"].includes(a.creative.kind));
+  if (!cand.length) return 0;
+  const { data: have } = await admin.from("learn_ad_media").select("ad_account_id, ad_id").in("ad_id", cand.map((a)=>a.meta_id));
+  const done = new Set((have ?? []).map((h)=>`${h.ad_account_id}:${h.ad_id}`));
+  const todo = cand.filter((a)=>!done.has(`${a.ad_account_id}:${a.meta_id}`)).slice(0, cap);
+  const byAcct = new Map();
+  for (const a of todo) byAcct.set(a.ad_account_id, [...(byAcct.get(a.ad_account_id) ?? []), a]);
+  let n = 0;
+  for (const [acctId, list] of byAcct){
+    const { data: acct } = await admin.from("ad_accounts").select("id, meta_connection_id, company_id").eq("id", acctId).maybeSingle();
+    if (!acct) continue;
+    const token = await resolveToken(admin, acct);
+    const info = await graphGet("", { ids: list.map((a)=>a.meta_id).join(","), fields: "creative{image_url,thumbnail_url,video_id,object_story_spec,asset_feed_spec}" }, token).catch(()=>({}));
+    for (const a of list){
+      const cr = info[a.meta_id]?.creative ?? {}, oss = cr.object_story_spec ?? {}, afs = cr.asset_feed_spec ?? {};
+      const items = [];
+      for (const v of [oss.video_data?.video_id, cr.video_id, ...(afs.videos ?? []).map((x)=>x.video_id)]) if (v) items.push({ key: `video:${v}`, kind: "video", url: null, role: "video" });
+      const imgs = [cr.image_url, oss.link_data?.picture, oss.photo_data?.url, ...(oss.link_data?.child_attachments ?? []).map((c)=>c.picture), ...(afs.images ?? []).map((x)=>x.url)].filter(Boolean);
+      for (const u of imgs) items.push({ key: `image:${hash32(u.split("?")[0])}`, kind: "image", url: u, role: "image" });
+      if (!items.length && cr.thumbnail_url) items.push({ key: `image:${hash32(cr.thumbnail_url.split("?")[0])}`, kind: "image", url: cr.thumbnail_url, role: "thumbnail" });
+      for (const it of items.slice(0, 12)){
+        await admin.from("learn_ad_media").upsert({ ad_account_id: a.ad_account_id, ad_id: a.meta_id, media_key: it.key, role: it.role }, { onConflict: "ad_account_id,ad_id,media_key" });
+        const { data: ex } = await admin.from("learn_media").select("media_key, company_ids").eq("media_key", it.key).maybeSingle();
+        if (!ex) await admin.from("learn_media").insert({ media_key: it.key, kind: it.kind, source_url: it.url, company_ids: [a.company_id] });
+        else if (!(ex.company_ids ?? []).includes(a.company_id)) await admin.from("learn_media").update({ company_ids: [...ex.company_ids, a.company_id] }).eq("media_key", it.key);
+      }
+      if (!items.length) await admin.from("learn_ad_media").upsert({ ad_account_id: a.ad_account_id, ad_id: a.meta_id, media_key: "none", role: "none" }, { onConflict: "ad_account_id,ad_id,media_key" });
+      n++;
+    }
+  }
+  return n;
+}
+async function handleLearnVision(limit = 4) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
+  const off = new Set((cos ?? []).map((c)=>c.id));
+  const out = { discovered: await learnMediaDiscover(admin).catch((e)=>`error: ${String(e.message ?? e).slice(0, 100)}`), media: [], pages: [] };
+  if (!ANTHROPIC_KEY) return { ok: false, error: "ANTHROPIC_API_KEY is not set in the Supabase edge function secrets, so pictures are collected but not described yet.", ...out };
+  const deadline = Date.now() + 100_000;
+  // 1) creatives
+  const { data: pend } = await admin.from("learn_media").select("media_key, kind, source_url, company_ids").is("described_at", null).is("error", null).order("created_at", { ascending: true }).limit(limit * 3);
+  for (const m of (pend ?? []).filter((x)=>(x.company_ids ?? []).some((c)=>!off.has(c))).slice(0, limit)){
+    if (Date.now() > deadline) break;
+    try {
+      const imgs = [], paths = [];
+      let lengthS = null;
+      const folder = m.media_key.replace(/[^a-z0-9]+/gi, "_");
+      if (m.kind === "image") {
+        const f = await fetchImage(m.source_url);
+        imgs.push({ b64: b64of(f.buf), type: f.type });
+        const path = `${folder}/0.${f.type.split("/")[1]}`;
+        await admin.storage.from("learn-media").upload(path, f.buf, { contentType: f.type, upsert: true }); paths.push({ path, t: 0 });
+      } else {
+        const vid = m.media_key.replace("video:", "");
+        const { data: map } = await admin.from("learn_ad_media").select("ad_account_id").eq("media_key", m.media_key).limit(1).maybeSingle();
+        const { data: acct } = await admin.from("ad_accounts").select("id, meta_connection_id").eq("id", map?.ad_account_id ?? "").maybeSingle();
+        if (!acct) throw new Error("no account for video");
+        const token = await resolveToken(admin, acct);
+        const v = await graphGet(vid, { fields: "picture,length,thumbnails{uri,is_preferred,width,height}" }, token);
+        lengthS = v.length ?? null;
+        let urls = (v.thumbnails?.data ?? []).map((t)=>t.uri).filter(Boolean);
+        if (!urls.length && v.picture) urls = [v.picture];
+        if (urls.length > 6) urls = Array.from({ length: 6 }, (_, k)=>urls[Math.round(k * (urls.length - 1) / 5)]);
+        if (!urls.length) throw new Error("video has no frames");
+        for (const [k, u] of urls.entries()){
+          const f = await fetchImage(u).catch(()=>null); if (!f) continue;
+          imgs.push({ b64: b64of(f.buf), type: f.type });
+          const path = `${folder}/${k}.${f.type.split("/")[1]}`;
+          await admin.storage.from("learn-media").upload(path, f.buf, { contentType: f.type, upsert: true }); paths.push({ path, t: v.length ? Math.round(k * v.length / Math.max(urls.length, 1)) : null });
+        }
+        if (!imgs.length) throw new Error("could not download frames");
+      }
+      const description = await claudeVision(imgs, AD_PROMPT);
+      await admin.from("learn_media").update({ paths, length_s: lengthS, description, described_at: new Date().toISOString() }).eq("media_key", m.media_key);
+      out.media.push({ key: m.media_key, kind: m.kind, style: description.style ?? null });
+    } catch (e) {
+      await admin.from("learn_media").update({ error: String(e.message ?? e).slice(0, 200) }).eq("media_key", m.media_key);
+      out.media.push({ key: m.media_key, error: String(e.message ?? e).slice(0, 100) });
+    }
+  }
+  // 2) landing pages (the screenshot slices)
+  const { data: pgs } = await admin.from("learn_pages").select("url_norm, shots, company_ids").is("vision_at", null).not("shots", "is", null).limit(3);
+  for (const pg of (pgs ?? []).filter((x)=>(x.company_ids ?? []).some((c)=>!off.has(c))).slice(0, 1)){
+    if (Date.now() > deadline) break;
+    try {
+      const imgs = [];
+      for (const sh of (pg.shots ?? []).slice(0, 8)){
+        const { data: f } = await admin.storage.from("learn-shots").download(sh.path);
+        if (f) imgs.push({ b64: b64of(new Uint8Array(await f.arrayBuffer())), type: "image/jpeg" });
+      }
+      if (!imgs.length) throw new Error("no slices");
+      const vision = await claudeVision(imgs, PAGE_PROMPT, "claude-sonnet-5-5");
+      await admin.from("learn_pages").update({ vision, vision_at: new Date().toISOString() }).eq("url_norm", pg.url_norm);
+      out.pages.push({ url: pg.url_norm, slices_seen: imgs.length });
+    } catch (e) {
+      await admin.from("learn_pages").update({ vision_at: new Date().toISOString(), vision: { error: String(e.message ?? e).slice(0, 200) } }).eq("url_norm", pg.url_norm);
+      out.pages.push({ url: pg.url_norm, error: String(e.message ?? e).slice(0, 100) });
+    }
+  }
+  return { ok: true, ...out };
 }
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
@@ -2757,12 +2887,24 @@ Deno.serve(async (req)=>{
       }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
-    if (body.action === "learn_sync" || body.action === "learn_pages" || body.action === "learn_shots") {
+    if (body.action === "learn_shot_get") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      if (!secret?.value || (req.headers.get("x-cron-secret") ?? "") !== secret.value) throw new HttpError(401, "Not allowed.");
+      const { data: pg } = await admin.from("learn_pages").select("shots").eq("url_norm", String(body.url ?? "")).maybeSingle();
+      const sh = (pg?.shots ?? [])[Number(body.i) || 0];
+      if (!sh) return json({ ok: false, error: "no such slice", count: (pg?.shots ?? []).length });
+      const { data: f, error } = await admin.storage.from("learn-shots").download(sh.path);
+      if (error) throw new HttpError(500, error.message);
+      const buf = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192));
+      return json({ ok: true, count: (pg?.shots ?? []).length, y: sh.y, h: sh.h, b64: btoa(bin) });
+    }
+    if (body.action === "learn_sync" || body.action === "learn_pages" || body.action === "learn_shots" || body.action === "learn_vision") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       const given = req.headers.get("x-cron-secret") ?? "";
       if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
-      return json(body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6)) : body.action === "learn_shots" ? await handleLearnShots(Math.min(Number(body.limit) || 3, 6)) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
+      return json(body.action === "learn_vision" ? await handleLearnVision(Math.min(Number(body.limit) || 4, 8)) : body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6)) : body.action === "learn_shots" ? await handleLearnShots(Math.min(Number(body.limit) || 3, 6), body.url ? String(body.url) : null) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
     }
     if (body.action === "purchase_timing_digest") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
