@@ -2,10 +2,5 @@
   "name": "revora-site",
   "private": true,
   "version": "1.0.0",
-  "description": "Static pages plus Vercel functions (api/). ffmpeg-static is used by api/transcode.js; @sparticuz/chromium + puppeteer-core by api/screenshot.js.",
-  "dependencies": {
-    "ffmpeg-static": "5.2.0",
-    "@sparticuz/chromium": "131.0.1",
-    "puppeteer-core": "23.10.4"
-  }
+  "description": "Static pages plus small Vercel functions (api/). The heavy ones (screenshot, transcode) run on AWS Lambda, see aws/."
 }
