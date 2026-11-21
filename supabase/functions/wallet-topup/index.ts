@@ -431,13 +431,20 @@ Deno.serve(async (req)=>{
       const refs = [];
       for (const a of adj ?? []) { if (/_fee$/.test(a.reason)) { feeBy[a.ref] = (feeBy[a.ref] || 0) + Number(a.amount_naira); continue; } refs.push(a.ref); }
       const LABEL = { given_by_company: ["From your admin", 1], given_to_buyer: ["Given to a buyer", -1], taken_back: ["Taken back by your admin", -1], taken_from_buyer: ["Taken back from a buyer", 1],
-        sent_to_user: ["Sent", -1], received_from_user: ["Received", 1], meta_overspend: ["Ad spend above the Meta balance", -1], sent_to_meta_from_balance: ["Deposited to Meta", -1], opening_balance: ["Opening balance", 1], balance_correction: ["Balance correction", -1], ad_account_fee: ["Ad account fee", 1] };
+        sent_to_user: ["Sent", -1], received_from_user: ["Received", 1], meta_overspend: ["Ad spend above the Meta balance", -1], sent_to_meta_from_balance: ["Deposited to Meta", -1], opening_balance: ["Opening balance", 1], balance_correction: ["Balance correction", -1], ad_account_fee: ["Ad account fee", 1], online_sale: ["Online sale", 1] };
       for (const a of adj ?? []) {
         if (/_fee$/.test(a.reason)) continue;
         const l = LABEL[a.reason] ?? [a.reason, 1], sign = l[1], amt = -Number(a.amount_naira);
         // A credit that paid the deposit fee shows what actually landed (after the fee), with the money sent as "gross".
         const dfee = a.reason === "given_by_company" ? (feeBy[a.ref] || 0) : 0;
         rows.push({ id: a.id, kind: a.reason, title: a.note ? `${l[0]} · ${a.note.replace(/^(To|From) /, "")}` : l[0], amount: amt - dfee, gross: dfee ? amt : undefined, fee: feeBy[a.ref] || 0, at: a.created_at, ref: a.ref, dir: amt >= 0 ? "in" : "out" });
+      }
+      // Online sales: the credit is the sale after Paystack's charge and Revora's fee, so show the sale amount and both fees.
+      const saleRows = rows.filter((x)=>x.kind === "online_sale");
+      if (saleRows.length) {
+        const { data: so } = await admin.from("orders").select("paystack_reference, order_value_naira, platform_fee_naira, paystack_fee_naira").in("paystack_reference", saleRows.map((x)=>String(x.ref).replace(/^sale:/, "")));
+        const soBy = Object.fromEntries((so ?? []).map((x)=>[x.paystack_reference, x]));
+        for (const x of saleRows) { const o = soBy[String(x.ref).replace(/^sale:/, "")]; if (o) { x.gross = Number(o.order_value_naira); x.fee = Number(o.platform_fee_naira || 0) + Number(o.paystack_fee_naira || 0); } }
       }
       // Money received from another user: the credit is already net of the receiver's fee, so read the fee from the fee ledger.
       const recvRows = rows.filter((x)=>x.kind === "received_from_user");
