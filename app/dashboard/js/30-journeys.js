@@ -169,8 +169,9 @@ function jyDetails(s) {
     ${row("Order", s.ordered ? '<b style="color:#12843d">Ordered</b>' : "No order")}</div>`;
 }
 async function jyOpenVisit(id) {
-  let s = JY.rows.find((r) => r.id === id);
-  if (!s) { const g = await sbQuery("site_sessions", `select=*&id=eq.${id}`).catch(() => []); s = g && g[0]; }
+  // Always read the visit fresh: the list on screen can be older than the visit (a recording may have started since).
+  const fresh = await sbQuery("site_sessions", `select=*&id=eq.${id}`).catch(() => []);
+  let s = (fresh && fresh[0]) || JY.rows.find((r) => r.id === id);
   if (!s) return bvToast("Visit not found.");
   await jyNames([s.meta_ad_id, s.meta_campaign_id]);
   const ov = bvOpenSheet("jyVisit", `<div class="jy"><div class="jy-sheetbar"><span style="color:var(--jb);font-weight:600;font-size:13px;cursor:pointer" onclick="bvCloseSheet('jyVisit')">‹ Back</span><b>Visit #${s.visit_no}</b>${s.ordered ? '<span class="jy-pill ord">ORDERED</span>' : ""}${jyLive(s) ? '<span class="jy-pill live">LIVE</span>' : ""}<button class="jy-x" data-sheet-close onclick="bvCloseSheet('jyVisit')" aria-label="Close">✕</button></div>
@@ -193,6 +194,20 @@ async function jyOpenVisit(id) {
     const tl = jyTimeline(res.events, res.session || s), box = document.getElementById("jyTl");
     box.innerHTML = tl.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
     box.querySelectorAll(".jy-ev").forEach((el) => (el.onclick = () => { try { player.goto(Math.max(0, tl[Number(el.dataset.i)].t - 500), true); } catch (x) {} }));
+    if (jyLive(res.session || s)) {
+      // Live visitor: keep pulling new pieces of the recording and feed them to the player.
+      const stage2 = document.getElementById("jyStage"); let last = res.events[res.events.length - 1].timestamp;
+      const bar = document.createElement("div"); bar.style.cssText = "margin-top:8px;font-size:12px;color:#9fb3c4;text-align:center"; bar.innerHTML = '<span style="color:#4ade80;font-weight:700">● LIVE</span> new activity appears as it happens <a style="color:#7db4ff;cursor:pointer;margin-left:8px" id="jyJump">Jump to live</a>'; stage2.parentNode.appendChild(bar);
+      document.getElementById("jyJump").onclick = () => { try { player.goto(Math.max(0, last - res.events[0].timestamp - 300), true); } catch (x) {} };
+      const t = setInterval(async () => {
+        if (!document.getElementById("jyPlayer")) return clearInterval(t);
+        const more = await sbFn("ads-manager", { action: "rec_get", session_id: id }).catch(() => null);
+        if (!more || !more.events) return;
+        const add = more.events.filter((e) => e.timestamp > last); if (!add.length) return;
+        add.forEach((e) => { try { player.addEvent(e); } catch (x) {} }); last = add[add.length - 1].timestamp;
+        const tl2 = jyTimeline(more.events, more.session || s); box.innerHTML = tl2.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
+      }, 8000);
+    }
     document.getElementById("jyTlToggle").onclick = () => { const h = box.style.display === "none"; box.style.display = h ? "" : "none"; document.getElementById("jyTlToggle").textContent = h ? "Hide ▴" : "Show ▾"; };
   } catch (e) { const b = document.getElementById("jyStage"); if (b) b.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">Could not load the recording: ${escH(e.message || e)}</div>`; }
 }
