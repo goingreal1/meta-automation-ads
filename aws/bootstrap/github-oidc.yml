@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   ONE-TIME setup, run by a human admin. Lets GitHub Actions in goingreal1/meta-automation-ads deploy aws/template.yaml
-  without any stored AWS keys (GitHub OIDC). Creates: the OIDC identity provider (optional), an S3 bucket for build files,
+  without any stored AWS keys (GitHub OIDC). Creates: the OIDC identity provider (optional)
   and a deploy role that can only touch stack "revora-heavy" and resources named revora-*.
 
 Parameters:
@@ -16,6 +16,10 @@ Parameters:
   StackName:
     Type: String
     Default: revora-heavy
+  ArtifactBucketName:
+    Type: String
+    Default: revora-deploy-artifacts-751702759480-af-south-1
+    Description: Existing S3 bucket for build files. It is NOT created by this template.
 
 Conditions:
   MakeProvider: !Equals [!Ref CreateOidcProvider, "true"]
@@ -27,17 +31,6 @@ Resources:
     Properties:
       Url: https://token.actions.githubusercontent.com
       ClientIdList: [sts.amazonaws.com]
-
-  ArtifactBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "revora-deploy-artifacts-${AWS::AccountId}-${AWS::Region}"
-      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
-      LifecycleConfiguration:
-        Rules:
-          - Id: expire-old-builds
-            Status: Enabled
-            ExpirationInDays: 30
 
   DeployRole:
     Type: AWS::IAM::Role
@@ -70,7 +63,7 @@ Resources:
               - Sid: BuildFiles
                 Effect: Allow
                 Action: [s3:PutObject, s3:GetObject, s3:ListBucket, s3:GetBucketLocation]
-                Resource: [!GetAtt ArtifactBucket.Arn, !Sub "${ArtifactBucket.Arn}/*"]
+                Resource: [!Sub "arn:aws:s3:::${ArtifactBucketName}", !Sub "arn:aws:s3:::${ArtifactBucketName}/*"]
               - Sid: Functions
                 Effect: Allow
                 Action: ["lambda:*"]
@@ -93,5 +86,5 @@ Outputs:
     Value: !GetAtt DeployRole.Arn
     Description: Save as the GitHub repository secret AWS_ROLE_ARN.
   BucketName:
-    Value: !Ref ArtifactBucket
+    Value: !Ref ArtifactBucketName
     Description: Save as the GitHub repository variable AWS_DEPLOY_BUCKET.
