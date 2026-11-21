@@ -1,5 +1,10 @@
 // Revora dashboard, part 11 of 23: CATALOG: one place for products, their creatives, sales pages and results
 const BV_COUNTRIES = [["NG", "Nigeria"], ["KE", "Kenya"], ["GH", "Ghana"], ["ZA", "South Africa"], ["UG", "Uganda"], ["TZ", "Tanzania"], ["CM", "Cameroon"], ["RW", "Rwanda"], ["ZM", "Zambia"], ["SN", "Senegal"], ["CI", "Côte d'Ivoire"], ["ET", "Ethiopia"], ["EG", "Egypt"], ["US", "United States"], ["GB", "United Kingdom"], ["CA", "Canada"]];
+// The money a country sells in. Choosing a country sets the currency in the product form (the person can still change it).
+const BV_CUR = { NG: "NGN", KE: "KES", GH: "GHS", ZA: "ZAR", UG: "UGX", TZ: "TZS", CM: "XAF", RW: "RWF", ZM: "ZMW", SN: "XOF", CI: "XOF", ET: "ETB", EG: "EGP", US: "USD", GB: "GBP", CA: "CAD" };
+const BV_CUR_LIST = ["NGN", "KES", "GHS", "ZAR", "UGX", "TZS", "XAF", "XOF", "RWF", "ZMW", "ETB", "EGP", "USD", "GBP", "CAD", "EUR"];
+const bvCurOf = (cc) => BV_CUR[cc] || "USD";
+const bvCurOpts = (sel) => BV_CUR_LIST.map((c) => `<option value="${c}"${c === sel ? " selected" : ""}>${c}</option>`).join("");
 
 // ── TAB: PRODUCTS ─────────────────────────────────────────────────────────────
 
@@ -67,7 +72,8 @@ function bvCatAdd() {
   const o = document.createElement("div"); o.id = "bvModalOverlay"; o.className = "bv-overlay"; o.onclick = e => { if (e.target === o) bvCloseModal(); };
   o.innerHTML = `<div class="bv-modal" style="max-width:420px;"><div class="ph"><div class="ph-title">Add a product</div><button type="button" class="btn btn-g" onclick="bvCloseModal()">✕</button></div>
     <div class="cat-lbl">Product name</div><input class="cat-in" id="ca_name" placeholder="e.g. Lunessa">
-    <div class="cat-lbl">Price (₦)</div><input class="cat-in" id="ca_price" type="number" min="0" placeholder="12500">
+    <div class="cat-lbl">Country you sell in</div><select class="cat-in" id="ca_cc" onchange="document.getElementById('ca_curl').textContent=bvCurOf(this.value)">${BV_COUNTRIES.map(([c, n]) => `<option value="${c}">${escH(n)}</option>`).join("")}</select>
+    <div class="cat-lbl">Price (<span id="ca_curl">NGN</span>)</div><input class="cat-in" id="ca_price" type="number" min="0" placeholder="12500">
     <div class="cat-lbl">What it is, in one line <span style="font-weight:500">(the AI reads this)</span></div><input class="cat-in" id="ca_desc" placeholder="e.g. Herbal drink for bloating and constipation">
     <div id="ca_msg" style="margin-top:10px"></div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end"><button type="button" class="btn btn-g" onclick="bvCloseModal()">Cancel</button><button type="button" class="btn btn-a" id="ca_go">Add product</button></div></div>`;
@@ -78,7 +84,7 @@ function bvCatAdd() {
     if (!name) { msg.innerHTML = '<div class="msg err">Give it a name.</div>'; return; }
     if (!(price > 0)) { msg.innerHTML = '<div class="msg err">Enter the price.</div>'; return; }
     const b = document.getElementById("ca_go"); b.disabled = true; b.textContent = "Adding…";
-    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, currency: "NGN", is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
+    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, currency: bvCurOf(document.getElementById("ca_cc").value), target_countries: [document.getElementById("ca_cc").value], is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
     if (error) { msg.innerHTML = `<div class="msg err">${escH(error.message)}</div>`; b.disabled = false; b.textContent = "Add product"; return; }
     bvCloseModal(); bvCatOpen(data.id);
   };
@@ -108,7 +114,7 @@ async function bvCatProduct(el) {
     const checks = [[!!p.description, "Name, price and description"], [!!p.product_image_url, "A product photo"], [mine.length > 0, `${mine.length} creative${mine.length === 1 ? "" : "s"}`], [!!p.benefits, "Top benefits written"]];
     body.innerHTML = `<div class="cat-two"><div>
       <div class="cat-lbl" style="margin-top:0">Name</div><input class="cat-in" id="cd_name" value="${escH(p.product_name)}">
-      <div class="cat-row2"><div><div class="cat-lbl">Price</div><input class="cat-in" id="cd_price" type="number" min="0" value="${p.default_order_value_naira ?? ""}"></div>
+      <div class="cat-row2"><div><div class="cat-lbl">Price <select id="cd_cur" style="margin-left:6px;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:1px 4px;background:transparent;color:inherit">${bvCurOpts(p.currency || "NGN")}</select></div><input class="cat-in" id="cd_price" type="number" min="0" value="${p.default_order_value_naira ?? ""}"></div>
         <div><div class="cat-lbl">In stock <span style="font-weight:500">(blank = not tracked)</span></div><input class="cat-in" id="cd_stock" type="number" min="0" value="${p.stock_on_hand ?? ""}"></div></div>
       <div class="cat-lbl">What it is (the AI reads this, so be clear)</div><textarea class="cat-in" id="cd_desc">${escH(p.description || "")}</textarea>
       <div class="cat-lbl">Top benefits</div><textarea class="cat-in" id="cd_benefits" style="min-height:60px">${escH(p.benefits || "")}</textarea>
@@ -118,7 +124,7 @@ async function bvCatProduct(el) {
       <input class="cat-in" id="cd_url" style="margin-top:8px" placeholder="Website link (for website orders)" value="${escH(p.landing_page_url || "")}">
       <div style="margin-top:6px;font-size:12px;color:var(--muted)">Website not built on Revora? <a style="color:var(--accent);cursor:pointer;font-weight:600" onclick="jyProductScript(document.getElementById('cd_name').value, document.getElementById('cd_url').value)">Get the tracking script</a> to see visits and recordings for your ads.</div>
       <div class="cat-lbl">Countries this product sells in <span style="font-weight:500">(the AI Team launches ads here. Leave all unticked and it asks you in the meeting)</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-bottom:4px">${BV_COUNTRIES.map(([c, n]) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="cd_cc" value="${c}" ${(p.target_countries || []).includes(c) ? "checked" : ""}> ${escH(n)}</label>`).join("")}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-bottom:4px">${BV_COUNTRIES.map(([c, n]) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="cd_cc" value="${c}" ${(p.target_countries || []).includes(c) ? "checked" : ""} onchange="if(this.checked){document.getElementById('cd_cur').value=bvCurOf(this.value)}"> ${escH(n)}</label>`).join("")}</div>
       <details class="cat-more" ${p.safety_notes || p.nafdac_reg_no ? "open" : ""}><summary>More details <span>for ${escH((window.myCompany?.business_types || [])[0]?.replace(/_/g, " ") || "your product")}</span></summary>
         <div class="cat-lbl">${escH(nz.extra)}</div><textarea class="cat-in" id="cd_safety">${escH(p.safety_notes || "")}</textarea>
         ${nz.nafdac || p.nafdac_reg_no ? `<div class="cat-lbl">NAFDAC number</div><input class="cat-in" id="cd_nafdac" value="${escH(p.nafdac_reg_no || "")}">` : ""}
@@ -147,7 +153,7 @@ async function bvCatProduct(el) {
       const name = g("cd_name").trim(), price = Number(g("cd_price"));
       const msg = document.getElementById("cd_msg");
       if (!name || !(price >= 0)) { msg.innerHTML = '<div class="msg err">Name and price are needed.</div>'; return; }
-      const fields = { product_name: name, default_order_value_naira: price, stock_on_hand: g("cd_stock") === "" ? null : Number(g("cd_stock")), description: g("cd_desc").trim() || null, benefits: g("cd_benefits").trim() || null,
+      const fields = { product_name: name, default_order_value_naira: price, currency: g("cd_cur") || "NGN", stock_on_hand: g("cd_stock") === "" ? null : Number(g("cd_stock")), description: g("cd_desc").trim() || null, benefits: g("cd_benefits").trim() || null,
         destination_type: g("cd_dest"), whatsapp_number: g("cd_wa").replace(/[^\d]/g, "") || null, landing_page_url: g("cd_url").trim() || null, safety_notes: g("cd_safety").trim() || null,
         target_countries: (cc => cc.length ? cc : null)([...document.querySelectorAll(".cd_cc:checked")].map(x => x.value)), is_active: document.getElementById("cd_active").checked, ...(document.getElementById("cd_nafdac") ? { nafdac_reg_no: g("cd_nafdac").trim() || null } : {}) };
       save.disabled = true; save.textContent = "Saving…";
