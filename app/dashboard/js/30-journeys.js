@@ -176,6 +176,7 @@ async function jyOpenVisit(id) {
   let s = (fresh && fresh[0]) || JY.rows.find((r) => r.id === id);
   if (!s) return bvToast("Visit not found.");
   await jyNames([s.meta_ad_id, s.meta_campaign_id]);
+  if (window.matchMedia("(max-width:700px)").matches) return jyOpenVisitPhone(s);
   const ov = bvOpenSheet("jyVisit", `<div class="jy"><div class="jy-sheetbar"><span style="color:var(--jb);font-weight:600;font-size:13px;cursor:pointer" onclick="bvCloseSheet('jyVisit')">‹ Back</span><b>Visit #${s.visit_no}</b>${s.ordered ? '<span class="jy-pill ord">ORDERED</span>' : ""}${jyLive(s) ? '<span class="jy-pill live">LIVE</span>' : ""}<button class="jy-x" data-sheet-close onclick="bvCloseSheet('jyVisit')" aria-label="Close">✕</button></div>
     <div class="jy-grid"><div><div class="jy-stage" id="jyStage"><div class="jy-empty" style="color:#9fb3c4">${s.has_recording ? '<span class="spin"></span> Loading the recording…' : "No recording for this visit."}</div></div></div>
     <div style="display:flex;flex-direction:column;gap:12px"><div class="jy-box"><h4><span>WHERE THEY CAME FROM</span></h4>${jyDetails(s)}</div>
@@ -231,6 +232,160 @@ async function jyOpenVisit(id) {
     }
     document.getElementById("jyTlToggle").onclick = () => { const h = box.style.display === "none"; box.style.display = h ? "" : "none"; document.getElementById("jyTlToggle").textContent = h ? "Hide ▴" : "Show ▾"; };
   } catch (e) { const b = document.getElementById("jyStage"); if (b) b.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">Could not load the recording: ${escH(e.message || e)}</div>`; }
+}
+
+
+// ── Phone: the replay fills the screen. Tap it for the controls; the (i) button opens the details in a sheet. ──
+function jyFsCss() {
+  if (document.getElementById("jyFsCss")) return;
+  const st = document.createElement("style"); st.id = "jyFsCss";
+  st.textContent = `
+  .jy-fs{position:fixed!important;inset:0!important;z-index:100001!important;background:#000!important;display:block!important;padding:0!important;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#fff;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+  .jy-fs *{box-sizing:border-box}
+  .jy-fs .fs-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0b0b0a}
+  .jy-fs .fs-stage .rr-player{box-shadow:none!important;background:transparent!important;float:none!important}
+  .jy-fs .fs-stage .rr-player__frame{background:#fff}
+  .jy-fs .fs-ui{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .22s}
+  .jy-fs.show .fs-ui{opacity:1}.jy-fs.show .fs-ui>*{pointer-events:auto}
+  .jy-fs .glass{background:rgba(48,54,58,.52);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.16);color:#fff}
+  .jy-fs .fs-top{position:absolute;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 0;display:flex;align-items:center;gap:10px}
+  .jy-fs .fs-circle{width:44px;height:44px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;flex:none}
+  .jy-fs .fs-title{flex:1;min-width:0;border-radius:99px;padding:7px 16px;text-align:center;line-height:1.25}
+  .jy-fs .fs-title b{display:block;font-size:15px;font-weight:650}.jy-fs .fs-title small{display:block;font-size:12px;opacity:.78}
+  .jy-fs .fs-live{display:inline-block;width:7px;height:7px;border-radius:99px;background:#4ade80;margin-right:6px;vertical-align:middle}
+  .jy-fs .fs-bot{position:absolute;left:0;right:0;bottom:0;padding:0 14px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;gap:12px}
+  .jy-fs .fs-bar{border-radius:99px;display:flex;align-items:center;gap:12px;padding:8px 16px 8px 10px}
+  .jy-fs .fs-play{width:38px;height:38px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:17px;cursor:pointer;flex:none}
+  .jy-fs .fs-track{flex:1;height:30px;position:relative;cursor:pointer;touch-action:none}
+  .jy-fs .fs-line{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:3px;background:rgba(255,255,255,.28)}
+  .jy-fs .fs-fill{position:absolute;left:0;top:13px;height:4px;border-radius:3px;background:#fff}
+  .jy-fs .fs-knob{position:absolute;top:8px;width:14px;height:14px;margin-left:-7px;border-radius:99px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .jy-fs .fs-mk{position:absolute;top:9px;width:6px;height:12px;margin-left:-3px;border-radius:3px;background:#f0a830}.jy-fs .fs-mk.g{background:#4ade80}
+  .jy-fs .fs-time{font-size:12px;font-variant-numeric:tabular-nums;opacity:.9;flex:none;min-width:70px;text-align:right}
+  .jy-fs .fs-acts{align-self:center;border-radius:99px;display:flex;align-items:center;padding:4px 8px;gap:4px}
+  .jy-fs .fs-act{height:44px;min-width:52px;padding:0 14px;border-radius:99px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:14px;font-weight:600;cursor:pointer;color:#fff}
+  .jy-fs .fs-act.on{background:rgba(255,255,255,.2)}
+  .jy-fs .fs-note{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;padding:18px 22px;max-width:80%;font-size:15px;line-height:1.45;color:#cfd3d6;pointer-events:none}
+  .jy-fs .fs-menu{position:absolute;right:14px;top:calc(env(safe-area-inset-top,0px) + 64px);border-radius:16px;padding:6px;min-width:210px;display:none}
+  .jy-fs .fs-menu.open{display:block}.jy-fs .fs-menu div{padding:12px 14px;font-size:15px;border-radius:10px;display:flex;justify-content:space-between;cursor:pointer}.jy-fs .fs-menu div:active{background:rgba(255,255,255,.14)}
+  .jy-fs .fs-scrim{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .22s}.jy-fs.sheet .fs-scrim{opacity:1;pointer-events:auto}
+  .jy-fs .fs-sheet{position:absolute;left:0;right:0;bottom:0;height:72%;background:#faf9f7;color:#14130f;border-radius:22px 22px 0 0;transform:translateY(102%);transition:transform .28s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .jy-fs.sheet .fs-sheet{transform:none}
+  .jy-fs .sh-grab{width:38px;height:5px;border-radius:3px;background:#d6d1c4;margin:8px auto 4px;flex:none}
+  .jy-fs .sh-head{display:flex;align-items:center;padding:4px 18px 8px;flex:none}.jy-fs .sh-head b{flex:1;font-size:18px;font-weight:700;letter-spacing:-.01em}
+  .jy-fs .sh-x{width:32px;height:32px;border-radius:99px;background:#efece5;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer}
+  .jy-fs .sh-seg{display:flex;gap:2px;background:#efece5;border-radius:10px;padding:3px;margin:0 18px 10px;flex:none}
+  .jy-fs .sh-seg div{flex:1;text-align:center;font-size:14px;font-weight:600;padding:8px 0;border-radius:8px;color:#55524a;cursor:pointer}.jy-fs .sh-seg div.on{background:#fff;color:#14130f;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .jy-fs .sh-body{flex:1;overflow:auto;padding:2px 18px 18px;-webkit-overflow-scrolling:touch}
+  .jy-fs .sh-story{font-size:15px;line-height:1.45;margin:2px 0 14px}
+  .jy-fs .sh-grp{background:#fff;border:1px solid #e7e3da;border-radius:14px;margin-bottom:12px;overflow:hidden}
+  .jy-fs .sh-row{display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid #f0ede6;font-size:14.5px}.jy-fs .sh-row:last-child{border-bottom:0}
+  .jy-fs .sh-row span:first-child{color:#8c887c;width:96px;flex:none}.jy-fs .sh-row span:last-child{flex:1;text-align:right;word-break:break-word;font-weight:500}
+  .jy-fs .sh-ev{display:flex;gap:12px;padding:13px 4px;border-bottom:1px solid #f0ede6;font-size:15px;align-items:flex-start}.jy-fs .sh-ev b{width:40px;flex:none;color:#0c5dc7;font-variant-numeric:tabular-nums}
+  .jy-fs .sh-ev.key span{font-weight:650}.jy-fs .sh-ev.good span{color:#1a8f4c;font-weight:700}`;
+  document.head.appendChild(st);
+}
+function jyStory(s, tl) {
+  const src = s.meta_ad_id ? "the ad “" + (JY.names[s.meta_ad_id] || s.meta_ad_id) + "”" : (s.referrer_host ? s.referrer_host : "a direct link");
+  const dev = ({ mobile: "a phone", tablet: "a tablet", desktop: "a computer" })[s.device] || "a device", where = jyWhere(s) !== "Location unknown" ? " in " + jyWhere(s) : "";
+  const tap = (tl || []).find((e) => e.key && /^Tapped “/.test(e.text)), t = tap ? tap.text.replace(/^Tapped /, "tapped ").replace(/ \(link\)$/, "") : s.clicks ? "tapped " + s.clicks + (s.clicks === 1 ? " time" : " times") : "did not tap anything";
+  return `Came from ${src} on ${dev}${where}. Stayed ${jyFmt(s.duration_s)}, scrolled ${s.max_scroll}%, ${t}, ${s.ordered ? "and placed an order." : "and left without ordering."}`;
+}
+async function jyOpenVisitPhone(s0) {
+  jyFsCss();
+  let s = s0, events = [], tl = [], player = null, playing = true, follow = true, skip = true, speed = 1, total = 1, timers = [], sheetTab = "details", hideT = null, userSeek = false;
+  const ov = document.createElement("div"); ov.id = "jyFs"; ov.className = "bv-overlay jy-fs show";
+  const marker = (e) => `<i class="fs-mk${e.good || /form/i.test(e.text) ? " g" : ""}" style="left:${Math.min(100, e.t / Math.max(1, total) * 100)}%"></i>`;
+  ov.innerHTML = `<div class="fs-stage" id="fsStage"><div class="fs-note" id="fsNote">${s.has_recording ? "Loading the recording…" : "No recording for this visit."}</div></div>
+    <div class="fs-ui"><div class="fs-top"><div class="fs-circle glass" id="fsBack" aria-label="Back">‹</div><div class="fs-title glass"><b>Visit #${s.visit_no}</b><small id="fsSub"></small></div><div class="fs-circle glass" id="fsMore" aria-label="More">•••</div></div>
+      <div class="fs-menu glass" id="fsMenu"><div id="mSpeed"><span>Speed</span><span id="mSpeedV">1x</span></div><div id="mSkip"><span>Skip quiet parts</span><span id="mSkipV">On</span></div><div id="mFollow" style="display:none"><span>Follow live</span><span id="mFollowV">On</span></div></div>
+      <div class="fs-bot"><div class="fs-bar glass"><div class="fs-play" id="fsPlay">❚❚</div><div class="fs-track" id="fsTrack"><div class="fs-line"></div><div class="fs-fill" id="fsFill"></div><div id="fsMarks"></div><div class="fs-knob" id="fsKnob"></div></div><div class="fs-time" id="fsTime">0:00 / 0:00</div></div>
+        <div class="fs-acts glass"><div class="fs-act" id="aTl">☰ <span>Timeline</span></div><div class="fs-act" id="aInfo">ⓘ <span>Details</span></div></div></div></div>
+    <div class="fs-scrim" id="fsScrim"></div>
+    <div class="fs-sheet" id="fsSheet"><div class="sh-grab"></div><div class="sh-head"><b>Visit #${s.visit_no}</b><div class="sh-x" id="shX">✕</div></div><div class="sh-seg"><div id="tabD" class="on">Details</div><div id="tabT">Timeline</div></div><div class="sh-body" id="shBody"></div></div>`;
+  document.body.appendChild(ov);
+  const $ = (id) => ov.querySelector("#" + id);
+  const close = () => { timers.forEach(clearInterval); try { player && player.pause(); } catch (e) {} ov.remove(); };
+  const clock = (ms) => jyClock(ms);
+  // controls show on tap and hide by themselves while playing
+  const showUi = (stay) => { ov.classList.add("show"); clearTimeout(hideT); if (!stay && playing && !ov.classList.contains("sheet")) hideT = setTimeout(() => { ov.classList.remove("show"); $("fsMenu").classList.remove("open"); }, 3200); };
+  $("fsStage").addEventListener("click", () => { if (ov.classList.contains("sheet")) return; if (ov.classList.contains("show")) { ov.classList.remove("show"); $("fsMenu").classList.remove("open"); } else showUi(); });
+  $("fsBack").onclick = (e) => { e.stopPropagation(); close(); };
+  $("fsMore").onclick = (e) => { e.stopPropagation(); $("fsMenu").classList.toggle("open"); };
+  // sheet
+  const details = () => {
+    const ad = s.meta_ad_id ? escH(JY.names[s.meta_ad_id] || "Ad " + s.meta_ad_id) : "Not from a tracked ad", row = (k, v) => v ? `<div class="sh-row"><span>${k}</span><span>${v}</span></div>` : "";
+    return `<div class="sh-story">${escH(jyStory(s, tl))}</div>
+      <div class="sh-grp">${row("Ad", ad)}${row("Meta ad ID", s.meta_ad_id ? escH(s.meta_ad_id) : "")}${row("Campaign", s.meta_campaign_id ? escH(JY.names[s.meta_campaign_id] || s.meta_campaign_id) : "")}${row("Placement", s.placement ? escH(jyNice(s.placement)) : "")}${row("Came from", escH(s.referrer_host || (s.utm_source || "Direct")))}</div>
+      <div class="sh-grp">${row("Device", jyDev(s.device) + (s.viewport ? " · " + escH(s.viewport) : ""))}${row("Location", escH(jyWhere(s)))}${row("Page", escH((s.host || "") + (s.landing_path || "")))}${row("Visited", new Date(s.started_at).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" }))}</div>
+      <div class="sh-grp">${row("Time on page", jyFmt(s.duration_s))}${row("Scrolled", s.max_scroll + "%")}${row("Taps", String(s.clicks))}${row("Order", s.ordered ? "Ordered" : "No order")}</div>`;
+  };
+  const timeline = () => tl.length ? tl.map((e, i) => `<div class="sh-ev${e.key ? " key" : ""}${e.good ? " good" : ""}" data-i="${i}"><b>${clock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("") : '<div style="color:#8c887c;padding:14px 4px">Nothing was recorded.</div>';
+  const drawSheet = () => {
+    $("tabD").classList.toggle("on", sheetTab === "details"); $("tabT").classList.toggle("on", sheetTab === "timeline");
+    $("shBody").innerHTML = sheetTab === "details" ? details() : timeline();
+    $("shBody").querySelectorAll("[data-i]").forEach((el) => (el.onclick = () => { try { player.goto(Math.max(0, tl[Number(el.dataset.i)].t - 500), true); } catch (x) {} closeSheet(); }));
+  };
+  const openSheet = (tab) => { sheetTab = tab; drawSheet(); ov.classList.add("sheet", "show"); clearTimeout(hideT); };
+  const closeSheet = () => { ov.classList.remove("sheet"); showUi(); };
+  $("aInfo").onclick = (e) => { e.stopPropagation(); openSheet("details"); }; $("aTl").onclick = (e) => { e.stopPropagation(); openSheet("timeline"); };
+  $("shX").onclick = closeSheet; $("fsScrim").onclick = closeSheet; $("tabD").onclick = () => { sheetTab = "details"; drawSheet(); }; $("tabT").onclick = () => { sheetTab = "timeline"; drawSheet(); };
+  // menu
+  $("mSpeed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("mSpeedV").textContent = speed + "x"; try { player.setSpeed(speed); } catch (e) {} };
+  $("mSkip").onclick = () => { skip = !skip; $("mSkipV").textContent = skip ? "On" : "Off"; try { player.toggleSkipInactive(); } catch (e) {} };
+  $("mFollow").onclick = () => { follow = !follow; $("mFollowV").textContent = follow ? "On" : "Off"; };
+  const subline = () => { $("fsSub").innerHTML = (jyLive(s) ? '<i class="fs-live"></i>Live · ' : "") + new Date(s.started_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }) + " · " + escH(jyWhere(s)); };
+  subline();
+  if (!s.has_recording) { ov.classList.add("show"); $("fsPlay").style.display = "none"; $("fsTrack").style.display = "none"; $("fsTime").style.display = "none"; return; }
+  try {
+    if (!document.getElementById("jyPlayerCss")) { const l = document.createElement("link"); l.id = "jyPlayerCss"; l.rel = "stylesheet"; l.href = "/rv/rrweb-player.css"; document.head.appendChild(l); }
+    await jyLoadScript("/rv/rrweb-player.min.js");
+    const res = await sbFn("ads-manager", { action: "rec_get", session_id: s.id });
+    if (!document.getElementById("jyFs")) return;
+    if (res.session) s = { ...s, ...res.session };
+    events = res.events || [];
+    if (events.length < 2) { $("fsNote").textContent = res.note || "This recording is empty or too short to play."; ov.classList.add("show"); return; }
+    if (!events.some((e) => e.type === 2)) { tl = jyTimeline(events, s); $("fsNote").textContent = "The picture of the page was not saved for this visit, so there is nothing to draw. The details and the timeline are in the sheet."; ov.classList.add("show"); $("fsPlay").style.display = "none"; $("fsTrack").style.display = "none"; $("fsTime").style.display = "none"; return; }
+    $("fsNote").remove(); tl = jyTimeline(events, s);
+    const vp = String(s.viewport || "375x667").split("x"), vw = Number(vp[0]) || 375, vh = Number(vp[1]) || 667;
+    const P = typeof window.rrwebPlayer === "function" ? window.rrwebPlayer : (window.rrwebPlayer.default || window.rrwebPlayer.Player);
+    const mount = (evs, at) => {
+      const stage = $("fsStage"); stage.innerHTML = '<div id="fsHost"></div>';
+      const W = window.innerWidth, H = window.innerHeight, k = Math.min(W / vw, H / vh), width = Math.round(vw * k), height = Math.round(vh * k);
+      player = new P({ target: $("fsHost"), props: { events: evs, width, height, autoPlay: true, skipInactive: skip, showController: false, speed } });
+      try { player.addEventListener("ui-update-player-state", (ev) => { playing = ev.payload === "playing"; $("fsPlay").textContent = playing ? "❚❚" : "▶"; if (!playing) showUi(true); }); } catch (e) {}
+      total = Math.max(1, evs[evs.length - 1].timestamp - evs[0].timestamp);
+      if (at != null) try { player.goto(at, true); } catch (e) {}
+      $("fsMarks").innerHTML = tl.filter((e) => e.key || e.good).map(marker).join("");
+    };
+    mount(events);
+    const fmtTime = () => { let cur = 0; try { cur = player.getReplayer().getCurrentTime(); } catch (e) {} const c = Math.min(total, cur), pct = c / total * 100; $("fsFill").style.width = pct + "%"; $("fsKnob").style.left = pct + "%"; $("fsTime").textContent = clock(c) + " / " + clock(total); };
+    timers.push(setInterval(fmtTime, 200));
+    $("fsPlay").onclick = (e) => { e.stopPropagation(); try { player.toggle(); } catch (x) {} showUi(); };
+    // scrub with a finger or the mouse
+    const seekTo = (clientX) => { const r = $("fsTrack").getBoundingClientRect(), f = Math.max(0, Math.min(1, (clientX - r.left) / r.width)); try { player.goto(f * total, playing); } catch (e) {} fmtTime(); };
+    $("fsTrack").addEventListener("pointerdown", (e) => { e.stopPropagation(); userSeek = true; clearTimeout(hideT); try { $("fsTrack").setPointerCapture(e.pointerId); } catch (x) {} seekTo(e.clientX); });
+    $("fsTrack").addEventListener("pointermove", (e) => { if (userSeek) seekTo(e.clientX); });
+    $("fsTrack").addEventListener("pointerup", () => { userSeek = false; showUi(); });
+    $("fsTrack").addEventListener("pointercancel", () => { userSeek = false; });
+    showUi();
+    if (jyLive(s)) {
+      $("mFollow").style.display = "";
+      let last = events.length, busy = false;
+      timers.push(setInterval(async () => {
+        if (!document.getElementById("jyFs")) return; if (busy || userSeek) return; busy = true;
+        try {
+          const more = await sbFn("ads-manager", { action: "rec_get", session_id: s.id });
+          if (more && more.events && more.events.length > last) {
+            last = more.events.length; events = more.events; if (more.session) s = { ...s, ...more.session };
+            tl = jyTimeline(events, s); subline();
+            if (follow) mount(events, Math.max(0, events[events.length - 1].timestamp - events[0].timestamp - 3000));
+            if (ov.classList.contains("sheet")) drawSheet();
+          } else if (more && more.session && !jyLive(more.session)) { s = { ...s, ...more.session }; subline(); $("mFollow").style.display = "none"; }
+        } catch (x) {} finally { busy = false; }
+      }, 5000));
+    }
+  } catch (e) { const n = ov.querySelector("#fsNote"); if (n) n.textContent = "Could not load the recording: " + (e.message || e); ov.classList.add("show"); }
 }
 
 // ── Per ad: a small chip on each ad in the campaign screen, opening that ad's own visits. ──
