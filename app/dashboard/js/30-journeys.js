@@ -58,14 +58,51 @@ function jyCss() {
     .jy-sheetbar{padding:14px 12px 4px}
   }`;
   document.head.appendChild(st);
+  jyCss2(); // after the base styles, so its phone rules win
+}
+
+function jyCss2() {
+  if (document.getElementById("jyCss2")) return;
+  const st = document.createElement("style"); st.id = "jyCss2";
+  st.textContent = `
+  .jy-sum{display:none}
+  .jy-r{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel,#fff);border-bottom:1px solid #f0ede6;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .jy-r:active{background:var(--panel2,#faf9f7)}
+  .jy-av{width:42px;height:42px;border-radius:99px;display:flex;align-items:center;justify-content:center;flex:none;background:#efece5;color:#55524a;font-size:14px;font-weight:700}
+  .jy-av.live{background:#e1f4e8;color:#1a8f4c}.jy-av.ord{background:#fff0d6;color:#9a5b00}
+  .jy-rm{flex:1;min-width:0}.jy-rt{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.jy-rs{font-size:13px;color:#8c887c;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .jy-rr{text-align:right;flex:none}.jy-rr small{display:block;font-size:12px;color:#8c887c}.jy-rr b{display:block;font-size:12px}.jy-rr b.live{color:#1a8f4c}.jy-rr b.ord{color:#9a5b00}
+  .jy-grp{font-size:12px;font-weight:600;color:#8c887c;padding:14px 16px 6px;letter-spacing:.02em}
+  .jy-chipbtn.mute{background:transparent;border-color:#d6d1c4;color:#8c887c;font-weight:600}
+  .jy-ad.bv-overlay{position:fixed!important;inset:0!important;z-index:100000!important;background:rgba(10,10,9,.45)!important;display:flex!important;align-items:flex-end;justify-content:center;padding:0!important}
+  .jy-ad .ad-sheet{width:100%;max-width:560px;height:84%;background:#faf9f7;color:#14130f;border-radius:22px 22px 0 0;display:flex;flex-direction:column;box-shadow:0 -10px 40px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .jy-ad .ad-grab{width:38px;height:5px;border-radius:3px;background:#d6d1c4;margin:8px auto 2px;flex:none}
+  .jy-ad .ad-head{display:flex;align-items:center;padding:8px 18px 4px;flex:none}.jy-ad .ad-head b{display:block;font-size:18px;font-weight:700;letter-spacing:-.01em}.jy-ad .ad-head small{display:block;font-size:13px;color:#55524a;margin-top:2px}
+  .jy-ad .ad-x{width:32px;height:32px;border-radius:99px;background:#efece5;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;flex:none;margin-left:10px}
+  .jy-ad .ad-stats{display:flex;gap:8px;padding:10px 18px 4px;flex:none}.jy-ad .ad-st{flex:1;background:#fff;border:1px solid #e7e3da;border-radius:14px;padding:10px 12px}.jy-ad .ad-st small{display:block;font-size:12px;color:#8c887c}.jy-ad .ad-st b{display:block;font-size:22px;font-weight:700;margin-top:2px}.jy-ad .ad-st b em{font-style:normal;font-size:13px;color:#8c887c;font-weight:500}
+  .jy-ad .ad-seg{display:flex;gap:2px;background:#efece5;border-radius:10px;padding:3px;margin:10px 18px 4px;flex:none}.jy-ad .ad-seg div{flex:1;text-align:center;font-size:13px;font-weight:600;padding:7px 0;border-radius:8px;color:#55524a;cursor:pointer}.jy-ad .ad-seg div.on{background:#fff;color:#14130f;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .jy-ad .ad-list{flex:1;overflow:auto;padding:2px 0 14px;-webkit-overflow-scrolling:touch}.jy-ad .ad-list .jy-r{background:transparent;padding-left:18px;padding-right:18px}
+  .jy-ad .ad-empty{padding:34px 24px;text-align:center;color:#8c887c;font-size:14px;line-height:1.5}
+  @media(min-width:701px){.jy-ad.bv-overlay{align-items:center!important}.jy-ad .ad-sheet{border-radius:20px;height:min(640px,86vh)}.jy-ad .ad-grab{display:none}}
+  @media(max-width:700px){
+    .jy-head{flex-wrap:nowrap;align-items:center;margin-bottom:6px;gap:8px}.jy-head>div:first-child{min-width:0}.jy-head h2{font-size:28px;letter-spacing:-.02em}.jy-head .sub{display:none}
+    .jy-head .jy-sel{flex:none!important;padding:8px 10px;font-size:13px;border-radius:99px}
+    .jy-head #jySetup{flex:none!important;width:38px;height:38px;padding:0;border-radius:99px;font-size:0;background:var(--panel,#fff);color:inherit;border:1px solid #e7e3da;position:relative}
+    .jy-head #jySetup::before{content:"+";font-size:22px;line-height:1;position:absolute;left:0;right:0;top:50%;transform:translateY(-52%);text-align:center}
+    .jy-tiles{display:none}.jy-sum{display:block;font-size:13px;color:#55524a;margin:0 0 10px}.jy-sum b{color:#1a8f4c}
+    .jy-chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -16px 6px;padding:2px 16px;scrollbar-width:none}.jy-chips::-webkit-scrollbar{display:none}.jy-chips>*{flex:none}
+    .jy-chip.on{background:#14130f}
+    .jy-m{margin:0 -16px;border-top:1px solid #f0ede6}
+  }`;
+  document.head.appendChild(st);
 }
 function jyRange() { return new Date(Date.now() - JY.days * 86400000).toISOString(); }
 async function renderJourneys(c) {
   jyCss();
   c.innerHTML = `<div class="rv-ui jy"><div class="jy-head"><div><h2>Journeys</h2><div class="sub">Every visit to your pages, traced back to the Meta ad. Recordings are kept 60 days. Typed text is never recorded.</div></div>
-    <select class="jy-sel" id="jyDays"><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="60">Last 60 days</option></select>
+    <select class="jy-sel" id="jyDays"><option value="1">24 hours</option><option value="7">7 days</option><option value="30">30 days</option><option value="60">60 days</option></select>
     <button class="jy-btn" id="jySetup">+ Connect a website</button></div>
-    <div class="jy-tiles" id="jyTiles"></div><div class="jy-chips" id="jyTop"></div><div id="jyList"><div class="jy-empty"><span class="spin"></span> Loading…</div></div></div>`;
+    <div class="jy-tiles" id="jyTiles"></div><div class="jy-sum" id="jySum"></div><div class="jy-chips" id="jyTop"></div><div id="jyList"><div class="jy-empty"><span class="spin"></span> Loading…</div></div></div>`;
   const dd = document.getElementById("jyDays"); dd.value = String(JY.days); dd.onchange = () => { JY.days = Number(dd.value); jyLoad(); };
   document.getElementById("jySetup").onclick = () => jySetup();
   await jyLoad();
@@ -100,6 +137,7 @@ function jyDraw() {
   const all = JY.rows, live = all.filter(jyLive).length, ord = all.filter((r) => r.ordered).length, avg = all.length ? all.reduce((t, r) => t + (r.duration_s || 0), 0) / all.length : 0;
   tiles.innerHTML = `<div class="jy-tile"><small>LIVE NOW</small><b style="color:#12843d">${live}</b></div><div class="jy-tile"><small>VISITS</small><b>${all.length}</b></div>
     <div class="jy-tile"><small>AVG TIME ON PAGE</small><b>${jyFmt(avg)}</b></div><div class="jy-tile"><small>ORDERED</small><b>${ord}<em>${all.length ? (ord / all.length * 100).toFixed(1) + "%" : ""}</em></b></div>`;
+  const sm = document.getElementById("jySum"); if (sm) sm.innerHTML = `${live ? `<b>● ${live} live now</b> · ` : ""}${all.length} visit${all.length === 1 ? "" : "s"}${ord ? ` · ${ord} order${ord === 1 ? "" : "s"} (${(ord / all.length * 100).toFixed(1)}%)` : ""}`;
   const adIds = [...new Set(all.map((r) => r.meta_ad_id).filter(Boolean))];
   const F = [["all", "All"], ["live", "Live now" + (live ? " (" + live + ")" : "")], ["order", "Ordered"], ["mobile", "Mobile"], ["ad", "From ads"]];
   top.innerHTML = F.map(([k, l]) => `<button class="jy-chip${JY.filter === k ? " on" : ""}" data-f="${k}">${l}</button>`).join("") +
@@ -111,10 +149,15 @@ function jyDraw() {
   const desk = rows.slice(0, 200).map((r) => { const x = jyRowHtml(r);
     return `<div class="jy-tr"><div class="jy-nm"><b>${escH(jySource(r))}${x.pills}</b><small>Visit #${r.visit_no} · ${jyAgo(r.started_at)}${x.pl}</small></div>
       <div>${escH(jyWhere(r))}<small>${jyDev(r.device)}</small></div><div>${jyFmt(r.duration_s)}</div><div>${r.max_scroll}%</div><div>${r.clicks}</div><div>${x.btn}</div></div>`; }).join("");
-  const mob = rows.slice(0, 100).map((r) => { const x = jyRowHtml(r);
-    return `<div class="jy-card"><div style="display:flex;gap:10px;align-items:flex-start"><div class="jy-nm" style="flex:1;min-width:0"><b style="font-size:14px;display:block">${escH(jySource(r))}${x.pills}</b>
-      <small style="color:var(--jm);font-size:12px">Visit #${r.visit_no} · ${jyAgo(r.started_at)}${x.pl}</small></div>${x.btn}</div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--jm)"><span>${escH(jyWhere(r))}</span><span>${jyDev(r.device)}</span><span>${jyFmt(r.duration_s)}</span><span>${r.max_scroll}% scroll</span><span>${r.clicks} taps</span></div></div>`; }).join("");
+  const dayKey = (t) => new Date(t).toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" }), todayK = dayKey(Date.now()), yestK = dayKey(Date.now() - 86400000);
+  let lastG = "";
+  const mob = rows.slice(0, 120).map((r) => {
+    const k = dayKey(r.started_at), g = k === todayK ? "Today" : k === yestK ? "Yesterday" : new Date(r.started_at).toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", weekday: "long", day: "numeric", month: "long" });
+    const head = g !== lastG ? `<div class="jy-grp">${escH(g.toUpperCase())}</div>` : ""; lastG = g;
+    const live = jyLive(r), cls = live ? "live" : r.ordered ? "ord" : "", ic = r.ordered ? "₦" : "▶", dev = r.device === "mobile" ? "Phone" : r.device === "tablet" ? "Tablet" : "Computer";
+    const st = live ? '<b class="live">● Live</b>' : r.ordered ? '<b class="ord">Ordered</b>' : `<small>${jyAgo(r.started_at)}</small>`;
+    return head + `<div class="jy-r" data-w="${r.id}"><div class="jy-av ${cls}">${ic}</div><div class="jy-rm"><div class="jy-rt">${escH(jySource(r))}</div><div class="jy-rs">${escH(jyWhere(r))} · ${dev}${r.placement ? " · " + escH(jyNice(r.placement)) : ""} · ${jyFmt(r.duration_s)}</div></div><div class="jy-rr">${st}<small>${r.max_scroll}%${r.clicks ? " · " + r.clicks + (r.clicks === 1 ? " tap" : " taps") : ""}</small></div></div>`;
+  }).join("");
   list.innerHTML = `<div class="jy-tbl"><div class="jy-tr jy-th"><span>SOURCE AD</span><span>WHERE</span><span>TIME</span><span>SCROLL</span><span>TAPS</span><span></span></div>${desk}</div><div class="jy-m">${mob}</div>`;
   list.querySelectorAll("[data-w]").forEach((b) => (b.onclick = () => jyOpenVisit(b.dataset.w)));
 }
@@ -173,65 +216,10 @@ function jyDetails(s) {
 async function jyOpenVisit(id) {
   // Always read the visit fresh: the list on screen can be older than the visit (a recording may have started since).
   const fresh = await sbQuery("site_sessions", `select=*&id=eq.${id}`).catch(() => []);
-  let s = (fresh && fresh[0]) || JY.rows.find((r) => r.id === id);
+  const s = (fresh && fresh[0]) || JY.rows.find((r) => r.id === id);
   if (!s) return bvToast("Visit not found.");
   await jyNames([s.meta_ad_id, s.meta_campaign_id]);
-  if (window.matchMedia("(max-width:700px)").matches) return jyOpenVisitPhone(s);
-  const ov = bvOpenSheet("jyVisit", `<div class="jy"><div class="jy-sheetbar"><span style="color:var(--jb);font-weight:600;font-size:13px;cursor:pointer" onclick="bvCloseSheet('jyVisit')">‹ Back</span><b>Visit #${s.visit_no}</b>${s.ordered ? '<span class="jy-pill ord">ORDERED</span>' : ""}${jyLive(s) ? '<span class="jy-pill live">LIVE</span>' : ""}<button class="jy-x" data-sheet-close onclick="bvCloseSheet('jyVisit')" aria-label="Close">✕</button></div>
-    <div class="jy-grid"><div><div class="jy-stage" id="jyStage"><div class="jy-empty" style="color:#9fb3c4">${s.has_recording ? '<span class="spin"></span> Loading the recording…' : "No recording for this visit."}</div></div></div>
-    <div style="display:flex;flex-direction:column;gap:12px"><div class="jy-box"><h4><span>WHERE THEY CAME FROM</span></h4>${jyDetails(s)}</div>
-    <div class="jy-box"><h4><span>WHAT HAPPENED</span><a style="color:var(--jb);cursor:pointer;font-weight:600" id="jyTlToggle">Hide ▴</a></h4><div class="jy-tl" id="jyTl"><span style="color:var(--jm)">${s.has_recording ? "Reading the recording…" : "No recording, so no step-by-step."}</span></div></div></div></div></div>`, 1040);
-  if (ov) ov.classList.add("jy-ov");
-  if (!s.has_recording) return;
-  try {
-    if (!document.getElementById("jyPlayerCss")) { const l = document.createElement("link"); l.id = "jyPlayerCss"; l.rel = "stylesheet"; l.href = "/rv/rrweb-player.css"; document.head.appendChild(l); }
-    await jyLoadScript("/rv/rrweb-player.min.js");
-    const res = await sbFn("ads-manager", { action: "rec_get", session_id: id });
-    const stage = document.getElementById("jyStage"); if (!stage) return;
-    if (!res.events || res.events.length < 2) { stage.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">${escH(res.note || "This recording is empty or too short to play.")}</div>`; document.getElementById("jyTl").textContent = "Nothing was recorded."; return; }
-    if (!res.events.some((e) => e.type === 2)) { stage.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">The picture of the page was not saved for this visit, so there is nothing to draw. The visit details and what happened are still shown. New visits save it reliably.</div>`; const tl0 = jyTimeline(res.events, res.session || s); document.getElementById("jyTl").innerHTML = tl0.length ? tl0.map((e, i) => `<div class="jy-ev"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("") : "Nothing was recorded."; return; }
-    stage.innerHTML = '<div id="jyPlayer"></div>';
-    const avail = Math.max(260, (stage.clientWidth || 480) - 24), vp = String(res.session?.viewport || "390x800").split("x"), vw = Number(vp[0]) || 390, vh = Number(vp[1]) || 800, ratio = vh / vw;
-    const width = ratio > 1.1 ? Math.min(avail, 340) : avail, height = Math.min(520, Math.round(width * ratio));
-    const P = typeof window.rrwebPlayer === "function" ? window.rrwebPlayer : (window.rrwebPlayer.default || window.rrwebPlayer.Player);
-    const player = new P({ target: document.getElementById("jyPlayer"), props: { events: res.events, width, height, autoPlay: true, skipInactive: true } });
-    const tl = jyTimeline(res.events, res.session || s), box = document.getElementById("jyTl");
-    box.innerHTML = tl.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
-    box.querySelectorAll(".jy-ev").forEach((el) => (el.onclick = () => { try { player.goto(Math.max(0, tl[Number(el.dataset.i)].t - 500), true); } catch (x) {} }));
-    if (jyLive(res.session || s) || jyLive(s)) {
-      // Live visitor: every few seconds fetch what was recorded since, rebuild the player with it and jump to the newest moment.
-      let events = res.events, follow = true, busy = false;
-      const bar = document.createElement("div"); bar.style.cssText = "margin-bottom:8px;font-size:12px;color:#c9d6e2;display:flex;gap:10px;align-items:center;flex-wrap:wrap";
-      bar.innerHTML = '<span style="color:#4ade80;font-weight:700">● LIVE</span><span id="jyLiveTxt">following the visitor</span><span id="jyLiveSp" style="display:none" class="spin"></span><label style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="jyFollow" checked> Follow live</label>';
-      stage.parentNode.insertBefore(bar, stage);
-      document.getElementById("jyFollow").onchange = (e) => { follow = e.target.checked; };
-      const mount = (evs) => {
-        const host = document.getElementById("jyPlayer"); if (!host) return null;
-        host.innerHTML = "";
-        const np = new P({ target: host, props: { events: evs, width, height, autoPlay: true, skipInactive: false } });
-        try { np.goto(Math.max(0, evs[evs.length - 1].timestamp - evs[0].timestamp - 3000), true); } catch (x) {}
-        return np;
-      };
-      const t = setInterval(async () => {
-        if (!document.getElementById("jyPlayer")) return clearInterval(t);
-        if (busy) return; busy = true;
-        const sp = document.getElementById("jyLiveSp"); if (sp) sp.style.display = "";
-        try {
-          const more = await sbFn("ads-manager", { action: "rec_get", session_id: id });
-          if (more && more.events && more.events.length > events.length) {
-            events = more.events;
-            const tl2 = jyTimeline(events, more.session || s); box.innerHTML = tl2.map((e, i) => `<div class="jy-ev${e.good ? " good" : ""}" data-i="${i}"><b>${jyClock(e.t)}</b><span>${escH(e.text)}</span></div>`).join("");
-            if (follow) mount(events);
-            const tx = document.getElementById("jyLiveTxt"); if (tx) tx.textContent = "updated " + new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-          } else if (more && more.session && !jyLive(more.session)) {
-            const tx = document.getElementById("jyLiveTxt"); if (tx) tx.textContent = "visitor has left, this is the full replay";
-            clearInterval(t);
-          }
-        } catch (x) {} finally { busy = false; if (sp) sp.style.display = "none"; }
-      }, 5000);
-    }
-    document.getElementById("jyTlToggle").onclick = () => { const h = box.style.display === "none"; box.style.display = h ? "" : "none"; document.getElementById("jyTlToggle").textContent = h ? "Hide ▴" : "Show ▾"; };
-  } catch (e) { const b = document.getElementById("jyStage"); if (b) b.innerHTML = `<div class="jy-empty" style="color:#9fb3c4">Could not load the recording: ${escH(e.message || e)}</div>`; }
+  return jyOpenViewer(s);
 }
 
 
@@ -282,6 +270,10 @@ function jyFsCss() {
   .jy-fs .sh-row{display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid #f0ede6;font-size:14.5px}.jy-fs .sh-row:last-child{border-bottom:0}
   .jy-fs .sh-row span:first-child{color:#8c887c;width:96px;flex:none}.jy-fs .sh-row span:last-child{flex:1;text-align:right;word-break:break-word;font-weight:500}
   .jy-fs .sh-ev{display:flex;gap:12px;padding:13px 4px;border-bottom:1px solid #f0ede6;font-size:15px;align-items:flex-start}.jy-fs .sh-ev b{width:40px;flex:none;color:#0c5dc7;font-variant-numeric:tabular-nums}
+  .jy-fs.desk .fs-stage{right:380px}.jy-fs.desk .fs-top,.jy-fs.desk .fs-bot{right:380px}.jy-fs.desk .fs-top{justify-content:flex-start}.jy-fs.desk .fs-title{flex:none;padding:7px 18px}.jy-fs.desk #fsMore{margin-left:auto}
+  .jy-fs.desk .fs-bot{align-items:center}.jy-fs.desk .fs-bar{width:540px;max-width:100%}.jy-fs.desk .fs-acts,.jy-fs.desk .fs-scrim,.jy-fs.desk .sh-grab{display:none!important}
+  .jy-fs.desk .fs-sheet{top:0;left:auto;width:380px;height:100%;border-radius:0;transform:none;border-left:1px solid #e7e3da}.jy-fs.desk .fs-menu{right:394px}
+  .jy-fs.desk .fs-circle,.jy-fs.desk .fs-act,.jy-fs.desk .fs-play,.jy-fs.desk .sh-x,.jy-fs.desk .sh-seg div,.jy-fs.desk .sh-ev{cursor:pointer}
   .jy-fs .sh-ev.key span{font-weight:650}.jy-fs .sh-ev.good span{color:#1a8f4c;font-weight:700}`;
   document.head.appendChild(st);
 }
@@ -291,10 +283,11 @@ function jyStory(s, tl) {
   const tap = (tl || []).find((e) => e.key && /^Tapped “/.test(e.text)), t = tap ? tap.text.replace(/^Tapped /, "tapped ").replace(/ \(link\)$/, "") : s.clicks ? "tapped " + s.clicks + (s.clicks === 1 ? " time" : " times") : "did not tap anything";
   return `Came from ${src} on ${dev}${where}. Stayed ${jyFmt(s.duration_s)}, scrolled ${s.max_scroll}%, ${t}, ${s.ordered ? "and placed an order." : "and left without ordering."}`;
 }
-async function jyOpenVisitPhone(s0) {
+async function jyOpenViewer(s0) {
   jyFsCss();
   let s = s0, events = [], tl = [], player = null, playing = true, follow = true, skip = true, speed = 1, total = 1, timers = [], sheetTab = "details", hideT = null, userSeek = false;
-  const ov = document.createElement("div"); ov.id = "jyFs"; ov.className = "bv-overlay jy-fs show";
+  const ov = document.createElement("div"); const desk = !window.matchMedia("(max-width:700px)").matches;
+  ov.id = "jyFs"; ov.className = "bv-overlay jy-fs show" + (desk ? " desk sheet" : "");
   const marker = (e) => `<i class="fs-mk${e.good || /form/i.test(e.text) ? " g" : ""}" style="left:${Math.min(100, e.t / Math.max(1, total) * 100)}%"></i>`;
   ov.innerHTML = `<div class="fs-stage" id="fsStage"><div class="fs-note" id="fsNote">${s.has_recording ? "Loading the recording…" : "No recording for this visit."}</div></div>
     <div class="fs-ui"><div class="fs-top"><div class="fs-circle glass" id="fsBack" aria-label="Back">‹</div><div class="fs-title glass"><b>Visit #${s.visit_no}</b><small id="fsSub"></small></div><div class="fs-circle glass" id="fsMore" aria-label="More">•••</div></div>
@@ -327,15 +320,16 @@ async function jyOpenVisitPhone(s0) {
     $("shBody").querySelectorAll("[data-i]").forEach((el) => (el.onclick = () => { try { player.goto(Math.max(0, tl[Number(el.dataset.i)].t - 500), true); } catch (x) {} closeSheet(); }));
   };
   const openSheet = (tab) => { sheetTab = tab; drawSheet(); ov.classList.add("sheet", "show"); clearTimeout(hideT); };
-  const closeSheet = () => { ov.classList.remove("sheet"); showUi(); };
+  const closeSheet = () => { if (desk) { showUi(true); return; } ov.classList.remove("sheet"); showUi(); };
   $("aInfo").onclick = (e) => { e.stopPropagation(); openSheet("details"); }; $("aTl").onclick = (e) => { e.stopPropagation(); openSheet("timeline"); };
-  $("shX").onclick = closeSheet; $("fsScrim").onclick = closeSheet; $("tabD").onclick = () => { sheetTab = "details"; drawSheet(); }; $("tabT").onclick = () => { sheetTab = "timeline"; drawSheet(); };
+  $("shX").onclick = desk ? close : closeSheet; $("fsScrim").onclick = closeSheet; $("tabD").onclick = () => { sheetTab = "details"; drawSheet(); }; $("tabT").onclick = () => { sheetTab = "timeline"; drawSheet(); };
   // menu
   $("mSpeed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("mSpeedV").textContent = speed + "x"; try { player.setSpeed(speed); } catch (e) {} };
   $("mSkip").onclick = () => { skip = !skip; $("mSkipV").textContent = skip ? "On" : "Off"; try { player.toggleSkipInactive(); } catch (e) {} };
   $("mFollow").onclick = () => { follow = !follow; $("mFollowV").textContent = follow ? "On" : "Off"; };
   const subline = () => { $("fsSub").innerHTML = (jyLive(s) ? '<i class="fs-live"></i>Live · ' : "") + new Date(s.started_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }) + " · " + escH(jyWhere(s)); };
   subline();
+  if (desk) drawSheet();
   if (!s.has_recording) { ov.classList.add("show"); $("fsPlay").style.display = "none"; $("fsTrack").style.display = "none"; $("fsTime").style.display = "none"; return; }
   try {
     if (!document.getElementById("jyPlayerCss")) { const l = document.createElement("link"); l.id = "jyPlayerCss"; l.rel = "stylesheet"; l.href = "/rv/rrweb-player.css"; document.head.appendChild(l); }
@@ -351,7 +345,7 @@ async function jyOpenVisitPhone(s0) {
     const P = typeof window.rrwebPlayer === "function" ? window.rrwebPlayer : (window.rrwebPlayer.default || window.rrwebPlayer.Player);
     const mount = (evs, at) => {
       const stage = $("fsStage"); stage.innerHTML = '<div id="fsHost"></div>';
-      const W = window.innerWidth, H = window.innerHeight, k = Math.min(W / vw, H / vh), width = Math.round(vw * k), height = Math.round(vh * k);
+      const W = window.innerWidth - (desk ? 380 : 0), H = window.innerHeight, k = Math.min(W / vw, H / vh), width = Math.round(vw * k), height = Math.round(vh * k);
       player = new P({ target: $("fsHost"), props: { events: evs, width, height, autoPlay: true, skipInactive: skip, showController: false, speed } });
       try { player.addEventListener("ui-update-player-state", (ev) => { playing = ev.payload === "playing"; $("fsPlay").textContent = playing ? "❚❚" : "▶"; if (!playing) showUi(true); }); } catch (e) {}
       total = Math.max(1, evs[evs.length - 1].timestamp - evs[0].timestamp);
@@ -397,29 +391,35 @@ async function jyCountsLoad() {
     JYC.map = m; JYC.loaded = true;
   } finally { JYC.loading = false; }
 }
-function jyChip(adId) {
-  const c = JYC.map[adId]; if (!c) return "";
+function jyChip(adId, always) {
+  jyCss();
+  const c = JYC.map[adId];
+  if (!c) return always && JYC.loaded ? `<button type="button" class="jy-chipbtn mute" onclick="event.stopPropagation();jyAdPanel('${adId}')">▶ No visits yet</button>` : "";
   return `<button type="button" class="jy-chipbtn" onclick="event.stopPropagation();jyAdPanel('${adId}')">▶ ${c.n} visit${c.n === 1 ? "" : "s"}${c.o ? " · " + c.o + " ordered" : ""}</button>`;
 }
 async function jyAdPanel(adId, nameHint) {
   jyCss();
-  bvOpenSheet("jyAd", `<div class="jy"><div class="jy-sheetbar"><div style="flex:1;min-width:0"><b id="jyAdT">${escH(nameHint || "Ad visits")}</b><div class="sub" id="jyAdS">Loading…</div></div><button class="jy-x" data-sheet-close onclick="bvCloseSheet('jyAd')" aria-label="Close">✕</button></div>
-    <div style="padding:6px 18px 18px"><div class="jy-chips" id="jyAdF"></div><div id="jyAdL"><div class="jy-empty"><span class="spin"></span></div></div></div></div>`, 720);
-  const rows = await sbQuery("site_sessions", `select=*&or=(meta_ad_id.eq.${encodeURIComponent(adId)},meta_adset_id.eq.${encodeURIComponent(adId)},meta_campaign_id.eq.${encodeURIComponent(adId)})&order=started_at.desc&limit=200`).catch(() => []);
+  document.getElementById("jyAdOv")?.remove();
+  const ov = document.createElement("div"); ov.id = "jyAdOv"; ov.className = "bv-overlay jy-ad";
+  ov.innerHTML = `<div class="ad-sheet"><div class="ad-grab"></div><div class="ad-head"><div style="flex:1;min-width:0"><b id="adT">${escH(nameHint || "Visitors")}</b><small>Visitors from this ad</small></div><div class="ad-x" id="adX">✕</div></div>
+    <div class="ad-stats" id="adStats"></div><div class="ad-seg" id="adSeg"></div><div class="ad-list" id="adList"><div class="ad-empty"><span class="spin"></span></div></div></div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove(); ov.querySelector("#adX").onclick = close; ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+  const rows = (await sbQuery("site_sessions", `select=*&or=(meta_ad_id.eq.${encodeURIComponent(adId)},meta_adset_id.eq.${encodeURIComponent(adId)},meta_campaign_id.eq.${encodeURIComponent(adId)})&order=started_at.desc&limit=200`).catch(() => [])) || [];
   await jyNames([adId]); rows.forEach((r) => { if (!JY.rows.some((x) => x.id === r.id)) JY.rows.push(r); });
-  const t = document.getElementById("jyAdT"); if (!t) return; t.textContent = JY.names[adId] || nameHint || "Ad " + adId;
-  const ord = rows.filter((r) => r.ordered).length, avg = rows.length ? rows.reduce((a, r) => a + (r.duration_s || 0), 0) / rows.length : 0;
-  document.getElementById("jyAdS").textContent = rows.length ? `${rows.length} visits from this ad · avg ${jyFmt(avg)} · ${(ord / rows.length * 100).toFixed(0)}% ordered` : "No tracked visits yet. Only ads launched by Revora carry tracking.";
+  if (!document.getElementById("jyAdOv")) return;
+  ov.querySelector("#adT").textContent = JY.names[adId] || nameHint || "Ad " + adId;
+  const ord = rows.filter((r) => r.ordered).length, avg = rows.length ? rows.reduce((a, r) => a + (r.duration_s || 0), 0) / rows.length : 0, left = rows.filter((r) => (r.duration_s || 0) < 10);
+  ov.querySelector("#adStats").innerHTML = `<div class="ad-st"><small>Visits</small><b>${rows.length}</b></div><div class="ad-st"><small>Avg time</small><b>${jyFmt(avg)}</b></div><div class="ad-st"><small>Ordered</small><b>${ord}${rows.length ? ` <em>${(ord / rows.length * 100).toFixed(0)}%</em>` : ""}</b></div>`;
+  if (!rows.length) { ov.querySelector("#adSeg").style.display = "none"; ov.querySelector("#adList").innerHTML = '<div class="ad-empty"><b style="display:block;color:#14130f;margin-bottom:6px">No tracked visits yet</b>Only ads launched by Revora carry the tracking. Visits from this ad appear here a minute after someone clicks it.</div>'; return; }
   let f = "all";
   const draw = () => {
-    const fl = document.getElementById("jyAdF"), li = document.getElementById("jyAdL"); if (!fl) return;
-    const left = rows.filter((r) => (r.duration_s || 0) < 10);
-    fl.innerHTML = [["all", "All " + rows.length], ["ord", "Ordered " + ord], ["left", "Left fast " + left.length]].map(([k, l]) => `<button class="jy-chip${f === k ? " on" : ""}" data-k="${k}">${l}</button>`).join("");
-    fl.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => { f = b.dataset.k; draw(); }));
+    ov.querySelector("#adSeg").innerHTML = [["all", "All " + rows.length], ["ord", "Ordered " + ord], ["left", "Left fast " + left.length]].map(([k, l]) => `<div class="${f === k ? "on" : ""}" data-k="${k}">${l}</div>`).join("");
+    ov.querySelectorAll("#adSeg [data-k]").forEach((b) => (b.onclick = () => { f = b.dataset.k; draw(); }));
     const show = rows.filter((r) => f === "all" || (f === "ord" && r.ordered) || (f === "left" && (r.duration_s || 0) < 10));
-    li.innerHTML = show.length ? show.map((r) => `<div style="display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid #eef1f4;font-size:13px"><div style="flex:1;min-width:0"><b>Visit #${r.visit_no}${jyLive(r) ? '<span class="jy-pill live">LIVE</span>' : ""}${r.ordered ? '<span class="jy-pill ord">ORDERED</span>' : ""}</b>
-      <div style="font-size:12px;color:var(--jm);margin-top:2px">${escH(jyWhere(r))} · ${jyDev(r.device)}${r.placement ? " · " + escH(jyNice(r.placement)) : ""} · ${jyFmt(r.duration_s)} · ${r.max_scroll}% scroll</div></div>
-      <button class="jy-btn soft" onclick="jyOpenVisit('${r.id}')">${r.has_recording ? "▶ Watch" : "Details"}</button></div>`).join("") : '<div class="jy-empty">Nothing in this group.</div>';
+    ov.querySelector("#adList").innerHTML = show.length ? show.map((r) => { const live = jyLive(r), cls = live ? "live" : r.ordered ? "ord" : "", st = live ? '<b class="live">● Live</b>' : r.ordered ? '<b class="ord">Ordered</b>' : `<small>${jyAgo(r.started_at)}</small>`;
+      return `<div class="jy-r" data-w="${r.id}"><div class="jy-av ${cls}">${r.ordered ? "₦" : "▶"}</div><div class="jy-rm"><div class="jy-rt">Visit #${r.visit_no}</div><div class="jy-rs">${escH(jyWhere(r))} · ${r.device === "mobile" ? "Phone" : "Computer"}${r.placement ? " · " + escH(jyNice(r.placement)) : ""} · ${jyFmt(r.duration_s)}</div></div><div class="jy-rr">${st}<small>${r.max_scroll}%</small></div></div>`; }).join("") : '<div class="ad-empty">Nothing in this group.</div>';
+    ov.querySelectorAll("#adList [data-w]").forEach((b) => (b.onclick = () => jyOpenVisit(b.dataset.w)));
   };
   draw();
 }
