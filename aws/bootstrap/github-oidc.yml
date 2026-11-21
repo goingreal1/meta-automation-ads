@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ONE-TIME setup, run by a human admin. Lets GitHub Actions in goingreal1/meta-automation-ads deploy aws/template.yaml
+  without any stored AWS keys (GitHub OIDC). Creates: the OIDC identity provider (optional), an S3 bucket for build files,
+  and a deploy role that can only touch stack "revora-heavy" and resources named revora-*.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: goingreal1/meta-automation-ads
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Set to "false" if this AWS account already has the token.actions.githubusercontent.com identity provider (IAM -> Identity providers).
+  StackName:
+    Type: String
+    Default: revora-heavy
+
+Conditions:
+  MakeProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "revora-deploy-artifacts-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-builds
+            Status: Enabled
+            ExpirationInDays: 30
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: revora-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - MakeProvider
+                - !Ref GitHubOidcProvider
+                - !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/main"
+      Policies:
+        - PolicyName: deploy-revora-heavy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Stack
+                Effect: Allow
+                Action: [cloudformation:CreateChangeSet, cloudformation:DescribeChangeSet, cloudformation:ExecuteChangeSet, cloudformation:DeleteChangeSet, cloudformation:DescribeStacks, cloudformation:DescribeStackEvents, cloudformation:GetTemplateSummary, cloudformation:GetTemplate]
+                Resource: !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${StackName}/*"
+              - Sid: BuildFiles
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:ListBucket, s3:GetBucketLocation]
+                Resource: [!GetAtt ArtifactBucket.Arn, !Sub "${ArtifactBucket.Arn}/*"]
+              - Sid: Functions
+                Effect: Allow
+                Action: ["lambda:*"]
+                Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:revora-*"
+              - Sid: FunctionRoles
+                Effect: Allow
+                Action: [iam:CreateRole, iam:DeleteRole, iam:GetRole, iam:UpdateRole, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:GetRolePolicy, iam:TagRole, iam:UntagRole, iam:PassRole]
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/revora-*-role-*"
+              - Sid: LogGroups
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:DeleteLogGroup, logs:PutRetentionPolicy, logs:TagResource, logs:UntagResource, logs:ListTagsForResource]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/revora-*"
+              - Sid: LogGroupLookup
+                Effect: Allow
+                Action: [logs:DescribeLogGroups]
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt DeployRole.Arn
+    Description: Save as the GitHub repository secret AWS_ROLE_ARN.
+  BucketName:
+    Value: !Ref ArtifactBucket
+    Description: Save as the GitHub repository variable AWS_DEPLOY_BUCKET.

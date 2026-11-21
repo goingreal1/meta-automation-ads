@@ -77,7 +77,9 @@ async function bvCreUpload(fd) {
     // Phones record HEVC .mov, which Chrome can't play. Convert it to a plain .mp4 in the background so everyone can watch it (ads accept both).
     if (reg?.asset?.id && reg.asset.asset_type === "video") {
       bvToast("Uploaded. Converting the video so it plays in every browser. This takes a minute or two.");
-      fetch("/api/transcode", { method: "POST", headers: { Authorization: hdr.Authorization, "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: reg.asset.id }) })
+      // TRANSCODE_URL: the AWS Lambda revora-transcode Function URL. Empty = the Vercel function (temporary fallback / rollback).
+      const TRANSCODE_URL = "";
+      fetch(TRANSCODE_URL || "/api/transcode", { method: "POST", headers: { Authorization: hdr.Authorization, "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: reg.asset.id }) })
         .then(r => r.json()).then(tc => {
           if (tc?.converted) { bvToast("Your video is ready and plays in every browser."); if (activeTab === "catalog") document.querySelector('[data-tab="catalog"]')?.click(); }
           else if (tc?.error) bvToast(tc.error, "err");

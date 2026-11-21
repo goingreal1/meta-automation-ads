@@ -440,7 +440,7 @@ async function publicUpload(b) {
           const sig = await crypto.subtle.sign("HMAC", km, new TextEncoder().encode(`transcode:${arow.id}`));
           const ticket = [...new Uint8Array(sig)].map((x)=>x.toString(16).padStart(2, "0")).join("");
           // @ts-ignore EdgeRuntime is provided by Supabase
-          EdgeRuntime.waitUntil(fetch(`${SITE}/api/transcode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: arow.id, ticket }) }).catch(()=>{}));
+          EdgeRuntime.waitUntil(fetch(Deno.env.get("TRANSCODE_URL") || `${SITE}/api/transcode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: arow.id, ticket }) }).catch(()=>{}));
         }
       } catch (_e) { /* the original file is kept */ }
     }
