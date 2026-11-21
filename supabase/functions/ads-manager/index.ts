@@ -2216,11 +2216,12 @@ async function learnBreakdowns(admin, a, actId, token, preset, winLabel, deadlin
   return all;
 }
 // Meta's Activity History: budget changes, pauses, duplications, edits. Read from the start the first time, then only what is new.
+const hash32 = (t)=>{ let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 async function learnActivity(admin, a, actId, token, first, cur, deadline) {
   const since = first ? 0 : Math.max(0, Number(cur.activity_since) || 0);
   const rows = await graphGetAll(`act_${actId}/activities`, { fields: "event_time,event_type,translated_event_type,object_id,object_name,object_type,actor_name,extra_data", since: String(since), limit: "500" }, token, 60).catch(()=>[]);
   const j = (x)=>{ try { return typeof x === "string" ? JSON.parse(x) : x ?? null; } catch (_) { return { text: String(x).slice(0, 300) }; } };
-  const ev = rows.map((r)=>{ const ex = j(r.extra_data); return { ad_account_id: a.id, company_id: a.company_id, event_key: `${r.event_time}|${r.event_type}|${r.object_id}|${JSON.stringify(ex ?? "").length}`, event_time: r.event_time, event_type: r.event_type, translated: r.translated_event_type ?? null, object_id: r.object_id ?? null, object_type: r.object_type ?? null, object_name: r.object_name ?? null, actor: r.actor_name ?? null, old_value: ex?.old_value ?? ex?.old ?? null, new_value: ex?.new_value ?? ex?.new ?? null, raw: ex }; });
+  const ev = rows.map((r)=>{ const ex = j(r.extra_data); return { ad_account_id: a.id, company_id: a.company_id, event_key: `${r.event_time}|${r.event_type}|${r.object_id}|${hash32(JSON.stringify(ex ?? ""))}`, event_time: r.event_time, event_type: r.event_type, translated: r.translated_event_type ?? null, object_id: r.object_id ?? null, object_type: r.object_type ?? null, object_name: r.object_name ?? null, actor: r.actor_name ?? null, old_value: ex?.old_value ?? ex?.old ?? null, new_value: ex?.new_value ?? ex?.new ?? null, raw: ex }; });
   for(let i = 0; i < ev.length; i += 300) await admin.from("learn_events").upsert(ev.slice(i, i + 300), { onConflict: "ad_account_id,event_key" });
   cur.activity_since = Math.floor(Date.now() / 1000) - 86400;
   return ev.length;
