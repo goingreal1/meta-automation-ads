@@ -468,7 +468,7 @@
         global.__rvViewed = true;
         track("view", d.site.id, d.page && d.page.slug);
         global.RV_REC = { site: d.site.id, page: d.page && d.page.slug };
-        var rs = document.createElement("script"); rs.src = "/rv/rec.js?v=3"; rs.async = true; document.head.appendChild(rs);
+        var rs = document.createElement("script"); rs.src = "/rv/rec.js?v=4"; rs.async = true; document.head.appendChild(rs);
       }
     } catch (e) {}
     root.querySelectorAll("[data-rv-form]").forEach(function (el) { mountForm(el, d, opts); });

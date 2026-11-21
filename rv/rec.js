@@ -65,11 +65,13 @@
   // The replay itself.
   var GEO = null;
   try { fetch("https://revoracrm.app/api/geo").then(function (r) { return r.json(); }).then(function (j) { GEO = j; }).catch(function () {}); } catch (e) {}
-  var buf = [], seq = 0, stopped = false, t0 = Date.now(), bytes = 0, stopFn = null;
+  var buf = [], seq = parseInt(sget("rv_rec_seq") || "0", 10) || 0, stopped = false, t0 = parseInt(sget("rv_rec_t0") || "0", 10) || Date.now(), bytes = 0, stopFn = null;
+  if (!sget("rv_rec_t0")) sset("rv_rec_t0", String(t0));
+  function nextSeq() { var n = seq++; sset("rv_rec_seq", String(seq)); return n; }
   function flush(final) {
     if (!buf.length) return;
     var events = buf; buf = [];
-    var body = { action: "rec_ingest", site: revoraSite ? revoraSite.site : "", project: PROJECT, key: KEY, seq: seq++, host: g.location.hostname, events: events, final: !!final, geo: GEO };
+    var body = { action: "rec_ingest", site: revoraSite ? revoraSite.site : "", project: PROJECT, key: KEY, seq: nextSeq(), host: g.location.hostname, events: events, final: !!final, geo: GEO };
     post(body, !!final).then(function (r) { if (r.status >= 400 && r.status < 500) stopRec(); }).catch(function () {});
   }
   function stopRec() { stopped = true; try { stopFn && stopFn(); } catch (e) {} }
