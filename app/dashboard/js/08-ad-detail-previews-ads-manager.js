@@ -437,7 +437,7 @@ const amAdById = id => am.data?.ads?.find(a => a.id === id);
 const AM_SINGULAR = { campaigns: "campaign", adsets: "adset", ads: "ad" };
 let am = {
   data: null, key: "", loading: false, error: null, at: 0, req: 0,
-  level: "campaigns", range: "last7", filter: "live",
+  level: "campaigns", range: "today", filter: "live",
   sel: { campaigns: new Set(), adsets: new Set() }, busy: new Set(),
   bal: null, balKey: "",
 };
@@ -486,19 +486,38 @@ function amBalanceHtml() {
   </div>`;
 }
 
+// Saved copy on this device: opens the screen instantly, then the live numbers replace it.
+function amLocalGet(key) { try { const t = localStorage.getItem("rv_am:" + key); return t ? JSON.parse(t) : null; } catch (e) { return null; } }
+function amLocalSet(key, data) {
+  const put = () => localStorage.setItem("rv_am:" + key, JSON.stringify(data));
+  try { put(); } catch (e) { try { Object.keys(localStorage).filter((k) => k.startsWith("rv_am:")).forEach((k) => localStorage.removeItem(k)); put(); } catch (x) {} }
+}
+// Shows what we already have (this device, then the database copy) and refreshes live from Meta in the background.
 async function amFetch() {
   amBalanceFetch();
   const my = ++am.req;
-  am.loading = true; am.error = null;
+  am.loading = true; am.error = null; am.warn = null;
+  const key = amKey(), range = am.range, status = am.filter;
+  if (!am.data || am.key !== key) {
+    const saved = amLocalGet(key);
+    am.data = saved || null; am.key = saved ? key : am.key; am.fromSaved = !!saved; if (saved) am.at = new Date(saved.fetched_at || Date.now()).getTime();
+  }
   amDraw();
-  const key = amKey();
-  const r = await sbFn("ads-manager", { action: "list", range: am.range, status: am.filter });
+  if (!am.data) {
+    sbFn("ads-manager", { action: "list_cached", range, status }).then((r) => {
+      if (my !== am.req || am.data || !r || !r.ok || r.none) return;
+      am.data = r; am.key = key; am.fromSaved = true; am.at = new Date(r.snapshot_at || Date.now()).getTime(); amDraw();
+    }).catch(() => {});
+  }
+  const r = await sbFn("ads-manager", { action: "list", range, status });
   if (my !== am.req) return; // a newer request (range/account switch) owns the screen
   am.loading = false;
   if (!r || r.ok === false || r.error) {
-    am.error = r?.error || "Could not load from Meta.";
+    if (am.data) am.warn = r?.error || "Could not reach Meta."; else am.error = r?.error || "Could not load from Meta.";
   } else {
-    am.data = r; am.key = key; am.at = Date.now();
+    am.data = r; am.key = key; am.fromSaved = !!r.stale; am.at = r.stale ? new Date(r.snapshot_at || Date.now()).getTime() : Date.now();
+    am.warn = r.stale ? r.stale_reason : null;
+    if (!r.stale) amLocalSet(key, r);
     amPruneSelection();
   }
   amDraw();

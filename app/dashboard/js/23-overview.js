@@ -59,7 +59,7 @@ async function renderOverview(el) {
   const role = window.myProfile?.role, isAdmin = bvIsAdminRole();
   const canAds = ["owner", "admin", "buyer"].includes(role);
   const n = OV.range, until = watDate(0), since = watDate(-(n - 1)), pUntil = watDate(-n), pSince = watDate(-(2 * n - 1));
-  el.innerHTML = `<div class="rv-ui"><div class="rv-note">Loading your overview…</div></div>`;
+  el.innerHTML = `<div class="rv-ui">${typeof bvSkel === "function" ? bvSkel() : "<div class=\"rv-note\">Loading your overview…</div>"}</div>`;
   const [orders, buyers, wallet, setup, live, bals, aiReady, aiTeam, rcCur, rcPrev] = await Promise.all([
     sbQuery("orders", `select=order_status,order_value_naira,media_buyer_id,ordered_at,delivery_stage&ordered_at=gte.${pSince}T00:00:00%2B01:00&order=ordered_at.desc&limit=5000`).catch(() => []),
     isAdmin ? sbQuery("media_buyers", "select=id,code,name&order=code.asc").catch(() => []) : Promise.resolve([]),

@@ -412,6 +412,30 @@ async function loadAccountObjects(actId, token, range, needLifetimeAds, factor =
     aLife: aLife ?? aIns
   };
 }
+// The Campaigns screen: live from Meta, with the last good copy kept in the database for instant opening and for when Meta is rate-limiting us.
+const snapStatus = (b)=>["live", "paused"].includes(String(b.status)) ? String(b.status) : "all";
+const snapRange = (b)=>["today", "yesterday", "last3", "last7", "last30", "lifetime"].includes(b.range) ? b.range : "last7";
+async function handleListSafe(userClient, profile, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const range = snapRange(body), st = snapStatus(body);
+  try {
+    const out = await handleList(userClient, profile, body);
+    await admin.from("ads_snapshots").upsert({ ad_account_id: account.id, range, status: st, payload: out, fetched_at: new Date().toISOString() }, { onConflict: "ad_account_id,range,status" });
+    return out;
+  } catch (e) {
+    const { data: snap } = await admin.from("ads_snapshots").select("payload, fetched_at").eq("ad_account_id", account.id).eq("range", range).eq("status", st).maybeSingle();
+    if (snap?.payload) return { ...snap.payload, ok: true, stale: true, stale_reason: String(e?.message ?? e).slice(0, 220), snapshot_at: snap.fetched_at };
+    throw e;
+  }
+}
+async function handleListCached(userClient, body) {
+  const { account } = await getAccount(userClient, body.ad_account_id);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: snap } = await admin.from("ads_snapshots").select("payload, fetched_at").eq("ad_account_id", account.id).eq("range", snapRange(body)).eq("status", snapStatus(body)).maybeSingle();
+  if (!snap?.payload) return { ok: true, none: true };
+  return { ...snap.payload, ok: true, from_snapshot: true, snapshot_at: snap.fetched_at };
+}
 async function handleList(userClient, profile, body) {
   const { account, actId, factor } = await getAccount(userClient, body.ad_account_id);
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -3216,7 +3240,8 @@ Deno.serve(async (req)=>{
       return json(await handleTeamSnapshot(body));
     }
     const { userClient, profile } = await getUserContext(req);
-    if (body.action === "list") return json(await handleList(userClient, profile, body));
+    if (body.action === "list") return json(await handleListSafe(userClient, profile, body));
+    if (body.action === "list_cached") return json(await handleListCached(userClient, body));
     if (body.action === "daily") return json(await handleDaily(userClient, body));
     if (body.action === "reach") return json(await handleReach(userClient, body));
     if (body.action === "balances") return json(await handleBalances(userClient, body));
