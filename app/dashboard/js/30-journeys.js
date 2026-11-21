@@ -73,7 +73,7 @@ async function jyWatch(id) {
     body.innerHTML = '<div class="jy-player" id="jyPlayer"></div>';
     const w = Math.min(860, body.clientWidth || 600), vp = String(res.session?.viewport || "390x800").split("x"), ratio = (Number(vp[1]) || 800) / (Number(vp[0]) || 390);
     const width = Math.min(w, ratio > 1.2 ? 360 : w);
-    new window.rrwebPlayer({ target: document.getElementById("jyPlayer"), props: { events: res.events, width, height: Math.min(560, Math.round(width * ratio)), autoPlay: true, skipInactive: true } });
+    new (typeof window.rrwebPlayer === "function" ? window.rrwebPlayer : (window.rrwebPlayer.default || window.rrwebPlayer.Player))({ target: document.getElementById("jyPlayer"), props: { events: res.events, width, height: Math.min(560, Math.round(width * ratio)), autoPlay: true, skipInactive: true } });
   } catch (e) { const b = document.getElementById("jyBody"); if (b) b.innerHTML = `<div class="jy-empty">Could not load the recording: ${escH(e.message || e)}</div>`; }
 }
 // Add a website that is not built in Revora: create a project and show the one-line script.
