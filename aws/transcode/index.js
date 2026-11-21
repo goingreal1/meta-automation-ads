@@ -24,7 +24,7 @@ function ffmpegPath() {
   return q;
 }
 const FFMPEG = ffmpegPath();
-const BUDGET_MS = 53000;
+const BUDGET_MS = 280000; // Lambda allows far longer than Vercel did (function timeout is 300 s)
 
 function run(args, ms) {
   return new Promise((resolve) => {

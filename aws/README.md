@@ -8,7 +8,7 @@ They now run on AWS Lambda behind Function URLs. Everything else stays on Vercel
 | Called by | Supabase `ads-manager` (`SCREENSHOT_URL` secret) | dashboard (`TRANSCODE_URL` const in `app/dashboard/js/14-delivery-care-desk.js`) and Supabase `mcp-social` (`TRANSCODE_URL` secret) |
 | Auth | header `x-shot-secret` | Supabase login (`Authorization`) or server `ticket` |
 | CORS | none (server to server) | dashboard origins only, set in `template.yaml` |
-| Size | 2048 MB, 60 s | 1024 MB, 60 s, 2 GB /tmp |
+| Size | 2048 MB, 60 s | 3008 MB, 300 s, 2 GB /tmp |
 
 ## One-time setup (a person with AWS admin does this once)
 1. AWS console -> top-right account menu -> **Account** -> **AWS Regions** -> enable **Africa (Cape Town) af-south-1**. Wait until "Enabled" (a few minutes).
