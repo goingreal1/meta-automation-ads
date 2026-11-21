@@ -1,0 +1,22 @@
+name: AWS OIDC debug (temporary)
+# Prints ONLY the harmless claims of this run's GitHub login token (sub, aud, ref) and whether the AWS_ROLE_ARN secret matches the expected role. No secrets are printed. Delete after use.
+on: workflow_dispatch
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show token claims and compare the role secret
+        env:
+          ROLE: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          set -e
+          TOKEN=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' )
+          PAD=$(( (4 - ${#PAYLOAD} % 4) % 4 )); for i in $(seq 1 $PAD); do PAYLOAD="${PAYLOAD}="; done
+          echo "$PAYLOAD" | base64 -d | jq '{sub, aud, ref, repository, repository_owner, job_workflow_ref, environment}'
+          EXPECTED="arn:aws:iam::751702759480:role/revora-github-deploy"
+          echo "secret length: ${#ROLE} (expected ${#EXPECTED})"
+          if [ "$ROLE" = "$EXPECTED" ]; then echo "AWS_ROLE_ARN matches exactly"; else echo "AWS_ROLE_ARN does NOT match"; fi
