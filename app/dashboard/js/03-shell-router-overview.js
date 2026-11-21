@@ -181,7 +181,7 @@ sidebarBackdrop.addEventListener("click", closeMobileDrawer);
 document.getElementById("sidebarClose").addEventListener("click", closeMobileDrawer);
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
-let activeTab = "overview";
+let activeTab = (() => { try { const h = location.hash.replace(/^#\/?/, "").split("/")[0].replace(/[^\w-]/g, ""); if (h && document.querySelector('.tab-btn[data-tab="' + h + '"]')) return h; } catch (e) {} return "overview"; })();
 // Jump to a tab programmatically (e.g. a "Verify in Settings" link inside the
 // campaign builder) -- closes any open modal first since Settings needs to
 // actually be visible.
@@ -210,6 +210,7 @@ document.getElementById("tabsBar").addEventListener("click", e => {
 
 // ── RENDER ROUTER ─────────────────────────────────────────────────────────────
 async function render() {
+  try { if (typeof bvNavBeforeRender === "function") bvNavBeforeRender(); } catch (e) { console.warn("nav", e); }
   document.getElementById("lastSync").textContent = "synced " + new Date().toLocaleTimeString();
   const c = document.getElementById("mainContent");
   if (activeTab === "assistant") { c.innerHTML = ""; bvAssistantPage(true); bvUpdateAppBar(); return; }
@@ -239,7 +240,7 @@ async function render() {
     return;
   }
 
-  c.innerHTML = `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>`;
+  c.innerHTML = typeof bvSkel === "function" ? bvSkel() : `<div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div>`;
   try {
     if      (activeTab === "overview")  await renderOverview(c);
     else if (activeTab === "wallet")    await renderWallet(c);

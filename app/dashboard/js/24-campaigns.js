@@ -459,7 +459,7 @@ function amDraw() {
   const tools = `<div class="cp-tools"><div class="rv-seg">${SEG.map(([k, l]) => `<button type="button" class="${am.range === k ? "on" : ""}" onclick="amSetRange('${k}')">${l}</button>`).join("")}</div>
     <select class="rv-sel" onchange="amSetRange(this.value)" aria-label="More date ranges"><option value="">More…</option>${more.map(([k, l]) => `<option value="${k}" ${am.range === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>`;
   if (am.error && !d) { root.innerHTML = head + `<div class="rv-note">${rvIc("alert")}<span>${escH(am.error)}</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="amFetch()">Try again</button></div>`; return; }
-  if (!d) { root.innerHTML = head + tools + `<div class="rv-note"><span class="spin"></span><span>Loading live numbers from Meta…</span></div>`; return; }
+  if (!d) { root.innerHTML = head + tools + (typeof bvSkel === "function" ? bvSkel("table") : `<div class="rv-note"><span class="spin"></span><span>Loading live numbers from Meta…</span></div>`); return; }
 
   // keep a valid selection
   if (CP.sel && !cpFindSel()) CP.sel = null;
@@ -483,7 +483,10 @@ function amDraw() {
     tile("Ads delivering", `${liveAds} <span class="of">of ${d.ads.filter(cpAlive).length}</span>`, ""),
     ...(T.hasWeb ? [tile("Page views", ovNum(T.lpv), "website ads"), tile("Cost / page view", T.cpl != null ? fN2(T.cpl) : "—", "website spend ÷ page views"), tile("Page view rate", T.lpvRate != null ? T.lpvRate.toFixed(0) + "%" : "—", "page views ÷ link clicks")] : []),
   ].join("")}</div>`;
-  root.innerHTML = head + bal + tools + summary + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
+  const savedAt = am.at ? ago(new Date(am.at).toISOString()) : "";
+  const note = am.warn ? `<div class="rv-note warn">${rvIc("alert")}<span>Meta is busy right now (${escH(String(am.warn).includes("too many calls") ? "too many calls" : String(am.warn).slice(0, 90))}). Showing the last saved numbers${savedAt ? " from " + savedAt : ""}.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="amFetch()">Try again</button></div>`
+    : (am.loading && am.fromSaved ? `<div class="rv-note"><span class="spin"></span><span>Showing saved numbers${savedAt ? " from " + savedAt : ""}. Updating live from Meta…</span></div>` : "");
+  root.innerHTML = head + bal + tools + note + summary + (flaggedAds.length ? `<div class="rv-note warn">${rvIc("alert")}<span><b>${flaggedAds.length} ad${flaggedAds.length === 1 ? "" : "s"}</b> ${flaggedAds.length === 1 ? "breaks" : "break"} your kill rule.</span><button type="button" class="rv-btn s" style="margin-left:auto" onclick="cpSelect('ads','${flaggedAds[0].id}')">Review</button></div>` : "") + `
     <div class="rv-split cp-old ${CP.mDetail ? "m-detail" : ""}">
       <section class="rv-card rv-mlist">${cpMobileHtml()}</section>
       <section class="rv-card rv-old">${cpOldHtml()}</section>
