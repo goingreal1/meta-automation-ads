@@ -1,6 +1,7 @@
 import { planCascade, planCaps } from "../_shared/autooff.ts";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AwsClient } from "npm:aws4fetch@1.0.20";
 // Ads Manager inside the dashboard: live campaign / ad set / ad rows straight
 // from Meta (real status + WhatsApp messaging metrics), a real pause/resume
 // switch, and the scheduled auto-kill that applies each profile's kill_rules.
@@ -2715,6 +2716,74 @@ async function handleLearnPatterns(dryRun = false) {
   return { ok: true, ...report };
 }
 const N0 = (d)=>d.length;
+// ======================= SESSION RECORDINGS: small compressed replay files in R2, one per chunk of a visit ====================================
+const REC_ACC = Deno.env.get("R2_ACCOUNT_ID") ?? "", REC_BKT = Deno.env.get("R2_BUCKET") ?? "";
+const recAws = REC_ACC && REC_BKT && Deno.env.get("R2_ACCESS_KEY_ID") ? new AwsClient({ accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID"), secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY"), service: "s3", region: "auto" }) : null;
+const recUrl = (k)=>`https://${REC_ACC}.r2.cloudflarestorage.com/${REC_BKT}/${k.split("/").map(encodeURIComponent).join("/")}`;
+const recKey = (company, scope, key, seq)=>`rec/${company}/${scope}/${key}/${String(seq).padStart(4, "0")}.json.gz`;
+async function gzipText(text) { const cs = new CompressionStream("gzip"); const w = cs.writable.getWriter(); w.write(new TextEncoder().encode(text)); w.close(); return new Uint8Array(await new Response(cs.readable).arrayBuffer()); }
+async function gunzipBytes(bytes) { const ds = new DecompressionStream("gzip"); const w = ds.writable.getWriter(); w.write(bytes); w.close(); return await new Response(ds.readable).text(); }
+const hostOf = (u)=>{ try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ""); } catch (_) { return ""; } };
+// Public (no login): the page script sends replay events here. The visit must already exist, the project must allow the website, size is capped.
+async function handleRecIngest(req, body) {
+  if (!recAws) return json({ ok: false, error: "recording storage is not configured" }, 503);
+  const events = Array.isArray(body.events) ? body.events : [];
+  const len = Number(req.headers.get("content-length") ?? 0);
+  if (!events.length || events.length > 4000 || len > 900_000) return json({ ok: false, error: "bad size" }, 413);
+  const key = String(body.key ?? "").slice(0, 64), seq = Number(body.seq);
+  if (key.length < 8 || !(seq >= 0 && seq < 700)) return json({ ok: false, error: "bad request" }, 400);
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  let sessQ = admin.from("site_sessions").select("id, company_id, site_id, project_id, rec_chunks, rec_bytes").eq("session_key", key);
+  let scope = "";
+  if (body.site) { scope = String(body.site); sessQ = sessQ.eq("site_id", scope); }
+  else {
+    const { data: pj } = await admin.from("rec_projects").select("id, enabled, record, domains").eq("public_id", String(body.project ?? "")).maybeSingle();
+    if (!pj || !pj.enabled || !pj.record) return json({ ok: false, error: "project not found or recording is off" }, 403);
+    const oh = hostOf(req.headers.get("origin") ?? "") || hostOf(req.headers.get("referer") ?? "");
+    const allowed = (pj.domains ?? []).map((d)=>String(d).toLowerCase().replace(/^www\./, ""));
+    if (allowed.length && !allowed.includes(oh)) return json({ ok: false, error: "this website is not allowed for this project" }, 403);
+    scope = pj.id; sessQ = sessQ.eq("project_id", scope);
+  }
+  const { data: sess } = await sessQ.maybeSingle();
+  if (!sess) return json({ ok: true, waiting: true }, 202); // the visit row is created by the first page ping; try again with the next chunk
+  if (Number(sess.rec_bytes) > 25_000_000) return json({ ok: false, error: "recording limit reached" }, 413);
+  const gz = await gzipText(JSON.stringify(events));
+  const r = await recAws.fetch(recUrl(recKey(sess.company_id, scope, key, seq)), { method: "PUT", body: gz, headers: { "content-type": "application/gzip" } });
+  if (!r.ok) return json({ ok: false, error: `storage ${r.status}` }, 502);
+  await admin.from("site_sessions").update({ has_recording: true, rec_chunks: Math.max(Number(sess.rec_chunks), seq + 1), rec_bytes: Number(sess.rec_bytes) + gz.length }).eq("id", sess.id);
+  return json({ ok: true });
+}
+// Logged in: the replay of one visit the person is allowed to see (the table's own rules decide).
+async function handleRecGet(userClient, body) {
+  if (!recAws) throw new HttpError(503, "recording storage is not configured");
+  const { data: sess } = await userClient.from("site_sessions").select("*").eq("id", String(body.session_id ?? "")).maybeSingle();
+  if (!sess) throw new HttpError(404, "Visit not found.");
+  if (!sess.has_recording || !sess.rec_chunks) return { ok: true, events: [], session: sess, note: "No recording for this visit." };
+  const scope = sess.site_id ?? sess.project_id;
+  let all = [], total = 0;
+  for(let i = 0; i < Math.min(sess.rec_chunks, 700); i++){
+    const r = await recAws.fetch(recUrl(recKey(sess.company_id, scope, sess.session_key, i)));
+    if (!r.ok) continue;
+    const bytes = new Uint8Array(await r.arrayBuffer()); total += bytes.length;
+    if (total > 8_000_000) break;
+    try { all = all.concat(JSON.parse(await gunzipBytes(bytes))); } catch (_) { /* skip a damaged chunk */ }
+  }
+  all.sort((x, y)=>x.timestamp - y.timestamp);
+  return { ok: true, events: all, session: sess };
+}
+// Cron: recordings are kept 60 days. Removes the files first, then the visit rows that have none left.
+async function handleRecCleanup() {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const old = new Date(Date.now() - 60 * 86400_000).toISOString();
+  const { data: rows } = await admin.from("site_sessions").select("id, company_id, site_id, project_id, session_key, rec_chunks").eq("has_recording", true).lt("started_at", old).limit(150);
+  let files = 0;
+  for (const r of rows ?? []){
+    if (recAws) for(let i = 0; i < Math.min(r.rec_chunks, 700); i++){ await recAws.fetch(recUrl(recKey(r.company_id, r.site_id ?? r.project_id, r.session_key, i)), { method: "DELETE" }).catch(()=>{}); files++; }
+    await admin.from("site_sessions").update({ has_recording: false, rec_chunks: 0 }).eq("id", r.id);
+  }
+  await admin.from("site_sessions").delete().lt("started_at", old).eq("has_recording", false);
+  return { ok: true, sessions_cleaned: (rows ?? []).length, files_removed: files };
+}
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -3070,6 +3139,13 @@ Deno.serve(async (req)=>{
       const buf = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192));
       return json({ ok: true, count: (pg?.shots ?? []).length, y: sh.y, h: sh.h, b64: btoa(bin) });
     }
+    if (body.action === "rec_ingest") return await handleRecIngest(req, body);
+    if (body.action === "rec_cleanup") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      if (!secret?.value || (req.headers.get("x-cron-secret") ?? "") !== secret.value) throw new HttpError(401, "Not allowed.");
+      return json(await handleRecCleanup());
+    }
     if (body.action === "learn_patterns") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
@@ -3132,6 +3208,7 @@ Deno.serve(async (req)=>{
     if (body.action === "reach_estimate") return json(await handleReachEstimate(userClient, body));
     if (body.action === "ad_preview") return json(await handleAdPreview(userClient, body));
     if (body.action === "set_balance_guard") return json(await handleSetBalanceGuard(userClient, body));
+    if (body.action === "rec_get") return json(await handleRecGet(userClient, body));
     if (body.action === "page_posts") return json(await handlePagePosts(userClient, body));
     if (body.action === "add_page_post") return json(await handleAddPagePost(userClient, body));
     if (body.action === "update_carousel") return json(await handleUpdateCarousel(userClient, body));
