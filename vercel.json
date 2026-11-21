@@ -151,7 +151,27 @@
       "has": [
         {
           "type": "host",
+          "value": "docs.revoracrm.online"
+        }
+      ],
+      "destination": "/help.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "support.revoracrm.app"
+        }
+      ],
+      "destination": "/contact.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "support.revoracrm.online"
         }
       ],
       "destination": "/contact.html"
@@ -171,7 +191,27 @@
       "has": [
         {
           "type": "host",
+          "value": "developers.revoracrm.online"
+        }
+      ],
+      "destination": "/developers.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "academy.revoracrm.app"
+        }
+      ],
+      "destination": "/academy.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "academy.revoracrm.online"
         }
       ],
       "destination": "/academy.html"
@@ -191,7 +231,27 @@
       "has": [
         {
           "type": "host",
+          "value": "dash.revoracrm.online"
+        }
+      ],
+      "destination": "/dashboard_new.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "hq.revoracrm.app"
+        }
+      ],
+      "destination": "/dashboard_new.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "hq.revoracrm.online"
         }
       ],
       "destination": "/dashboard_new.html"
@@ -319,6 +379,17 @@
       "permanent": true
     },
     {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.revoracrm.online"
+        }
+      ],
+      "destination": "https://revoracrm.online/:path*",
+      "permanent": true
+    },
+    {
       "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
       "has": [
         {
@@ -327,6 +398,17 @@
         }
       ],
       "destination": "https://dash.revoracrm.app/$1.html",
+      "permanent": false
+    },
+    {
+      "source": "/(dashboard_new|dashboard|login|setup-company|reset-password)\\.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "revoracrm.online"
+        }
+      ],
+      "destination": "https://dash.revoracrm.online/$1.html",
       "permanent": false
     },
     {
