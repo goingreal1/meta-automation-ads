@@ -771,7 +771,9 @@ async function publicAction(b) {
         name: p.product_name,
         currency: p.currency,
         flow: flowOf(p),
-        hero: typeof p.housing_settings?.hero_image === "string" && /^https:\/\//i.test(p.housing_settings.hero_image) ? p.housing_settings.hero_image : null
+        hero: typeof p.housing_settings?.hero_image === "string" && /^https:\/\//i.test(p.housing_settings.hero_image) ? p.housing_settings.hero_image : null,
+        brand: typeof p.housing_settings?.brand === "string" && p.housing_settings.brand.trim() ? p.housing_settings.brand.trim().slice(0, 60) : null,
+        logo: typeof p.housing_settings?.logo_url === "string" && /^https:\/\//i.test(p.housing_settings.logo_url) ? p.housing_settings.logo_url : null
       },
       properties: rows
     };
@@ -1049,7 +1051,7 @@ async function sendTourEmail(p, prop, row, name, email, date, time) {
     return;
   }
   const s = p.housing_settings ?? {};
-  const brand = String(s.brand || "SC Rentals");
+  const brand = String(s.brand || "South Rentals");
   const base = await siteBase(p);
   const apply = base && prop.slug ? `${base}/home?property=${encodeURIComponent(prop.slug)}&apply=1#application` : null;
   const fee = Number(prop.application_fee) || 0;
@@ -1116,7 +1118,7 @@ async function sendApplicationEmail(p, prop, row, name, email, t) {
     return;
   }
   const s = p.housing_settings ?? {};
-  const brand = String(s.brand || "SC Rentals");
+  const brand = String(s.brand || "South Rentals");
   const fee = Number(t.fee?.amount) || 0;
   const money = (n)=>`$${Number(n).toLocaleString("en-US")}`;
   const pay = t.pay ?? null;

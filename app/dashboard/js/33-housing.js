@@ -76,6 +76,11 @@ function hsSettings() {
     ${opt("both", "Book a tour, then apply (recommended)", "Both buttons show. Tours bring in the leads; the paid application filters the serious ones.")}
     ${opt("tour", "Book a tour only", "Only the tour form shows. Best for collecting as many leads as possible. Applications are hidden.")}
     ${opt("apply", "Apply only", "Only the application form shows. Visitors pay the application fee without a tour first.")}</div>
+    <div class="hs-box"><h3>Business name and logo</h3><div class="sub" style="margin:0 0 8px">Shown at the top of every page, in the browser tab and in your emails.</div>
+    <div class="hs-f"><div class="full"><label>Business name</label><input id="hs_brand" value="${v(s.brand || "South Rentals")}" maxlength="60"></div></div>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:10px"><div id="hs_logo_prev" style="width:56px;height:56px;border-radius:12px;background:#e9edf1 center/contain no-repeat;display:grid;place-items:center;color:#8896a3;font-size:11px;flex:none"></div>
+    <div class="hs-acts" style="margin:0"><input id="hs_logo_file" type="file" accept="image/*" style="width:auto"><button id="hs_logo_rm" type="button">Remove logo</button></div></div>
+    <div class="sub" style="margin:8px 0 0">Square or near-square images work best (PNG or JPG, at least 200 px). With no logo, the site shows the first letter of your name.</div></div>
     <div class="hs-box"><h3>Homepage banner photo</h3><div class="sub" style="margin:0 0 8px">The big photo behind the headline on your homepage. Use a bright, wide photo of a nice home (landscape, at least 1600 px wide). Use a photo you own or have rights to.</div>
     <div id="hs_hero_prev" style="height:120px;border-radius:12px;background:#e9edf1 center/cover no-repeat;margin-bottom:8px;display:grid;place-items:center;color:#8896a3;font-size:13px"></div>
     <div class="hs-acts"><input id="hs_hero_file" type="file" accept="image/*" style="width:auto"><button id="hs_hero_rm" type="button">Remove photo</button></div></div>
@@ -87,6 +92,17 @@ function hsSettings() {
     <div><label>Bank name (optional)</label><input id="hs_bank" value="${v(pr.bank_name)}"></div><div><label>Account name (optional)</label><input id="hs_bname" value="${v(pr.bank_account_name)}"></div>
     <div class="full"><label>Account number (optional)</label><input id="hs_bnum" value="${v(pr.bank_account_number)}"></div></div></div>
     <div class="hs-acts"><button class="go" id="hs_save">Save settings</button></div>`;
+  let logo = s.logo_url || "";
+  const drawLogo = () => { const el = document.getElementById("hs_logo_prev"); if (!el) return; el.style.backgroundImage = logo ? `url('${logo.replace(/'/g, "%27")}')` : ""; el.textContent = logo ? "" : "No logo"; };
+  drawLogo();
+  document.getElementById("hs_logo_rm").onclick = () => { logo = ""; drawLogo(); };
+  document.getElementById("hs_logo_file").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 5 * 1024 * 1024) return bvToast("Please use a logo under 5 MB.");
+    document.getElementById("hs_logo_prev").textContent = "…";
+    try { logo = await window.rvUpload(supabaseClient, "site-media", f); } catch (err) { bvToast("Upload failed: " + (err.message || err)); }
+    e.target.value = ""; drawLogo();
+  };
   let hero = s.hero_image || "";
   const drawHero = () => { const el = document.getElementById("hs_hero_prev"); if (!el) return; el.style.backgroundImage = hero ? `url('${hero.replace(/'/g, "%27")}')` : ""; el.textContent = hero ? "" : "No banner photo yet"; };
   drawHero();
@@ -102,7 +118,7 @@ function hsSettings() {
     const g = (id) => document.getElementById(id).value.trim() || null;
     const link = g("hs_link"); if (link && !/^https:\/\//i.test(link)) return bvToast("The payment link must start with https://");
     const f = document.querySelector('input[name="hs_flow"]:checked')?.value || "both";
-    const hsSet = { ...(pr.housing_settings || {}), flow: f, contact_phone: g("hs_phone"), hero_image: hero || null };
+    const hsSet = { ...(pr.housing_settings || {}), flow: f, contact_phone: g("hs_phone"), hero_image: hero || null, brand: g("hs_brand"), logo_url: logo || null };
     const cols = { payment_note: g("hs_note"), payment_link_url: link, bank_name: g("hs_bank"), bank_account_name: g("hs_bname"), bank_account_number: g("hs_bnum") };
     e.target.disabled = true;
     const { error } = await supabaseClient.from("products").update({ ...cols, housing_settings: hsSet }).eq("id", pr.id);
