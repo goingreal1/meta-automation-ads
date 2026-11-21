@@ -79,7 +79,7 @@ async function bvCreUpload(fd) {
       bvToast("Uploaded. Converting the video so it plays in every browser. This takes a minute or two.");
       // TRANSCODE_URL: the AWS Lambda revora-transcode Function URL. Empty = the Vercel function (temporary fallback / rollback).
       const TRANSCODE_URL = "https://qsfqnzeq2zagtxrnmollnt4xt40jibvp.lambda-url.af-south-1.on.aws/";
-      fetch(TRANSCODE_URL || "/api/transcode", { method: "POST", headers: { Authorization: hdr.Authorization, "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: reg.asset.id }) })
+      fetch(TRANSCODE_URL, { method: "POST", headers: { Authorization: hdr.Authorization, "Content-Type": "application/json" }, body: JSON.stringify({ asset_id: reg.asset.id }) })
         .then(r => r.json()).then(tc => {
           if (tc?.converted) { bvToast("Your video is ready and plays in every browser."); if (activeTab === "catalog") document.querySelector('[data-tab="catalog"]')?.click(); }
           else if (tc?.error) bvToast(tc.error, "err");

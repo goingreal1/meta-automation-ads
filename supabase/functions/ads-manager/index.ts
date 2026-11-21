@@ -2418,7 +2418,9 @@ async function handleLearnShots(limit = 3, only = null) {
     if (Date.now() > deadline) break;
     try {
       const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), 70_000);
-      const r = await fetch(Deno.env.get("SCREENSHOT_URL") || "https://metaautomationads.vercel.app/api/screenshot", { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-shot-secret": sec.value }, body: JSON.stringify({ url: p.final_url || p.url_norm }) }).finally(()=>clearTimeout(to));
+      const shotUrl = Deno.env.get("SCREENSHOT_URL") ?? "";
+      if (!shotUrl) throw new Error("SCREENSHOT_URL is not set");
+      const r = await fetch(shotUrl, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", "x-shot-secret": sec.value }, body: JSON.stringify({ url: p.final_url || p.url_norm }) }).finally(()=>clearTimeout(to));
       const j = await r.json().catch(()=>({}));
       if (!r.ok || !j.slices?.length) throw new Error(j.error || `screenshot HTTP ${r.status}`);
       const dir = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(p.url_norm)))).map((b)=>b.toString(16).padStart(2, "0")).join("").slice(0, 16) + "/" + Date.now();
