@@ -330,7 +330,7 @@ function amRowHtml(level, r) {
   const flag = level === "ads" && r.suggestion?.kill && on;
   const thumb = level === "ads" && r.thumbnail_url ? `<img class="am-thumb" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
   const next = level === "campaigns" ? "View ad sets" : level === "adsets" ? "View ads" : "";
-  const acts = level === "ads" ? `<span class="am-acts"><a onclick="amPreviewAd('${r.id}')">👁 Preview</a>${r.picture_url ? `<a onclick="amFitImage('${r.id}')" title="Re-fit the whole image so Meta doesn't crop it">⤢ Fit image</a>` : ""}${typeof jyChip === "function" ? jyChip(r.id) : ""}</span>` : "";
+  const acts = level === "ads" ? `<span class="am-acts"><a onclick="amPreviewAd('${r.id}')">👁 Preview</a>${r.picture_url ? `<a onclick="amFitImage('${r.id}')" title="Re-fit the whole image so Meta doesn't crop it">⤢ Fit image</a>` : ""}${typeof jyChip === "function" ? jyChip(r.id, true) : ""}</span>` : "";
   const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}${level !== "ads" && typeof jyChip === "function" && jyChip(r.id) ? `<span class="am-acts">${jyChip(r.id)}</span>` : ""}${acts}<span class="am-acts"><a onclick="event.stopPropagation();cpSelect('${level}','${r.id}')">Details ›</a></span>`;
   return `
     <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}" ${next ? `onclick="amTapRow(event,'${level}','${r.id}')"` : ""}>
