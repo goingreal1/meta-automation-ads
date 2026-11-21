@@ -2751,10 +2751,12 @@ async function handleRecIngest(req, body) {
   const r = await recAws.fetch(recUrl(recKey(sess.company_id, scope, key, seq)), { method: "PUT", body: gz, headers: { "content-type": "application/gzip" } });
   if (!r.ok) return json({ ok: false, error: `storage ${r.status}` }, 502);
   const hd = (n)=>{ const v = req.headers.get(n); try { return v ? decodeURIComponent(v).slice(0, 80) : null; } catch (_) { return v ? v.slice(0, 80) : null; } };
-  const country = (hd("cf-ipcountry") ?? hd("x-vercel-ip-country") ?? "").toUpperCase();
-  const geo = { country: /^[A-Z]{2}$/.test(country) ? country : null, city: hd("cf-ipcity") ?? hd("x-vercel-ip-city"), region: hd("cf-region") ?? hd("x-vercel-ip-country-region") };
+  const bg = body.geo && typeof body.geo === "object" ? body.geo : {};
+  const clean = (v)=>typeof v === "string" && v.trim() ? v.trim().slice(0, 80) : null;
+  const country = (clean(bg.country) ?? hd("cf-ipcountry") ?? hd("x-vercel-ip-country") ?? "").toUpperCase();
+  const geo = { country: /^[A-Z]{2}$/.test(country) ? country : null, city: clean(bg.city) ?? hd("cf-ipcity"), region: clean(bg.region) ?? hd("cf-region") };
   const upd = { has_recording: true, rec_chunks: Math.max(Number(sess.rec_chunks), seq + 1), rec_bytes: Number(sess.rec_bytes) + gz.length };
-  if (seq === 0 || !sess.country) { if (geo.country) upd.country = geo.country; if (geo.city) upd.city = geo.city; if (geo.region) upd.region = geo.region; }
+  if (!sess.country) { if (geo.country) upd.country = geo.country; if (geo.city) upd.city = geo.city; if (geo.region) upd.region = geo.region; }
   if (!sess.host && body.host) upd.host = String(body.host).toLowerCase().replace(/^www\./, "").slice(0, 120);
   await admin.from("site_sessions").update(upd).eq("id", sess.id);
   return json({ ok: true });
