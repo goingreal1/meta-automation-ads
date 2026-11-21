@@ -269,7 +269,7 @@ async function jyAdPanel(adId, nameHint) {
 }
 
 // ── Websites outside Revora (and product websites): a project id and the one-line script. ──
-const jyScriptLine = (p) => `<script async src="https://revoracrm.app/rv/rec.js" data-project="${p.public_id}"></script>`;
+const jyScriptLine = (p) => `<script async src="${/^https:\/\/(localhost|127\.)/.test(location.origin) ? "https://metaautomationads.vercel.app" : location.origin}/rv/rec.js" data-project="${p.public_id}"></script>`;
 const jyDomain = (u) => String(u || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/[\/?#].*$/, "");
 async function jyEnsureProject(name, url) {
   const dom = jyDomain(url); if (!dom) throw new Error("Add the website address first.");
