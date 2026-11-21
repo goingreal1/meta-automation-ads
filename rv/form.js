@@ -462,6 +462,15 @@
   }
   // Mount every dynamic element inside a root
   function mountAll(root, d, opts) {
+    // Live pages are rendered by the site renderer (not site.html): count the visit and start the recorder here.
+    try {
+      if (!(opts && opts.preview) && d && d.site && d.site.id && !global.__rvViewed && !global.RV_REC) {
+        global.__rvViewed = true;
+        track("view", d.site.id, d.page && d.page.slug);
+        global.RV_REC = { site: d.site.id, page: d.page && d.page.slug };
+        var rs = document.createElement("script"); rs.src = "/rv/rec.js"; rs.async = true; document.head.appendChild(rs);
+      }
+    } catch (e) {}
     root.querySelectorAll("[data-rv-form]").forEach(function (el) { mountForm(el, d, opts); });
     root.querySelectorAll("[data-rv-bank]").forEach(function (el) { mountBank(el, d, opts); });
     root.querySelectorAll("[data-rv-ref]").forEach(function (el) { el.textContent = sget("rv_last_ref") || (opts && opts.preview ? "A1B2C3D4" : ""); });
