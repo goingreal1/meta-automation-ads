@@ -317,7 +317,7 @@ function amFmtResult(r) {
   return String(r.results);
 }
 function amRowHtml(level, r) {
-  if (level === "ads" && typeof JYC !== "undefined" && !JYC.loaded && !JYC.loading) jyCountsLoad().then(() => { if (Object.keys(JYC.map).length && typeof amDraw === "function") amDraw(); });
+  if (typeof JYC !== "undefined" && !JYC.loaded && !JYC.loading) jyCountsLoad().then(() => { if (Object.keys(JYC.map).length && typeof amDraw === "function") amDraw(); });
   const d = am.data;
   const on = r.status === "ACTIVE";
   const busy = am.busy.has(r.id);
@@ -331,7 +331,7 @@ function amRowHtml(level, r) {
   const thumb = level === "ads" && r.thumbnail_url ? `<img class="am-thumb" src="${escH(r.thumbnail_url)}" alt="" loading="lazy">` : "";
   const next = level === "campaigns" ? "View ad sets" : level === "adsets" ? "View ads" : "";
   const acts = level === "ads" ? `<span class="am-acts"><a onclick="amPreviewAd('${r.id}')">👁 Preview</a>${r.picture_url ? `<a onclick="amFitImage('${r.id}')" title="Re-fit the whole image so Meta doesn't crop it">⤢ Fit image</a>` : ""}${typeof jyChip === "function" ? jyChip(r.id) : ""}</span>` : "";
-  const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}${acts}<span class="am-acts"><a onclick="event.stopPropagation();cpSelect('${level}','${r.id}')">Details ›</a></span>`;
+  const nameInner = `<span class="am-name-t">${escH(r.name)}</span>${sub ? `<span class="am-sub">${sub}</span>` : ""}${level !== "ads" && typeof jyChip === "function" && jyChip(r.id) ? `<span class="am-acts">${jyChip(r.id)}</span>` : ""}${acts}<span class="am-acts"><a onclick="event.stopPropagation();cpSelect('${level}','${r.id}')">Details ›</a></span>`;
   return `
     <div class="am-row${on ? "" : " off"}${flag ? " flag" : ""}" ${next ? `onclick="amTapRow(event,'${level}','${r.id}')"` : ""}>
       <div class="am-top">
