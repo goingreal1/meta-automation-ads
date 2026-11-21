@@ -39,10 +39,11 @@ function cpRow(l, r, o) {
   return `<div class="rv-tr ${on ? "on" : ""} ${o.open ? "open" : ""}" onclick="cpSelect('${l}','${r.id}')">
     ${l === "ads" ? "" : `<span class="ch" onclick="cpToggle(event,'${r.id}')">${o.kids ? rvIc("chev") : ""}</span>`}
     ${ck ? `<input type="checkbox" class="rv-ck" ${am.sel.campaigns.has(r.id) ? "checked" : ""} onclick="event.stopPropagation()" onchange="amToggleSel('campaigns','${r.id}',this.checked)" aria-label="Select">` : ""}
-    ${lead}<div class="nm"><b>${escH(tag ? cpName(r.name) : r.name)}${tag ? ` <span class="rv-cp2">${tag}</span>` : ""}</b><small>${o.sub}</small></div><span class="sp3">${cpMoney(r.spend)}</span></div>`;
+    ${lead}<div class="nm"><b>${escH(tag ? cpName(r.name) : r.name)}${tag ? ` <span class="rv-cp2">${tag}</span>` : ""}</b><small>${o.sub}</small>${l === "ads" && typeof jyChip === "function" ? jyChip(r.id) : ""}</div><span class="sp3">${cpMoney(r.spend)}</span></div>`;
 }
 
 function cpTreeHtml() {
+  if (typeof JYC !== "undefined" && !JYC.loaded && !JYC.loading) jyCountsLoad().then(() => { const tl = document.getElementById("cpTreeList"); if (tl && Object.keys(JYC.map).length) tl.innerHTML = cpTreeHtml(); });
   const { groups, bySet, q } = cpGroups();
   if (!groups.length) return `<div class="rv-empty" style="padding:20px 14px">${q ? "Nothing matches your search." : am.filter === "live" ? "No live campaigns. Switch to Paused or All to see the rest." : "No campaigns here yet."}</div>`;
   const adsOf = (g, s) => (g.adsOf ? g.adsOf.get(s.id) : bySet.get(s.id)) || [];
@@ -130,7 +131,7 @@ function cpDetailHtml() {
     <div class="rv-row rv-hdr"><div style="min-width:0"><h2>${escH(cpCopy(r.name) ? cpName(r.name) : r.name)}${cpCopy(r.name) ? ` <span class="rv-cp2">${cpCopy(r.name)}</span>` : ""}</h2><div class="rv-row" style="margin-top:8px;flex-wrap:wrap">${busy ? '<span class="spin"></span>' : cpStatusPill(r)}${r.daily_budget ? `<span class="rv-mut3">${fN(r.daily_budget)} a day</span>` : ""}</div></div><div class="rv-sp"></div>
     ${real ? `<div class="rv-act">${l !== "ads" || true ? `<label class="switch am-sw" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${lvl}','${r.id}',this)"><span class="sw-track"></span></label>` : ""}
       <button type="button" class="rv-btn s" onclick="cpDuplicate('${l}','${r.id}')">Duplicate</button>
-      ${l === "ads" ? `<button type="button" class="rv-btn s" onclick="amOpenMsgEdit('${r.id}')">Edit message</button>` : `<button type="button" class="rv-btn s" onclick="cpEditBudget('${l}','${r.id}')">Edit budget</button>`}
+      ${l === "ads" && typeof JYC !== "undefined" && JYC.map[r.id] ? `<button type="button" class="rv-btn s" onclick="jyAdPanel('${r.id}')">Visitors (${JYC.map[r.id].n})</button>` : ""}${l === "ads" ? `<button type="button" class="rv-btn s" onclick="amOpenMsgEdit('${r.id}')">Edit message</button>` : `<button type="button" class="rv-btn s" onclick="cpEditBudget('${l}','${r.id}')">Edit budget</button>`}
       <a class="rv-btn s" href="${escH(cpMetaUrl(l, r.id))}" target="_blank" rel="noopener">Open on Meta</a></div>` : ""}</div></div>
     <div class="rv-tabs">${tabs.map((t) => `<a class="${CP.tab === t[0] ? "on" : ""}" onclick="cpTab('${t[0]}')">${t[1]}</a>`).join("")}</div><div style="padding-top:18px">${body}</div>`;
 }

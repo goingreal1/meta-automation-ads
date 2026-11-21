@@ -2733,7 +2733,7 @@ async function handleRecIngest(req, body) {
   const key = String(body.key ?? "").slice(0, 64), seq = Number(body.seq);
   if (key.length < 8 || !(seq >= 0 && seq < 700)) return json({ ok: false, error: "bad request" }, 400);
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-  let sessQ = admin.from("site_sessions").select("id, company_id, site_id, project_id, rec_chunks, rec_bytes").eq("session_key", key);
+  let sessQ = admin.from("site_sessions").select("id, company_id, site_id, project_id, rec_chunks, rec_bytes, country, host").eq("session_key", key);
   let scope = "";
   if (body.site) { scope = String(body.site); sessQ = sessQ.eq("site_id", scope); }
   else {
@@ -2750,7 +2750,13 @@ async function handleRecIngest(req, body) {
   const gz = await gzipText(JSON.stringify(events));
   const r = await recAws.fetch(recUrl(recKey(sess.company_id, scope, key, seq)), { method: "PUT", body: gz, headers: { "content-type": "application/gzip" } });
   if (!r.ok) return json({ ok: false, error: `storage ${r.status}` }, 502);
-  await admin.from("site_sessions").update({ has_recording: true, rec_chunks: Math.max(Number(sess.rec_chunks), seq + 1), rec_bytes: Number(sess.rec_bytes) + gz.length }).eq("id", sess.id);
+  const hd = (n)=>{ const v = req.headers.get(n); try { return v ? decodeURIComponent(v).slice(0, 80) : null; } catch (_) { return v ? v.slice(0, 80) : null; } };
+  const country = (hd("cf-ipcountry") ?? hd("x-vercel-ip-country") ?? "").toUpperCase();
+  const geo = { country: /^[A-Z]{2}$/.test(country) ? country : null, city: hd("cf-ipcity") ?? hd("x-vercel-ip-city"), region: hd("cf-region") ?? hd("x-vercel-ip-country-region") };
+  const upd = { has_recording: true, rec_chunks: Math.max(Number(sess.rec_chunks), seq + 1), rec_bytes: Number(sess.rec_bytes) + gz.length };
+  if (seq === 0 || !sess.country) { if (geo.country) upd.country = geo.country; if (geo.city) upd.city = geo.city; if (geo.region) upd.region = geo.region; }
+  if (!sess.host && body.host) upd.host = String(body.host).toLowerCase().replace(/^www\./, "").slice(0, 120);
+  await admin.from("site_sessions").update(upd).eq("id", sess.id);
   return json({ ok: true });
 }
 // Logged in: the replay of one visit the person is allowed to see (the table's own rules decide).
