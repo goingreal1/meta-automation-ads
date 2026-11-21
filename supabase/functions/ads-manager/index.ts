@@ -2416,12 +2416,31 @@ async function handleLearnShots(limit = 3, only = null) {
 }
 // ---- What creatives and pages LOOK like: pictures, video frames and a Claude vision description of each -----------------------------------
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+// Per-million-token prices (USD) for what the learner uses, and a running count of real spend per day and model.
+const LEARN_PRICES = { "claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.00, 10.00] };
+async function learnCount(model, usage) {
+  try {
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    const [pi, po] = LEARN_PRICES[model] ?? [2, 10], i = Number(usage?.input_tokens) || 0, o = Number(usage?.output_tokens) || 0;
+    const day = new Date().toISOString().slice(0, 10);
+    const { data: cur } = await admin.from("learn_usage").select("*").eq("day", day).eq("model", model).maybeSingle();
+    await admin.from("learn_usage").upsert({ day, model, calls: (cur?.calls ?? 0) + 1, input_tokens: Number(cur?.input_tokens ?? 0) + i, output_tokens: Number(cur?.output_tokens ?? 0) + o, cost_usd: Number(cur?.cost_usd ?? 0) + i / 1e6 * pi + o / 1e6 * po }, { onConflict: "day,model" });
+  } catch (_) { /* counting must never break reading */ }
+}
+async function learnOverCap(admin) {
+  const { data: cap } = await admin.from("app_secrets").select("value").eq("key", "learn_vision_cap_usd").maybeSingle();
+  const first = new Date().toISOString().slice(0, 8) + "01";
+  const { data: rows } = await admin.from("learn_usage").select("cost_usd").gte("day", first);
+  const spent = (rows ?? []).reduce((t, r)=>t + Number(r.cost_usd), 0);
+  return { over: spent >= Number(cap?.value ?? 5), spent, cap: Number(cap?.value ?? 5) };
+}
 async function claudeVision(images, instruction, model = "claude-haiku-5-5") {
   if (!ANTHROPIC_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
   const content = [...images.map((i)=>({ type: "image", source: { type: "base64", media_type: i.type, data: i.b64 } })), { type: "text", text: instruction }];
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model, max_tokens: 1500, messages: [{ role: "user", content }] }) });
   const j = await r.json().catch(()=>({}));
   if (!r.ok) throw new Error(j?.error?.message || `Claude HTTP ${r.status}`);
+  await learnCount(model, j.usage);
   const text = (j.content ?? []).map((c)=>c.text ?? "").join("");
   const m = text.match(/\{[\s\S]*\}/);
   try { return m ? JSON.parse(m[0]) : { summary: text.slice(0, 800) }; } catch (_) { return { summary: text.slice(0, 800) }; }
@@ -2480,6 +2499,8 @@ async function handleLearnVision(limit = 4) {
   const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
   const off = new Set((cos ?? []).map((c)=>c.id));
   const out = { discovered: await learnMediaDiscover(admin).catch((e)=>`error: ${String(e.message ?? e).slice(0, 100)}`), media: [], pages: [] };
+  const cap = await learnOverCap(admin);
+  if (cap.over) return { ok: true, paused: `monthly cap reached ($${cap.spent.toFixed(2)} of $${cap.cap})`, ...out };
   if (!ANTHROPIC_KEY) return { ok: false, error: "ANTHROPIC_API_KEY is not set in the Supabase edge function secrets, so pictures are collected but not described yet.", ...out };
   const deadline = Date.now() + 100_000;
   // 1) creatives
