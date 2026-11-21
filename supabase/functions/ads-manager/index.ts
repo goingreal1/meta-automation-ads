@@ -2110,6 +2110,213 @@ async function handlePurchaseTimingDigest(dryRun = false) {
   }
   return { ok: true, dry_run: dryRun, results: out };
 }
+// ======================= LEARNER: reads connected ad accounts and the pages ads link to (read-only, background) =======================
+// learn_sync: every few minutes (cron) takes the accounts studied longest ago and stores their campaigns, ad sets, ads (with every setting and a plain
+// summary of the creative) plus results and breakdowns. learn_pages: fetches the public landing pages those ads send people to, word for word.
+// Nothing here changes an ad account. Companies with companies.learning_enabled = false are skipped.
+const LEARN_SKIP_HOSTS = /(^|\.)(facebook\.com|fb\.com|fb\.me|m\.me|messenger\.com|instagram\.com|wa\.me|whatsapp\.com|l\.facebook\.com|google\.com|youtube\.com|youtu\.be|tiktok\.com|t\.me)$/i;
+function normUrl(u) {
+  try {
+    const x = new URL(String(u).trim());
+    if (!/^https?:$/.test(x.protocol) || LEARN_SKIP_HOSTS.test(x.hostname)) return null;
+    for (const k of [...x.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ttclid|fb_|ref$)/i.test(k)) x.searchParams.delete(k);
+    x.hash = "";
+    let out = x.origin.toLowerCase() + x.pathname.replace(/\/+$/, "") + (x.search || "");
+    return out.length < 600 ? out : null;
+  } catch (_) { return null; }
+}
+function summarizeCreative(cr) {
+  if (!cr) return null;
+  const oss = cr.object_story_spec ?? {}, ld = oss.link_data, vd = oss.video_data, afs = cr.asset_feed_spec;
+  const links = new Set(), push = (u)=>{ if (u) links.add(u); };
+  let kind = "unknown", cards = null;
+  if (ld?.child_attachments?.length) {
+    kind = "carousel";
+    cards = ld.child_attachments.map((c)=>{ push(c.link); return { headline: c.name ?? null, description: c.description ?? null, link: c.link ?? null, video: !!c.video_id, cta: c.call_to_action?.type ?? null }; });
+  } else if (cr.object_story_id && !ld && !vd && !afs) kind = "post";
+  else if (vd) kind = "video";
+  else if (ld) kind = "image";
+  else if (afs) kind = afs.videos?.length ? "video_feed" : "image_feed";
+  push(ld?.link); push(ld?.call_to_action?.value?.link); push(vd?.call_to_action?.value?.link);
+  for (const l of afs?.link_urls ?? []) push(l.website_url);
+  const flags = Object.entries(cr.degrees_of_freedom_spec?.creative_features_spec ?? {}).filter(([, v])=>v?.enroll_status === "OPT_IN").map(([k])=>k);
+  return {
+    kind, cards,
+    primary_text: ld?.message ?? vd?.message ?? afs?.bodies?.[0]?.text ?? null,
+    headline: ld?.name ?? vd?.title ?? afs?.titles?.[0]?.text ?? null,
+    description: ld?.description ?? vd?.link_description ?? afs?.descriptions?.[0]?.text ?? null,
+    cta: ld?.call_to_action?.type ?? vd?.call_to_action?.type ?? cr.call_to_action_type ?? afs?.call_to_action_types?.[0] ?? null,
+    message_destination: ld?.call_to_action?.value?.app_destination ?? vd?.call_to_action?.value?.app_destination ?? null,
+    video_ids: [vd?.video_id, ...(afs?.videos ?? []).map((v)=>v.video_id)].filter(Boolean),
+    image_hash: ld?.image_hash ?? null, post_id: cr.effective_object_story_id ?? cr.object_story_id ?? null,
+    placement_customized: !!afs?.asset_customization_rules?.length, advantage_features: flags, url_tags: cr.url_tags ?? null, links: [...links]
+  };
+}
+const learnNum = (n)=>Number(n) || 0;
+function learnRow(r) {
+  const val = (list, types)=>{ for (const t of types){ const x = (list ?? []).find((a)=>a.action_type === t); if (x) return Number(x.value) || 0; } return 0; };
+  return {
+    spend: learnNum(r.spend), impressions: learnNum(r.impressions), reach: learnNum(r.reach), clicks: learnNum(r.clicks), link_clicks: learnNum(r.inline_link_clicks),
+    lpv: val(r.actions, LPV_ACTIONS), purchases: val(r.actions, PURCHASE_ACTIONS), purchase_value: val(r.action_values, PURCHASE_ACTIONS), messages: val(r.actions, [MSG_ACTION]),
+    extra: { video_3s: val(r.actions, ["video_view"]), thruplay: val(r.video_thruplay_watched_actions, ["video_view"]), video_p100: val(r.video_p100_watched_actions, ["video_view"]), frequency: learnNum(r.frequency), add_to_cart: val(r.actions, ["add_to_cart", "omni_add_to_cart"]), checkout: val(r.actions, ["initiate_checkout", "omni_initiated_checkout"]) }
+  };
+}
+async function learnAccount(admin, a, deadline) {
+  const actId = String(a.meta_ad_account_id).replace(/^act_/, "");
+  const token = await resolveToken(admin, a);
+  const cutoff = Math.floor((Date.now() - 120 * 86400_000) / 1000);
+  const filt = JSON.stringify([{ field: "updated_time", operator: "GREATER_THAN", value: cutoff }]);
+  const [camps, sets, ads] = await Promise.all([
+    graphGetAll(`act_${actId}/campaigns`, { fields: "id,name,objective,status,effective_status,buying_type,special_ad_categories,daily_budget,lifetime_budget,bid_strategy,spend_cap,start_time,stop_time,created_time,smart_promotion_type", filtering: filt }, token),
+    graphGetAll(`act_${actId}/adsets`, { fields: "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,optimization_goal,billing_event,bid_strategy,bid_amount,targeting,promoted_object,destination_type,attribution_spec,start_time,end_time,created_time,pacing_type,is_dynamic_creative", filtering: filt }, token),
+    graphGetAll(`act_${actId}/ads`, { fields: "id,name,adset_id,campaign_id,status,effective_status,created_time,creative{id,object_story_spec,object_story_id,effective_object_story_id,asset_feed_spec,degrees_of_freedom_spec,call_to_action_type,url_tags}", filtering: filt }, token)
+  ]);
+  const base = { ad_account_id: a.id, company_id: a.company_id, synced_at: new Date().toISOString() };
+  const rows = [];
+  const urls = new Set();
+  for (const c of camps) rows.push({ ...base, level: "campaign", meta_id: c.id, parent_id: null, campaign_id: c.id, name: c.name, status: c.status, effective_status: c.effective_status, created_time: c.created_time ?? null, settings: c, creative: null, landing_url: null });
+  for (const x of sets) rows.push({ ...base, level: "adset", meta_id: x.id, parent_id: x.campaign_id, campaign_id: x.campaign_id, name: x.name, status: x.status, effective_status: x.effective_status, created_time: x.created_time ?? null, settings: x, creative: null, landing_url: null });
+  for (const x of ads){
+    const sm = summarizeCreative(x.creative);
+    const land = (sm?.links ?? []).map(normUrl).find(Boolean) ?? null;
+    for (const l of sm?.links ?? []){ const n = normUrl(l); if (n) urls.add(n); }
+    const { creative, ...rest } = x;
+    rows.push({ ...base, level: "ad", meta_id: x.id, parent_id: x.adset_id, campaign_id: x.campaign_id, name: x.name, status: x.status, effective_status: x.effective_status, created_time: x.created_time ?? null, settings: rest, creative: sm, landing_url: land });
+  }
+  for(let i = 0; i < rows.length; i += 200) await admin.from("learn_objects").upsert(rows.slice(i, i + 200), { onConflict: "ad_account_id,level,meta_id" });
+  // Pages to read: remember which company uses each.
+  for (const u of urls){
+    const { data: ex } = await admin.from("learn_pages").select("url_norm, company_ids").eq("url_norm", u).maybeSingle();
+    if (!ex) await admin.from("learn_pages").insert({ url_norm: u, company_ids: [a.company_id] });
+    else if (!(ex.company_ids ?? []).includes(a.company_id)) await admin.from("learn_pages").update({ company_ids: [...ex.company_ids, a.company_id] }).eq("url_norm", u);
+  }
+  // Results: ad totals, then campaign breakdowns.
+  const ins = [];
+  const flds = "spend,impressions,reach,clicks,inline_link_clicks,frequency,actions,action_values,video_thruplay_watched_actions,video_p100_watched_actions";
+  const put = (level, id, breakdown, bucket, r)=>ins.push({ ad_account_id: a.id, company_id: a.company_id, level, object_id: id, breakdown, bucket: String(bucket).slice(0, 80), win: "30d", ...learnRow(r), synced_at: new Date().toISOString() });
+  const adTotals = await graphGetAll(`act_${actId}/insights`, { level: "ad", fields: "ad_id," + flds, date_preset: "last_30d" }, token, 12).catch(()=>[]);
+  for (const r of adTotals) put("ad", r.ad_id, "total", "all", r);
+  const BR = [
+    ["hour", "hourly_stats_aggregated_by_advertiser_time_zone", (r)=>String(r.hourly_stats_aggregated_by_advertiser_time_zone ?? "").slice(0, 2)],
+    ["age_gender", "age,gender", (r)=>`${r.age}|${r.gender}`],
+    ["country", "country", (r)=>r.country],
+    ["region", "region", (r)=>r.region],
+    ["placement", "publisher_platform,platform_position", (r)=>`${r.publisher_platform}|${r.platform_position}`],
+    ["device", "device_platform", (r)=>r.device_platform]
+  ];
+  for (const [name, brk, bucket] of BR){
+    if (Date.now() > deadline) break;
+    const rs = await graphGetAll(`act_${actId}/insights`, { level: "campaign", fields: "campaign_id," + flds, breakdowns: brk, date_preset: "last_30d" }, token, 12).catch(()=>[]);
+    for (const r of rs) if (bucket(r)) put("campaign", r.campaign_id, name, bucket(r), r);
+  }
+  for(let i = 0; i < ins.length; i += 300) await admin.from("learn_insights").upsert(ins.slice(i, i + 300), { onConflict: "ad_account_id,level,object_id,breakdown,bucket,win" });
+  await admin.from("ad_accounts").update({ learn_synced_at: new Date().toISOString() }).eq("id", a.id);
+  return { objects: rows.length, insights: ins.length, pages: urls.size };
+}
+async function handleLearnSync(maxAccounts = 2) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const deadline = Date.now() + 110_000;
+  const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
+  const off = new Set((cos ?? []).map((c)=>c.id));
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, billing_mode").eq("status", "active").order("learn_synced_at", { ascending: true, nullsFirst: true }).limit(40);
+  const out = [];
+  for (const a of (accts ?? []).filter((x)=>!off.has(x.company_id) && /^\d+$/.test(String(x.meta_ad_account_id ?? "").replace(/^act_/, ""))).slice(0, maxAccounts)){
+    if (Date.now() > deadline) break;
+    try { out.push({ account: a.nickname || a.name, ...await learnAccount(admin, a, deadline) }); } catch (e) { await admin.from("ad_accounts").update({ learn_synced_at: new Date().toISOString() }).eq("id", a.id); out.push({ account: a.nickname || a.name, error: String(e.message ?? e).slice(0, 160) }); }
+  }
+  return { ok: true, accounts: out };
+}
+// ---- landing pages -------------------------------------------------------------------------------------------------------------------------
+const decodeEnt = (t)=>String(t).replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n)=>{ try { return String.fromCodePoint(Number(n)); } catch (_) { return ""; } }).replace(/&#x([0-9a-f]+);/gi, (_, n)=>{ try { return String.fromCodePoint(parseInt(n, 16)); } catch (_) { return ""; } });
+const BLOCK_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "td", "th", "div", "section", "article", "header", "footer", "main", "nav", "ul", "ol", "table", "tr", "form", "blockquote", "figcaption", "summary", "dt", "dd", "aside", "button", "label", "br", "hr", "select", "option"]);
+const KEEP_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "td", "th", "blockquote", "figcaption", "summary", "dt", "dd", "button", "label", "div", "section", "span", "a", "option"]);
+function parsePage(html, base) {
+  const headBlock = html.match(/<head\b[\s\S]*?<\/head>/i)?.[0] ?? "";
+  const bodyOnly = html.replace(/<head\b[\s\S]*?<\/head>/i, " ");
+  let h = bodyOnly.replace(/<!--[\s\S]*?-->/g, " ").replace(/<(script|style|noscript|svg|template)\b[\s\S]*?<\/\1>/gi, (m, t)=>t.toLowerCase() === "script" && /fbq\(|fbevents\.js/.test(m) ? " <meta data-pixel> " : " ");
+  const title = decodeEnt((headBlock.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").replace(/\s+/g, " ").trim()).slice(0, 200);
+  const desc = decodeEnt(html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i)?.[1] ?? html.match(/<meta[^>]+content=["']([^"']*)["'][^>]*name=["']description["']/i)?.[1] ?? "").slice(0, 400);
+  const blocks = [], ctas = [], fields = [], imgs = [];
+  let cur = null, footer = 0, depthFooter = 0, formCount = 0, videoCount = 0;
+  const flush = ()=>{ if (cur) { const x = decodeEnt(cur.x).replace(/\s+/g, " ").replace(/ ([.,!?;:%)\]])/g, "$1").replace(/([(\[]) /g, "$1").trim(); if (x.length > 1 && x !== blocks[blocks.length - 1]?.x) blocks.push({ t: cur.t, x: x.slice(0, 1500), f: footer ? 1 : 0 }); cur = null; } };
+  const re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>|([^<]+)/g;
+  let m, openA = null, openBtn = null, stack = [];
+  while ((m = re.exec(h))) {
+    if (m[4] !== undefined) { const t = m[4]; if (!t.trim()) continue; if (!cur) cur = { t: stack.find((x)=>/^h[1-6]$/.test(x)) ?? stack[stack.length - 1] ?? "text", x: "" }; cur.x += " " + t; if (openA) openA.x += " " + t; if (openBtn) openBtn.x += " " + t; continue; }
+    const close = m[1] === "/", tag = m[2].toLowerCase(), attrs = m[3] ?? "";
+    if (tag === "footer") { flush(); if (!close) { footer++; depthFooter++; } else if (depthFooter > 0) { depthFooter--; if (!depthFooter) footer = 0; } continue; }
+    if (!close) {
+      if (tag === "img") { const alt = decodeEnt(attrs.match(/alt=["']([^"']*)["']/i)?.[1] ?? "").trim(); imgs.push(alt); continue; }
+      if (tag === "video" || (tag === "iframe" && /youtube|vimeo|wistia|loom/i.test(attrs))) videoCount++;
+      if (tag === "form") formCount++;
+      if (tag === "input" || tag === "textarea" || tag === "select") { const ph = decodeEnt(attrs.match(/placeholder=["']([^"']*)["']/i)?.[1] ?? attrs.match(/name=["']([^"']*)["']/i)?.[1] ?? "").trim(); const ty = attrs.match(/type=["']([^"']*)["']/i)?.[1] ?? tag; if (ty !== "hidden" && ty !== "submit") fields.push(`${ty}:${ph}`.slice(0, 80)); if (ty === "submit") { const v = decodeEnt(attrs.match(/value=["']([^"']*)["']/i)?.[1] ?? "").trim(); if (v) ctas.push(v); } continue; }
+      if (tag === "a") { if (stack.some((x)=>x === "nav" || x === "header" || x === "footer" || x === "li") || footer) flush(); openA = { x: "", href: attrs.match(/href=["']([^"']*)["']/i)?.[1] ?? "" }; }
+      if (tag === "button") openBtn = { x: "" };
+      if (BLOCK_TAGS.has(tag)) flush();
+      if (tag !== "br" && tag !== "hr") stack.push(tag);
+      if (BLOCK_TAGS.has(tag) || KEEP_TAGS.has(tag)) { if (!cur && BLOCK_TAGS.has(tag)) cur = null; }
+    } else {
+      if (tag === "a" && openA) { if (stack.some((x)=>x === "nav" || x === "header" || x === "footer" || x === "li") || footer) flush(); const x = decodeEnt(openA.x).replace(/\s+/g, " ").trim(); if (x && x.length < 80 && /btn|button|order|buy|shop|get|call|whatsapp|checkout/i.test(attrs + x + openA.href)) ctas.push(x); openA = null; }
+      if (tag === "button" && openBtn) { const x = decodeEnt(openBtn.x).replace(/\s+/g, " ").trim(); if (x) ctas.push(x.slice(0, 80)); openBtn = null; }
+      if (BLOCK_TAGS.has(tag)) flush();
+      const i = stack.lastIndexOf(tag); if (i >= 0) stack.length = i;
+    }
+  }
+  flush();
+  const text = blocks.map((b)=>b.x).join("\n");
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const money = [...new Set((text.match(/(?:₦\s?\d[\d,]*(?:\.\d+)?|\b(?:NGN|N)\s?\d{1,3}(?:,\d{3})+|\b(?:NGN|N)\s?\d{4,}|\b(?:KSh|KES|GHS|GH₵)\s?\d[\d,]*|[$€£]\s?\d[\d,]*(?:\.\d+)?)/g) ?? []).map((x)=>x.replace(/[\s,]+$/, "").replace(/\s+/g, "")))].slice(0, 25);
+  const low = text.toLowerCase();
+  const signals = {
+    headings: blocks.filter((b)=>/^h[1-6]$/.test(b.t)).map((b)=>`${b.t}: ${b.x}`).slice(0, 80),
+    prices: money, ctas: [...new Set(ctas)].slice(0, 30), form_fields: fields.slice(0, 30), forms: formCount, images: imgs.length, images_with_alt: imgs.filter(Boolean).length, videos: videoCount,
+    pay_on_delivery: /pay on delivery|cash on delivery|\bcod\b|pay when|pay after/.test(low), guarantee: /money.?back|guarantee|refund/.test(low),
+    urgency: /limited|hurry|only \d+ (left|remaining)|today only|before (it|stock)|running out|countdown|last chance|selling fast/.test(low),
+    testimonials: /testimon|what (our )?customers say|reviews?|verified (buyer|purchase)|before and after|before & after/.test(low),
+    free_delivery: /free (delivery|shipping)/.test(low), nafdac: /nafdac/.test(low), whatsapp: /whatsapp|wa\.me/.test(h.toLowerCase()), meta_pixel: /data-pixel|fbq\(|fbevents\.js/i.test(html),
+    footer_blocks: blocks.filter((b)=>b.f).length
+  };
+  return { title, desc, blocks: blocks.slice(0, 1500), text: text.slice(0, 120_000), words, signals, spa: words < 60 && /id=["'](root|app|__next)["']|__NEXT_DATA__|ng-version|data-reactroot/i.test(html) };
+}
+function safeFetchUrl(u) {
+  const x = new URL(u);
+  if (!/^https?:$/.test(x.protocol)) throw new Error("only http(s)");
+  const host = x.hostname;
+  if (/^(localhost|0\.0\.0\.0|\[?::1\]?)$/i.test(host) || /\.(local|internal|localhost)$/i.test(host)) throw new Error("blocked host");
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) { const [p, q] = host.split(".").map(Number); if (p === 10 || p === 127 || p === 0 || (p === 169 && q === 254) || (p === 172 && q >= 16 && q <= 31) || (p === 192 && q === 168)) throw new Error("blocked ip"); }
+  if (/^\[/.test(host) || host.includes(":")) throw new Error("blocked ipv6");
+  return x;
+}
+async function handleLearnPages(limit = 8) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
+  const off = new Set((cos ?? []).map((c)=>c.id));
+  const { data: due } = await admin.from("learn_pages").select("url_norm, company_ids, attempts").lte("next_fetch_at", new Date().toISOString()).order("next_fetch_at", { ascending: true }).limit(limit * 3);
+  const out = [], deadline = Date.now() + 100_000;
+  for (const pg of (due ?? []).filter((d)=>(d.company_ids ?? []).some((c)=>!off.has(c))).slice(0, limit)){
+    if (Date.now() > deadline) break;
+    const upd = { fetched_at: new Date().toISOString(), attempts: pg.attempts + 1 };
+    try {
+      const u = safeFetchUrl(pg.url_norm);
+      const ctl = new AbortController(), to = setTimeout(()=>ctl.abort(), 12_000);
+      const res = await fetch(u.toString(), { redirect: "follow", signal: ctl.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraLearner/1.0; +https://revoracrm.app)", Accept: "text/html,application/xhtml+xml" } }).finally(()=>clearTimeout(to));
+      const fin = safeFetchUrl(res.url || u.toString());
+      const ct = res.headers.get("content-type") ?? "";
+      const reader = res.body?.getReader(); let html = "", bytes = 0; const dec = new TextDecoder();
+      while (reader) { const { done, value } = await reader.read(); if (done) break; bytes += value.length; html += dec.decode(value, { stream: true }); if (bytes > 1_500_000) { await reader.cancel(); break; } }
+      if (!res.ok) { await admin.from("learn_pages").update({ ...upd, status: "error", http_status: res.status, final_url: fin.toString(), error: `HTTP ${res.status}`, next_fetch_at: new Date(Date.now() + (pg.attempts >= 3 ? 14 : 1) * 86400_000).toISOString() }).eq("url_norm", pg.url_norm); out.push({ url: pg.url_norm, error: `HTTP ${res.status}` }); continue; }
+      if (!/html|xml|text/i.test(ct)) { await admin.from("learn_pages").update({ ...upd, status: "skipped", http_status: res.status, error: `not a web page (${ct.slice(0, 40)})`, next_fetch_at: new Date(Date.now() + 30 * 86400_000).toISOString() }).eq("url_norm", pg.url_norm); continue; }
+      const pr = parsePage(html, fin.toString());
+      const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pr.text)))).map((b)=>b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+      await admin.from("learn_pages").update({ ...upd, status: "ok", http_status: res.status, final_url: fin.toString(), title: pr.title, meta_description: pr.desc, js_rendered: pr.spa, word_count: pr.words, content_hash: hash, blocks: pr.blocks, text: pr.text, signals: pr.signals, error: pr.spa ? "page builds itself with JavaScript, so little text could be read" : null, next_fetch_at: new Date(Date.now() + 7 * 86400_000).toISOString() }).eq("url_norm", pg.url_norm);
+      out.push({ url: pg.url_norm, words: pr.words, blocks: pr.blocks.length, spa: pr.spa });
+    } catch (e) {
+      await admin.from("learn_pages").update({ ...upd, status: "error", error: String(e.message ?? e).slice(0, 160), next_fetch_at: new Date(Date.now() + (pg.attempts >= 3 ? 14 : 1) * 86400_000).toISOString() }).eq("url_norm", pg.url_norm);
+      out.push({ url: pg.url_norm, error: String(e.message ?? e).slice(0, 100) });
+    }
+  }
+  return { ok: true, pages: out };
+}
 const gMoney = (n)=>"₦" + Math.round(Number(n)).toLocaleString("en-NG");
 async function handleBalanceGuard(dryRun = false) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -2452,6 +2659,13 @@ Deno.serve(async (req)=>{
         return json({ status: r.status, ...(await r.json().catch(()=>({}))) });
       }
       return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
+    }
+    if (body.action === "learn_sync" || body.action === "learn_pages") {
+      const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+      const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      const given = req.headers.get("x-cron-secret") ?? "";
+      if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
+      return json(body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6)) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
     }
     if (body.action === "purchase_timing_digest") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
