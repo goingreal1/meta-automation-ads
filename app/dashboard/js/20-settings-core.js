@@ -139,6 +139,7 @@ async function renderSettings(el) {
       <div class="set-lbl">Your ad accounts</div>
       ${accountsList.map(a => `<div class="set-card">
         <div class="set-acct-head">📣 ${escH(a.nickname || a.name || "Ad account")} <small>${escH(a.meta_ad_account_id || "")} · Balance ${fN(a.balance_naira)}</small><span class="pill ${a.status === "active" ? "active" : "paused"}">${a.status === "active" ? "Active" : escH(a.status || "—")}</span></div>
+        <div class="set-item"><span class="set-ic" style="background:#ff9500">⏸️</span><div class="set-tx"><b>Switch off ads when the balance is low</b><span>Below ₦50, Revora switches off every running campaign, its ad sets and its ads. Once the balance is ₦1,000 or more, it switches back on only those. Older campaigns that were off stay off. Prepaid accounts only.</span></div><label class="switch"><input type="checkbox" ${a.auto_pause_low_balance ? "checked" : ""} onchange="bvToggleBalanceGuard('${a.id}', this.checked, this)"><span class="sw-track"></span></label></div>
         ${isAdmin ? `<div class="set-item"><span class="set-ic" style="background:#af52de">👥</span><div class="set-tx"><b>Shared with</b><span>${a.billing_mode === "managed" ? "A Revora account is paid from the wallet of the buyer it is shared with." : "The media buyer who runs this account."}</span></div><select class="acctShare" data-id="${a.id}" onchange="bvShareAccount(this)" style="max-width:170px;">${shareOpts(a.media_buyer_id)}</select></div>` : ""}
         <div class="set-item"><span class="set-ic" style="background:#8e8e93">📡</span><div class="set-tx"><b>Pixel / dataset</b><span>${a.meta_pixel_id ? escH(a.pixel_name || a.meta_pixel_id) : "No dataset yet. Create one so Meta can track your orders."}</span></div>${a.meta_pixel_id ? '<button type="button" class="btn btn-g" style="width:auto;padding:7px 14px;" onclick="bvSetSec(\'events\')">View events</button>' : `<button type="button" class="btn btn-a" style="width:auto;padding:7px 14px;" onclick="bvMakeDataset(this,'${a.id}')">Create dataset</button>`}</div>
         <div class="set-item"><span class="set-ic" style="background:#34c759">📄</span><div class="set-tx"><b>Facebook Page</b><span>${a.fb_page_id ? escH(a.fb_page_name || a.fb_page_id) + (a.whatsapp_number ? " · " + escH(a.whatsapp_number) : "") : "No Page linked yet. Ads run as a Facebook Page."}</span></div><button type="button" class="btn ${a.fb_page_id ? "btn-g" : "btn-a"}" style="width:auto;padding:7px 14px;" onclick="bvLinkPage('${a.id}')">${a.fb_page_id ? "Change" : "Link Page"}</button></div>
@@ -724,4 +725,10 @@ async function bvSavePartnerBizId(mediaBuyerId, value, btn) {
     bvToast("Could not save: " + err.message, "err");
     btn.disabled = false; btn.textContent = original;
   }
+}
+async function bvToggleBalanceGuard(id, on, el) {
+  const r = await sbFn("ads-manager", { action: "set_balance_guard", ad_account_id: id, enabled: on === true });
+  if (r?.error || r?.ok === false) { if (el) el.checked = !on; bvToast("Couldn't save: " + (r.error || "unknown"), "err"); return; }
+  const a = (accountsList || []).find((x) => x.id === id); if (a) a.auto_pause_low_balance = on;
+  bvToast(on ? "On: campaigns switch off when the balance is below ₦50 and back on at ₦1,000." : "Off: Revora will not switch your campaigns off for a low balance.");
 }
