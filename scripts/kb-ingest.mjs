@@ -40,6 +40,20 @@ const docs = files.map(({ path, kind }) => {
 });
 
 if (DRY) { for (const d of docs) console.log(d.kind.padEnd(5), String(d.text.length).padStart(7), d.source, "|", d.title); process.exit(0); }
+// --emit-sql <dir>: write one .sql file per batch that calls kb_ingest from inside Postgres (net.http_post, secret read from app_secrets there).
+const emitIdx = process.argv.indexOf("--emit-sql");
+if (emitIdx > 0) {
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const dir = process.argv[emitIdx + 1]; mkdirSync(dir, { recursive: true });
+  const keepAll = docs.map((d) => d.source);
+  for (let i = 0, n = 0; i < docs.length; i += 6, n++) {
+    const last = i + 6 >= docs.length;
+    const body = JSON.stringify({ action: "kb_ingest", documents: docs.slice(i, i + 6), prune: last ? [{ scope: "global", source_prefix: "repo/", keep: keepAll }] : [] });
+    if (body.includes("$kb$")) throw new Error("document contains the SQL quote tag");
+    writeFileSync(join(dir, String(n).padStart(3, "0") + ".sql"), "select net.http_post(url := '" + BASE + "/functions/v1/ads-manager', headers := jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')), body := $kb$" + body + "$kb$::jsonb, timeout_milliseconds := 140000) as request_id;\n");
+  }
+  console.log("wrote", Math.ceil(docs.length / 6), "files to", dir); process.exit(0);
+}
 if (!SECRET) { console.error("Set ADS_CRON_SECRET (not printed anywhere)."); process.exit(1); }
 
 async function call(body) {
