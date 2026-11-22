@@ -470,6 +470,7 @@ Deno.serve(async (req)=>{
       const data = await fetchAllInsights(insightsUrl);
       if (data.error) {
         console.error(`Meta API error for account ${account.name}:`, data.error);
+        if (/too many calls|rate limit|request limit/i.test(String(data.error?.message ?? ""))) void supabase.rpc("meta_rate_hit").then(() => {}, () => {});
         totalResults.push({
           account: account.name,
           error: data.error
