@@ -120,6 +120,7 @@ function findsHtml(run) {
   var li = function (a) { return '<ul class="li">' + (a || []).map(function (x) { return "<li>" + esc(typeof x === "string" ? x : x.role + ": " + (x.goal || "")) + "</li>"; }).join("") + "</ul>"; };
   var pg = run.page || {}, ph = "";
   if (pg.mode === "built") ph = "<details><summary>The page it built</summary><div class=\"note\">Draft with " + (pg.sections || []).length + " sections: " + esc((pg.sections || []).join(", ")) + ".</div>" + (pg.gaps && pg.gaps.length ? "<div class=\"note\">Still needs: " + esc(pg.gaps.join("; ")) + "</div>" : "") + (pg.test_link ? '<div class="note"><a href="' + esc(pg.test_link) + '" target="_blank" rel="noopener">Preview the draft</a></div>' : "") + "</details>";
+  if (pg.mode === "files") ph = "<details open><summary>The page it wrote</summary><div class=\"note\">Real HTML files: " + esc((pg.files || []).join(", ")) + ".</div>" + (pg.examples && pg.examples.length ? "<div class=\"note\">Learned from your pages: " + esc(pg.examples.join(", ")) + "</div>" : "") + (pg.check ? "<div class=\"note\">" + esc(pg.check) + "</div>" : "") + (pg.gaps && pg.gaps.length ? "<div class=\"note\">Still needs: " + esc(pg.gaps.join("; ")) + "</div>" : "") + (pg.test_link ? '<div class="note"><a href="' + esc(pg.test_link) + '" target="_blank" rel="noopener">Preview the draft</a></div>' : "") + "</details>";
   if (pg.mode === "existing") ph = "<details><summary>Your page</summary><div class=\"note\">" + esc(pg.url) + "</div>" + (pg.review && pg.review.missing && pg.review.missing.length ? "<div class=\"note\">Missing from the plan: " + esc(pg.review.missing.join(", ")) + "</div>" : "") + (pg.review && pg.review.suggestions ? li(pg.review.suggestions) : "") + "</details>";
   return '<div class="lbl">What it found</div><div class="card" style="padding:6px 14px 12px">'
     + "<details open><summary>Who buys and why</summary><div class=\"note\">" + esc(rs.audience) + "</div></details>"
@@ -155,7 +156,7 @@ function approveHtml(run) {
     + '<div class="r"><div>Hard stop</div><div class="v">' + money(run.total_budget, cur) + " (" + days + " day" + (days === 1 ? "" : "s") + ")</div></div>"
     + '<div class="r"><div>Starts</div><div class="v">Tonight at midnight</div></div></div>'
     + '<ul class="li" style="margin-top:10px">' + sets + "</ul>"
-    + (pg.mode === "built" ? '<div class="note">Approving also puts the new sales page live.</div>' : "")
+    + (pg.mode === "built" || pg.mode === "files" ? '<div class="note">Approving also puts the new sales page live.</div>' : "")
     + (run.market_currency && run.market_currency !== cur ? '<div class="note">Shoppers pay in ' + esc(run.market_currency) + "; your ad account bills in " + esc(cur) + ". The amounts above are in " + esc(cur) + ".</div>" : "")
     + '<div class="err" id="err"></div><div class="row2"><button class="sec" id="cancel">Cancel run</button><button class="pri" id="approve">Approve and launch</button></div>';
 }

@@ -820,6 +820,13 @@ async function apTool(run: Record<string, unknown>, tool: string, args: Record<s
   const r = await fetch(`${SUPABASE_URL}/functions/v1/mcp-ads`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool, args, ctx }) });
   const o = await r.json().catch(() => ({})); return o?.out ?? o;
 }
+async function apCode(run: Record<string, any>, tool: string, args: Record<string, unknown>) {
+  const token = await mintToken(String(run.created_by ?? "")); if (!token) return { error: "could not sign in as the owner" };
+  const { data: prof } = await db.from("profiles").select("role, media_buyer_id, display_name").eq("id", String(run.created_by)).maybeSingle();
+  const ctx = { token, userId: run.created_by, email: null, companyId: run.company_id, role: prof?.role ?? "", mediaBuyerId: prof?.media_buyer_id ?? null, displayName: prof?.display_name ?? "" };
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/mcp-code`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool, args, ctx }) });
+  const o = await r.json().catch(() => ({})); return (o?.out ?? o) as Record<string, unknown>;
+}
 async function apBuilder(run: Record<string, unknown>, body: Record<string, unknown>) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-site-builder`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ ...body, company_id: run.company_id, user_id: run.created_by }) });
   const o = await r.json().catch(() => ({})); return { ok: r.ok, ...o } as Record<string, unknown>;
@@ -830,12 +837,16 @@ async function apResearch(run: Record<string, any>) {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   await apLog(run.id, "Ada", "I am reading your winning ads and the sales pages we have seen, top to bottom, to plan what to say first.");
   const x = await extraBriefing(run.company_id);
-  const { data: pages } = await db.from("learn_pages").select("url_norm, title, vision, signals, blocks").contains("company_ids", [run.company_id]).eq("status", "ok").not("vision", "is", null).order("fetched_at", { ascending: false }).limit(4);
-  const read = (pages ?? []).map((p: any) => ({ page: p.url_norm, title: p.title, sections_in_order: (p.vision?.sections ?? p.vision?.structure ?? []).slice(0, 25), opening: p.vision?.above_the_fold, offer: p.vision?.offer, proof: p.vision?.social_proof, trust: p.vision?.trust, order_form: p.vision?.order_form, hooks: (p.vision?.hooks ?? []).slice(0, 8) }));
+  const { data: pg0 } = await db.from("learn_pages").select("url_norm, title, vision, blocks, text, word_count").contains("company_ids", [run.company_id]).eq("status", "ok").gte("word_count", 700).limit(60);
+  const { data: lp0 } = await db.from("products").select("landing_page_url").eq("company_id", run.company_id).not("landing_page_url", "is", null);
+  const trn = (u: string) => String(u ?? "").replace(/#.*$/, "").replace(/\/+$/, "").toLowerCase();
+  const own = new Set((lp0 ?? []).map((x: any) => trn(x.landing_page_url)));
+  const pages = (pg0 ?? []).filter((x: any) => !/metaautomationads|revoracrm|outreachhq\.xyz\/?$|\/order|thank|checkout/i.test(x.url_norm)).sort((a: any, b: any) => Number(own.has(trn(b.url_norm))) - Number(own.has(trn(a.url_norm))) || Number(!!b.vision) - Number(!!a.vision) || Number(b.word_count) - Number(a.word_count)).slice(0, 4);
+  const read = pages.map((p: any) => ({ page: p.url_norm, title: p.title, section_headings_in_order: ((p.blocks ?? []) as { t: string; x: string }[]).filter((b) => /^h[1-3]$/.test(b.t)).slice(0, 40).map((b) => b.x), opening_text: String(p.text ?? "").slice(0, 1500), sections_seen_in_screenshots: (p.vision?.sections ?? p.vision?.structure ?? []).slice(0, 25), offer: p.vision?.offer, proof: p.vision?.social_proof, hooks: (p.vision?.hooks ?? []).slice(0, 8) }));
   const sys = `You are the research lead of an AI media-buying team. A direct-response seller in ${run.market_countries.join(", ")} will sell ONE product with paid Facebook and Instagram ads and a sales page. Study the product and what already sells for this business, then write the plan the page and the ads will follow. Return ONLY JSON:
 {"audience":"who buys and why, in plain words","fears":["the fears or pains, in the customer's own words"],"problem_story":"3-4 sentences: the story of the problem a buyer lives with, then what made them look for a fix","solution":"how this product answers it, using ONLY the product facts","proof_available":["proof the seller really has (from the product facts or the pages read)"],"proof_missing":["proof the page needs but the seller has not given (real testimonials, photos, certificates). Never invent any"],"objections":["why a buyer hesitates"],"offer":"the offer to put forward, only from the product facts (price, packages, delivery, payment on delivery, guarantee)","hooks":["5 ad hooks, each one line, aggressive but true"],"angles":["3 ad angles"],"blueprint":[{"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form","goal":"what this section must do for the buyer","guidance":"what to say, using only real facts"}],"offer_card_look":"how the best pages in PAGES_READ show their package or offer cards: what the picture shows (how many packs), how the price and the label are written, any badge like Best value. Say plainly if no page was read","niche":"health|beauty|fashion|food|gadgets|home|general"}
 HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, testimonials, certificates or guarantees. No medical cures or guaranteed results; for health products describe support in careful words and keep to ai_approved_claims when they exist. The blueprint order follows how the best pages in PAGES_READ are built (fear, then the problem story, then the solution, then proof, then assurance, then offer cards, then the order form); when no page was read, use that order. PAGES_READ are for STRUCTURE and order only: never copy a number, claim or promise from them. The page text is for shoppers in ${run.market_countries.join(", ")}: their words, their currency (${run.market_currency}).`;
-  const raw = await decideJson(sys, `PRODUCT:\n${JSON.stringify(prod).slice(0, 5000)}\n\nWHAT ALREADY WINS (this business):\n${JSON.stringify({ winning_ads: x.winning_ads_the_learner_saw ?? [], winning_video_anatomy: x.winning_video_anatomy ?? [], lessons: x.lessons_learned ?? [] }).slice(0, 9000)}\n\nPAGES_READ (screenshots read top to bottom):\n${JSON.stringify(read).slice(0, 9000)}`);
+  const raw = await decideJson(sys, `PRODUCT:\n${JSON.stringify(prod).slice(0, 5000)}\n\nWHAT ALREADY WINS (this business):\n${JSON.stringify({ winning_ads: x.winning_ads_the_learner_saw ?? [], winning_video_anatomy: x.winning_video_anatomy ?? [], lessons: x.lessons_learned ?? [] }).slice(0, 9000)}\n\nPAGES_READ (the seller's own pages: headings in page order, opening text, and what the screenshots showed):\n${JSON.stringify(read).slice(0, 9000)}`);
   const research = apParse(raw);
   if (!Array.isArray(research.blueprint) || !research.blueprint.length) throw new Error("The research did not come back in a usable shape. It will be tried again.");
   const hooks = Array.isArray(research.hooks) ? research.hooks.length : 0;
@@ -845,7 +856,7 @@ HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, tes
 }
 
 // 2. SALES PAGE: the owner's own page when there is one (read it, never change it); otherwise a draft built from the blueprint.
-async function apPage(run: Record<string, any>) {
+async function apPage(run: Record<string, any>): Promise<"wait" | void> {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   const rs = (run.research ?? {}) as Record<string, any>;
   let url = prod.landing_page_url as string | null;
@@ -864,46 +875,117 @@ async function apPage(run: Record<string, any>) {
     await apSet(run.id, "page", "done", review.read ? `Using your page. ${miss ? `It is missing: ${(review as any).missing.join(", ")}.` : "It covers the plan."} Nothing on it was changed.` : "Using your page. It is being read now; nothing on it will be changed.", { page: { mode: "existing", url, review } });
     return;
   }
-  // build a draft
-  await apLog(run.id, "Ada", "There is no sales page for this product yet, so I am writing one from the plan, in the order the best pages use.");
-  const brief = await apBuilder(run, { mode: "page_brief", niche: rs.niche ?? "general" });
-  const roleMap = "fear/problem_story -> problem (title + paragraphs) ; solution/product -> solution ; benefits -> benefits ; how_it_works -> how_to ; testimonials -> testimonials ONLY if real ones are given (they are not, so leave it out) ; assurance -> guarantee or trust ONLY from product facts ; offer_cards -> offer then packages ; order_form -> form";
-  const raw = await decideJson(`You write the sales page for ONE product as a JSON spec for a page builder. Return ONLY JSON {"niche":string,"title":string,"seo_title":string,"seo_description":string,"cta":string,"sections":[{"type":...}]}. Section types and their fields (use only these): ${JSON.stringify(brief.sections ?? {}).slice(0, 2500)}. Follow the BLUEPRINT order exactly. Mapping of blueprint roles to section types: ${roleMap}. Start with an offerbar and a hero (headline = the strongest hook; subheadline = what the buyer gets), end with form then footer.
-HARD RULES: use ONLY the product facts. Never invent prices, numbers, claims, testimonials, names, certificates or guarantees. No medical cures. Leave out any section whose real content you do not have. Write for shoppers in ${run.market_countries.join(", ")} in simple, clear English. Prices are shown from the product's own packages, never typed in the text.`, `PRODUCT:\n${JSON.stringify(prod).slice(0, 4500)}\n\nRESEARCH:\n${JSON.stringify({ audience: rs.audience, fears: rs.fears, problem_story: rs.problem_story, solution: rs.solution, objections: rs.objections, offer: rs.offer, hooks: rs.hooks, blueprint: rs.blueprint }).slice(0, 7000)}`);
-  const spec = apParse(raw);
-  const sections = (Array.isArray(spec.sections) ? spec.sections : []).slice(0, 24) as Record<string, unknown>[];
-  if (!sections.length) throw new Error("The page plan came back empty. It will be tried again.");
-  // Zara's pictures for the page, made from the real product photo when there is one; the offer cards show the pack count and the price.
+  // BUILD: a real file-based site (index.html, thanks.html, styles.css, scripts.js), written like the seller's own best pages.
+  await apLog(run.id, "Ada", "There is no sales page for this product yet. I am going to write one as real HTML files, the way your best pages are built.");
   const photo = prod.product_image_url ? [String(prod.product_image_url)] : [];
-  await apLog(run.id, "Zara", photo.length ? "I have your product photo, so every picture shows the real pack." : "There is no product photo yet, so I will draw the pack from its description. Add a photo in the Catalog and I will redo them with the real pack.");
   const cur = String(prod.currency ?? run.billing_currency ?? "NGN").toUpperCase();
+  let img: Record<string, string> = {}, tierImgs: Record<string, string> = {};
+  if ((run.page as any)?.mode === "drafting") { img = (run.page as any).img ?? {}; tierImgs = (run.page as any).tierImgs ?? {}; }
+  else {
+  // PHASE 1: Zara's pictures, made from the real product photo when there is one (stored on Supabase: the only place a site may take pictures from)
+  await apLog(run.id, "Zara", photo.length ? "I have your product photo, so every picture shows the real pack." : "There is no product photo yet, so I will draw the pack from its description. Add a photo in the Catalog and I will redo them with the real pack.");
   const look = String(rs.offer_card_look ?? "").slice(0, 400);
-  const jobs: Promise<void>[] = [];
-  const need = (type: string) => sections.find((s) => s.type === type && !s.image_url);
-  const setImg = (sec: Record<string, unknown> | undefined, url: string | null) => { if (sec && url) sec.image_url = url; };
-  const hero = need("hero"), prob = need("problem"), sol = need("solution");
   const scene = `${prod.product_name}, for shoppers in ${run.market_countries.join(", ")}`;
-  if (hero) jobs.push(apMakeImage(run, "hero", `Wide, bright hero picture for a sales page: the real product pack in an appealing everyday setting for ${scene}. Warm natural light, uncluttered, no words, no logos other than the pack's own.`, { refs: photo, size: "1536x1024" }).then((u) => { setImg(hero, u); }));
-  if (prob) jobs.push(apMakeImage(run, "problem", `Realistic photo of an ordinary adult in ${run.market_countries.join(", ")} having a worried, tired moment at home, related to this: ${String((rs.fears ?? [])[0] ?? "the problem the product helps with")}. No medical equipment, no body parts exposed, no text, no before and after.`, { size: "1536x1024" }).then((u) => { setImg(prob, u); }));
-  if (sol) jobs.push(apMakeImage(run, "solution", `Clean product shot for a sales page: the real pack on a simple surface with a few natural ingredient props. No words other than the pack's own.`, { refs: photo }).then((u) => { setImg(sol, u); }));
-  const tierImgs: Record<string, string> = {};
-  for (const t of (prod.tiers ?? []).slice(0, 4)) {
-    if (t.image_url) continue; // the seller's own card picture stays
+  const jobs: Promise<void>[] = [
+    apMakeImage(run, "hero", `Wide, bright hero picture for a sales page: the real product pack in an appealing everyday setting for ${scene}. Warm natural light, uncluttered, no words, no logos other than the pack's own.`, { refs: photo, size: "1536x1024" }).then((u) => { if (u) img.hero = u; }),
+    apMakeImage(run, "problem", `Realistic photo of an ordinary adult in ${run.market_countries.join(", ")} having a worried, tired moment at home, related to this: ${String((rs.fears ?? [])[0] ?? "the problem the product helps with")}. No medical equipment, no body parts exposed, no text, no before and after.`, { size: "1536x1024" }).then((u) => { if (u) img.problem = u; }),
+    apMakeImage(run, "product", `Clean product shot for a sales page: the real pack on a simple surface with a few natural ingredient props. No words other than the pack's own.`, { refs: photo }).then((u) => { if (u) img.product = u; }),
+  ];
+  for (const [k, t] of (prod.tiers ?? []).slice(0, 4).entries()) {
+    if (t.image_url) { tierImgs[String(t.label)] = String(t.image_url); continue; } // the seller's own card picture stays
     const n = packsOf(String(t.label)), price = moneyText(Number(t.price_naira), cur);
-    jobs.push(apMakeImage(run, `offer-${tierImgs ? Object.keys(tierImgs).length : 0}-${String(t.label).slice(0, 12).replace(/[^a-z0-9]/gi, "")}`, `Offer card picture: ${n} ${n === 1 ? "pack" : "packs"} of the real product arranged neatly side by side on a clean light background. Write exactly two things on the picture: the label "${String(t.label).slice(0, 40)}" and the price "${price}", large and easy to read. No other words. Style the card like the winners: ${look || "clear pack count, big price, a simple badge"}.`, { refs: photo, expect: [price.replace(/[^0-9]/g, "")] }).then((u) => { if (u) tierImgs[String(t.label)] = u; }));
+    jobs.push(apMakeImage(run, `offer-${k}`, `Offer card picture: ${n} ${n === 1 ? "pack" : "packs"} of the real product arranged neatly side by side on a clean light background. Write exactly two things on the picture: the label "${String(t.label).slice(0, 40)}" and the price "${price}", large and easy to read. No other words. Style the card like the winners: ${look || "clear pack count, big price, a simple badge"}.`, { refs: photo, expect: [price.replace(/[^0-9]/g, "")] }).then((u) => { if (u) tierImgs[String(t.label)] = u; }));
   }
-  if (jobs.length) { await apLog(run.id, "Zara", `Making ${jobs.length} picture${jobs.length === 1 ? "" : "s"} for the page: hero, the problem moment, the product, and an offer card for each package with its price.`); await Promise.all(jobs); }
-  for (const t of (prod.tiers ?? [])) if (tierImgs[String(t.label)]) await db.from("product_tiers").update({ image_url: tierImgs[String(t.label)] }).eq("product_id", prod.id).eq("label", t.label).is("image_url", null);
-  const madeTiers = Object.keys(tierImgs).length, tierTotal = (prod.tiers ?? []).filter((t: any) => !t.image_url).length;
-  await apLog(run.id, "Zara", `Pictures done: ${[hero && hero.image_url ? "hero" : "", prob && prob.image_url ? "problem" : "", sol && sol.image_url ? "product" : ""].filter(Boolean).join(", ") || "none of the section pictures"}, and ${madeTiers} of ${tierTotal} offer cards${madeTiers < tierTotal ? " (the price on the other cards would not come out right, so the page keeps its own cards for those)" : " with the price checked"}.`);
-  if (prod.product_image_url && sections.some((s) => s.type === "hero") && !sections.find((s) => s.type === "hero")?.image_url) sections.find((s) => s.type === "hero")!.image_url = prod.product_image_url;
-  const { data: oldDraft } = await db.from("sites").select("id").eq("product_id", prod.id).eq("status", "draft").order("created_at", { ascending: false }).limit(1).maybeSingle();
-  const built = await apBuilder(run, { mode: "page_build", ...(oldDraft ? { site_id: oldDraft.id } : {}), product_id: prod.id, niche: String(spec.niche || rs.niche || "general"), title: String(spec.title ?? prod.product_name).slice(0, 80), business_name: prod.product_name, spec: { ...spec, sections } });
-  if (!built.ok || built.error) throw new Error(String(built.error ?? "The page could not be saved.").slice(0, 250));
-  const test = String((built as any).test_link ?? ""), live = String((built as any).live_link || test.split("?")[0]); // a draft has no live link yet: its address is the preview address without the preview key
-  await apLog(run.id, "Ada", `Page built: ${sections.length} sections. It stays a draft until you approve.`);
-  const gaps = [...((built as any).still_needs_images ?? []).map((s: string) => `picture: ${s}`), ...((rs.proof_missing ?? []) as string[]).slice(0, 4).map((s) => `proof: ${s}`)];
-  await apSet(run.id, "page", "done", `Built a draft page (${sections.length} sections). It goes live only when you approve.${gaps.length ? ` Still needs: ${gaps.slice(0, 3).join("; ")}.` : ""}`, { page: { mode: "built", site_id: (built as any).site_id ?? (built as any).id ?? null, live_link: live, test_link: test, sections: sections.map((s) => s.type), gaps } });
+  await apLog(run.id, "Zara", `Making ${jobs.length} pictures for the page: the hero, the problem moment, the product, and an offer card for each package with its price.`);
+  await Promise.all(jobs);
+  for (const t of (prod.tiers ?? [])) if (tierImgs[String(t.label)] && !t.image_url) await db.from("product_tiers").update({ image_url: tierImgs[String(t.label)] }).eq("product_id", prod.id).eq("label", t.label).is("image_url", null);
+  const cardsMade = (prod.tiers ?? []).slice(0, 4).filter((t: any) => tierImgs[String(t.label)]).length;
+  await apLog(run.id, "Zara", `Pictures done: ${["hero", "problem", "product"].filter((k) => img[k]).join(", ") || "none of the scene pictures"}, and ${cardsMade} of ${(prod.tiers ?? []).slice(0, 4).length} offer cards${cardsMade < (prod.tiers ?? []).slice(0, 4).length ? " (a price that would not come out right was left out)" : " with the price checked"}.`);
+  await db.from("autopilot_runs").update({ page: { mode: "drafting", img, tierImgs } }).eq("id", run.id);
+  return "wait"; // the page itself is written on the next pass, so no single pass runs too long
+  }
+  // PHASE 2: the seller's own best pages, read in full
+  const ex = await apExamples(run);
+  await apLog(run.id, "Ada", ex.pages.length ? `I read ${ex.pages.length} of your own pages in full: ${ex.pages.map((e) => e.host).join(", ")}. I will copy how they are laid out and how they push to order, not their words.` : "I found no sales pages of yours to learn from, so I will follow the standard sequence only.");
+  // 3) the site and its files
+  const made = await apCode(run, "site_new", { product_name: prod.product_name, title: `${prod.product_name} sales page`, business_name: prod.product_name });
+  if ((made as any).error || !(made as any).site_id) throw new Error(String((made as any).error ?? "The site could not be started."));
+  const siteId = String((made as any).site_id), conv = (((made as any).conventions ?? []) as string[]).join("\n- ");
+  const versions: Record<string, number> = {}; for (const f of ((made as any).files ?? []) as { path: string; version: number }[]) versions[f.path] = f.version;
+  const pkgs = ((made as any).packages ?? []) as { number: number; label: string; price_naira: number }[];
+  await apLog(run.id, "Ada", "Writing the page now: index.html, styles.css and scripts.js. The thank-you page stays the standard one that marks each sale.");
+  const sys = `You are a senior direct-response web developer and copywriter. Write the files of ONE mobile-first sales page as pure HTML, CSS and JS. Return ONLY JSON {"files":{"index.html":"...","styles.css":"...","scripts.js":"..."}}.
+This site's rules (follow them exactly):\n- ${conv}
+YOUR JOB: the page must grab attention in the first screen, then follow the sequence of the seller's own best pages in EXAMPLES: the same order of sections, the same density of order buttons, the same kind of hooks, the same look (colours, type, spacing). Copy the STRUCTURE and the STYLE, never their sentences, numbers or claims.
+SECTION PLAN (from research, in this order): ${JSON.stringify(rs.blueprint ?? []).slice(0, 2500)}
+HARD RULES: use ONLY facts in PRODUCT (never invent prices, numbers, claims, testimonials, names, certificates, guarantees); leave out a section you have no real content for. No medical cures or guaranteed results. Every order button is <a href="#order" data-rv-tier="N"> (N = package number) or plain href="#order"; the order form is <section id="order"><div data-rv-form="1"></div></section> placed near the end. The big hook is a large bold header that names the problem and the fear of ignoring it, with a short body under it; never put text over a background picture. Pictures: ONLY the Revora links in PICTURES (use each where it fits), nothing from other sites. Prices are written in ${cur}. Write for shoppers in ${run.market_countries.join(", ")} in plain, direct words.`;
+  const userText = `PRODUCT:\n${JSON.stringify({ name: prod.product_name, description: prod.description, benefits: prod.benefits, safety_notes: prod.safety_notes, approved_claims: prod.ai_approved_claims, notes: prod.notes, payment: prod.payment_note, nafdac: prod.nafdac_reg_no, packages: pkgs, currency: cur }).slice(0, 4500)}\n\nRESEARCH:\n${JSON.stringify({ audience: rs.audience, fears: rs.fears, problem_story: rs.problem_story, solution: rs.solution, objections: rs.objections, offer: rs.offer, hooks: rs.hooks, proof_available: rs.proof_available }).slice(0, 4500)}\n\nPICTURES (Revora links you may use):\n${JSON.stringify({ product_photo: prod.product_image_url ?? null, hero: img.hero ?? null, problem: img.problem ?? null, product: img.product ?? null, offer_cards: tierImgs })}\n\nEXAMPLES (the seller's own pages, source trimmed):\n${ex.pages.map((e, i) => `--- EXAMPLE ${i + 1}: ${e.url}\n${e.html}`).join("\n\n").slice(0, 60000)}`;
+  let files = await apWriteFiles(sys, userText, ex.shots);
+  const order = ["index.html", "styles.css", "scripts.js"];
+  const saved: string[] = [], errs: string[] = [];
+  const fix = (html: string) => { let h = html; if (!/data-rv-form/.test(h)) h = h.replace(/<\/body>/i, `<section id="order"><div data-rv-form="1"></div></section>\n</body>`); if (!/href="#order"/.test(h)) h = h.replace(/<\/body>/i, `<a href="#order" style="position:fixed;left:12px;right:12px;bottom:12px;z-index:50;text-align:center;padding:14px;border-radius:12px;background:#d4213d;color:#fff;font-weight:800;text-decoration:none">ORDER NOW</a>\n</body>`); return h; };
+  for (let round = 0; round < 2; round++) {
+    errs.length = 0;
+    for (const path of order) {
+      let content = String(files[path] ?? "").trim(); if (!content) continue;
+      if (path === "index.html") content = fix(content);
+      const w = await apCode(run, "site_write_file", { site_id: siteId, path, content, if_version: versions[path] ?? 1 });
+      if ((w as any).error) errs.push(`${path}: ${String((w as any).error).slice(0, 300)}`); else { saved.push(path); if ((w as any).version) versions[path] = Number((w as any).version); }
+    }
+    if (!errs.length) break;
+    await apLog(run.id, "Ada", `The site refused part of my files (${errs[0].slice(0, 160)}). I am fixing it.`);
+    files = await apWriteFiles(sys + "\nThe site refused some files. Fix exactly these problems and return ALL the files again:\n" + errs.join("\n"), userText, ex.shots);
+  }
+  if (!saved.includes("index.html")) throw new Error(`The page was refused: ${errs.join(" | ").slice(0, 220)}`);
+  const last = await apCode(run, "site_list_files", { site_id: siteId });
+  const test = String((last as any).test_link ?? (made as any).test_link ?? ""), live = String((last as any).live_link || test.split("?")[0]);
+  // 4) does the page load, and is the order form on it?
+  let check = "I could not open the page to check it.";
+  try { const r = await fetch(test, { headers: { "User-Agent": "RevoraAutopilot/1.0" } }); const t = await r.text(); check = r.ok ? (/data-rv-form|rv\/form\.js|rv-form/i.test(t) ? "The page loads and the order form is on it." : "The page loads, but I could not see the order form in it.") : `The page answered ${r.status}.`; } catch (_) { /* the check is a bonus */ }
+  await apLog(run.id, "Tobi", check);
+  await apLog(run.id, "Ada", `Page written: ${saved.join(", ")}. It stays a draft until you approve.`);
+  const gaps = [...((rs.proof_missing ?? []) as string[]).slice(0, 4).map((s) => `proof: ${s}`), ...(photo.length ? [] : ["picture: the real product photo"])];
+  await apSet(run.id, "page", "done", `Wrote a file-based page (${saved.join(", ")}) from ${ex.pages.length} of your own pages. It goes live only when you approve.${gaps.length ? ` Still needs: ${gaps.slice(0, 3).join("; ")}.` : ""}`, { page: { mode: "files", site_id: siteId, live_link: live, test_link: test, files: saved, examples: ex.pages.map((e) => e.url), gaps, check } });
+}
+
+// The seller's own sales pages, read in full (live HTML, trimmed) plus a few screenshots of the best one.
+async function apExamples(run: Record<string, any>): Promise<{ pages: { url: string; host: string; html: string }[]; shots: { b64: string; type: string }[] }> {
+  const { data: pgs } = await db.from("learn_pages").select("url_norm, word_count, shots, vision").contains("company_ids", [run.company_id]).eq("status", "ok").gte("word_count", 700).limit(60);
+  const { data: lp } = await db.from("products").select("landing_page_url").eq("company_id", run.company_id).not("landing_page_url", "is", null);
+  const tr = (u: string) => String(u ?? "").replace(/#.*$/, "").replace(/\/+$/, "").toLowerCase();
+  const mine = new Set((lp ?? []).map((x: any) => tr(x.landing_page_url)));
+  const bad = /metaautomationads|revoracrm|outreachhq\.xyz\/?$|\/order|thank|checkout/i;
+  const ranked = (pgs ?? []).filter((x: any) => !bad.test(x.url_norm)).sort((a: any, b: any) => Number(mine.has(tr(b.url_norm))) - Number(mine.has(tr(a.url_norm))) || Number(!!b.vision) - Number(!!a.vision) || Number(b.word_count) - Number(a.word_count)).slice(0, 3);
+  const pages: { url: string; host: string; html: string }[] = [];
+  for (const x of ranked) {
+    try {
+      const r = await fetch(x.url_norm, { headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraLearner/1.0)" }, signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) continue;
+      const html = (await r.text()).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<svg[\s\S]*?<\/svg>/gi, "").replace(/<!--[\s\S]*?-->/g, "").replace(/data:[a-z\/+-]+;base64,[A-Za-z0-9+\/=]+/g, "data:").replace(/\s+/g, " ").slice(0, 20000);
+      pages.push({ url: x.url_norm, host: new URL(x.url_norm).hostname, html });
+    } catch (_) { /* a page that does not open is skipped */ }
+  }
+  const shots: { b64: string; type: string }[] = [];
+  const top = ranked.find((x: any) => Array.isArray(x.shots) && x.shots.length);
+  for (const sh of ((top?.shots ?? []) as { path: string }[]).slice(0, 3)) {
+    try { const { data: f } = await db.storage.from("learn-shots").download(sh.path); if (f) { const u = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < u.length; k += 8192) bin += String.fromCharCode(...u.subarray(k, k + 8192)); shots.push({ b64: btoa(bin), type: "image/jpeg" }); } } catch (_) { /* optional */ }
+  }
+  return { pages, shots };
+}
+// The page writer: the strongest model this account has, tried in order.
+async function apWriteFiles(system: string, userText: string, shots: { b64: string; type: string }[]): Promise<Record<string, string>> {
+  const models = [Deno.env.get("AUTOPILOT_PAGE_MODEL") ?? "", "gpt-4.1", "gpt-4o"].filter(Boolean);
+  const content: unknown[] = [{ type: "text", text: userText }, ...shots.map((s) => ({ type: "image_url", image_url: { url: `data:${s.type};base64,${s.b64}`, detail: "low" } }))];
+  let lastErr = "";
+  for (const model of models) {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.4, max_tokens: model === "gpt-4o" ? 15000 : 30000, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content }] }), signal: AbortSignal.timeout(170_000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { lastErr = `${model}: ${j?.error?.message ?? r.status}`; if (/does not exist|not found|access|max_tokens/i.test(lastErr)) continue; throw new Error(lastErr.slice(0, 200)); }
+    const o = apParse(String(j.choices?.[0]?.message?.content ?? "")) as { files?: Record<string, string> };
+    if (o.files && typeof o.files["index.html"] === "string") return o.files;
+    lastErr = `${model}: the answer had no index.html`;
+  }
+  throw new Error(`The page could not be written (${lastErr.slice(0, 160)}).`);
 }
 
 // 3. TRACKING: is the pixel firing, and does a sale get marked on the thank-you page?
@@ -912,7 +994,7 @@ async function apTracking(run: Record<string, any>) {
   const out = await apTool(run, "check_pixel", { ad_account_id: run.ad_account_id }).catch(() => null);
   const verdict = String((out as any)?.verdict ?? (out as any)?.message ?? (out as any)?.error ?? "").slice(0, 200);
   const pg = (run.page ?? {}) as Record<string, any>;
-  const thanks = pg.mode === "built" ? "The thank-you page is built with the page and marks each sale." : "On your own page, add Revora's thank-you script to your thank-you page so each sale is marked.";
+  const thanks = pg.mode === "built" || pg.mode === "files" ? "The thank-you page is built with the page and marks each sale." : "On your own page, add Revora's thank-you script to your thank-you page so each sale is marked.";
   const fine = /fir|connect|ok|healthy|received/i.test(verdict) && !/not (connected|firing)|no pixel/i.test(verdict);
   await apSet(run.id, "tracking", "done", `${fine ? "" : "Needs a look: "}${verdict || "The pixel could not be checked right now."} ${thanks}`);
 }
@@ -961,7 +1043,7 @@ async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue
 async function apPlan(run: Record<string, any>) {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   const pg = (run.page ?? {}) as Record<string, any>;
-  if (!prod.landing_page_url && pg.mode === "built" && pg.live_link) { await db.from("products").update({ landing_page_url: pg.live_link }).eq("id", prod.id); await db.from("autopilot_runs").update({ page: { ...pg, set_landing: true } }).eq("id", run.id); }
+  if (!prod.landing_page_url && (pg.mode === "built" || pg.mode === "files") && pg.live_link) { await db.from("products").update({ landing_page_url: pg.live_link }).eq("id", prod.id); await db.from("autopilot_runs").update({ page: { ...pg, set_landing: true } }).eq("id", run.id); }
   const r = await proposeLaunches(run.meeting_id, run.company_id, run.created_by);
   if ("error" in r) throw new Error(String(r.error));
   const l = (r.launches ?? []).find((x: any) => x?.status === "proposed") ?? null;
@@ -981,7 +1063,12 @@ async function apApprove(runId: string, ctx: Record<string, unknown>) {
   if (!run || run.company_id !== ctx.companyId) return { error: "Run not found." };
   if (run.status !== "waiting" || !run.launch_id) return { error: "This run is not waiting for approval." };
   const pg = (run.page ?? {}) as Record<string, any>;
-  await apLog(run.id, "Tobi", "Approved. " + (pg.mode === "built" ? "Putting the page live first, then scheduling the campaign." : "Scheduling the campaign."));
+  await apLog(run.id, "Tobi", "Approved. " + (pg.mode === "built" || pg.mode === "files" ? "Putting the page live first, then scheduling the campaign." : "Scheduling the campaign."));
+  if (pg.mode === "files" && pg.site_id) {
+    const r2 = await fetch(`${SUPABASE_URL}/functions/v1/mcp-studio`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool: "publish_sales_page", args: { site_id: pg.site_id, confirmed: true }, ctx }) });
+    const o2 = await r2.json().catch(() => ({})); const out2 = (o2?.out ?? o2) as Record<string, unknown>;
+    if (!r2.ok || out2.error) { await apSet(run.id, "launch", "failed", `The page could not go live: ${String(out2.error ?? r2.status).slice(0, 200)}`); return { error: String(out2.error ?? "The page could not go live.") }; }
+  }
   if (pg.mode === "built" && pg.site_id) {
     const pub = await apBuilder(run, { mode: "page_publish", site_id: pg.site_id });
     if (!pub.ok || pub.error) { await apSet(run.id, "launch", "failed", `The page could not go live: ${String(pub.error ?? "").slice(0, 200)}`); return { error: String(pub.error ?? "The page could not go live.") }; }
@@ -1036,7 +1123,7 @@ async function apAdvance(id: string) {
       if (step.state === "failed") break;
       if (run.status === "live") { await apWatch(run); break; }
       if (step.key === "research") { await apSet(id, "research", "now", "Reading your winning ads and sales pages."); await apResearch(run); continue; }
-      if (step.key === "page") { await apSet(id, "page", "now", "Checking for a sales page."); await apPage(run); continue; }
+      if (step.key === "page") { await apSet(id, "page", "now", "Checking for a sales page."); const pr = await apPage(run); if (pr === "wait") break; continue; }
       if (step.key === "tracking") { await apSet(id, "tracking", "now", "Checking the pixel."); await apTracking(run); continue; }
       if (step.key === "creatives") { const r = await apCreatives(run); if (r === "wait") break; continue; }
       if (step.key === "plan") { if (step.state === "needs_you") break; await apPlan(run); break; }
