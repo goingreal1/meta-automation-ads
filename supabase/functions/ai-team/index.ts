@@ -833,14 +833,55 @@ async function apBuilder(run: Record<string, unknown>, body: Record<string, unkn
   const o = await r.json().catch(() => ({})); return { ok: r.ok, ...o } as Record<string, unknown>;
 }
 
+// ============ THE SELLER'S OWN PAGE FOR THIS PRODUCT ============
+// If the product already has a page (an address the seller set, a live Revora site, or a draft site), the team never builds another one.
+// It reads that page now (never changes it) and writes the ads, the video scripts and the ad copy so they echo the page.
+const blockedHost = (h: string) => /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|\[::1\])/i.test(h) || !/\./.test(h);
+function apPageFacts(html: string) {
+  const clean = String(html ?? "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<svg[\s\S]*?<\/svg>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ");
+  const txt = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&#?\w+;/g, " ").replace(/\s+/g, " ").trim();
+  const title = txt((clean.match(/<title[^>]*>([\s\S]*?)<\/title>/i) ?? [])[1] ?? "");
+  const headings = [...clean.matchAll(/<h([1-3])[^>]*>([\s\S]*?)<\/h\1>/gi)].map((m) => txt(m[2])).filter(Boolean).slice(0, 40);
+  const buttons = [...new Set([...clean.matchAll(/<(?:a|button)[^>]*>([\s\S]*?)<\/(?:a|button)>/gi)].map((m) => txt(m[1])).filter((t) => t.length > 2 && t.length < 60 && /order|buy|get|add to cart|shop|claim|click|pay|book/i.test(t)))].slice(0, 12);
+  const prices = [...new Set([...clean.matchAll(/(?:₦|NGN|KSh|KES|GH₵|GHS|USh|TSh|\$|USD|£)\s?[\d][\d,]*/g)].map((m) => m[0].replace(/\s+/g, "")))].slice(0, 12);
+  const text = txt(clean).slice(0, 7000);
+  return { title, headings, buttons, prices, text, images: (clean.match(/<img\b/gi) ?? []).length, has_form: /data-rv-form|<form\b|<iframe/i.test(clean) };
+}
+async function apOwnPage(run: Record<string, any>, prod: Record<string, any>): Promise<null | { kind: "external" | "live" | "draft"; url: string; site_id?: string; title: string; headings: string[]; buttons: string[]; prices: string[]; text: string; images: number; has_form: boolean }> {
+  const url = String(prod.landing_page_url ?? "").trim();
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const u = new URL(url); if (blockedHost(u.hostname)) return null;
+      const r = await fetch(u.toString(), { headers: { "User-Agent": "Mozilla/5.0 (compatible; RevoraAutopilot/1.0)" }, signal: AbortSignal.timeout(12_000), redirect: "follow" });
+      if (r.ok) return { kind: "external", url, ...apPageFacts((await r.text()).slice(0, 400_000)) };
+    } catch (_) { /* fall through to the product's own site */ }
+  }
+  const { data: sites } = await db.from("sites").select("id, status, created_at").eq("product_id", prod.id).order("created_at", { ascending: false }).limit(5);
+  const s = (sites ?? []).find((x: any) => x.status === "published") ?? (sites ?? [])[0];
+  if (!s) return url ? { kind: "external", url, title: "", headings: [], buttons: [], prices: [], text: "", images: 0, has_form: false } : null;
+  const { data: pg } = await db.from("site_pages").select("html").eq("site_id", s.id).eq("slug", "").maybeSingle();
+  if (!pg?.html) return null;
+  const links = await apCode(run, "site_list_files", { site_id: s.id }).catch(() => ({} as Record<string, unknown>));
+  const test = String((links as any).test_link ?? ""), live = String((links as any).live_link || test.split("?")[0]);
+  return { kind: s.status === "published" ? "live" : "draft", url: s.status === "published" ? live : test, site_id: s.id, ...apPageFacts(pg.html) };
+}
+// Video scripts written from the seller's page, so the ad and the page say the same thing.
+async function apScripts(run: Record<string, any>, prod: Record<string, any>, rs: Record<string, any>, own: Awaited<ReturnType<typeof apOwnPage>>) {
+  const raw = await decideJson(`You write short video-ad scripts for a direct-response seller. Return ONLY JSON {"scripts":[{"title":string,"length_s":number,"scenes":[{"t":"0-3","shows":string,"voiceover":string,"on_screen_text":string}],"cta":string}]}. Write 2 scripts, 30 to 45 seconds each, for shoppers in ${run.market_countries.join(", ")}. Scene 1 is a hook that stops the scroll and names the problem. Use the SAME promise, offer, price and wording style as the seller's page so the ad and the page feel like one. Use ONLY facts from PRODUCT and PAGE: never invent claims, numbers, prices, testimonials or guarantees; no medical cures. Plain, direct words.`, `PRODUCT:\n${JSON.stringify({ name: prod.product_name, description: prod.description, benefits: prod.benefits, packages: prod.tiers }).slice(0, 3000)}\n\nPAGE (the seller's own):\n${JSON.stringify(own ? { headings: own.headings, prices: own.prices, buttons: own.buttons, text: own.text.slice(0, 3500) } : { note: "no page text; use research" }).slice(0, 5000)}\n\nRESEARCH:\n${JSON.stringify({ fears: rs.fears, problem_story: rs.problem_story, offer: rs.offer, hooks: rs.hooks }).slice(0, 2500)}`);
+  const o = apParse(raw) as { scripts?: unknown[] };
+  return (Array.isArray(o.scripts) ? o.scripts : []).slice(0, 2);
+}
+
 // 1. RESEARCH: the product, what already wins in this business, the sales pages it has read (screenshots, in order), and what to say.
 async function apResearch(run: Record<string, any>) {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   // The team never guesses what a product is. Without a description or benefits it would borrow from the other products' pages, so it stops and asks.
-  if (!String(prod.description ?? "").trim() && !String(prod.benefits ?? "").trim() && !String(prod.ai_approved_claims ?? "").trim()) {
+  const ownPage = await apOwnPage(run, prod);
+  if (!String(prod.description ?? "").trim() && !String(prod.benefits ?? "").trim() && !String(prod.ai_approved_claims ?? "").trim() && !(ownPage && ownPage.text.length > 400)) {
     await apLog(run.id, "Ada", `I do not know what ${prod.product_name} is for yet, so I will not guess. Tell me in the Catalog what it is, who it is for and what it does (description and benefits), then tap Try again.`);
     throw new Error(`NEEDS: ${prod.product_name} has no description or benefits. Add what it is, who it is for and what it does in the Catalog, then tap Try again.`);
   }
+  if (ownPage) await apLog(run.id, "Ada", `${prod.product_name} already has a page (${ownPage.kind === "draft" ? "a draft on Revora" : ownPage.kind === "live" ? "live on Revora" : "your own address"}). I read it: ${ownPage.headings.length} headings, ${ownPage.prices.length} prices, ${ownPage.buttons.length} order buttons. I will not build another page, and the ads and scripts will echo this one.`);
   await apLog(run.id, "Ada", "I am reading your winning ads and the sales pages we have seen, top to bottom, to plan what to say first.");
   const x = await extraBriefing(run.company_id);
   const { data: pg0 } = await db.from("learn_pages").select("url_norm, title, vision, blocks, text, word_count").contains("company_ids", [run.company_id]).eq("status", "ok").gte("word_count", 700).limit(60);
@@ -850,11 +891,12 @@ async function apResearch(run: Record<string, any>) {
   const pages = (pg0 ?? []).filter((x: any) => !/metaautomationads|revoracrm|outreachhq\.xyz\/?$|\/order|thank|checkout/i.test(x.url_norm)).sort((a: any, b: any) => Number(own.has(trn(b.url_norm))) - Number(own.has(trn(a.url_norm))) || Number(!!b.vision) - Number(!!a.vision) || Number(b.word_count) - Number(a.word_count)).slice(0, 4);
   const read = pages.map((p: any) => ({ page: p.url_norm, title: p.title, section_headings_in_order: ((p.blocks ?? []) as { t: string; x: string }[]).filter((b) => /^h[1-3]$/.test(b.t)).slice(0, 40).map((b) => b.x), opening_text: String(p.text ?? "").slice(0, 1500), sections_seen_in_screenshots: (p.vision?.sections ?? p.vision?.structure ?? []).slice(0, 25), offer: p.vision?.offer, proof: p.vision?.social_proof, hooks: (p.vision?.hooks ?? []).slice(0, 8) }));
   const sys = `You are the research lead of an AI media-buying team. A direct-response seller in ${run.market_countries.join(", ")} will sell ONE product with paid Facebook and Instagram ads and a sales page. Study the product and what already sells for this business, then write the plan the page and the ads will follow. Return ONLY JSON:
-{"audience":"who buys and why, in plain words","fears":["the fears or pains, in the customer's own words"],"problem_story":"3-4 sentences: the story of the problem a buyer lives with, then what made them look for a fix","solution":"how this product answers it, using ONLY the product facts","proof_available":["proof the seller really has (from the product facts or the pages read)"],"proof_missing":["proof the page needs but the seller has not given (real testimonials, photos, certificates). Never invent any"],"objections":["why a buyer hesitates"],"offer":"the offer to put forward, only from the product facts (price, packages, delivery, payment on delivery, guarantee)","hooks":["5 ad hooks, each one line, aggressive but true"],"angles":["3 ad angles"],"blueprint":[{"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form","goal":"what this section must do for the buyer","guidance":"what to say, using only real facts"}],"offer_card_look":"how the best pages in PAGES_READ show their package or offer cards: what the picture shows (how many packs), how the price and the label are written, any badge like Best value. Say plainly if no page was read","niche":"health|beauty|fashion|food|gadgets|home|general"}
-HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, testimonials, certificates or guarantees. No medical cures or guaranteed results; for health products describe support in careful words and keep to ai_approved_claims when they exist. The blueprint order follows how the best pages in PAGES_READ are built (fear, then the problem story, then the solution, then proof, then assurance, then offer cards, then the order form); when no page was read, use that order. PAGES_READ are mostly OTHER products. They show STRUCTURE and order only: never copy a number, claim, promise, condition or audience from them, and never take this product's subject from them. What this product is, who it is for and what it does come ONLY from PRODUCT; if PRODUCT does not say, put it in proof_missing and do not guess. The page text is for shoppers in ${run.market_countries.join(", ")}: their words, their currency (${run.market_currency}).`;
-  const raw = await decideJson(sys, `PRODUCT:\n${JSON.stringify(prod).slice(0, 5000)}\n\nWHAT ALREADY WINS (this business):\n${JSON.stringify({ winning_ads: x.winning_ads_the_learner_saw ?? [], winning_video_anatomy: x.winning_video_anatomy ?? [], lessons: x.lessons_learned ?? [] }).slice(0, 9000)}\n\nPAGES_READ (the seller's own pages: headings in page order, opening text, and what the screenshots showed):\n${JSON.stringify(read).slice(0, 9000)}`);
+{"audience":"who buys and why, in plain words","fears":["the fears or pains, in the customer's own words"],"problem_story":"3-4 sentences: the story of the problem a buyer lives with, then what made them look for a fix","solution":"how this product answers it, using ONLY the product facts","proof_available":["proof the seller really has (from the product facts or the pages read)"],"proof_missing":["proof the page needs but the seller has not given (real testimonials, photos, certificates). Never invent any"],"objections":["why a buyer hesitates"],"offer":"the offer to put forward, only from the product facts (price, packages, delivery, payment on delivery, guarantee)","hooks":["5 ad hooks, each one line, aggressive but true"],"angles":["3 ad angles"],"blueprint":[{"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form","goal":"what this section must do for the buyer","guidance":"what to say, using only real facts"}],"offer_card_look":"how the best pages in PAGES_READ show their package or offer cards: what the picture shows (how many packs), how the price and the label are written, any badge like Best value. Say plainly if no page was read","page_summary":"only when OWN_PAGE is given: {headline, promise, offer, price_points[], proof_on_page[], tone, look}, taken ONLY from OWN_PAGE","niche":"health|beauty|fashion|food|gadgets|home|general"}
+HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, testimonials, certificates or guarantees. No medical cures or guaranteed results; for health products describe support in careful words and keep to ai_approved_claims when they exist. The blueprint order follows how the best pages in PAGES_READ are built (fear, then the problem story, then the solution, then proof, then assurance, then offer cards, then the order form); when no page was read, use that order. When OWN_PAGE is given it is the seller's real page for THIS product: its facts, promise, offer, prices and look are the source of truth next to PRODUCT, the blueprint describes that page as it is, and you do not plan a new page. PAGES_READ are mostly OTHER products. They show STRUCTURE and order only: never copy a number, claim, promise, condition or audience from them, and never take this product's subject from them. What this product is, who it is for and what it does come ONLY from PRODUCT; if PRODUCT does not say, put it in proof_missing and do not guess. The page text is for shoppers in ${run.market_countries.join(", ")}: their words, their currency (${run.market_currency}).`;
+  const raw = await decideJson(sys, `PRODUCT:\n${JSON.stringify(prod).slice(0, 5000)}\n\nOWN_PAGE (the seller's real page for this product; read-only):\n${ownPage ? JSON.stringify({ title: ownPage.title, headings: ownPage.headings, buttons: ownPage.buttons, prices: ownPage.prices, text: ownPage.text.slice(0, 4500) }).slice(0, 7000) : "none"}\n\nWHAT ALREADY WINS (this business):\n${JSON.stringify({ winning_ads: x.winning_ads_the_learner_saw ?? [], winning_video_anatomy: x.winning_video_anatomy ?? [], lessons: x.lessons_learned ?? [] }).slice(0, 9000)}\n\nPAGES_READ (the seller's own pages: headings in page order, opening text, and what the screenshots showed):\n${JSON.stringify(read).slice(0, 9000)}`);
   const research = apParse(raw);
   if (!Array.isArray(research.blueprint) || !research.blueprint.length) throw new Error("The research did not come back in a usable shape. It will be tried again.");
+  if (ownPage) research.own_page = { kind: ownPage.kind, url: ownPage.url, title: ownPage.title };
   const hooks = Array.isArray(research.hooks) ? research.hooks.length : 0;
   await apLog(run.id, "Ada", `Found it. Who buys: ${String(research.audience ?? "").slice(0, 140)}. The page will go: ${(research.blueprint as any[]).map((b) => b.role).join(", ")}.`);
   await apLog(run.id, "Ada", `Strongest hook so far: "${String((research.hooks as string[] | undefined)?.[0] ?? "").slice(0, 140)}".`);
@@ -865,20 +907,17 @@ HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, tes
 async function apPage(run: Record<string, any>): Promise<"wait" | void> {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   const rs = (run.research ?? {}) as Record<string, any>;
-  let url = prod.landing_page_url as string | null;
-  if (!url) { const { data: s } = await db.from("sites").select("id, status").eq("product_id", prod.id).eq("status", "published").limit(1).maybeSingle(); if (s) url = "published-site"; }
-  if (url) {
-    await apLog(run.id, "Ada", "You already have a sales page for this product, so I will read it and compare it to the plan. I will not change it.");
-    const { data: pg } = url.startsWith("http") ? await db.from("learn_pages").select("url_norm, vision, signals, blocks, status").ilike("url_norm", `%${url.replace(/^https?:\/\//, "").replace(/\/+$/, "").slice(0, 120)}%`).limit(1).maybeSingle() : { data: null };
-    let review: Record<string, unknown> = { read: false };
-    if (pg?.vision) {
-      const raw = await decideJson(`You compare a seller's existing sales page with the plan for it. Return ONLY JSON {"covers":[roles],"missing":[roles],"order_problems":[string],"suggestions":[string],"keep":[string]}. Roles come from: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form. Be specific and short; never rewrite the page.`, `PLAN:\n${JSON.stringify(rs.blueprint).slice(0, 4000)}\n\nTHEIR PAGE (read from screenshots, in order):\n${JSON.stringify({ sections: pg.vision.sections ?? pg.vision.structure, above_the_fold: pg.vision.above_the_fold, offer: pg.vision.offer, social_proof: pg.vision.social_proof, trust: pg.vision.trust, order_form: pg.vision.order_form, weaknesses: pg.vision.weaknesses }).slice(0, 6000)}`);
+  const own = await apOwnPage(run, prod);
+  if (own) {
+    await apLog(run.id, "Ada", `You already have a sales page for this product, so I will not build another one. I am checking it against the plan and I will only suggest improvements.`);
+    let review: Record<string, unknown> = { read: own.text.length > 200 };
+    if (own.text.length > 200) {
+      const raw = await decideJson(`You review a seller's EXISTING sales page against the plan for it. Return ONLY JSON {"covers":[roles],"missing":[roles],"order_problems":[string],"suggestions":[string],"keep":[string]}. Roles come from: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form. Be specific and short. These are OPTIONAL improvements for the owner to decide: only list what would clearly raise orders, never rewrite the page, and never suggest claims that are not in the product facts.`, `PLAN:\n${JSON.stringify(rs.blueprint ?? []).slice(0, 3000)}\n\nTHEIR PAGE:\n${JSON.stringify({ title: own.title, headings: own.headings, buttons: own.buttons, prices: own.prices, has_order_form: own.has_form, text: own.text.slice(0, 4500) }).slice(0, 7000)}`);
       review = { read: true, ...apParse(raw) };
-    } else if (url.startsWith("http")) {
-      await db.from("learn_pages").upsert({ url_norm: url.replace(/#.*$/, ""), company_ids: [run.company_id] }, { onConflict: "url_norm", ignoreDuplicates: true });
     }
-    const miss = Array.isArray((review as any).missing) ? (review as any).missing.length : 0;
-    await apSet(run.id, "page", "done", review.read ? `Using your page. ${miss ? `It is missing: ${(review as any).missing.join(", ")}.` : "It covers the plan."} Nothing on it was changed.` : "Using your page. It is being read now; nothing on it will be changed.", { page: { mode: "existing", url, review } });
+    const miss = Array.isArray((review as any).missing) ? (review as any).missing.length : 0, sug = Array.isArray((review as any).suggestions) ? (review as any).suggestions.length : 0;
+    await apLog(run.id, "Ada", review.read ? `Your page is read. ${sug ? `${sug} optional improvement${sug === 1 ? "" : "s"} for you to decide on.` : "I would not change anything."} Nothing on it was changed.` : "I could not read much text on your page, so I will work from the product facts.");
+    await apSet(run.id, "page", "done", review.read ? `Using your page (${own.kind === "external" ? "your own address" : own.kind === "live" ? "live on Revora" : "a draft on Revora"}). ${miss ? `It is missing: ${(review as any).missing.join(", ")}. ` : ""}${sug ? `${sug} optional improvement${sug === 1 ? "" : "s"}. ` : ""}Nothing on it was changed.` : "Using your page. Not much text could be read from it; nothing on it was changed.", { page: { mode: "existing", url: own.url, kind: own.kind, site_id: own.site_id ?? null, live_link: own.kind === "draft" ? own.url.split("?")[0] : own.url, publish_on_approval: own.kind === "draft", review, summary: rs.page_summary ?? null, prices: own.prices, buttons: own.buttons } });
     return;
   }
   // BUILD: a real file-based site (index.html, thanks.html, styles.css, scripts.js), written like the seller's own best pages.
@@ -1010,7 +1049,7 @@ async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   const rs = (run.research ?? {}) as Record<string, any>;
   if (!run.meeting_id) {
-    const topic = `Autopilot for ${prod.product_name} in ${run.market_countries.join(", ")}. Make the ads for this product only. Angle: ${String((rs.angles ?? [])[0] ?? "").slice(0, 200)}. Offer: ${String(rs.offer ?? "").slice(0, 300)}. Fears to speak to: ${(rs.fears ?? []).slice(0, 4).join("; ").slice(0, 300)}. Hooks to build on: ${(rs.hooks ?? []).slice(0, 5).join(" | ").slice(0, 600)}. Use only facts in the product data; no invented claims.`;
+    const topic = `Autopilot for ${prod.product_name} in ${run.market_countries.join(", ")}. Make the ads for this product only. Angle: ${String((rs.angles ?? [])[0] ?? "").slice(0, 200)}. Offer: ${String(rs.offer ?? "").slice(0, 300)}. Fears to speak to: ${(rs.fears ?? []).slice(0, 4).join("; ").slice(0, 300)}. Hooks to build on: ${(rs.hooks ?? []).slice(0, 5).join(" | ").slice(0, 600)}. Use only facts in the product data; no invented claims.${rs.page_summary ? ` The seller\'s page already says: headline "${String(rs.page_summary.headline ?? "").slice(0, 160)}", promise "${String(rs.page_summary.promise ?? "").slice(0, 200)}", offer "${String(rs.page_summary.offer ?? "").slice(0, 200)}", tone ${String(rs.page_summary.tone ?? "").slice(0, 80)}. The ad hooks, headlines, primary text and the images must echo THIS page (same promise, same offer, same price, same words) so the ad and the page feel like one.` : ""}`;
     const { data: busy } = await db.from("ai_meetings").select("id").eq("company_id", run.company_id).eq("status", "running").limit(1).maybeSingle();
     if (busy) { await apSet(run.id, "creatives", "now", "Waiting for another team meeting to finish."); return "wait"; }
     const { data: m, error } = await db.from("ai_meetings").insert({ company_id: run.company_id, topic, trigger: "autopilot", started_by: run.created_by }).select("id").single();
@@ -1041,6 +1080,11 @@ async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue
   const total = n + imgs.filter((i: any) => i.status === "approved").length;
   if (!total) throw new Error("No image could be made.");
   await apLog(run.id, "Zara", `${total} ad image${total === 1 ? "" : "s"} done and saved to your vault.`);
+  try {
+    const own2 = await apOwnPage(run, prod);
+    const scripts = await apScripts(run, prod, rs, own2);
+    if (scripts.length) { const { data: cur } = await db.from("autopilot_runs").select("page").eq("id", run.id).maybeSingle(); await db.from("autopilot_runs").update({ page: { ...((cur?.page ?? {}) as Record<string, unknown>), scripts } }).eq("id", run.id); await apLog(run.id, "Zara", `I also wrote ${scripts.length} video script${scripts.length === 1 ? "" : "s"} from your page (30 to 45 seconds each). You can read them below and film them or hand them to a creator.`); }
+  } catch (_) { /* scripts are a bonus: the images already carry the run */ }
   await apSet(run.id, "creatives", "done", `${total} image${total === 1 ? "" : "s"} ready, each with a hook on top, the pack in the middle and the order button below.`);
   return "continue";
 }
@@ -1049,7 +1093,7 @@ async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue
 async function apPlan(run: Record<string, any>) {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
   const pg = (run.page ?? {}) as Record<string, any>;
-  if (!prod.landing_page_url && (pg.mode === "built" || pg.mode === "files") && pg.live_link) { await db.from("products").update({ landing_page_url: pg.live_link }).eq("id", prod.id); await db.from("autopilot_runs").update({ page: { ...pg, set_landing: true } }).eq("id", run.id); }
+  if (!prod.landing_page_url && (pg.mode === "built" || pg.mode === "files" || (pg.mode === "existing" && pg.publish_on_approval)) && pg.live_link) { await db.from("products").update({ landing_page_url: pg.live_link }).eq("id", prod.id); await db.from("autopilot_runs").update({ page: { ...pg, set_landing: true } }).eq("id", run.id); }
   const r = await proposeLaunches(run.meeting_id, run.company_id, run.created_by);
   if ("error" in r) throw new Error(String(r.error));
   const l = (r.launches ?? []).find((x: any) => x?.status === "proposed") ?? null;
@@ -1070,7 +1114,7 @@ async function apApprove(runId: string, ctx: Record<string, unknown>) {
   if (run.status !== "waiting" || !run.launch_id) return { error: "This run is not waiting for approval." };
   const pg = (run.page ?? {}) as Record<string, any>;
   await apLog(run.id, "Tobi", "Approved. " + (pg.mode === "built" || pg.mode === "files" ? "Putting the page live first, then scheduling the campaign." : "Scheduling the campaign."));
-  if (pg.mode === "files" && pg.site_id) {
+  if ((pg.mode === "files" || (pg.mode === "existing" && pg.publish_on_approval)) && pg.site_id) {
     const r2 = await fetch(`${SUPABASE_URL}/functions/v1/mcp-studio`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool: "publish_sales_page", args: { site_id: pg.site_id, confirmed: true }, ctx }) });
     const o2 = await r2.json().catch(() => ({})); const out2 = (o2?.out ?? o2) as Record<string, unknown>;
     if (!r2.ok || out2.error) { await apSet(run.id, "launch", "failed", `The page could not go live: ${String(out2.error ?? r2.status).slice(0, 200)}`); return { error: String(out2.error ?? "The page could not go live.") }; }
