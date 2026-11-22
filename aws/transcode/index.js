@@ -38,6 +38,53 @@ function run(args, ms) {
 
 const reply = (statusCode, obj) => ({ statusCode, headers: { "content-type": "application/json" }, body: JSON.stringify(obj) });
 
+
+// ---- scene frames for learning (read-only): POST { action: "frames", video_id, video_url, exp, sig } ----
+// Takes a winning ad's video file from Meta, returns a small picture at every scene change (plus the first picture) with its time, and the sound as a small mp3.
+// No secrets live here: the signed request is checked by asking Revora (ads-manager frames_check), and only Meta's own file hosts are fetched.
+const META_HOST = /(^|\.)(fbcdn\.net|facebook\.com|fbsbx\.com|cdninstagram\.com)$/i;
+async function framesJob(b) {
+  const id = String(b.video_id || ""), url = String(b.video_url || "");
+  let host = ""; try { const u = new URL(url); if (u.protocol !== "https:") throw 0; host = u.hostname; } catch (_) { return reply(400, { error: "Bad video address." }); }
+  if (!META_HOST.test(host) || !/^\d{5,25}$/.test(id)) return reply(400, { error: "Only Meta video files are allowed." });
+  const chk = await fetch(`${SUPA}/functions/v1/ads-manager`, { method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ action: "frames_check", video_id: id, exp: b.exp, sig: b.sig }) }).then((r) => r.json()).catch(() => ({}));
+  if (!chk.ok) return reply(403, { error: "Not allowed." });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fr-"));
+  const src = path.join(tmp, "in");
+  try {
+    const dl = await fetch(url);
+    if (!dl.ok) return reply(502, { error: `Couldn't read the video (${dl.status}).` });
+    if (Number(dl.headers.get("content-length") || 0) > 90 * 1024 * 1024) return reply(413, { error: "Video is too large." });
+    await pipeline(Readable.fromWeb(dl.body), fs.createWriteStream(src));
+    const probe = await run(["-hide_banner", "-i", src], 15000);
+    const dm = probe.err.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/);
+    const dur = dm ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3]) : 30;
+    const hasAudio = /Audio: /.test(probe.err);
+    const grab = async (vf, max) => {
+      for (const f of fs.readdirSync(tmp)) if (/^f_\d+\.jpg$/.test(f)) fs.unlinkSync(path.join(tmp, f));
+      const r = await run(["-hide_banner", "-y", "-i", src, "-vf", vf, "-vsync", "vfr", "-q:v", "7", "-frames:v", String(max), path.join(tmp, "f_%02d.jpg")], 90000);
+      const times = [...r.err.matchAll(/pts_time:([0-9.]+)/g)].map((m) => Number(m[1]));
+      const files = fs.readdirSync(tmp).filter((f) => /^f_\d+\.jpg$/.test(f)).sort();
+      return files.map((f, i) => ({ t: Math.round((times[i] != null ? times[i] : i * dur / Math.max(files.length, 1)) * 10) / 10, file: path.join(tmp, f) }));
+    };
+    // A picture at the very start and at every scene change; videos with few cuts fall back to evenly spaced pictures.
+    let fr = await grab("select='eq(n,0)+gt(scene,0.22)',showinfo,scale=480:-2", 14);
+    if (fr.length < 4) fr = await grab(`fps=${(8 / Math.max(dur, 4)).toFixed(4)},showinfo,scale=480:-2`, 10);
+    const frames = fr.map((x) => ({ t: x.t, jpg: fs.readFileSync(x.file).toString("base64") }));
+    let audio = null;
+    if (hasAudio) {
+      const out = path.join(tmp, "a.mp3");
+      await run(["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "32k", "-t", "150", out], 60000);
+      if (fs.existsSync(out) && fs.statSync(out).size < 3 * 1024 * 1024) audio = fs.readFileSync(out).toString("base64");
+    }
+    return reply(200, { ok: true, duration: Math.round(dur * 10) / 10, has_audio: hasAudio, frames, audio });
+  } catch (e) {
+    return reply(500, { error: String((e && e.message) || e) });
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) {}
+  }
+}
+
 exports.handler = async (event) => {
   const method = (event.requestContext && event.requestContext.http && event.requestContext.http.method) || event.httpMethod;
   if (method === "OPTIONS") return { statusCode: 204, body: "" };
@@ -45,6 +92,7 @@ exports.handler = async (event) => {
   const started = Date.now();
   let b = {};
   try { b = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body || "", "base64").toString("utf8") : (event.body || "{}")); } catch (_) {}
+  if (b && b.action === "frames") return framesJob(b);
   const token = String((event.headers || {}).authorization || "").replace(/^Bearer\s+/i, "");
   const id = String((b && b.asset_id) || "");
   const ticket = String((b && b.ticket) || "");
