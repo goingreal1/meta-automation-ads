@@ -65,6 +65,26 @@ async function shaShort(str) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
   return [...new Uint8Array(b)].map((x)=>x.toString(16).padStart(2, "0")).join("").slice(0, 32);
 }
+
+// SMS through Termii. Dormant until TERMII_API_KEY (and optionally TERMII_SENDER_ID) are set as secrets.
+const TERMII_API_KEY = Deno.env.get("TERMII_API_KEY") ?? "";
+const TERMII_SENDER_ID = Deno.env.get("TERMII_SENDER_ID") ?? "Revora";
+function ngPhone(raw) {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("0")) return "234" + d.slice(1);
+  if (d.length === 10) return "234" + d;
+  return d.length >= 11 ? d : "";
+}
+async function sendSms(rawTo, text) {
+  if (!TERMII_API_KEY) throw new Error("SMS is not switched on yet.");
+  const to = ngPhone(rawTo);
+  if (!to) throw new Error("No valid phone number on this account.");
+  const r = await fetch("https://api.ng.termii.com/api/sms/send", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, from: TERMII_SENDER_ID, sms: text, type: "plain", channel: "generic", api_key: TERMII_API_KEY }) });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok || (j?.code && j.code !== "ok")) throw new Error(j?.message || `SMS failed (${r.status})`);
+  return j;
+}
 async function adminEmails(companyId) {
   const { data: profiles } = await supabase.from("profiles").select("id").eq("company_id", companyId).in("role", [
     "owner",
@@ -198,13 +218,32 @@ Deno.serve(async (req)=>{
       const isNew = !known && (count ?? 0) > 0;
       const when = new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" });
       const html = brandedHtml(`Your sign-in code: ${code}`, ["Enter this code to finish signing in. It works once and expires in 10 minutes.", `Device: ${dv.label}${isNew ? " (new to this account)" : ""}`, `Country: ${country ?? "unknown"}`, `Time: ${when} (Lagos)`, "If this wasn't you, someone has your password. Don't share the code, and reset your password now."], { url: "https://dash.revoracrm.online/login", label: "Secure my account" });
+      const smsText = `Revora sign-in code: ${code}. Valid 10 minutes. If this wasn't you, reset your password.`;
+      const phoneOf = async ()=>{ const { data: pr } = await supabase.from("profiles").select("whatsapp_number").eq("id", uid).maybeSingle(); return pr?.whatsapp_number ?? ""; };
+      // The person can ask for the code by SMS; if the email cannot be sent, SMS is used automatically (when switched on and a number is saved).
+      if (reqBody.via === "sms") {
+        try { await sendSms(await phoneOf(), smsText); return json({ ok: true, sent: true, channel: "sms" }); }
+        catch (e) { return json({ ok: false, error: TERMII_API_KEY ? "We couldn't text a code. Check the phone number saved on your account." : "SMS codes aren't switched on yet. Use the email code." }, 400); }
+      }
       try { await sendEmail(em, `${code} is your Revora sign-in code`, html); }
-      catch (e) { console.error("login code email failed:", e); return json({ ok: false, error: "We couldn't send the code. Try again in a minute." }, 502); }
-      return json({ ok: true, sent: true, new_device: isNew });
+      catch (e) {
+        console.error("login code email failed:", e);
+        try { await sendSms(await phoneOf(), smsText); return json({ ok: true, sent: true, channel: "sms", note: "email_failed" }); }
+        catch (_) { return json({ ok: false, error: "We couldn't send the code. Try again in a minute." }, 502); }
+      }
+      return json({ ok: true, sent: true, channel: "email", new_device: isNew });
     }
     if (!await getCaller(req, supabase)) return json({
       error: "Not signed in"
     }, 401);
+    // Text messages for critical alerts (low balance, a payment, a blocked sign-in...), sent by our own jobs only.
+    if (type === "user_sms") {
+      const caller = await getCaller(req, supabase);
+      if (!caller?.service) return json({ error: "Not allowed" }, 403);
+      const { data: pr } = await supabase.from("profiles").select("whatsapp_number").eq("id", String(reqBody.user_id ?? "")).maybeSingle();
+      try { await sendSms(pr?.whatsapp_number, String(reqBody.text ?? "").slice(0, 300)); return json({ ok: true }); }
+      catch (e) { return json({ ok: false, error: String(e?.message ?? e) }, 400); }
+    }
     // Report and alert emails, sent by our own jobs only (service key). Recipient = one person, or the owners/admins of a company.
     if (type === "user_email") {
       const caller = await getCaller(req, supabase);
