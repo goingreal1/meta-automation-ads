@@ -111,6 +111,12 @@ function chToggleIcon() {
 }
 chToggleIcon();
 function toggleChat(open) {
+  // One chat, one look: every door (the floating button, the Overview bar, links) opens the full-page Assistant tab when this person has it.
+  const want = typeof open === "boolean" ? open : !chatOpen;
+  if (want && !chPageMode && !/[?&]classic=1/.test(location.search)) {
+    const tab = document.querySelector('.tab-btn[data-tab="assistant"]');
+    if (tab && getComputedStyle(tab).display !== "none") { tab.click(); return; }
+  }
   chatOpen = typeof open === "boolean" ? open : !chatOpen;
   document.getElementById("chatPanel").classList.toggle("open", chatOpen);
   chToggleIcon();
