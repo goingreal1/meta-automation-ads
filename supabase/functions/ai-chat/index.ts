@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { money as fmtMoney } from "./autopilot.ts";
 import { purgeSiteCache } from "../_shared/cfpurge.ts";
 import { AREAS, cancelPending, cardFor, readSchedule, forModel, isReadOnly, queueWrite, registry, routeAreas, runExtra, runPending, extraTools, toOpenAI, toolsForAreas, callTool as bridgeCall } from "./bridge.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -1739,6 +1740,104 @@ Deno.serve(async (req)=>{
         error: e.message
       }, 500);
     }
+  }
+  if (body?.action === "tab_plans" || body?.action === "plan_card" || body?.action === "run_read") {
+    // Read-only data for the Plans / Code / Projects tabs of the chat screen. Nothing here changes anything.
+    if (![
+      "owner",
+      "admin",
+      "buyer"
+    ].includes(profile.role)) return json({
+      error: "This is for owners, admins and buyers."
+    }, 403);
+    const tctx = {
+      token,
+      userId: user.id,
+      email: user.email ?? null,
+      companyId: profile.company_id,
+      role: profile.role,
+      mediaBuyerId: profile.media_buyer_id ?? null,
+      displayName: profile.display_name || ""
+    };
+    if (body.action === "plan_card") {
+      const card = await planCardById(String(body?.plan_id ?? ""), {
+        companyId: tctx.companyId,
+        role: tctx.role,
+        userId: tctx.userId,
+        authHeader
+      }).catch(()=>null);
+      return json(card ? {
+        card
+      } : {
+        error: "That plan is not a draft any more."
+      });
+    }
+    if (body.action === "run_read") {
+      const regr = await registry();
+      const def = regr.get(String(body?.tool ?? ""));
+      if (!def || !isReadOnly(def) || def.group === "ai-team" && ![
+        "owner",
+        "admin"
+      ].includes(tctx.role)) return json({
+        error: "That cannot be read from here."
+      }, 400);
+      const out = await bridgeCall(def, body?.args && typeof body.args === "object" ? body.args : {}, tctx);
+      const clean = out && typeof out === "object" && !Array.isArray(out) ? {
+        ...out
+      } : out;
+      if (clean && typeof clean === "object") {
+        delete clean.__images;
+        delete clean.__meta;
+      }
+      return json({
+        out: clean,
+        card: cardFor(def, {}, clean)
+      });
+    }
+    let pq = supabase.from("ai_plans").select("id, status, created_at, user_id, plan").eq("company_id", tctx.companyId).in("status", [
+      "draft",
+      "launched"
+    ]).order("created_at", {
+      ascending: false
+    }).limit(40);
+    if (tctx.role === "buyer") pq = pq.eq("user_id", tctx.userId);
+    const { data: prs } = await pq;
+    const ids = (prs ?? []).map((r)=>r.id);
+    const { data: opts } = ids.length ? await supabase.from("ai_plan_options").select("plan_id, start_time, end_time").in("plan_id", ids) : {
+      data: []
+    };
+    const om = new Map((opts ?? []).map((o)=>[
+        o.plan_id,
+        o
+      ]));
+    const now = Date.now();
+    const rows = (prs ?? []).map((r)=>{
+      const pl = r.plan ?? {};
+      const o = om.get(r.id);
+      const start = o?.start_time ?? pl.scheduled_for ?? null;
+      const cur = String(pl.currency ?? "NGN").toUpperCase();
+      const total = (pl.adsets ?? []).reduce((n, a)=>n + (Number(a?.budget_naira) || 0), 0);
+      const ads = Array.isArray(pl.ads) && pl.ads.length ? pl.ads.length : (pl.asset_ids ?? []).length;
+      return {
+        id: r.id,
+        status: r.status,
+        name: pl.campaign_name ?? "Campaign",
+        product: pl.product_name ?? "",
+        start_time: start,
+        start_label: lagosWhen(start),
+        end_label: lagosWhen(o?.end_time ?? pl.campaign_end_date),
+        budget: total ? `${fmtMoney(total, cur)} a day` : "",
+        ad_sets: (pl.adsets ?? []).length,
+        ads,
+        paused: pl.launch_paused === true,
+        group: r.status === "draft" ? "drafts" : start && Date.parse(start) > now ? "scheduled" : "live"
+      };
+    });
+    return json({
+      drafts: rows.filter((x)=>x.group === "drafts"),
+      scheduled: rows.filter((x)=>x.group === "scheduled"),
+      live: rows.filter((x)=>x.group === "live")
+    });
   }
   if (body?.action === "queue_autopilot") {
     // A button on the Autopilot card: it only prepares a confirm card; the tap on that card is what runs it.

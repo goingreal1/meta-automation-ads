@@ -48,6 +48,7 @@ function ccConfirm(c) {
       if (r.card) appendCards([r.card]);
       chatHistory.push({ role: "user", content: `[I tapped Confirm on "${c.title}". It ran. Result: ${String(r.text || "ok").slice(0, 1500)}]` });
       // let the assistant carry on with the next step (for example the next file of a site) or say what happened
+      if (window.cmTab) cmTab("chat");
       askChat("I confirmed it. Carry on with the next step if there is one, or tell me in plain words what was done.", "Confirmed ✓");
     } else { b.disabled = false; b.textContent = "Try again"; res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not do that."); }
   };
@@ -217,7 +218,7 @@ function ccCreatives(c) {
   return card;
 }
 
-function ccPlan(c) {
+function ccPlan(c, opts = {}) {
   const card = ccEl("");
   const paint = (c) => {
     const rows = c.adsets.map(a => `<tr><td><b>${escH(a.label)}</b></td><td>${escH(a.who)}</td><td>${escH(a.where)}</td><td>${fN(a.budget)}</td><td>${a.reach ? "≈ " + escH(a.reach) : "—"}</td></tr>`).join("");
@@ -232,7 +233,7 @@ function ccPlan(c) {
       <div class="cc-row act" style="margin-top:14px"><button type="button" class="cc-btn no">Cancel</button><span class="cc-sp"></span><button type="button" class="cc-btn ed">Edit plan</button><button type="button" class="cc-btn g ok">${c.start_time ? "Approve and schedule" : "Approve and launch"}</button></div>
       <div class="cc-res"></div><div class="cc-note">${c.start_time ? "Approving creates the campaign now. It shows as Scheduled and spends nothing until the start time." : "Approving creates the campaign and turns it on right away."}</div>`;
     const res = card.querySelector(".cc-res");
-    card.querySelector(".no").onclick = async () => { await sbFn("ai-chat", { action: "cancel_plan", plan_id: c.plan_id }); ccDone(card, "Plan cancelled."); };
+    card.querySelector(".no").onclick = async () => { await sbFn("ai-chat", { action: "cancel_plan", plan_id: c.plan_id }); ccDone(card, "Plan cancelled."); opts.onDone?.(); };
     card.querySelector(".ok").onclick = async (ev) => {
       const b = ev.target; b.disabled = true; b.textContent = "Launching…";
       const r = await sbFn("ai-chat", { action: "approve_plan", plan_id: c.plan_id });
@@ -240,7 +241,7 @@ function ccPlan(c) {
         ccDone(card, "");
         const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "#1a9a4a"; n.innerHTML = `✅ Launched: ${r.ad_sets} ad set${r.ad_sets > 1 ? "s" : ""}, ${r.ads} ads. ${escH(r.message || "")}`; card.appendChild(n);
         chatHistory.push({ role: "user", content: `[I approved the plan and it launched: ${r.message || "ok"}]` });
-        setTimeout(() => { try { render(); } catch {} }, 600);
+        setTimeout(() => { try { render(); } catch {} }, 600); opts.onDone?.();
       } else { b.disabled = false; b.textContent = "Try again"; res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not launch."); }
     };
     card.querySelector(".ed").onclick = () => edit(c);
@@ -266,7 +267,7 @@ function ccPlan(c) {
       if (r?.card) { c = r.card; paint(c); } else { b.disabled = false; b.textContent = "Save changes"; card.querySelector(".cc-res").textContent = r?.error || "Could not save."; }
     };
   };
-  paint(c);
+  if (opts.edit) edit(c); else paint(c);
   return card;
 }
 
