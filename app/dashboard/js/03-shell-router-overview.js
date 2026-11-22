@@ -6,8 +6,9 @@
 // Settings and the admin screens, so an admin never lands inside a buyer's ad dashboard by default.
 function bvIsAdminRole() { const r = window.myProfile?.role; return r === "owner" || r === "admin"; }
 function bvMyAccounts() {
+  // Accounts an owner/admin can run ads on straight away: their own, plus any not assigned to a media buyer.
   const mine = window.myProfile?.media_buyer_id;
-  return (accountsList || []).filter(a => mine && a.media_buyer_id === mine);
+  return (accountsList || []).filter(a => !a.media_buyer_id || (mine && a.media_buyer_id === mine));
 }
 async function loadAccounts() {
   const dot = document.getElementById("liveDot");
@@ -18,27 +19,32 @@ async function loadAccounts() {
     // The mobile header menu duplicates this selector (crowding the header
     // on a phone otherwise) -- keep both in sync from one source of truth.
     const sels = [document.getElementById("acctSelector"), document.getElementById("acctSelectorMobile")].filter(Boolean);
-    const mineList = bvIsAdminRole() ? bvMyAccounts() : accountsList;
-    // Nothing to switch between -> hide the switcher entirely (admins without personal ad accounts).
-    const hideSwitch = bvIsAdminRole() && mineList.length === 0;
+    const admin = bvIsAdminRole();
+    const mineList = admin ? bvMyAccounts() : accountsList;
+    // An owner/admin can open any account in the company from the switcher (their own first, then the team's).
+    const teamList = admin ? accountsList.filter(a => !mineList.includes(a)) : [];
+    const allList = mineList.concat(teamList);
+    // Nothing to switch between -> hide the switcher entirely.
+    const hideSwitch = admin && allList.length === 0;
     sels.forEach(sel => { sel.style.display = hideSwitch ? "none" : ""; });
     document.querySelectorAll(".hdr-menu-lbl").forEach(l => { if (/ad account/i.test(l.textContent)) l.style.display = hideSwitch ? "none" : ""; });
 
-    if (mineList.length === 0) {
+    if (allList.length === 0) {
       sels.forEach(sel => sel.innerHTML = `<option value="">No Ad Accounts</option>`);
       activeAccountId = null;
-      dot.classList.toggle("off", accountsList.length === 0 && !bvIsAdminRole());
+      dot.classList.toggle("off", accountsList.length === 0 && !admin);
       return;
     }
 
-    // Preserve selection or set default
-    if (!activeAccountId || !mineList.find(a => a.id === activeAccountId)) {
-      activeAccountId = mineList[0].id;
+    // Preserve selection or set default (an admin with only team accounts picks one from the switcher)
+    if (!activeAccountId || !allList.find(a => a.id === activeAccountId)) {
+      activeAccountId = mineList.length ? mineList[0].id : (admin ? null : allList[0].id);
     }
 
-    const optsHtml = mineList.map(a =>
-      `<option value="${a.id}" ${a.id === activeAccountId ? "selected" : ""}>${a.name}</option>`
-    ).join("");
+    const opt = a => `<option value="${a.id}" ${a.id === activeAccountId ? "selected" : ""}>${escH(a.name || a.nickname || a.meta_ad_account_id)}</option>`;
+    let optsHtml = mineList.map(opt).join("");
+    if (!activeAccountId) optsHtml = `<option value="" selected>Choose an ad account…</option>` + optsHtml;
+    if (teamList.length) optsHtml += `<optgroup label="Team ad accounts">${teamList.map(opt).join("")}</optgroup>`;
     sels.forEach(sel => sel.innerHTML = optsHtml);
 
     dot.classList.remove("off");
@@ -234,8 +240,8 @@ async function render() {
     c.innerHTML = `
       <div class="empty">
         <div class="empty-ico">🔌</div>
-        <div style="margin-bottom: 12px;">${bvIsAdminRole() ? "Ad dashboards are personal: each media buyer sees their own. Company-wide numbers are on Overview and Leaderboard. If you run ads yourself, link your own ad account in Settings." : "No Ad Accounts linked yet."}</div>
-        <button class="btn btn-a" onclick="bvGoToTab('settings')">Go to Settings to Link Account</button>
+        <div style="margin-bottom: 12px;">${bvIsAdminRole() ? (accountsList.length ? "Pick an ad account from the switcher at the top to see its campaigns. Company-wide numbers are on Overview and Leaderboard." : "No ad account is linked yet. Link one in Settings to run ads.") : "No Ad Accounts linked yet."}</div>
+        <button class="btn btn-a" onclick="bvGoToTab('settings')">${bvIsAdminRole() && accountsList.length ? "Manage ad accounts" : "Go to Settings to Link Account"}</button>
       </div>`;
     return;
   }
