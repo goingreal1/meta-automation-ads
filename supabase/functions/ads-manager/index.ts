@@ -2313,14 +2313,14 @@ async function learnAccount(admin, a, deadline) {
   out.full_read_complete = first ? finished : true;
   return out;
 }
-async function handleLearnSync(maxAccounts = 2) {
+async function handleLearnSync(maxAccounts = 2, onlyAccountId = "") {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const deadline = Date.now() + 70_000;
   const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
   const off = new Set((cos ?? []).map((c)=>c.id));
-  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, billing_mode, learn_synced_at, learn_backfill_done_at, learn_cursor, learn_breakdowns_at").eq("status", "active").order("learn_backfill_done_at", { ascending: true, nullsFirst: true }).order("learn_synced_at", { ascending: true, nullsFirst: true }).limit(40);
+  const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, billing_mode, learn_synced_at, learn_backfill_done_at, learn_cursor, learn_breakdowns_at").eq("status", "active").order("learn_synced_at", { ascending: true, nullsFirst: true }).order("learn_backfill_done_at", { ascending: true, nullsFirst: true }).limit(40);
   const out = [];
-  for (const a of (accts ?? []).filter((x)=>!off.has(x.company_id) && /^\d+$/.test(String(x.meta_ad_account_id ?? "").replace(/^act_/, ""))).slice(0, maxAccounts)){
+  for (const a of (accts ?? []).filter((x)=>(!onlyAccountId || x.id === onlyAccountId) && !off.has(x.company_id) && /^\d+$/.test(String(x.meta_ad_account_id ?? "").replace(/^act_/, ""))).slice(0, maxAccounts)){
     if (Date.now() > deadline) break;
     try { out.push({ account: a.nickname || a.name, ...await learnAccount(admin, a, deadline) }); } catch (e) { await admin.from("ad_accounts").update({ learn_synced_at: new Date().toISOString() }).eq("id", a.id); out.push({ account: a.nickname || a.name, error: String(e.message ?? e).slice(0, 160) }); }
   }
@@ -3215,7 +3215,7 @@ Deno.serve(async (req)=>{
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       const given = req.headers.get("x-cron-secret") ?? "";
       if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
-      return json(body.action === "learn_vision" ? await handleLearnVision(Math.min(Number(body.limit) || 4, 8)) : body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6)) : body.action === "learn_shots" ? await handleLearnShots(Math.min(Number(body.limit) || 3, 6), body.url ? String(body.url) : null) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
+      return json(body.action === "learn_vision" ? await handleLearnVision(Math.min(Number(body.limit) || 4, 8)) : body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6), /^[0-9a-f-]{36}$/.test(String(body.ad_account_id ?? "")) ? String(body.ad_account_id) : "") : body.action === "learn_shots" ? await handleLearnShots(Math.min(Number(body.limit) || 3, 6), body.url ? String(body.url) : null) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
     }
     if (body.action === "purchase_timing_digest") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
