@@ -1189,8 +1189,11 @@ async function handleMetaReport(slotHour, push = true) {
     };
     const emit = async (who, r, userId)=>{
       const best = r.accts.flatMap((x)=>x.campaigns).sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend)[0];
-      if (!(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0 || r.t.fund_received > 0)) return;
-      const bodyLines = [`Fund received: ${money(r.t.fund_received)}`].concat(r.t.sent_to_meta > 0 ? [`Sent to Meta: ${money(r.t.sent_to_meta)}`] : []).concat([`Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)} (wallet ${money(r.t.wallet_balance)} + Meta ${money(r.t.meta_balance)})`]).concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []);
+      // Everyone with a connected ad account gets every report, even on a quiet day (then it says so).
+      if (!r.accts.length) return;
+      const quiet = !(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0 || r.t.fund_received > 0);
+      const bodyLines0 = [`Fund received: ${money(r.t.fund_received)}`].concat(r.t.sent_to_meta > 0 ? [`Sent to Meta: ${money(r.t.sent_to_meta)}`] : []).concat([`Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)} (wallet ${money(r.t.wallet_balance)} + Meta ${money(r.t.meta_balance)})`]).concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []);
+      const bodyLines = quiet ? ["No ad spend, orders or funds yet today."].concat(bodyLines0) : bodyLines0;
       await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "meta_report",
         p_title: `📈 ${label}${who ? " · " + who : ""}`,
         p_body: bodyLines.join("\n"),
