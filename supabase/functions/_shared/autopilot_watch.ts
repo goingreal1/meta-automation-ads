@@ -57,3 +57,18 @@ export function proposeHook(o: { hooks: string[]; used: string[]; lifeSpend: num
   const seen = new Set([...o.used, ...o.needs.map((x) => x.hook ?? "")].map(norm));
   return o.hooks.map((h) => String(h)).find((h) => h.trim() && !seen.has(norm(h))) ?? null;
 }
+
+// HARD STOP. The campaign has an end date (start + total/daily days) so that the total should never pass the stop, but Meta may spend up to
+// 25% over a day's budget on one day. So every look also compares the run's whole-life spend with the stop amount.
+// It stops a little BEFORE the amount (half an hour of normal spending) because the next look is up to ~10 minutes away.
+// Returns what to do: "stop" (pause the live campaign(s) now), "warn" (80% reached, say so once) or "ok".
+export function hardStopCheck(o: { lifeSpend: number; totalBudget: number; dailyBudget: number; warned?: boolean }): { act: "ok" | "warn" | "stop"; limit: number } {
+  const total = Number(o.totalBudget) || 0;
+  if (!(total > 0)) return { act: "ok", limit: 0 };
+  const limit = Math.max(0, total - (Number(o.dailyBudget) || 0) / 24 / 2);
+  if (o.lifeSpend >= limit) return { act: "stop", limit };
+  if (!o.warned && o.lifeSpend >= total * 0.8) return { act: "warn", limit };
+  return { act: "ok", limit };
+}
+// Which of the run's campaigns still need a pause: only the ones Meta shows as active (a paused one is left alone).
+export const campaignsToPause = (rows: MetaRow[]) => rows.filter((c) => !c.effective_status || c.effective_status === "ACTIVE" || c.effective_status === "WITH_ISSUES" || c.effective_status === "SCHEDULED").map((c) => ({ id: String(c.id), name: String(c.name ?? c.id) }));

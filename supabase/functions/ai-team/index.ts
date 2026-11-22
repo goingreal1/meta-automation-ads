@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withR2, R2_ON } from "../_shared/r2storage.ts";
-import { type MetaRow, type Numbers, type KillRow, type Need, runRows, numbersForRun, teamLines, todayLine, proposeHook } from "../_shared/autopilot_watch.ts";
+import { type MetaRow, type Numbers, type KillRow, type Need, runRows, numbersForRun, teamLines, todayLine, proposeHook, hardStopCheck, campaignsToPause } from "../_shared/autopilot_watch.ts";
 
 // AI Team: a team lead, a creative agent, a media buyer and customer service hold a LIVE daily meeting about the business.
 // The meeting runs in the background and writes into ai_meeting_messages word by word; the page watches it with Realtime.
@@ -1184,6 +1184,26 @@ async function apWatch(run: Record<string, any>) {
   try { [today, life] = [runRows(await apAdsList(token, run.ad_account_id, "today"), ids), runRows(await apAdsList(token, run.ad_account_id, "lifetime"), ids)]; }
   catch (e) { await apSet(run.id, "watch", "now", `Live. Meta did not answer just now (${String((e as Error).message).slice(0, 80)}); I will try again.`); return; }
   const day = watToday(), t = numbersForRun(today), lf = numbersForRun(life);
+  // HARD STOP safety net: the end date should keep the total under the stop, but Meta can overspend a day, so check the real total too.
+  const hs = hardStopCheck({ lifeSpend: lf.spend, totalBudget: Number(run.total_budget), dailyBudget: Number(run.daily_budget), warned: !!w.stop_warned });
+  if (hs.act === "warn") { await apLog(run.id, "Tobi", `${money(lf.spend)} of your ${money(Number(run.total_budget))} hard stop is spent. I will pause everything before it is passed.`); w.stop_warned = true; }
+  if (hs.act === "stop") {
+    const todo = campaignsToPause(life.campaigns);
+    let failed = "";
+    for (const c of todo) {
+      const r = await apTool(run, "set_status", { ad_account_id: run.ad_account_id, level: "campaign", object_id: c.id, status: "PAUSED", reason: `Hard stop: ${moneyText(lf.spend, cur)} spent of ${moneyText(Number(run.total_budget), cur)}` }) as Record<string, any>;
+      if (r?.error) failed = String(r.error).slice(0, 160);
+    }
+    if (failed) {
+      await apLog(run.id, "Tobi", `The hard stop is reached (${money(lf.spend)} of ${money(Number(run.total_budget))}) but I could not pause the campaign: ${failed}. I will try again in a few minutes.`);
+      await notify(run.company_id, "autopilot_stop_failed", `${run.id}:${Math.floor(Date.now() / 3600_000)}`, "Autopilot: hard stop could not pause", `The hard stop of ${money(Number(run.total_budget))} is reached but Meta did not let me pause the campaign. Please pause it in Ads Manager.`, "warn");
+      await db.from("autopilot_runs").update({ watch: { ...w, checked_at: new Date().toISOString() } }).eq("id", run.id); return;
+    }
+    await apLog(run.id, "Tobi", `Hard stop reached: ${money(lf.spend)} spent of ${money(Number(run.total_budget))}, before the end date. I paused ${todo.length ? todo.length + " campaign" + (todo.length === 1 ? "" : "s") : "the campaign (it was already off)"} so nothing more is spent.`);
+    await db.from("autopilot_runs").update({ watch: { ...w, campaign_ids: ids, today: t, life: lf, day, stopped_at: new Date().toISOString(), checked_at: new Date().toISOString() } }).eq("id", run.id);
+    w.life = lf; await notify(run.company_id, "autopilot_stopped", run.id, "Autopilot: hard stop reached", `${money(lf.spend)} of ${money(Number(run.total_budget))} is spent, so the campaign was paused.`);
+    return await finish();
+  }
   // what the team did: pauses and budget moves in the auto-off log (ad_kill_log) on this run's campaign, ad sets and ads, since the last look
   const mine = new Set<string>([...ids, ...life.adsets.map((x) => String(x.id)), ...life.ads.map((x) => String(x.id))]);
   const since = String(w.kills_since ?? run.created_at);
@@ -1213,7 +1233,7 @@ async function apWatch(run: Record<string, any>) {
     await apLog(run.id, "Zara", `Nothing has sold after ${money(lf.spend)}. I have a new hook ready for you to look at: “${hook.slice(0, 140)}”. It needs your tap.`);
     await notify(run.company_id, "autopilot_needs_you", `${run.id}:${needs.length}`, "Autopilot: a new hook needs your tap", `Nothing has sold after ${money(lf.spend)}. The team has a new hook for you to look at.`);
   }
-  await save({ campaign_ids: ids, day, today: t, life: lf, days, kills_since: new Date().toISOString(), needs, ...(said ? { said_at: new Date().toISOString() } : {}) });
+  await save({ campaign_ids: ids, stop_warned: !!w.stop_warned, day, today: t, life: lf, days, kills_since: new Date().toISOString(), needs, ...(said ? { said_at: new Date().toISOString() } : {}) });
   await apSet(run.id, "watch", "now", t.spend > 0 || lf.spend > 0 ? `Live. Today ${money(t.spend)} spent, ${t.orders} order${t.orders === 1 ? "" : "s"}.` : "Live. No spend yet today.");
 }
 
