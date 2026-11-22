@@ -478,6 +478,8 @@
             visitor_name: name, visitor_phone: phone, visitor_email: email || undefined, tour_date: st.date, tour_time: st.time, event_id: eventId, fbclid: attr("fbclid") })
             .then(function (r) {
               hPx("Schedule", { content_ids: [st.prop.id], content_name: st.prop.title, content_type: "home_listing" }, { eventID: eventId });
+              /* A tour request is the lead: also send the standard Lead event so ads can optimise for it. */
+              hPx("Lead", { content_ids: [st.prop.id], content_name: st.prop.title, content_type: "home_listing" }, { eventID: eventId + "-lead" });
               tThanks(r);
             }).catch(function (err) {
               busy = false; btn.disabled = false; btn.textContent = old;
