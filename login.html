@@ -196,7 +196,7 @@ body.invite .hero{padding-top:34px;}
           <input type="text" id="f_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="letter-spacing:.35em;text-align:center;font-size:22px;">
         </div>
         <button type="submit" class="btn btn-a" id="codeBtn">Verify</button>
-        <div class="switch" id="codeLinks" style="margin-top:14px;"><a href="#" id="codeResend">Send a new code</a> &nbsp;·&nbsp; <a href="#" id="codeOut">Use a different account</a></div>
+        <div class="switch" id="codeLinks" style="margin-top:14px;"><a href="#" id="codeResend">Send a new code</a> &nbsp;·&nbsp; <a href="#" id="codeSms">Text me the code</a><br><a href="#" id="codeOut" style="display:inline-block;margin-top:8px;">Use a different account</a></div>
       </form>
 
       <div class="switch" id="mainSwitch">
@@ -390,6 +390,7 @@ body.invite .hero{padding-top:34px;}
     document.getElementById('authTitle').textContent = mode === 'totp' ? 'Enter your authenticator code' : 'Check your email';
     document.getElementById('authSub').textContent = mode === 'totp' ? 'Open your authenticator app and type the 6-digit code for Revora.' : 'We sent a 6-digit code' + (email ? ' to ' + email : '') + '. It expires in 10 minutes.';
     document.getElementById('codeResend').style.display = mode === 'totp' ? 'none' : '';
+    document.getElementById('codeSms').style.display = mode === 'totp' ? 'none' : '';
     document.getElementById('f_code').value = '';
     document.getElementById('f_code').focus();
   }
@@ -438,6 +439,13 @@ body.invite .hero{padding-top:34px;}
     const r = await fnCall('login_start', pending);
     statusMsg.textContent = r.wait ? 'A code was just sent. Give it a moment.' : (r.sent ? 'A new code is on its way.' : (r.error || 'Could not send a code. Try again.'));
     statusMsg.className = (r.sent || r.wait) ? 'msg ok' : 'msg err';
+  });
+  document.getElementById('codeSms').addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (!pending) { window.location.reload(); return; }
+    const r = await fnCall('login_start', { ...pending, via: 'sms' });
+    statusMsg.textContent = r.wait ? 'A code was just sent. Wait a few seconds, then tap Text me the code.' : (r.ok ? 'We texted you a code.' : (r.error || 'Could not send a text.'));
+    statusMsg.className = r.ok ? 'msg ok' : 'msg err';
   });
   document.getElementById('codeOut').addEventListener('click', async (e) => { e.preventDefault(); pending = null; await supaClient.auth.signOut(); window.location.reload(); });
   async function checkSession() {
