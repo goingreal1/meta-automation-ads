@@ -35,6 +35,7 @@ async function listShared(): Promise<Shared[]> {
   let url: string | null = `${GRAPH}/${META_BUSINESS_ID}/client_ad_accounts?fields=account_id,name,owner,business{id},account_status&limit=100&access_token=${META_ACCESS_TOKEN}`;
   for (let page = 0; url && page < 30; page++) {
     const r = await fetch(url); const j = await r.json().catch(() => ({}));
+    if (!r.ok) { if (/too many calls|rate limit|request limit/i.test(String(j?.error?.message ?? ""))) void supabase.rpc("meta_rate_hit").then(() => {}, () => {}); }
     if (!r.ok) throw new Error(String(j?.error?.message ?? "Could not read the accounts shared with Revora.").replace(META_ACCESS_TOKEN, "***"));
     for (const a of j.data ?? []) out.push({ account_id: String(a.account_id ?? "").replace(/^act_/, ""), name: String(a.name ?? ""), owner: String(a.owner ?? a.business?.id ?? ""), status: STATUS[Number(a.account_status)] ?? "Unknown" });
     url = j.paging?.next ?? null;

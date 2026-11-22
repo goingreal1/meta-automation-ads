@@ -65,7 +65,14 @@ async function graphGet(path, params, token) {
   });
   const res = await fetch(`${GRAPH}/${path}?${qs}`);
   const data = await res.json();
-  if (!res.ok || data.error) throw new HttpError(502, data?.error?.message || `Meta error ${res.status}`);
+  if (!res.ok || data.error) {
+    const msg = data?.error?.message || `Meta error ${res.status}`;
+    // Meta says "too many calls": tell the shared gate so every background job waits 15 minutes.
+    if (/too many calls|rate limit|request limit/i.test(msg) || [4, 17, 32, 613, 80004].includes(Number(data?.error?.code))) {
+      try { void createClient(SUPABASE_URL, SERVICE_KEY).rpc("meta_rate_hit").then(() => {}, () => {}); } catch { /* ignore */ }
+    }
+    throw new HttpError(502, msg);
+  }
   return data;
 }
 // Meta answers "Please reduce the amount of data you're asking for" when one page is too big (accounts with hundreds of ads and picture details).
@@ -3242,6 +3249,10 @@ Deno.serve(async (req)=>{
       return json(await handleTeamSnapshot(body));
     }
     const { userClient, profile } = await getUserContext(req);
+    // Someone is looking at live Meta numbers: background jobs stand aside for a few minutes.
+    if (["list", "daily", "reach", "balances"].includes(body.action)) {
+      try { void createClient(SUPABASE_URL, SERVICE_KEY).rpc("meta_ui_ping").then(() => {}, () => {}); } catch { /* ignore */ }
+    }
     if (body.action === "list") return json(await handleListSafe(userClient, profile, body));
     if (body.action === "list_cached") return json(await handleListCached(userClient, body));
     if (body.action === "daily") return json(await handleDaily(userClient, body));

@@ -27,7 +27,7 @@ async function pull(path: string, fields: string) {
   let url = `${GRAPH}/${path}?fields=${fields}&effective_status=${encodeURIComponent(JSON.stringify(FILTER[edge]))}&limit=500&access_token=${META_TOKEN}`;
   for (let i = 0; i < 20 && url; i++) {
     const j = await fetch(url).then((r) => r.json());
-    if (j.error) throw new Error(j.error.message);
+    if (j.error) { if (/too many calls|rate limit|request limit/i.test(String(j.error.message))) void db.rpc("meta_rate_hit").then(() => {}, () => {}); throw new Error(j.error.message); }
     out.push(...(j.data ?? []));
     url = j.paging?.next ?? "";
   }
