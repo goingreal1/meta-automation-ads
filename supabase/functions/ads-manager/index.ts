@@ -849,7 +849,7 @@ async function handleReach(userClient, body) {
 // -- team_snapshot: the live picture the AI Team meeting works from (internal only). For every active ad account of a company: each campaign's
 // numbers today / yesterday / last 2 days / last 7 / last 30 days, and for the campaigns that are winning: how each ad set was set up
 // (countries, ages, interests, placements, budget) and the ad copy, headline and picture of the best ads. --
-const SNAP_WINDOWS = [["today", "today"], ["yesterday", "yesterday"], ["last_2_days_incl_today", "last2"], ["last_7_days", "last7"], ["last_30_days", "last30"]];
+const SNAP_WINDOWS = [["today", "today"], ["yesterday", "yesterday"], ["last_2_days_incl_today", "last2"], ["last_7_days", "last7"], ["last_14d", "last14"], ["last_30_days", "last30"]];
 const GENDER = { 1: "men", 2: "women" };
 function snapTargeting(t) {
   const g = t?.geo_locations ?? {};
@@ -926,18 +926,20 @@ async function handleTeamSnapshot(body) {
     rows.sort((x, y)=>(y.last_7_days?.purchases ?? 0) - (x.last_7_days?.purchases ?? 0) || (y.last_7_days?.conversations ?? 0) - (x.last_7_days?.conversations ?? 0) || (y.last_7_days?.spend ?? 0) - (x.last_7_days?.spend ?? 0));
     // how the best ones were built, and what their ads say
     const top = rows.filter((r)=>(r.last_30_days?.purchases ?? 0) + (r.last_30_days?.conversations ?? 0) > 0).slice(0, 3);
-    const [adIns, adToday, adWeek] = top.length ? await Promise.all(["last30", "today", "last7"].map((r)=>insightsByLevel(actId, "ad", r, token, factor).catch(()=>({})))) : [{}, {}, {}];
+    const [adIns, adToday, adWeek, adFort] = top.length ? await Promise.all(["last30", "today", "last7", "last14"].map((r)=>insightsByLevel(actId, "ad", r, token, factor).catch(()=>({})))) : [{}, {}, {}, {}];
     const winners = await Promise.all(top.map(async (c)=>{
       const [sets, ads] = await Promise.all([
         graphGetAll(`${c.id}/adsets`, { fields: "id,name,status,daily_budget,optimization_goal,destination_type,bid_strategy,targeting" }, token).catch(()=>[]),
         graphGetAll(`${c.id}/ads`, { fields: "id,name,adset_id,status,creative.thumbnail_width(800).thumbnail_height(800){body,title,object_story_spec,thumbnail_url,image_url,call_to_action_type}" }, token).catch(()=>[])
       ]);
       // the ads that sold TODAY come first, then this week's, then the month's
-      const best = ads.map((ad)=>({ ad, m: adIns[ad.id], t: adToday[ad.id], w: adWeek[ad.id] })).sort((x, y)=>(y.t?.purchases ?? 0) - (x.t?.purchases ?? 0) || (y.w?.purchases ?? 0) - (x.w?.purchases ?? 0) || (y.m?.purchases ?? 0) - (x.m?.purchases ?? 0) || (y.m?.conversations ?? 0) - (x.m?.conversations ?? 0) || (y.m?.spend ?? 0) - (x.m?.spend ?? 0)).slice(0, 4);
+      const best = ads.map((ad)=>({ ad, m: adIns[ad.id], t: adToday[ad.id], w: adWeek[ad.id], f: adFort[ad.id] })).sort((x, y)=>(y.t?.purchases ?? 0) - (x.t?.purchases ?? 0) || (y.w?.purchases ?? 0) - (x.w?.purchases ?? 0) || (y.m?.purchases ?? 0) - (x.m?.purchases ?? 0) || (y.m?.conversations ?? 0) - (x.m?.conversations ?? 0) || (y.m?.spend ?? 0) - (x.m?.spend ?? 0)).slice(0, 4);
       return {
         campaign: c.name, objective: c.objective,
+        // Where this campaign REALLY runs: its ad sets' targeting. The words and pictures of its ads may mention another country; ignore that.
+        runs_in_countries: [...new Set(sets.flatMap((s)=>s?.targeting?.geo_locations?.countries ?? []))],
         ad_sets: sets.filter((s)=>s.status === "ACTIVE").slice(0, 4).map((s)=>({ name: s.name, daily_budget: s.daily_budget ? Math.round(num(s.daily_budget) * factor / 100) : null, optimization: s.optimization_goal, destination: s.destination_type, bid: s.bid_strategy, targeting: snapTargeting(s.targeting) })),
-        best_ads: best.map(({ ad, m, t, w })=>({ ...snapCopy(ad), today: num2(t), last_7_days: num2(w), last_30_days: num2(m) }))
+        best_ads: best.map(({ ad, m, t, w, f })=>({ ...snapCopy(ad), today: num2(t), last_7_days: num2(w), last_14_days: num2(f), last_30_days: num2(m) }))
       };
     }));
     return { account: a.nickname, currency: a.currency ?? "NGN", campaigns: rows.slice(0, 25), winners };
@@ -2358,7 +2360,7 @@ async function handleLearnSync(maxAccounts = 2, onlyAccountId = "") {
   const off = new Set((cos ?? []).map((c)=>c.id));
   const { data: accts } = await admin.from("ad_accounts").select("id, name, nickname, meta_ad_account_id, meta_connection_id, company_id, billing_mode, learn_synced_at, learn_backfill_done_at, learn_cursor, learn_breakdowns_at").eq("status", "active").order("learn_synced_at", { ascending: true, nullsFirst: true }).order("learn_backfill_done_at", { ascending: true, nullsFirst: true }).limit(40);
   const out = [];
-  for (const a of (accts ?? []).filter((x)=>(!onlyAccountId || x.id === onlyAccountId) && !off.has(x.company_id) && /^\d+$/.test(String(x.meta_ad_account_id ?? "").replace(/^act_/, ""))).slice(0, maxAccounts)){
+  for (const a of (accts ?? []).filter((x)=>(!onlyAccountId || x.id === onlyAccountId) && (onlyAccountId || !x.learn_backfill_done_at || !x.learn_synced_at || Date.now() - new Date(x.learn_synced_at).getTime() > 22 * 3600_000) && !off.has(x.company_id) && /^\d+$/.test(String(x.meta_ad_account_id ?? "").replace(/^act_/, ""))).slice(0, maxAccounts)){
     if (Date.now() > deadline) break;
     try { out.push({ account: a.nickname || a.name, ...await learnAccount(admin, a, deadline) }); } catch (e) { await admin.from("ad_accounts").update({ learn_synced_at: new Date().toISOString() }).eq("id", a.id); out.push({ account: a.nickname || a.name, error: String(e.message ?? e).slice(0, 160) }); }
   }
