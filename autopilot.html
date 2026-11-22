@@ -129,6 +129,16 @@ function findsHtml(run) {
     + (rs.proof_missing && rs.proof_missing.length ? "<details><summary>What it still needs from you</summary>" + li(rs.proof_missing) + "</details>" : "")
     + ph + "</div>";
 }
+var WHO = { Ada: ["Ada", "Team lead"], Zara: ["Zara", "Creative"], Tobi: ["Tobi", "Media buyer"], Ife: ["Ife", "Customer care"] };
+function ago(t) { var m = Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000)); return m < 1 ? "now" : m < 60 ? m + " min ago" : Math.round(m / 60) + " h ago"; }
+function logHtml(run) {
+  var l = (run.log || []).slice(-30).reverse();
+  if (!l.length) return "";
+  return '<div class="lbl">What the team is doing</div><div class="card">' + l.map(function (e) {
+    var w = WHO[e.who] || [e.who, ""];
+    return '<div class="r" style="align-items:flex-start"><div style="min-width:0"><b style="font-size:13px">' + esc(w[0]) + ' <span style="font-weight:500;color:var(--ink2)">' + esc(w[1]) + '</span></b><span class="d" style="color:var(--ink);font-size:14px">' + esc(e.text) + '</span></div><div class="d" style="white-space:nowrap;font-size:12px;color:var(--ink2)">' + esc(ago(e.t)) + "</div></div>";
+  }).join("") + "</div>";
+}
 function approveHtml(run) {
   var l = (S.launches || []).filter(function (x) { return x.id === run.launch_id; })[0];
   if (run.status !== "waiting" || !l || l.status !== "proposed") return "";
@@ -154,7 +164,7 @@ function drawRun(run) {
   var st = run.status === "live" ? "Live" : run.status === "waiting" ? "Waiting for you" : run.status === "failed" ? "Stopped" : "Working";
   var h = '<div class="note" style="font-weight:600;margin:0 0 4px">' + esc(prod ? prod.product_name : "Product") + " · " + esc(countries(run.market_countries)) + "</div>"
     + '<div class="card" style="margin-bottom:12px"><div class="r"><div><b>' + st + '</b><span class="d">' + money(run.daily_budget, run.billing_currency) + " a day, hard stop " + money(run.total_budget, run.billing_currency) + '</span></div></div></div>'
-    + stepsHtml(run) + approveHtml(run) + findsHtml(run);
+    + stepsHtml(run) + approveHtml(run) + logHtml(run) + findsHtml(run);
   if (run.status === "failed" || (run.steps || []).some(function (s) { return s.state === "needs_you"; }) && run.status !== "waiting" || (run.status === "waiting" && !approveHtml(run))) h += '<div class="err" id="err"></div><div class="row2"><button class="sec" id="cancel">Cancel run</button><button class="pri" id="retry">Try again</button></div>';
   return h;
 }
