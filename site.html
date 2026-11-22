@@ -126,7 +126,7 @@ html,body{margin:0;padding:0;background:#fff;}
     var st = document.createElement("style"); st.id = "rv-page-css"; st.textContent = page.css || ""; document.head.appendChild(st);
 
     if (!preview && window.RVTrack) window.RVTrack("view", site.id, page.slug);
-    if (!preview) { window.RV_REC = { site: site.id, page: page.slug }; var rs = document.createElement("script"); rs.src = "/rv/rec.js?v=5"; rs.async = true; document.head.appendChild(rs); }
+    if (!preview) { window.RV_REC = { site: site.id, page: page.slug }; var rs = document.createElement("script"); rs.src = "/rv/rec.js?v=6"; rs.async = true; document.head.appendChild(rs); }
     if (seo.head_html) inject(document.head, seo.head_html);
     var snippets = d.snippets || [];
     snippets.filter(function (s) { return s.location === "head"; }).forEach(function (s) { inject(document.head, s.code); });

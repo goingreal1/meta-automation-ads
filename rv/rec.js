@@ -73,7 +73,7 @@
   function nextSeq() { var n = seq++; sset("rv_rec_seq", String(seq)); return n; }
   // One chunk is sent at a time. If the server says the visit is not registered yet (202 waiting), the SAME chunk is tried again shortly:
   // the first chunk holds the picture of the page, and without it the replay is blank.
-  var pending = null, tries = 0;
+  var pending = null, tries = 0, fastUntil = 0, lastFlush = 0;
   function send(final) {
     if (final && buf.length) { // leaving the page: send what is left right now, whatever is still in flight
       var ev = buf; buf = [];
@@ -88,6 +88,8 @@
     post(body, final).then(function (r) {
       if (r.status === 202 || r.status >= 500) { if (++tries < 8) return setTimeout(function () { attempt(final); }, 1500 * tries); pending = null; return; }
       if (r.status >= 400) { pending = null; stopRec(); return; }
+      // The server says when someone is watching this visit live: then send small batches every second (otherwise every 4 seconds).
+      try { r.clone().json().then(function (j) { if (j && j.watch) fastUntil = Date.now() + 30000; }).catch(function () {}); } catch (e) {}
       pending = null; if (buf.length) send(false);
     }).catch(function () { if (++tries < 4) setTimeout(function () { attempt(final); }, 2000 * tries); else pending = null; });
   }
@@ -108,7 +110,7 @@
       sampling: { scroll: 150, mousemove: 60, input: "last" },
       checkoutEveryNms: 120000
     });
-    setInterval(function () { if (!stopped) flush(false); }, 4000);
+    setInterval(function () { if (stopped) return; var now = Date.now(); if (now < fastUntil || now - lastFlush >= 4000) { lastFlush = now; flush(false); } }, 1000);
     document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(true); });
     g.addEventListener("pagehide", function () { flush(true); });
   }
