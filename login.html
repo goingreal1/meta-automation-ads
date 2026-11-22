@@ -421,6 +421,8 @@ body.invite .hero{padding-top:34px;}
         if (error) throw error;
         statusMsg.textContent = "Login successful. Redirecting...";
         statusMsg.className = "msg ok";
+        // New-device alert email (fire and forget; never blocks the login).
+        try { fetch(SUPA_URL + "/functions/v1/send-internal-email", { method: "POST", keepalive: true, headers: { Authorization: "Bearer " + data.session.access_token, apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ type: "login_alert" }) }).catch(() => {}); } catch (_) {}
         setTimeout(() => window.location.href = (nextUrl || setupUrl), 800);
       } else {
         // SIGNUP FLOW
