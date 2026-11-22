@@ -47,3 +47,17 @@ assert.equal(proposeHook({ ...base, needs: [open] }), null, "one open item at a 
 assert.equal(proposeHook({ ...base, needs: [{ ...open, status: "dismissed" }] }), "Third hook", "a dismissed hook is not offered again");
 assert.equal(proposeHook({ ...base, hooks: ["Stop the pain tonight"] }), null, "no unused hook left");
 console.log("autopilot_watch: all checks passed");
+
+// ---- hard stop (synthetic rows, nothing real) ----
+import { hardStopCheck, campaignsToPause } from "./autopilot_watch.ts";
+// run: 3,000 a day, hard stop 9,000 (3 days). Limit is 9,000 minus half an hour of normal spend (62.5) = 8,937.5
+assert.deepEqual(hardStopCheck({ lifeSpend: 2000, totalBudget: 9000, dailyBudget: 3000 }), { act: "ok", limit: 8937.5 });
+assert.equal(hardStopCheck({ lifeSpend: 7300, totalBudget: 9000, dailyBudget: 3000 }).act, "warn", "80% reached: say so once");
+assert.equal(hardStopCheck({ lifeSpend: 7300, totalBudget: 9000, dailyBudget: 3000, warned: true }).act, "ok", "already warned");
+assert.equal(hardStopCheck({ lifeSpend: 8940, totalBudget: 9000, dailyBudget: 3000 }).act, "stop", "just under the stop: stop");
+// Meta overspends day 1 by 25% and day 2 by 25%: 3,750 + 3,750 + 1,600 so far = 9,100 before the third day ended -> stop
+assert.equal(hardStopCheck({ lifeSpend: 3750 + 3750 + 1600, totalBudget: 9000, dailyBudget: 3000 }).act, "stop");
+assert.equal(hardStopCheck({ lifeSpend: 99999, totalBudget: 0, dailyBudget: 3000 }).act, "ok", "no stop set: do nothing");
+// only active campaigns are paused; already-paused ones are left alone
+assert.deepEqual(campaignsToPause([{ id: "c1", name: "A", effective_status: "ACTIVE" }, { id: "c2", effective_status: "PAUSED" }, { id: "c3", effective_status: "CAMPAIGN_PAUSED" }]), [{ id: "c1", name: "A" }]);
+console.log("hard stop: all checks passed");
