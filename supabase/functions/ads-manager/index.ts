@@ -962,6 +962,11 @@ async function handleLearnVideo(limit = 2, only = "") {
   const { data: ads } = ranked.length ? await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, name, creative").eq("level", "ad").in("meta_id", ranked.slice(0, 120)) : { data: [] };
   const byId = new Map((ads ?? []).map((a)=>[a.meta_id, a]));
   const cands = [];
+  // A named video (a test or a manual request) skips the winners filter.
+  if (only){
+    const { data: one } = await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, name, creative").eq("level", "ad").contains("creative", { video_ids: [only] }).limit(1);
+    if (one?.[0] && !off.has(one[0].company_id)) cands.push({ ad: one[0], vid: only });
+  }
   for (const id of ranked){ const a = byId.get(id); const vid = a?.creative?.video_ids?.[0]; if (a && vid && !off.has(a.company_id) && (!only || String(vid) === only)) cands.push({ ad: a, vid: String(vid) }); }
   const { data: have } = cands.length ? await admin.from("learn_videos").select("video_id, error, created_at, analyzed_at").in("video_id", cands.map((c)=>c.vid)) : { data: [] };
   const haveMap = new Map((have ?? []).map((h)=>[h.video_id, h]));
