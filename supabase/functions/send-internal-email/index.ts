@@ -145,34 +145,56 @@ Deno.serve(async (req)=>{
     error: "RESEND_API_KEY isn't configured yet."
   }, 500);
   try {
-    if (!await getCaller(req, supabase)) return json({
-      error: "Not signed in"
-    }, 401);
     const reqBody = await req.json();
     const { type, fund_request_id } = reqBody;
-    // The login page calls this right after a successful sign-in with the person's own session. First device is recorded quietly;
-    // a later unrecognised device (browser + system + country) gets one "New sign-in" email.
-    if (type === "login_alert") {
+    // Sign-in codes: every sign-in needs a 6-digit code sent to the person's email. The code is tied to that one login session.
+    // Works for anyone with a valid session (even before their company is set up), so it runs before the company check below.
+    if (typeof type === "string" && type.startsWith("login_code_")) {
       const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
       const { data: u } = await supabase.auth.getUser(token);
       if (!u?.user) return json({ error: "Not signed in" }, 401);
-      const ua = req.headers.get("user-agent") ?? "";
-      const country = (req.headers.get("cf-ipcountry") ?? req.headers.get("x-vercel-ip-country") ?? "").toUpperCase().slice(0, 2) || null;
-      const dv = describeUa(ua);
-      const fp = await shaShort(`${dv.browser}|${dv.os}|${country ?? ""}`);
-      const { count } = await supabase.from("login_devices").select("id", { count: "exact", head: true }).eq("user_id", u.user.id);
-      const { data: known } = await supabase.from("login_devices").select("id").eq("user_id", u.user.id).eq("fingerprint", fp).maybeSingle();
-      if (known) { await supabase.from("login_devices").update({ last_seen: new Date().toISOString() }).eq("id", known.id); return json({ ok: true, new_device: false, alerted: false }); }
-      const seenBefore = (count ?? 0) > 0;
-      await supabase.from("login_devices").insert({ user_id: u.user.id, fingerprint: fp, device: dv.label, country, alerted_at: seenBefore ? new Date().toISOString() : null });
-      if (!seenBefore) return json({ ok: true, new_device: true, alerted: false });
-      const { data: pr } = await supabase.from("profiles").select("login_alerts").eq("id", u.user.id).maybeSingle();
-      if (pr?.login_alerts === false || !u.user.email) return json({ ok: true, new_device: true, alerted: false });
-      const when = new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" });
-      const html = brandedHtml("New sign-in to your account", [`Device: ${dv.label}`, `Country: ${country ?? "unknown"}`, `Time: ${when} (Lagos)`, "If this was you, you don't need to do anything.", "If it wasn't you, reset your password now so nobody else can get in."], { url: "https://dash.revoracrm.online/login", label: "Secure my account" });
-      await sendEmail(u.user.email, "New sign-in to your Revora account", html);
-      return json({ ok: true, new_device: true, alerted: true });
+      let sid = "";
+      try { sid = String(JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).session_id ?? ""); } catch { /* none */ }
+      if (!sid) return json({ error: "No session" }, 400);
+      const uid = u.user.id;
+      const hashOf = (code)=>shaShort(`${code}|${uid}|${sid}|${SVC_KEY.slice(-12)}`);
+      const { data: row } = await supabase.from("login_challenges").select("*").eq("user_id", uid).eq("session_id", sid).maybeSingle();
+      if (type === "login_code_status") return json({ ok: true, required: true, verified: !!row?.verified_at });
+      if (type === "login_code_verify") {
+        if (row?.verified_at) return json({ ok: true, verified: true });
+        if (!row || new Date(row.expires_at).getTime() < Date.now()) return json({ ok: false, error: "That code has expired. Ask for a new one." }, 400);
+        if ((row.attempts ?? 0) >= 5) return json({ ok: false, error: "Too many wrong tries. Ask for a new code." }, 429);
+        const good = (await hashOf(String(reqBody.code ?? "").replace(/\D/g, ""))) === row.code_hash;
+        if (!good) { await supabase.from("login_challenges").update({ attempts: (row.attempts ?? 0) + 1 }).eq("user_id", uid).eq("session_id", sid); return json({ ok: false, error: "That code isn't right." }, 400); }
+        await supabase.from("login_challenges").update({ verified_at: new Date().toISOString() }).eq("user_id", uid).eq("session_id", sid);
+        return json({ ok: true, verified: true });
+      }
+      if (type === "login_code_send") {
+        if (row?.verified_at) return json({ ok: true, verified: true });
+        if (row && Date.now() - new Date(row.created_at).getTime() < 20000) return json({ ok: true, sent: false, wait: true });
+        if (!u.user.email) return json({ error: "No email on this account" }, 400);
+        const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+        await supabase.from("login_challenges").upsert({ user_id: uid, session_id: sid, code_hash: await hashOf(code), expires_at: new Date(Date.now() + 10 * 60000).toISOString(), attempts: 0, verified_at: null, created_at: new Date().toISOString() });
+        // Device note (also tells them when it is a browser or country we have not seen).
+        const ua = req.headers.get("user-agent") ?? "";
+        const country = (req.headers.get("cf-ipcountry") ?? req.headers.get("x-vercel-ip-country") ?? "").toUpperCase().slice(0, 2) || null;
+        const dv = describeUa(ua);
+        const fp = await shaShort(`${dv.browser}|${dv.os}|${country ?? ""}`);
+        const { count } = await supabase.from("login_devices").select("id", { count: "exact", head: true }).eq("user_id", uid);
+        const { data: known } = await supabase.from("login_devices").select("id").eq("user_id", uid).eq("fingerprint", fp).maybeSingle();
+        if (known) await supabase.from("login_devices").update({ last_seen: new Date().toISOString() }).eq("id", known.id);
+        else await supabase.from("login_devices").insert({ user_id: uid, fingerprint: fp, device: dv.label, country, alerted_at: (count ?? 0) > 0 ? new Date().toISOString() : null });
+        const isNew = !known && (count ?? 0) > 0;
+        const when = new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" });
+        const html = brandedHtml(`Your sign-in code: ${code}`, [`Enter this code to finish signing in. It works once and expires in 10 minutes.`, `Device: ${dv.label}${isNew ? " (new to this account)" : ""}`, `Country: ${country ?? "unknown"}`, `Time: ${when} (Lagos)`, "If this wasn't you, don't share the code. Reset your password now."], { url: "https://dash.revoracrm.online/login", label: "Secure my account" });
+        await sendEmail(u.user.email, `${code} is your Revora sign-in code`, html);
+        return json({ ok: true, sent: true, new_device: isNew });
+      }
+      return json({ error: "Unknown request" }, 400);
     }
+    if (!await getCaller(req, supabase)) return json({
+      error: "Not signed in"
+    }, 401);
     // Report and alert emails, sent by our own jobs only (service key). Recipient = one person, or the owners/admins of a company.
     if (type === "user_email") {
       const caller = await getCaller(req, supabase);
