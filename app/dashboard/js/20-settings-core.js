@@ -17,6 +17,7 @@ const BV_SET_ICONS = {
   billing: '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/>',
   automation: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   aiteam: '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>',
+  autopilot: '<path d="M12 2l3 7h7l-5.5 4.3L18.5 21 12 16.8 5.5 21l2-7.7L2 9h7z"/>',
   security: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/>',
   help: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M5.6 5.6l3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"/>',
   ext: '<path d="M7 17L17 7M8 7h9v9"/>'
@@ -39,6 +40,7 @@ function bvSettingsSections(isAdmin) {
     ...(isAdmin ? [{ id: "billing", group: "Business & team", label: "Billing" }] : []),
     { id: "automation", group: "Automation", label: "Automation & alerts" },
     ...(pro ? [{ id: "aiteam", group: "Automation", label: "AI Team", link: "/ai-team.html" }] : []),
+    ...(pro && isAdmin ? [{ id: "autopilot", group: "Automation", label: "Autopilot", link: "/autopilot.html" }] : []),
     ...(pro ? [{ id: "security", group: "Account", label: "Security" }] : []),
     { id: "help", group: "Account", label: "Help & support" },
   ];

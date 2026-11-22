@@ -62,10 +62,14 @@ async function ensureMediaBuyer(companyId, email, displayName) {
   return buyer.id;
 }
 // Nigerian phone -> 234XXXXXXXXXX (how whatsapp_number is stored). null when it is not a valid number.
-function normPhone(raw) {
+// The country a business signs up in decides its currency; Meta's own billing currency still wins for ad spend (ad_accounts.currency).
+const COUNTRY_CURRENCY = { NG: "NGN", KE: "KES", GH: "GHS", ZA: "ZAR", UG: "UGX", TZ: "TZS", US: "USD", GB: "GBP", CA: "CAD", AE: "AED" };
+function normPhone(raw, country = "NG") {
   const d = String(raw ?? "").replace(/\D/g, "");
   if (d.length === 13 && d.startsWith("234")) return d;
-  if (d.length === 11 && d.startsWith("0")) return "234" + d.slice(1);
+  if (d.length === 11 && d.startsWith("0") && country === "NG") return "234" + d.slice(1);
+  // outside Nigeria a full international number (country code first) is accepted
+  if (country !== "NG" && d.length >= 9 && d.length <= 15 && !d.startsWith("0")) return d;
   return null;
 }
 // Dedicated bank accounts are set up automatically: the company wallet when a company signs up, and a customer-payment
@@ -217,7 +221,7 @@ function cleanProfile(raw) {
   many("team_roles");
   if (typeof raw.description === "string") out.description = raw.description.trim().slice(0, 1500);
   if (Number.isFinite(Number(raw.buyers_count))) out.buyers_count = Math.min(Math.max(Math.round(Number(raw.buyers_count)), 0), 100000);
-  if (typeof raw.country === "string" && /^[A-Z]{2}$/.test(raw.country)) out.country = raw.country;
+  if (typeof raw.country === "string" && COUNTRY_CURRENCY[raw.country]) { out.country = raw.country; out.currency = COUNTRY_CURRENCY[raw.country]; }
   return out;
 }
 Deno.serve(async (req)=>{
@@ -276,7 +280,7 @@ Deno.serve(async (req)=>{
       const clean = cleanProfile(body?.profile);
       const personal = clean.account_type === "personal";
       const displayName = body?.display_name?.trim() || null;
-      const phone = normPhone(body?.phone);
+      const phone = normPhone(body?.phone, String(clean.country ?? "NG"));
       if (body?.phone && !phone) return json({
         error: "Enter a valid Nigerian phone number, e.g. 08012345678."
       }, 400);

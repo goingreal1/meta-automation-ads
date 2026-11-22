@@ -267,6 +267,10 @@ async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
   if (!claimed?.length) return { error: "This launch is not waiting for approval." };
   const { data: team } = await db.from("ai_teams").select("launch_hour_lagos").eq("company_id", l.company_id).maybeSingle();
   const start = nextStart(Number(team?.launch_hour_lagos ?? 0));
+  // Budgets are counted in the ad account's own currency (Meta decides it); an autopilot launch also has a hard end date.
+  const { data: acur } = await db.from("ad_accounts").select("currency").eq("id", l.ad_account_id).maybeSingle();
+  const budgetCur = String(acur?.currency ?? "NGN").toUpperCase();
+  const endAt = Number(l.run_days) > 0 ? new Date(start.getTime() + Number(l.run_days) * 86400_000) : null;
   const call = async (tool: string, args: Record<string, unknown>) => {
     const r = await fetch(`${SUPABASE_URL}/functions/v1/mcp-ads`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool, args, ctx }) });
     const o = await r.json().catch(() => ({})); return o?.out ?? o;
@@ -290,7 +294,7 @@ async function approveLaunch(launchId: string, ctx: Record<string, unknown>) {
     ad_account_id: l.ad_account_id, product_name: l.product_name, destination: l.destination ?? "website", objective: "sales", budget_type: "abo",
     ...(l.landing_url ? { landing_url: l.landing_url } : {}), campaign_name: `AI Team · ${l.product_name} · ${new Date(start.getTime() + 3600_000).toISOString().slice(0, 10)}`,
     asset_ids: l.creative_ids, copies, ads: (l.creative_ids as string[]).map((id, i) => ({ asset_id: id, copy_index: Math.min(i, copies.length - 1) })),
-    adsets, person_confirmed: true, start_time: lagosIso(start),
+    adsets, person_confirmed: true, start_time: lagosIso(start), budget_currency: budgetCur, ...(endAt ? { end_time: lagosIso(endAt) } : {}),
   });
   const planId = planned?.plan_id ?? planned?.plan?.id ?? planned?.id;
   if (!planId) return await fail(String(planned?.message ?? planned?.error ?? "The campaign plan could not be made.").slice(0, 300));
@@ -728,6 +732,275 @@ async function finishLive(meetingId: string, companyId: string) {
   }
 }
 
+
+// ============================ AUTOPILOT: product in, a launch ready for the owner's tap out ============================
+// One run walks a product through research -> sales page -> tracking -> ads -> campaign plan, then WAITS for the owner to approve.
+// Nothing is published, launched or paid for before that tap. After approval the launch is scheduled for midnight with a hard stop
+// (its end date is set so the total can never pass the stop amount). Everything reuses the AI Team machinery above (meeting, images, launches).
+const COUNTRY_CUR: Record<string, string> = { NG: "NGN", KE: "KES", GH: "GHS", ZA: "ZAR", UG: "UGX", TZ: "TZS", US: "USD", GB: "GBP", CA: "CAD", AE: "AED" };
+const AP_STEPS: [string, string][] = [["research", "Research the product"], ["page", "Sales page"], ["tracking", "Pixel and thank-you page"], ["creatives", "Make the ads"], ["plan", "Plan campaign and audience"], ["launch", "Launch at midnight"], ["watch", "Watch and adjust"], ["learn", "Learn and loop"]];
+type ApStep = { key: string; label: string; state: "wait" | "now" | "done" | "needs_you" | "failed"; note?: string; at?: string };
+const apFresh = (): ApStep[] => AP_STEPS.map(([key, label]) => ({ key, label, state: "wait" as const }));
+const apParse = (raw: string): Record<string, unknown> => { try { return JSON.parse(raw); } catch { const m = raw.match(/\{[\s\S]*\}/); try { return m ? JSON.parse(m[0]) : {}; } catch { return {}; } } };
+
+async function apSet(id: string, key: string, state: ApStep["state"], note: string, patch: Record<string, unknown> = {}) {
+  const { data: r } = await db.from("autopilot_runs").select("steps").eq("id", id).maybeSingle();
+  const steps = ((r?.steps ?? apFresh()) as ApStep[]).map((s) => (s.key === key ? { ...s, state, note: note.slice(0, 300), at: new Date().toISOString() } : s));
+  await db.from("autopilot_runs").update({ steps, step: key, updated_at: new Date().toISOString(), ...patch }).eq("id", id);
+}
+
+// the facts the page and ads may use: only what the owner entered about the product
+async function apProduct(productId: string, companyId: string) {
+  const { data: p } = await db.from("products").select("id, product_name, description, benefits, safety_notes, ai_approved_claims, notes, payment_note, default_order_value_naira, currency, target_countries, landing_page_url, destination_type, ad_account_id, product_image_url, nafdac_reg_no, is_active, company_id").eq("id", productId).eq("company_id", companyId).maybeSingle();
+  if (!p) return null;
+  const { data: tiers } = await db.from("product_tiers").select("label, price_naira, features").eq("product_id", p.id).eq("is_active", true).order("sort_order", { ascending: true });
+  return { ...p, tiers: tiers ?? [] };
+}
+
+// Calls a tool of the ad assistant (mcp-ads) as the owner who started the run.
+async function apTool(run: Record<string, unknown>, tool: string, args: Record<string, unknown>) {
+  const token = await mintToken(String(run.created_by ?? "")); if (!token) return { error: "could not sign in as the owner" };
+  const { data: prof } = await db.from("profiles").select("role").eq("id", String(run.created_by)).maybeSingle();
+  const ctx = { token, userId: run.created_by, email: null, companyId: run.company_id, role: prof?.role ?? "", mediaBuyerId: null, displayName: "" };
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/mcp-ads`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ action: "call", tool, args, ctx }) });
+  const o = await r.json().catch(() => ({})); return o?.out ?? o;
+}
+async function apBuilder(run: Record<string, unknown>, body: Record<string, unknown>) {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-site-builder`, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE }, body: JSON.stringify({ ...body, company_id: run.company_id, user_id: run.created_by }) });
+  const o = await r.json().catch(() => ({})); return { ok: r.ok, ...o } as Record<string, unknown>;
+}
+
+// 1. RESEARCH: the product, what already wins in this business, the sales pages it has read (screenshots, in order), and what to say.
+async function apResearch(run: Record<string, any>) {
+  const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
+  const x = await extraBriefing(run.company_id);
+  const { data: pages } = await db.from("learn_pages").select("url_norm, title, vision, signals, blocks").contains("company_ids", [run.company_id]).eq("status", "ok").not("vision", "is", null).order("fetched_at", { ascending: false }).limit(4);
+  const read = (pages ?? []).map((p: any) => ({ page: p.url_norm, title: p.title, sections_in_order: (p.vision?.sections ?? p.vision?.structure ?? []).slice(0, 25), opening: p.vision?.above_the_fold, offer: p.vision?.offer, proof: p.vision?.social_proof, trust: p.vision?.trust, order_form: p.vision?.order_form, hooks: (p.vision?.hooks ?? []).slice(0, 8) }));
+  const sys = `You are the research lead of an AI media-buying team. A direct-response seller in ${run.market_countries.join(", ")} will sell ONE product with paid Facebook and Instagram ads and a sales page. Study the product and what already sells for this business, then write the plan the page and the ads will follow. Return ONLY JSON:
+{"audience":"who buys and why, in plain words","fears":["the fears or pains, in the customer's own words"],"problem_story":"3-4 sentences: the story of the problem a buyer lives with, then what made them look for a fix","solution":"how this product answers it, using ONLY the product facts","proof_available":["proof the seller really has (from the product facts or the pages read)"],"proof_missing":["proof the page needs but the seller has not given (real testimonials, photos, certificates). Never invent any"],"objections":["why a buyer hesitates"],"offer":"the offer to put forward, only from the product facts (price, packages, delivery, payment on delivery, guarantee)","hooks":["5 ad hooks, each one line, aggressive but true"],"angles":["3 ad angles"],"blueprint":[{"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form","goal":"what this section must do for the buyer","guidance":"what to say, using only real facts"}],"niche":"health|beauty|fashion|food|gadgets|home|general"}
+HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, testimonials, certificates or guarantees. No medical cures or guaranteed results; for health products describe support in careful words and keep to ai_approved_claims when they exist. The blueprint order follows how the best pages in PAGES_READ are built (fear, then the problem story, then the solution, then proof, then assurance, then offer cards, then the order form); when no page was read, use that order. PAGES_READ are for STRUCTURE and order only: never copy a number, claim or promise from them. The page text is for shoppers in ${run.market_countries.join(", ")}: their words, their currency (${run.market_currency}).`;
+  const raw = await decideJson(sys, `PRODUCT:\n${JSON.stringify(prod).slice(0, 5000)}\n\nWHAT ALREADY WINS (this business):\n${JSON.stringify({ winning_ads: x.winning_ads_the_learner_saw ?? [], winning_video_anatomy: x.winning_video_anatomy ?? [], lessons: x.lessons_learned ?? [] }).slice(0, 9000)}\n\nPAGES_READ (screenshots read top to bottom):\n${JSON.stringify(read).slice(0, 9000)}`);
+  const research = apParse(raw);
+  if (!Array.isArray(research.blueprint) || !research.blueprint.length) throw new Error("The research did not come back in a usable shape. It will be tried again.");
+  const hooks = Array.isArray(research.hooks) ? research.hooks.length : 0;
+  await apSet(run.id, "research", "done", `Read ${(pages ?? []).length} sales page${(pages ?? []).length === 1 ? "" : "s"} and ${((x.winning_ads_the_learner_saw as unknown[]) ?? []).length} winning ad${((x.winning_ads_the_learner_saw as unknown[]) ?? []).length === 1 ? "" : "s"}. ${hooks} hooks, ${(research.blueprint as unknown[]).length} sections planned.`, { research });
+}
+
+// 2. SALES PAGE: the owner's own page when there is one (read it, never change it); otherwise a draft built from the blueprint.
+async function apPage(run: Record<string, any>) {
+  const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
+  const rs = (run.research ?? {}) as Record<string, any>;
+  let url = prod.landing_page_url as string | null;
+  if (!url) { const { data: s } = await db.from("sites").select("id, status").eq("product_id", prod.id).eq("status", "published").limit(1).maybeSingle(); if (s) url = "published-site"; }
+  if (url) {
+    const { data: pg } = url.startsWith("http") ? await db.from("learn_pages").select("url_norm, vision, signals, blocks, status").ilike("url_norm", `%${url.replace(/^https?:\/\//, "").replace(/\/+$/, "").slice(0, 120)}%`).limit(1).maybeSingle() : { data: null };
+    let review: Record<string, unknown> = { read: false };
+    if (pg?.vision) {
+      const raw = await decideJson(`You compare a seller's existing sales page with the plan for it. Return ONLY JSON {"covers":[roles],"missing":[roles],"order_problems":[string],"suggestions":[string],"keep":[string]}. Roles come from: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form. Be specific and short; never rewrite the page.`, `PLAN:\n${JSON.stringify(rs.blueprint).slice(0, 4000)}\n\nTHEIR PAGE (read from screenshots, in order):\n${JSON.stringify({ sections: pg.vision.sections ?? pg.vision.structure, above_the_fold: pg.vision.above_the_fold, offer: pg.vision.offer, social_proof: pg.vision.social_proof, trust: pg.vision.trust, order_form: pg.vision.order_form, weaknesses: pg.vision.weaknesses }).slice(0, 6000)}`);
+      review = { read: true, ...apParse(raw) };
+    } else if (url.startsWith("http")) {
+      await db.from("learn_pages").upsert({ url_norm: url.replace(/#.*$/, ""), company_ids: [run.company_id] }, { onConflict: "url_norm", ignoreDuplicates: true });
+    }
+    const miss = Array.isArray((review as any).missing) ? (review as any).missing.length : 0;
+    await apSet(run.id, "page", "done", review.read ? `Using your page. ${miss ? `It is missing: ${(review as any).missing.join(", ")}.` : "It covers the plan."} Nothing on it was changed.` : "Using your page. It is being read now; nothing on it will be changed.", { page: { mode: "existing", url, review } });
+    return;
+  }
+  // build a draft
+  const brief = await apBuilder(run, { mode: "page_brief", niche: rs.niche ?? "general" });
+  const roleMap = "fear/problem_story -> problem (title + paragraphs) ; solution/product -> solution ; benefits -> benefits ; how_it_works -> how_to ; testimonials -> testimonials ONLY if real ones are given (they are not, so leave it out) ; assurance -> guarantee or trust ONLY from product facts ; offer_cards -> offer then packages ; order_form -> form";
+  const raw = await decideJson(`You write the sales page for ONE product as a JSON spec for a page builder. Return ONLY JSON {"niche":string,"title":string,"seo_title":string,"seo_description":string,"cta":string,"sections":[{"type":...}]}. Section types and their fields (use only these): ${JSON.stringify(brief.sections ?? {}).slice(0, 2500)}. Follow the BLUEPRINT order exactly. Mapping of blueprint roles to section types: ${roleMap}. Start with an offerbar and a hero (headline = the strongest hook; subheadline = what the buyer gets), end with form then footer.
+HARD RULES: use ONLY the product facts. Never invent prices, numbers, claims, testimonials, names, certificates or guarantees. No medical cures. Leave out any section whose real content you do not have. Write for shoppers in ${run.market_countries.join(", ")} in simple, clear English. Prices are shown from the product's own packages, never typed in the text.`, `PRODUCT:\n${JSON.stringify(prod).slice(0, 4500)}\n\nRESEARCH:\n${JSON.stringify({ audience: rs.audience, fears: rs.fears, problem_story: rs.problem_story, solution: rs.solution, objections: rs.objections, offer: rs.offer, hooks: rs.hooks, blueprint: rs.blueprint }).slice(0, 7000)}`);
+  const spec = apParse(raw);
+  const sections = (Array.isArray(spec.sections) ? spec.sections : []).slice(0, 24) as Record<string, unknown>[];
+  if (!sections.length) throw new Error("The page plan came back empty. It will be tried again.");
+  if (prod.product_image_url && sections.some((s) => s.type === "hero") && !sections.find((s) => s.type === "hero")?.image_url) sections.find((s) => s.type === "hero")!.image_url = prod.product_image_url;
+  const built = await apBuilder(run, { mode: "page_build", product_id: prod.id, niche: String(spec.niche || rs.niche || "general"), title: String(spec.title ?? prod.product_name).slice(0, 80), business_name: prod.product_name, spec: { ...spec, sections } });
+  if (!built.ok || built.error) throw new Error(String(built.error ?? "The page could not be saved.").slice(0, 250));
+  const live = String((built as any).live_link ?? (built as any).will_go_live_at ?? ""), test = String((built as any).test_link ?? "");
+  const gaps = [...((built as any).still_needs_images ?? []).map((s: string) => `picture: ${s}`), ...((rs.proof_missing ?? []) as string[]).slice(0, 4).map((s) => `proof: ${s}`)];
+  await apSet(run.id, "page", "done", `Built a draft page (${sections.length} sections). It goes live only when you approve.${gaps.length ? ` Still needs: ${gaps.slice(0, 3).join("; ")}.` : ""}`, { page: { mode: "built", site_id: (built as any).site_id ?? (built as any).id ?? null, live_link: live, test_link: test, sections: sections.map((s) => s.type), gaps } });
+}
+
+// 3. TRACKING: is the pixel firing, and does a sale get marked on the thank-you page?
+async function apTracking(run: Record<string, any>) {
+  const out = await apTool(run, "check_pixel", { ad_account_id: run.ad_account_id }).catch(() => null);
+  const verdict = String((out as any)?.verdict ?? (out as any)?.message ?? (out as any)?.error ?? "").slice(0, 200);
+  const pg = (run.page ?? {}) as Record<string, any>;
+  const thanks = pg.mode === "built" ? "The thank-you page is built with the page and marks each sale." : "On your own page, add Revora's thank-you script to your thank-you page so each sale is marked.";
+  const fine = /fir|connect|ok|healthy|received/i.test(verdict) && !/not (connected|firing)|no pixel/i.test(verdict);
+  await apSet(run.id, "tracking", "done", `${fine ? "" : "Needs a look: "}${verdict || "The pixel could not be checked right now."} ${thanks}`);
+}
+
+// 4. ADS: a meeting of the team on THIS product (with the research), then the images, then the approved images go to the vault.
+async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue"> {
+  const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
+  const rs = (run.research ?? {}) as Record<string, any>;
+  if (!run.meeting_id) {
+    const topic = `Autopilot for ${prod.product_name} in ${run.market_countries.join(", ")}. Make the ads for this product only. Angle: ${String((rs.angles ?? [])[0] ?? "").slice(0, 200)}. Offer: ${String(rs.offer ?? "").slice(0, 300)}. Fears to speak to: ${(rs.fears ?? []).slice(0, 4).join("; ").slice(0, 300)}. Hooks to build on: ${(rs.hooks ?? []).slice(0, 5).join(" | ").slice(0, 600)}. Use only facts in the product data; no invented claims.`;
+    const { data: busy } = await db.from("ai_meetings").select("id").eq("company_id", run.company_id).eq("status", "running").limit(1).maybeSingle();
+    if (busy) { await apSet(run.id, "creatives", "now", "Waiting for another team meeting to finish."); return "wait"; }
+    const { data: m, error } = await db.from("ai_meetings").insert({ company_id: run.company_id, topic, trigger: "autopilot", started_by: run.created_by }).select("id").single();
+    if (error || !m) throw new Error(error?.message ?? "Could not start the team meeting.");
+    await db.from("autopilot_runs").update({ meeting_id: m.id }).eq("id", run.id);
+    await apSet(run.id, "creatives", "now", "The team is meeting about this product.");
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(runMeeting(m.id, run.company_id, topic, false, false, false));
+    return "wait";
+  }
+  const { data: m } = await db.from("ai_meetings").select("id, status, decision, started_at, error").eq("id", run.meeting_id).maybeSingle();
+  if (!m) throw new Error("The meeting is gone.");
+  if (m.status === "running") { if (Date.now() - new Date(m.started_at).getTime() > 25 * 60_000) throw new Error("The meeting took too long."); return "wait"; }
+  if (m.status === "failed") throw new Error(String(m.error ?? "The meeting failed.").slice(0, 200));
+  const dec = (m.decision ?? {}) as Record<string, any>;
+  if (!dec.autopilot) { // pin the decision to this product, this budget and this market (the owner's numbers win over the meeting's)
+    const briefs = (Array.isArray(dec.creative_briefs) ? dec.creative_briefs : []).slice(0, 5).map((b: any, i: number) => ({ ...b, product: prod.product_name, _i: i }));
+    const plan = [{ product: prod.product_name, daily_budget_naira: Number(run.daily_budget), countries: run.market_countries, creative_brief_index: 0, kill_rule: `Pause an ad that spends ${Math.round(Number(run.daily_budget) / 2)} ${run.billing_currency} with no sale.` }];
+    await db.from("ai_meetings").update({ decision: { ...dec, creative_briefs: briefs, launch_plan: plan, autopilot: true } }).eq("id", m.id);
+    if (!briefs.length) throw new Error("The team did not write any ad briefs.");
+  }
+  const { data: imgs } = await db.from("ai_team_images").select("*").eq("meeting_id", m.id);
+  if (!imgs?.length) { const r = await makeImages(m.id, run.company_id); if (r.error) throw new Error(r.error); await apSet(run.id, "creatives", "now", `Zara is making ${r.started} images.`); return "wait"; }
+  for (const i of imgs) if (i.status === "generating" && Date.now() - new Date(i.updated_at).getTime() > 8 * 60_000) await db.from("ai_team_images").update({ status: "failed", error: "Timed out." }).eq("id", i.id);
+  if (imgs.some((i: any) => i.status === "generating" && Date.now() - new Date(i.updated_at).getTime() <= 8 * 60_000)) return "wait";
+  let n = 0; for (const i of imgs) if (i.status === "ready") { const r = await approveImage(i, run.company_id, run.created_by); if (!r.error) n++; }
+  const total = n + imgs.filter((i: any) => i.status === "approved").length;
+  if (!total) throw new Error("No image could be made.");
+  await apSet(run.id, "creatives", "done", `${total} image${total === 1 ? "" : "s"} ready, each with a hook on top, the pack in the middle and the order button below.`);
+  return "continue";
+}
+
+// 5. PLAN: campaign, ad sets and audience, in the account's own currency, then wait for the owner.
+async function apPlan(run: Record<string, any>) {
+  const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
+  const pg = (run.page ?? {}) as Record<string, any>;
+  if (!prod.landing_page_url && pg.mode === "built" && pg.live_link) { await db.from("products").update({ landing_page_url: pg.live_link }).eq("id", prod.id); await db.from("autopilot_runs").update({ page: { ...pg, set_landing: true } }).eq("id", run.id); }
+  const r = await proposeLaunches(run.meeting_id, run.company_id, run.created_by);
+  if ("error" in r) throw new Error(String(r.error));
+  const l = (r.launches ?? []).find((x: any) => x?.status === "proposed") ?? null;
+  if (!l) { const why = (r.launches ?? []).map((x: any) => x?.note).filter(Boolean)[0] ?? "The launch could not be planned."; await apSet(run.id, "plan", "needs_you", String(why), { status: "waiting" }); return; }
+  const days = Math.max(1, Math.floor(Number(run.total_budget) / Math.max(1, Number(run.daily_budget))));
+  await db.from("ai_launches").update({ run_days: days, currency: run.billing_currency }).eq("id", l.id);
+  await apSet(run.id, "plan", "needs_you", `${(l.ad_sets ?? []).length} ad set${(l.ad_sets ?? []).length === 1 ? "" : "s"} in ${(l.countries ?? run.market_countries).join(", ")}, ${run.daily_budget} ${run.billing_currency} a day for ${days} day${days === 1 ? "" : "s"}. Waiting for your tap.`, { launch_id: l.id, status: "waiting" });
+  await apSet(run.id, "launch", "wait", "Starts at midnight once you approve.");
+  await notify(run.company_id, "autopilot_ready", run.id, "Autopilot: ready for your tap", `${prod.product_name} is ready: research, page, ads and campaign plan. Open Autopilot to approve the launch. Nothing runs until you do.`);
+}
+
+// 6. AFTER APPROVAL: the page goes live, the launch is scheduled (with its end date), then the run watches.
+async function apApprove(runId: string, ctx: Record<string, unknown>) {
+  const { data: run } = await db.from("autopilot_runs").select("*").eq("id", runId).maybeSingle();
+  if (!run || run.company_id !== ctx.companyId) return { error: "Run not found." };
+  if (run.status !== "waiting" || !run.launch_id) return { error: "This run is not waiting for approval." };
+  const pg = (run.page ?? {}) as Record<string, any>;
+  if (pg.mode === "built" && pg.site_id) {
+    const pub = await apBuilder(run, { mode: "page_publish", site_id: pg.site_id });
+    if (!pub.ok || pub.error) { await apSet(run.id, "launch", "failed", `The page could not go live: ${String(pub.error ?? "").slice(0, 200)}`); return { error: String(pub.error ?? "The page could not go live.") }; }
+  }
+  const r = await approveLaunch(String(run.launch_id), ctx);
+  if ("error" in r) { await apSet(run.id, "launch", "failed", String(r.error).slice(0, 250)); return r; }
+  await apSet(run.id, "plan", "done", "Approved by you.");
+  await apSet(run.id, "launch", "done", `Scheduled on Meta for midnight${run.total_budget ? `, ends by itself so the total stays under ${run.total_budget} ${run.billing_currency}` : ""}.`, { status: "live" });
+  await apSet(run.id, "watch", "now", "The team watches the numbers and pauses what wastes money.");
+  return { ok: true };
+}
+
+async function apStart(b: Record<string, any>, userId: string, companyId: string) {
+  if (b.launch_mode === "alone") return { error: "Launching without your tap is not available yet. Autopilot asks you first." };
+  const prod = await apProduct(String(b.product_id ?? ""), companyId);
+  if (!prod || !prod.is_active) return { error: "Choose one of your active products." };
+  if (!prod.ad_account_id) return { error: "This product has no ad account yet. Assign one in the Catalog first." };
+  const daily = Math.round(Number(b.daily_budget) || 0), total = Math.round(Number(b.total_budget) || 0);
+  if (daily < 500) return { error: "Set a daily testing budget." };
+  if (total < daily) return { error: "The hard stop must be at least one day of budget." };
+  const { data: dup } = await db.from("autopilot_runs").select("id").eq("product_id", prod.id).in("status", ["running", "waiting", "live"]).limit(1).maybeSingle();
+  if (dup) return { error: "This product already has an autopilot run.", run_id: dup.id };
+  const { data: acct } = await db.from("ad_accounts").select("id, currency, status").eq("id", prod.ad_account_id).maybeSingle();
+  if (!acct || String(acct.status ?? "active").toLowerCase() !== "active") return { error: "The product's ad account is not active." };
+  const { data: co } = await db.from("companies").select("country, currency").eq("id", companyId).maybeSingle();
+  const cc = (v: unknown) => (Array.isArray(v) ? v : []).map((x) => String(x).trim().toUpperCase()).filter((x) => /^[A-Z]{2}$/.test(x)).slice(0, 5);
+  const markets = cc(b.countries).length ? cc(b.countries) : cc(prod.target_countries).length ? cc(prod.target_countries) : cc([co?.country]);
+  if (!markets.length) return { error: "Which country does this product sell in? Set it in the Catalog (target countries) first." };
+  const { data: team } = await db.from("ai_teams").select("daily_budget_cap_naira").eq("company_id", companyId).maybeSingle();
+  if (Number(team?.daily_budget_cap_naira ?? 0) < daily) await db.from("ai_teams").upsert({ company_id: companyId, daily_budget_cap_naira: daily, updated_at: new Date().toISOString() }, { onConflict: "company_id" });
+  const { data: run, error } = await db.from("autopilot_runs").insert({ company_id: companyId, product_id: prod.id, ad_account_id: acct.id, created_by: userId, market_countries: markets, billing_currency: acct.currency ?? "NGN", market_currency: COUNTRY_CUR[markets[0]] ?? null, daily_budget: daily, total_budget: total, steps: apFresh() }).select("*").single();
+  if (error || !run) return { error: error?.message ?? "Could not start." };
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil(apAdvance(run.id));
+  return { ok: true, run };
+}
+
+// One pass of the state machine. Locked so two passes never work on the same run.
+async function apAdvance(id: string) {
+  const nowIso = new Date().toISOString();
+  const { data: got } = await db.from("autopilot_runs").update({ lock_until: new Date(Date.now() + 4 * 60_000).toISOString() }).eq("id", id).in("status", ["running", "waiting", "live"]).or(`lock_until.is.null,lock_until.lt.${nowIso}`).select("*");
+  if (!got?.length) return;
+  let cur = "";
+  try {
+    for (let guard = 0; guard < 6; guard++) {
+      const { data: run } = await db.from("autopilot_runs").select("*").eq("id", id).maybeSingle();
+      if (!run || !["running", "waiting", "live"].includes(run.status)) break;
+      const step = ((run.steps ?? []) as ApStep[]).find((s) => s.state !== "done");
+      if (!step) { await db.from("autopilot_runs").update({ status: "done", updated_at: new Date().toISOString() }).eq("id", id); break; }
+      cur = step.key;
+      if (step.state === "failed") break;
+      if (run.status === "live") { await apWatch(run); break; }
+      if (step.key === "research") { await apSet(id, "research", "now", "Reading your winning ads and sales pages."); await apResearch(run); continue; }
+      if (step.key === "page") { await apSet(id, "page", "now", "Checking for a sales page."); await apPage(run); continue; }
+      if (step.key === "tracking") { await apSet(id, "tracking", "now", "Checking the pixel."); await apTracking(run); continue; }
+      if (step.key === "creatives") { const r = await apCreatives(run); if (r === "wait") break; continue; }
+      if (step.key === "plan") { if (step.state === "needs_you") break; await apPlan(run); break; }
+      break; // launch waits for the owner's tap
+    }
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e).slice(0, 250);
+    if (cur) {
+      const { data: r } = await db.from("autopilot_runs").select("steps").eq("id", id).maybeSingle();
+      const tries = Number(((r?.steps ?? []) as any[]).find((s) => s.key === cur)?.tries ?? 0) + 1;
+      // a step is tried three times (five minutes apart) before the run stops and tells the owner
+      if (tries < 3) await db.from("autopilot_runs").update({ steps: ((r?.steps ?? []) as any[]).map((s) => (s.key === cur ? { ...s, state: "wait", note: `Trying again: ${msg}`.slice(0, 280), tries } : s)) }).eq("id", id);
+      else { await apSet(id, cur, "failed", msg, { status: "failed", note: msg }); await notify((got[0] as any).company_id, "autopilot_failed", id, "Autopilot stopped", `A step failed: ${msg}`, "warn"); }
+    }
+  } finally { await db.from("autopilot_runs").update({ lock_until: null }).eq("id", id); }
+}
+
+// 7. WATCH: while live, record how the launch stands; when its last day has passed the run is done.
+async function apWatch(run: Record<string, any>) {
+  const { data: l } = await db.from("ai_launches").select("status, start_at, run_days, note").eq("id", run.launch_id).maybeSingle();
+  if (!l) return;
+  const end = l.start_at && l.run_days ? new Date(new Date(l.start_at).getTime() + Number(l.run_days) * 86400_000) : null;
+  if (end && Date.now() > end.getTime() + 3600_000) { await apSet(run.id, "watch", "done", "The run is over."); await apSet(run.id, "learn", "done", "What sold and what did not goes into the next daily meeting.", { status: "done" }); return; }
+  const note = new Date(l.start_at ?? 0).getTime() > Date.now() ? `Scheduled. Starts ${new Date(l.start_at).toISOString().slice(0, 16).replace("T", " ")} UTC.` : "Live. The team watches spend and sales and pauses what wastes money.";
+  await apSet(run.id, "watch", "now", note);
+}
+
+async function apTickAll() {
+  const { data: runs } = await db.from("autopilot_runs").select("id").in("status", ["running", "waiting", "live"]).order("updated_at", { ascending: true }).limit(6);
+  for (const r of runs ?? []) await apAdvance(r.id);
+  return (runs ?? []).length;
+}
+
+async function apCancel(runId: string, companyId: string) {
+  const { data: run } = await db.from("autopilot_runs").select("*").eq("id", runId).maybeSingle();
+  if (!run || run.company_id !== companyId) return { error: "Run not found." };
+  if (!["running", "waiting", "failed"].includes(run.status)) return { error: "Only a run that has not launched can be cancelled." };
+  if (run.launch_id) await db.from("ai_launches").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", run.launch_id).eq("status", "proposed");
+  const pg = (run.page ?? {}) as Record<string, any>;
+  if (pg.set_landing) await db.from("products").update({ landing_page_url: null }).eq("id", run.product_id).eq("landing_page_url", pg.live_link);
+  await db.from("autopilot_runs").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", runId);
+  return { ok: true };
+}
+// Try the stuck step again (after the owner fixed what it asked for).
+async function apRetry(runId: string, companyId: string) {
+  const { data: run } = await db.from("autopilot_runs").select("*").eq("id", runId).maybeSingle();
+  if (!run || run.company_id !== companyId) return { error: "Run not found." };
+  if (!["waiting", "failed", "running"].includes(run.status)) return { error: "This run cannot be retried." };
+  const steps = ((run.steps ?? []) as any[]).map((s) => (s.state === "failed" || s.state === "needs_you" ? { ...s, state: "wait", tries: 0, note: "Trying again." } : s));
+  if (run.meeting_id) await db.from("ai_launches").delete().eq("meeting_id", run.meeting_id).in("status", ["skipped", "failed"]);
+  await db.from("autopilot_runs").update({ steps, status: "running", note: null, lock_until: null, updated_at: new Date().toISOString() }).eq("id", runId);
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil(apAdvance(runId));
+  return { ok: true };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -735,7 +1008,8 @@ Deno.serve(async (req) => {
   if (cron) {
     const { data: sec } = await db.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
     if (!sec?.value || sec.value !== cron) return json({ error: "Not allowed." }, 401);
-    return json({ ok: true, log: await tick() });
+    const log = await tick(); const aps = await apTickAll().catch(() => -1);
+    return json({ ok: true, log, autopilot_runs_advanced: aps });
   }
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const { data: ud } = await db.auth.getUser(token);
@@ -857,6 +1131,27 @@ Deno.serve(async (req) => {
     if (!isOwner) return json({ error: "You do not have access to cancel a launch." }, 403);
     await db.from("ai_launches").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", String(b?.launch_id ?? "")).eq("company_id", companyId).eq("status", "proposed");
     return json({ ok: true });
+  }
+
+  // ---- AUTOPILOT ----
+  if (b?.action === "ap_state") {
+    if (!["owner", "admin"].includes(String(p.role ?? ""))) return json({ error: "Autopilot is for owners and admins." }, 403);
+    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, step, steps, research, page, launch_id, meeting_id, market_countries, billing_currency, market_currency, daily_budget, total_budget, launch_mode, note, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8);
+    const { data: prods } = await db.from("products").select("id, product_name, target_countries, ad_account_id, landing_page_url, product_image_url, is_active").eq("company_id", companyId).eq("is_active", true).order("created_at", { ascending: false });
+    const { data: accts } = await db.from("ad_accounts").select("id, currency, nickname, name").eq("company_id", companyId);
+    const { data: co } = await db.from("companies").select("country, currency").eq("id", companyId).maybeSingle();
+    const launchIds = (runs ?? []).map((r) => r.launch_id).filter(Boolean);
+    const { data: ls } = launchIds.length ? await db.from("ai_launches").select("id, status, ad_sets, copies, countries, start_at, run_days, daily_budget_naira, landing_url, note, creative_ids").in("id", launchIds) : { data: [] };
+    const { data: imgs } = (runs ?? []).some((r) => r.meeting_id) ? await db.from("ai_team_images").select("id, meeting_id, image_url, status, brief").in("meeting_id", (runs ?? []).map((r) => r.meeting_id).filter(Boolean)) : { data: [] };
+    return json({ runs: runs ?? [], products: prods ?? [], accounts: accts ?? [], company: co, launches: ls ?? [], images: imgs ?? [] });
+  }
+  if (b?.action === "ap_start" || b?.action === "ap_approve" || b?.action === "ap_cancel" || b?.action === "ap_retry") {
+    if (!["owner", "admin"].includes(String(p.role ?? ""))) return json({ error: "Only an owner or admin can run Autopilot." }, 403);
+    if (b.action === "ap_start") { if (!OPENAI) return json({ error: "The AI team needs the OpenAI key." }, 503); const r = await apStart(b, ud.user.id, companyId); return json(r, "error" in r ? 409 : 200); }
+    if (b.action === "ap_cancel") { const r = await apCancel(String(b.run_id ?? ""), companyId); return json(r, "error" in r ? 409 : 200); }
+    if (b.action === "ap_retry") { const r = await apRetry(String(b.run_id ?? ""), companyId); return json(r, "error" in r ? 409 : 200); }
+    const ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId, role: p.role ?? "", mediaBuyerId: null, displayName: "" };
+    const r = await apApprove(String(b.run_id ?? ""), ctx); return json(r, "error" in r ? 409 : 200);
   }
 
   if (b?.action === "say") {

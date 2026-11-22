@@ -143,6 +143,16 @@ Deno.serve(async (req)=>{
   if (req.method !== "POST") return json({
     error: "POST only"
   }, 405);
+  // The autopilot (ai-team) builds a page on behalf of the owner who started it: the service key plus the owner and company it names.
+  if (req.headers.get("x-internal-key") && req.headers.get("x-internal-key") === SERVICE_KEY) {
+    const ib = await req.json().catch(()=>({}));
+    const imode = String(ib.mode || "");
+    if (!imode.startsWith("page_") || !ib.company_id || !ib.user_id) return json({ error: "Bad internal call" }, 400);
+    const { data: ip } = await admin.from("profiles").select("company_id, role").eq("id", String(ib.user_id)).maybeSingle();
+    if (!ip || ip.company_id !== ib.company_id || !["owner", "admin"].includes(String(ip.role))) return json({ error: "Not allowed" }, 403);
+    const ir = await handlePage(admin, imode, ib, String(ib.company_id), String(ib.user_id));
+    return json(ir.body, ir.status);
+  }
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   if (!token) return json({
     error: "Please sign in again."

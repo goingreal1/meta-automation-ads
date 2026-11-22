@@ -933,13 +933,17 @@ RULES
 - voiceover: the exact words spoken during the scene, taken from the timed script by matching the seconds. Empty if nothing is said.
 - people: how many, apparent gender and age range, clothing, what they do, expression. objects: product and props, and whether the product or its label is visible. setting: where it is. camera: close-up, wide, handheld, screen recording, animation, stock footage, slides. graphics: logos, arrows, stickers, subtitles, price or offer badges, colours.
 - role of each scene, chosen by what it DOES: "hook" = the opening moments that stop the scroll, before the main subject is named; "problem" = shows or says the pain, fear or need; "proof" = evidence it works (demonstration, results, testimonial, authority, certification); "product" = introduces or shows the product itself; "offer" = price, bundle, discount, guarantee, delivery or payment terms; "call_to_action" = tells the viewer to act (order, tap, call) and how; "bridge" = a transition or an unrelated link between parts; "other". Use "product" for a scene that mainly shows the bottle or pack. Never use "problem" for a scene that shows the product.
+- text_on_screen belongs to the scene whose OWN frame shows it. Copy only words you can read clearly in that frame; if a word is partly hidden, blurred or you are unsure, leave it out. Never carry text from one frame into another, never complete a word you cannot fully read, and never invent captions. A caption you saw in one frame belongs to the frame where you saw it, so list it in on_screen_text_all with the second.
+- The scenes must cover the whole video with no hole: the next scene starts where the last one ended. When two frames are far apart (more than 4 seconds) and you cannot see what happens between them, say so in "shows" ("between Xs and Ys no frame was taken; the voiceover says ...") and describe only what the voiceover tells, never a guessed picture.
+- The offer is whatever the viewer is promised or given: payment terms (pay on delivery), delivery, price, discount, guarantee, free gift. If the script says one, fill "offer" in the structure with its exact words and seconds (it can overlap the call to action). Leave it empty only if nothing like that is said or shown.
+- A line the voiceover says belongs to the scene that covers its seconds in the timed script; do not split one spoken sentence across two scenes unless the picture really changes in the middle of it.
 - The ad's overall structure must name the exact seconds where each part starts.
 
 Reply with JSON only:
 {"scenes":[{"t":seconds,"ends_t":seconds,"role":"hook|problem|proof|product|offer|call_to_action|bridge|other","shows":"2 to 3 plain sentences: exactly what is on screen","people":"","objects":"","setting":"","camera":"","graphics":"","text_on_screen":"","voiceover":""}],
  "structure":{"hook":{"from_s":0,"to_s":0,"what":""},"problem":{"from_s":0,"to_s":0,"what":""},"proof":{"from_s":0,"to_s":0,"what":""},"product":{"from_s":0,"to_s":0,"what":""},"offer":{"from_s":0,"to_s":0,"what":""},"call_to_action":{"from_s":0,"to_s":0,"what":"the exact words and when they appear"}},
  "full_script":"the whole voiceover, verbatim, with [seconds] markers",
- "on_screen_text_all":["every distinct piece of on-screen text, in order"],
+ "on_screen_text_all":["second: every distinct piece of on-screen text, in order, with the second of its frame"],
  "style":"look, pace, how it was filmed, music or silence as far as the frames and script show, who appears","length_s":${meta.length ?? 0},
  "why_it_may_work":"2 sentences, tied to specific scenes","how_to_recreate":"a precise brief: scene by scene what to film or draw, what to say, what text to show, for a similar video or a still image of this product"}
 Ad headline (not in the video): ${String(meta.headline ?? "").slice(0, 200)}
@@ -2632,8 +2636,19 @@ async function learnOverCap(admin) {
   const spent = (rows ?? []).reduce((t, r)=>t + Number(r.cost_usd), 0);
   return { over: spent >= Number(cap?.value ?? 5), spent, cap: Number(cap?.value ?? 5) };
 }
+// Same job on OpenAI when no Anthropic key is set: pictures in, one JSON object out.
+async function openaiVision(images, instruction, model) {
+  const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!OPENAI) throw new Error("Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is set");
+  const content = [{ type: "text", text: instruction }, ...images.map((i)=>({ type: "image_url", image_url: { url: `data:${i.type};base64,${i.b64}`, detail: "high" } }))];
+  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.1, max_tokens: 2500, response_format: { type: "json_object" }, messages: [{ role: "user", content }] }) });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j?.error?.message || `OpenAI HTTP ${r.status}`);
+  await learnCount(model, { input_tokens: j.usage?.prompt_tokens, output_tokens: j.usage?.completion_tokens });
+  try { return JSON.parse(j.choices?.[0]?.message?.content ?? "{}"); } catch (_) { return { summary: String(j.choices?.[0]?.message?.content ?? "").slice(0, 800) }; }
+}
 async function claudeVision(images, instruction, model = "claude-haiku-5-5") {
-  if (!ANTHROPIC_KEY) throw new Error("ANTHROPIC_API_KEY is not set");
+  if (!ANTHROPIC_KEY) return openaiVision(images, instruction, /haiku/.test(model) ? "gpt-4o-mini" : (Deno.env.get("LEARN_VISION_MODEL") ?? "gpt-4o"));
   const content = [...images.map((i)=>({ type: "image", source: { type: "base64", media_type: i.type, data: i.b64 } })), { type: "text", text: instruction }];
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model, max_tokens: 1500, messages: [{ role: "user", content }] }) });
   const j = await r.json().catch(()=>({}));
@@ -2657,7 +2672,7 @@ const AD_PROMPT = `You are studying one advertising creative for a direct-respon
 {"summary":"2 sentences on what this ad shows","text_on_media":"every word visible on the image, exactly as written","people":"who is shown and what they are doing (age range, gender, expression), or none","product":"is the product visible, and how (pack, in hand, on table)","setting":"where it is","style":"one of: ugc_selfie, studio, before_after, testimonial_screenshot, chat_screenshot, text_only, meme, lifestyle, doctor_authority, news_style, other","colors":"main colours","hook":"what grabs attention in the first second","emotion":"fear, hope, curiosity, trust, urgency, etc.","cta_visible":"any button or call to action drawn on it","claims":"health or result claims made on the image","quality":"1 to 5 for clarity and professionalism","notes":"anything else a media buyer should know"}
 If several images are given they are frames of one video in time order: describe how the video develops (hook, middle, end) in "summary".`;
 const PAGE_PROMPT = `You are studying a sales landing page for a direct-response ad learning system. The images are the page seen on a phone, top to bottom, in order. Describe ONLY what you can see. Reply with JSON only:
-{"above_the_fold":"what a visitor sees first, with the exact headline","structure":["each section in order, one line each"],"visual_style":"look and feel, fonts, colours, spacing","colors":"main colours","hooks":["every attention-grabbing line or visual, exact words"],"offer":"how price, packages and discount are shown","order_form":"where it is and what it asks for","cta_buttons":["exact button texts and colours"],"social_proof":["types used: chat screenshots, before/after, ratings, counters, doctor, media logos"],"trust":["guarantees, delivery, payment on delivery, certificates"],"urgency":"how urgency or scarcity is created","strengths":["what is done well"],"weaknesses":["what could be better"],"overall":"2 sentences for a media buyer"}`;
+{"above_the_fold":"what a visitor sees first, with the exact headline","structure":["each section in order, one line each"],"sections":[{"order":1,"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form, other","what":"what the section shows and says, with its exact headline"}],"visual_style":"look and feel, fonts, colours, spacing","colors":"main colours","hooks":["every attention-grabbing line or visual, exact words"],"offer":"how price, packages and discount are shown","order_form":"where it is and what it asks for","cta_buttons":["exact button texts and colours"],"social_proof":["types used: chat screenshots, before/after, ratings, counters, doctor, media logos"],"trust":["guarantees, delivery, payment on delivery, certificates"],"urgency":"how urgency or scarcity is created","strengths":["what is done well"],"weaknesses":["what could be better"],"overall":"2 sentences for a media buyer"}`;
 async function learnMediaDiscover(admin, cap = 30) {
   const { data: ads } = await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, creative").eq("level", "ad").order("synced_at", { ascending: false }).limit(400);
   const cand = (ads ?? []).filter((a)=>a.creative && ["image", "image_feed", "video", "video_feed", "carousel"].includes(a.creative.kind));
@@ -2699,7 +2714,7 @@ async function handleLearnVision(limit = 4) {
   const out = { discovered: await learnMediaDiscover(admin).catch((e)=>`error: ${String(e.message ?? e).slice(0, 100)}`), media: [], pages: [] };
   const cap = await learnOverCap(admin);
   if (cap.over) return { ok: true, paused: `monthly cap reached ($${cap.spent.toFixed(2)} of $${cap.cap})`, ...out };
-  if (!ANTHROPIC_KEY) return { ok: false, error: "ANTHROPIC_API_KEY is not set in the Supabase edge function secrets, so pictures are collected but not described yet.", ...out };
+  if (!ANTHROPIC_KEY && !Deno.env.get("OPENAI_API_KEY")) return { ok: false, error: "Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is set in the Supabase edge function secrets, so pictures are collected but not described yet.", ...out };
   const deadline = Date.now() + 100_000;
   // 1) creatives
   const { data: pend } = await admin.from("learn_media").select("media_key, kind, source_url, company_ids").is("described_at", null).is("error", null).order("created_at", { ascending: true }).limit(limit * 3);
