@@ -958,10 +958,18 @@ async function handleLearnVideo(limit = 2, only = "") {
   const { data: days } = await admin.from("learn_daily").select("object_id, ad_account_id, spend, purchases, messages").eq("level", "ad").gte("day", since).limit(20000);
   const agg = new Map();
   for (const d of days ?? []){ const x = agg.get(d.object_id) ?? { acct: d.ad_account_id, spend: 0, wins: 0 }; x.spend += Number(d.spend) || 0; x.wins += (Number(d.purchases) || 0) + (Number(d.messages) || 0); agg.set(d.object_id, x); }
-  const ranked = [...agg.entries()].filter(([, x])=>x.wins > 0).sort((a, b)=>b[1].wins - a[1].wins || a[1].spend - b[1].spend).map(([id])=>id);
+  // Today's winners are not in the daily numbers yet: an ad that Meta counted a purchase for in the last 7 days (the purchase alerts) counts too, and goes first.
+  const { data: buys } = await admin.from("notifications").select("data").eq("kind", "meta_purchase").gte("created_at", new Date(Date.now() - 7 * 86400_000).toISOString()).limit(200);
+  const fresh = [...new Set((buys ?? []).map((n)=>String(n.data?.ad_id ?? "")).filter(Boolean))];
+  const ranked = [...new Set([...fresh, ...[...agg.entries()].filter(([, x])=>x.wins > 0).sort((a, b)=>b[1].wins - a[1].wins || a[1].spend - b[1].spend).map(([id])=>id)])];
   const { data: ads } = ranked.length ? await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, name, creative").eq("level", "ad").in("meta_id", ranked.slice(0, 120)) : { data: [] };
   const byId = new Map((ads ?? []).map((a)=>[a.meta_id, a]));
   const cands = [];
+  // A named video (a test or a manual request) skips the winners filter.
+  if (only){
+    const { data: one } = await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, name, creative").eq("level", "ad").contains("creative", { video_ids: [only] }).limit(1);
+    if (one?.[0] && !off.has(one[0].company_id)) cands.push({ ad: one[0], vid: only });
+  }
   for (const id of ranked){ const a = byId.get(id); const vid = a?.creative?.video_ids?.[0]; if (a && vid && !off.has(a.company_id) && (!only || String(vid) === only)) cands.push({ ad: a, vid: String(vid) }); }
   const { data: have } = cands.length ? await admin.from("learn_videos").select("video_id, error, created_at, analyzed_at").in("video_id", cands.map((c)=>c.vid)) : { data: [] };
   const haveMap = new Map((have ?? []).map((h)=>[h.video_id, h]));
