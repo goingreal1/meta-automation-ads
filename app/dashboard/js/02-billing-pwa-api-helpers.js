@@ -332,6 +332,26 @@ function bvRenderEmailPanel() {
   el.innerHTML = `<div class="ph"><div class="ph-title">Email</div></div>
     ${rows.map((r) => `<div class="np-row"><div><div class="np-lbl">${r.label}</div><div class="np-sub">${r.sub}</div></div>
       <label class="switch"><input type="checkbox" data-em="${r.key}" ${me[r.key] === false ? "" : "checked"}><span class="sw-track"></span></label></div>`).join("")}`;
+  // One switch per kind of notification: a copy of it by email (the same people who get the phone alert).
+  const cats = [
+    { key: "orders", label: "Orders and purchases", sub: "New orders, deliveries, and a purchase counted by Meta.", def: true },
+    { key: "money", label: "Money", sub: "Funds received, wallet top-ups, balance low or back.", def: true },
+    { key: "ads", label: "Ads and AI team", sub: "Ads that need you, AI team suggestions, ad problems.", def: true },
+    { key: "leads", label: "New leads", sub: "A person left their details on a form.", def: true },
+    { key: "messages", label: "New messages", sub: "Customer chats. Can be many, so this one starts off.", def: false },
+    { key: "system", label: "System", sub: "Account and security notices.", def: true }
+  ];
+  const prefs = me.email_prefs || {};
+  el.insertAdjacentHTML("beforeend", `<div class="np-lbl" style="margin:14px 0 4px;">Email me a copy of notifications</div>` + cats.map((c) => `<div class="np-row"><div><div class="np-lbl">${c.label}</div><div class="np-sub">${c.sub}</div></div>
+    <label class="switch"><input type="checkbox" data-ec="${c.key}" ${(prefs[c.key] === undefined ? c.def : prefs[c.key] !== false) ? "checked" : ""}><span class="sw-track"></span></label></div>`).join(""));
+  el.querySelectorAll("input[data-ec]").forEach((i) => i.addEventListener("change", async () => {
+    const next = { ...(window.myProfile.email_prefs || {}), [i.dataset.ec]: i.checked };
+    try {
+      const { error } = await supabaseClient.from("profiles").update({ email_prefs: next }).eq("id", sessionData.user.id);
+      if (error) throw error;
+      window.myProfile.email_prefs = next;
+    } catch (err) { i.checked = !i.checked; alert("Couldn't save: " + err.message); }
+  }));
   el.querySelectorAll("input[data-em]").forEach((i) => i.addEventListener("change", async () => {
     const key = i.dataset.em;
     try {

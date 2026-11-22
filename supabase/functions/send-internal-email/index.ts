@@ -233,6 +233,27 @@ Deno.serve(async (req)=>{
       }
       return json({ ok: true, sent: true, channel: "email", new_device: isNew });
     }
+    // Email copy of an in-app notification, sent by the database (rv_notify) with the cron secret. Same audience as the phone push:
+    // one person, or a buyer plus the owners/admins, or just the owners/admins. Each person's Settings > Email switches decide.
+    if (type === "notify_email") {
+      const { data: sec } = await supabase.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      if (!sec?.value || (req.headers.get("x-cron-secret") ?? "") !== sec.value) return json({ error: "Not allowed" }, 403);
+      const company = String(reqBody.company_id ?? ""), cat = String(reqBody.category ?? "system");
+      let q = supabase.from("profiles").select("id, role, media_buyer_id, email_prefs").eq("company_id", company);
+      if (reqBody.user) q = q.eq("id", String(reqBody.user));
+      else if (reqBody.buyer) q = q.or(`role.in.(owner,admin),media_buyer_id.eq.${String(reqBody.buyer)}`);
+      else q = q.in("role", ["owner", "admin"]);
+      const { data: people } = await q;
+      const defOff = new Set(["messages"]);
+      const ids = (people ?? []).filter((x)=>{ const v = (x.email_prefs ?? {})[cat]; return v === undefined ? !defOff.has(cat) : v !== false; }).map((x)=>x.id);
+      const emails = [];
+      for (const id of ids) { const { data } = await supabase.auth.admin.getUserById(id); if (data?.user?.email) emails.push(data.user.email); }
+      let link = String(reqBody.url ?? "");
+      link = link.startsWith("/") ? "https://dash.revoracrm.online" + link.replace(/\.html(?=\?|$)/, "") : "https://dash.revoracrm.online/dashboard_new";
+      const title = String(reqBody.title ?? "Revora").replace(/^[^\p{L}\p{N}]+/u, "").trim() || "Revora";
+      const html = brandedHtml(title, String(reqBody.body ?? "").split("\n").filter(Boolean), { url: link, label: "Open in Revora" });
+      return json({ ok: true, to: emails.length, results: await sendToMany(emails, title, html) });
+    }
     if (!await getCaller(req, supabase)) return json({
       error: "Not signed in"
     }, 401);
