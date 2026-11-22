@@ -816,7 +816,7 @@ HARD RULES: use ONLY the product facts. Never invent prices, numbers, claims, te
   if (prod.product_image_url && sections.some((s) => s.type === "hero") && !sections.find((s) => s.type === "hero")?.image_url) sections.find((s) => s.type === "hero")!.image_url = prod.product_image_url;
   const built = await apBuilder(run, { mode: "page_build", product_id: prod.id, niche: String(spec.niche || rs.niche || "general"), title: String(spec.title ?? prod.product_name).slice(0, 80), business_name: prod.product_name, spec: { ...spec, sections } });
   if (!built.ok || built.error) throw new Error(String(built.error ?? "The page could not be saved.").slice(0, 250));
-  const live = String((built as any).live_link ?? (built as any).will_go_live_at ?? ""), test = String((built as any).test_link ?? "");
+  const test = String((built as any).test_link ?? ""), live = String((built as any).live_link || test.split("?")[0]); // a draft has no live link yet: its address is the preview address without the preview key
   const gaps = [...((built as any).still_needs_images ?? []).map((s: string) => `picture: ${s}`), ...((rs.proof_missing ?? []) as string[]).slice(0, 4).map((s) => `proof: ${s}`)];
   await apSet(run.id, "page", "done", `Built a draft page (${sections.length} sections). It goes live only when you approve.${gaps.length ? ` Still needs: ${gaps.slice(0, 3).join("; ")}.` : ""}`, { page: { mode: "built", site_id: (built as any).site_id ?? (built as any).id ?? null, live_link: live, test_link: test, sections: sections.map((s) => s.type), gaps } });
 }
