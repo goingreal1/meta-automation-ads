@@ -992,7 +992,7 @@ async function handleLearnVideo(limit = 2, only = "") {
   for (const id of ranked){ const a = byId.get(id); const vid = a?.creative?.video_ids?.[0]; if (a && vid && !off.has(a.company_id) && (!only || String(vid) === only)) cands.push({ ad: a, vid: String(vid) }); }
   const { data: have } = cands.length ? await admin.from("learn_videos").select("video_id, error, created_at, analyzed_at").in("video_id", cands.map((c)=>c.vid)) : { data: [] };
   const haveMap = new Map((have ?? []).map((h)=>[h.video_id, h]));
-  const todo = cands.filter((c)=>{ const h = haveMap.get(c.vid); return !h || (!h.analyzed_at && Date.now() - new Date(h.created_at).getTime() > 3 * 86400_000); }).slice(0, limit);
+  const todo = cands.filter((c)=>{ const h = haveMap.get(c.vid); if (only && String(c.vid) === only) return true; return !h || (!h.analyzed_at && Date.now() - new Date(h.created_at).getTime() > 3 * 86400_000); }).slice(0, limit);
   const key = await framesTicketKey(admin), out = [];
   const deadline = Date.now() + 110_000;
   for (const c of todo){
