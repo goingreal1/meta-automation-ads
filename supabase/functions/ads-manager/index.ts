@@ -871,6 +871,22 @@ function snapCopy(ad) {
     cta: c.call_to_action_type ?? ld?.call_to_action?.type ?? vd?.call_to_action?.type ?? null, picture_url: c.image_url ?? ld?.picture ?? vd?.image_url ?? c.thumbnail_url ?? null
   };
 }
+
+// Read-only look at the shared Meta token: which app it belongs to, its kind, what it may do, and how much of the call allowance is used.
+// Never returns the token. Called with the cron secret only.
+async function handleMetaAppInfo() {
+  if (!SHARED_META_TOKEN) return { ok: false, error: "No shared Meta token is set." };
+  const dbg = await fetch(`${GRAPH}/debug_token?input_token=${encodeURIComponent(SHARED_META_TOKEN)}&access_token=${encodeURIComponent(SHARED_META_TOKEN)}`).then((r)=>r.json()).catch((e)=>({ error: { message: String(e) } }));
+  const d = dbg?.data ?? {};
+  const probe = await fetch(`${GRAPH}/me/adaccounts?fields=account_id&limit=1&access_token=${encodeURIComponent(SHARED_META_TOKEN)}`);
+  const hdr = (k)=>{ try { return JSON.parse(probe.headers.get(k) ?? "null"); } catch { return probe.headers.get(k); } };
+  return {
+    ok: true,
+    token: { app_id: d.app_id, application: d.application, type: d.type, is_valid: d.is_valid, expires_at: d.expires_at, data_access_expires_at: d.data_access_expires_at, scopes: d.scopes, granular_scopes: (d.granular_scopes ?? []).map((g)=>({ scope: g.scope, targets: (g.target_ids ?? []).length })), error: dbg?.error?.message },
+    usage: { app: hdr("x-app-usage"), ad_account: hdr("x-ad-account-usage"), business_use_case: hdr("x-business-use-case-usage") },
+    probe_status: probe.status
+  };
+}
 async function handleTeamSnapshot(body) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const companyId = String(body.company_id ?? "");
@@ -3171,7 +3187,7 @@ Deno.serve(async (req)=>{
   });
   try {
     const body = await req.json().catch(()=>({}));
-    if (body.action === "purchase_alerts" || body.action === "daily_digest" || body.action === "meta_report" || body.action === "wa_report_setup") {
+    if (body.action === "purchase_alerts" || body.action === "meta_app_info" || body.action === "daily_digest" || body.action === "meta_report" || body.action === "wa_report_setup") {
       const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret0 } = await admin0.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
@@ -3183,7 +3199,7 @@ Deno.serve(async (req)=>{
         const r = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "report_template", action: body.mode === "status" ? "status" : "create" }) });
         return json({ status: r.status, ...(await r.json().catch(()=>({}))) });
       }
-      return json(body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
+      return json(body.action === "meta_app_info" ? await handleMetaAppInfo() : body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
     if (body.action === "learn_shot_get") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
