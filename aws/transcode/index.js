@@ -68,8 +68,19 @@ async function framesJob(b) {
       return files.map((f, i) => ({ t: Math.round((times[i] != null ? times[i] : i * dur / Math.max(files.length, 1)) * 10) / 10, file: path.join(tmp, f) }));
     };
     // A picture at the very start and at every scene change; videos with few cuts fall back to evenly spaced pictures.
-    let fr = await grab("select='eq(n,0)+gt(scene,0.22)',showinfo,scale=480:-2", 14);
-    if (fr.length < 4) fr = await grab(`fps=${(8 / Math.max(dur, 4)).toFixed(4)},showinfo,scale=480:-2`, 10);
+    let fr = await grab("select='eq(n,0)+gt(scene,0.18)',showinfo,scale=540:-2", 18);
+    if (fr.length < 4) fr = await grab(`fps=${(10 / Math.max(dur, 4)).toFixed(4)},showinfo,scale=540:-2`, 12);
+    // Scenes that last long get a picture in the middle too, and the very end gets one (end screens and the final call to action).
+    const extra = [];
+    const ts = fr.map((x) => x.t).concat([dur]);
+    for (let i = 0; i < ts.length - 1; i++) if (ts[i + 1] - ts[i] > 7) extra.push((ts[i] + ts[i + 1]) / 2);
+    if (dur > 4) extra.push(Math.max(0, dur - 0.6));
+    for (const [k, at] of extra.slice(0, 8).entries()) {
+      const f = path.join(tmp, `x_${String(k).padStart(2, "0")}.jpg`);
+      await run(["-hide_banner", "-loglevel", "error", "-y", "-ss", String(at), "-i", src, "-frames:v", "1", "-vf", "scale=540:-2", "-q:v", "7", f], 20000);
+      if (fs.existsSync(f)) fr.push({ t: Math.round(at * 10) / 10, file: f });
+    }
+    fr.sort((a, b) => a.t - b.t);
     const frames = fr.map((x) => ({ t: x.t, jpg: fs.readFileSync(x.file).toString("base64") }));
     let audio = null;
     if (hasAudio) {
