@@ -55,7 +55,7 @@ async function init() {
   // A brand-new signup lands here before ever visiting setup-company.html
   // (e.g. they bookmarked this page) -- send them there instead of showing
   // a dashboard with nothing in it because every RLS policy denies them.
-  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id, delivery_agent_id, whatsapp_number").eq("id", session.user.id).maybeSingle();
+  const { data: profile } = await supabaseClient.from("profiles").select("company_id, role, display_name, media_buyer_id, delivery_agent_id, whatsapp_number, email_reports, login_alerts").eq("id", session.user.id).maybeSingle();
   if (!profile?.company_id) {
     window.location.href = "setup-company.html";
     return;

@@ -1174,13 +1174,19 @@ async function handleMetaReport(slotHour, push = true) {
     const emit = async (who, r, userId)=>{
       const best = r.accts.flatMap((x)=>x.campaigns).sort((x, y)=>y.purchases - x.purchases || y.spend - x.spend)[0];
       if (!(r.t.spend > 0 || r.t.purchases > 0 || r.t.orders > 0 || r.t.fund_received > 0)) return;
+      const bodyLines = [`Fund received: ${money(r.t.fund_received)}`].concat(r.t.sent_to_meta > 0 ? [`Sent to Meta: ${money(r.t.sent_to_meta)}`] : []).concat([`Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)} (wallet ${money(r.t.wallet_balance)} + Meta ${money(r.t.meta_balance)})`]).concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []);
       await notifyRpc(admin, { p_company: c.id, p_category: "reports", p_kind: "meta_report",
         p_title: `📈 ${label}${who ? " · " + who : ""}`,
-        p_body: [`Fund received: ${money(r.t.fund_received)}`].concat(r.t.sent_to_meta > 0 ? [`Sent to Meta: ${money(r.t.sent_to_meta)}`] : []).concat([`Ad spend: ${money(r.t.spend)}`, `Order count: ${r.t.order_count}`, `CPA: ${money(r.t.cpa)}`, `Balance: ${money(r.t.balance)} (wallet ${money(r.t.wallet_balance)} + Meta ${money(r.t.meta_balance)})`]).concat(slotHour === 20 ? [`This month — fund received ${money(r.t.month.fund_received)} · ad spend ${money(r.t.month.spend)} · OC ${r.t.month.order_count} · CPA ${money(r.t.month.cpa)}`] : []).join("\n"),
+        p_body: bodyLines.join("\n"),
         p_url: "/dashboard_new.html?open=tab:campaigns", p_severity: "info",
         p_data: { report: { label, date: day, totals: r.t, accounts: r.accts.map(({ buyer, ...x })=>x) } },
         p_dedupe: `report:${day}:${slot}${userId ? ":" + userId : ""}`, p_buyer: null, p_user: userId ?? null, p_push: push });
       sent++;
+      // Email copy (owners/admins get the company report; buyers get their own). Off per person in Settings.
+      if (push) {
+        fetch(`${SUPABASE_URL}/functions/v1/send-internal-email`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` },
+          body: JSON.stringify({ type: "user_email", pref: "email_reports", ...(userId ? { user_id: userId, only_role: "buyer" } : { company_admins: c.id }), subject: `${label}${who ? " · " + who : ""}`, title: `${label}${who ? " · " + who : ""}`, lines: bodyLines, cta_url: "https://dash.revoracrm.online/dashboard_new?open=tab:campaigns", cta_label: "Open campaigns" }) }).catch(()=>{});
+      }
       // WhatsApp copy for people who switched it on (their own numbers only; template first, plain text as fallback).
       if (userId && push) {
         const n = (v)=>Math.round(Number(v) || 0).toLocaleString("en-NG"), M = r.t.month;

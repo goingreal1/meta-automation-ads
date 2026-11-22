@@ -273,6 +273,28 @@ function bvIosInstallSteps() {
 }
 
 // The Notifications card on the Settings tab.
+
+// Email preferences: report emails and new-device sign-in alerts, each switchable per person.
+function bvRenderEmailPanel() {
+  const el = document.getElementById("emailPanel");
+  if (!el) return;
+  const me = window.myProfile || {};
+  const rows = [
+    { key: "email_reports", label: "Report emails", sub: "The same reports you get as notifications (fund received, ad spend, orders, balance), sent to your email." },
+    { key: "login_alerts", label: "New sign-in alerts", sub: "An email when your account is opened from a browser or country we haven't seen before." }
+  ];
+  el.innerHTML = `<div class="ph"><div class="ph-title">Email</div></div>
+    ${rows.map((r) => `<div class="np-row"><div><div class="np-lbl">${r.label}</div><div class="np-sub">${r.sub}</div></div>
+      <label class="switch"><input type="checkbox" data-em="${r.key}" ${me[r.key] === false ? "" : "checked"}><span class="sw-track"></span></label></div>`).join("")}`;
+  el.querySelectorAll("input[data-em]").forEach((i) => i.addEventListener("change", async () => {
+    const key = i.dataset.em;
+    try {
+      const { error } = await supabaseClient.from("profiles").update({ [key]: i.checked }).eq("id", sessionData.user.id);
+      if (error) throw error;
+      window.myProfile[key] = i.checked;
+    } catch (err) { i.checked = !i.checked; alert("Couldn't save: " + err.message); }
+  }));
+}
 async function bvRenderNotifPanel() {
   const el = document.getElementById("notifPanel");
   if (!el) return;
