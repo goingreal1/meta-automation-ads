@@ -84,7 +84,7 @@ async function load() {
   if (o.error) { $("app").innerHTML = '<div class="card"><div class="r"><div><b>' + esc(o.error) + "</b></div></div></div>"; return; }
   S = o; draw();
   clearTimeout(poll);
-  var r = activeRun(); if (r && (r.status === "running" || r.status === "live")) poll = setTimeout(load, 6000);
+  var r = activeRun(); if (r && (r.status === "running" || r.status === "live")) poll = setTimeout(load, r.status === "live" ? 20000 : 6000);
 }
 function acctCur(p) { var a = (S.accounts || []).find(function (x) { return x.id === p.ad_account_id; }); return a ? (a.currency || "NGN") : "NGN"; }
 function marketOf(p) { var c = (p.target_countries && p.target_countries.length) ? p.target_countries : (S.company && S.company.country ? [S.company.country] : []); return c; }
@@ -160,12 +160,40 @@ function approveHtml(run) {
     + (run.market_currency && run.market_currency !== cur ? '<div class="note">Shoppers pay in ' + esc(run.market_currency) + "; your ad account bills in " + esc(cur) + ". The amounts above are in " + esc(cur) + ".</div>" : "")
     + '<div class="err" id="err"></div><div class="row2"><button class="sec" id="cancel">Cancel run</button><button class="pri" id="approve">Approve and launch</button></div>';
 }
+function todayHtml(run) {
+  var w = run.watch || {}, t = w.today, lf = w.life, cur = run.billing_currency;
+  if (run.status !== "live" && run.status !== "done") return "";
+  if (!t) return '<div class="lbl">Today</div><div class="card"><div class="r"><div><b>Waiting for the first numbers</b><span class="d">Shown here once the campaign has started. Checked about every 10 minutes.</span></div></div></div>';
+  var pct = function (x) { return x == null ? "not yet" : x + "%"; };
+  var h = '<div class="lbl">Today</div><div class="card">'
+    + '<div class="r"><div>Spent</div><div class="v">' + money(t.spend, cur) + "</div></div>"
+    + '<div class="r"><div>Orders</div><div class="v">' + (t.orders || 0) + "</div></div>"
+    + '<div class="r"><div>Cost per order</div><div class="v">' + (t.cost_per_order != null ? money(t.cost_per_order, cur) : "no order yet") + "</div></div>"
+    + '<div class="r"><div><b>Page conversion</b><span class="d">Orders out of people who reached the page (' + (t.lpv || 0) + ")</span></div><div class=\"v\">" + pct(t.conversion_pct) + "</div></div>"
+    + (lf ? '<div class="r"><div><b>Since the start</b><span class="d">Hard stop ' + money(run.total_budget, cur) + '</span></div><div class="v">' + money(lf.spend, cur) + " · " + (lf.orders || 0) + " order" + (lf.orders === 1 ? "" : "s") + "</div></div>" : "")
+    + "</div>";
+  if ((w.days || []).length > 1) h += '<details><summary>Last days</summary><div class="card">' + w.days.slice().reverse().map(function (d) { return '<div class="r"><div>' + esc(d.day) + '</div><div class="v">' + money(d.spend, cur) + " · " + d.orders + " order" + (d.orders === 1 ? "" : "s") + "</div></div>"; }).join("") + "</div></details>";
+  if (run.market_currency && run.market_currency !== cur) h += '<div class="note">All amounts are in ' + esc(cur) + ", the currency your ad account bills in. Shoppers pay in " + esc(run.market_currency) + ".</div>";
+  return h;
+}
+function needsHtml(run) {
+  var open = ((run.watch || {}).needs || []).filter(function (n) { return n.status === "open" || n.status === "accepted"; });
+  if (!open.length) return "";
+  return '<div class="lbl">Needs you</div>' + open.map(function (n) {
+    var im = n.image_id ? (S.images || []).filter(function (i) { return i.id === n.image_id; })[0] : null, body = "";
+    if (n.status === "open") body = '<div class="row2"><button class="sec" data-need="' + n.id + '" data-do="dismiss">No thanks</button><button class="pri" data-need="' + n.id + '" data-do="make">Yes, make the picture</button></div>';
+    else if (!im || im.status === "generating") body = '<div class="note">Zara is making the picture. It appears here in a minute.</div>';
+    else if (im.status === "ready") body = '<img src="' + esc(im.image_url) + '" alt="New ad picture" style="width:100%;border-radius:12px;margin-top:10px"><div class="note">Keeping it only saves it in your vault. It does not go live by itself.</div><div class="row2"><button class="sec" data-need="' + n.id + '" data-do="drop">Drop it</button><button class="pri" data-need="' + n.id + '" data-do="keep">Keep in my vault</button></div>';
+    else body = '<div class="note">The picture could not be made. Close this and try again later.</div><div class="row2"><button class="sec" data-need="' + n.id + '" data-do="dismiss">Close</button></div>';
+    return '<div class="card" style="padding:14px;border-color:var(--warn);margin-bottom:10px"><b>' + esc(n.title) + '</b><div class="note" style="color:var(--ink);margin-top:6px">' + esc(n.body) + "</div>" + body + "</div>";
+  }).join("");
+}
 function drawRun(run) {
   var prod = (S.products || []).filter(function (p) { return p.id === run.product_id; })[0];
   var st = run.status === "live" ? "Live" : run.status === "waiting" ? "Waiting for you" : run.status === "failed" ? "Stopped" : "Working";
   var h = '<div class="note" style="font-weight:600;margin:0 0 4px">' + esc(prod ? prod.product_name : "Product") + " · " + esc(countries(run.market_countries)) + "</div>"
     + '<div class="card" style="margin-bottom:12px"><div class="r"><div><b>' + st + '</b><span class="d">' + money(run.daily_budget, run.billing_currency) + " a day, hard stop " + money(run.total_budget, run.billing_currency) + '</span></div></div></div>'
-    + stepsHtml(run) + approveHtml(run) + logHtml(run) + findsHtml(run);
+    + needsHtml(run) + todayHtml(run) + stepsHtml(run) + approveHtml(run) + logHtml(run) + findsHtml(run);
   if (run.status === "failed" || (run.steps || []).some(function (s) { return s.state === "needs_you"; }) && run.status !== "waiting" || (run.status === "waiting" && !approveHtml(run))) h += '<div class="err" id="err"></div><div class="row2"><button class="sec" id="cancel">Cancel run</button><button class="pri" id="retry">Try again</button></div>';
   return h;
 }
@@ -182,6 +210,7 @@ function draw() {
   });
   g("approve", "onclick", async function () { $("approve").disabled = true; $("approve").textContent = "Launching…"; var o = await api({ action: "ap_approve", run_id: run.id }); if (o.error) { $("err").textContent = o.error; $("approve").disabled = false; $("approve").textContent = "Approve and launch"; return; } load(); });
   g("cancel", "onclick", async function () { if (!confirm("Cancel this run? Nothing has been launched.")) return; var o = await api({ action: "ap_cancel", run_id: run.id }); if (o.error) { $("err").textContent = o.error; return; } load(); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-need]"), function (b) { b.onclick = async function () { b.disabled = true; var o = await api({ action: "ap_need", run_id: run.id, need_id: b.getAttribute("data-need"), decision: b.getAttribute("data-do") }); if (o.error) { alert(o.error); b.disabled = false; return; } load(); }; });
   g("retry", "onclick", async function () { var o = await api({ action: "ap_retry", run_id: run.id }); if (o.error) { $("err").textContent = o.error; return; } load(); });
 }
 function pastHtml(run) {
