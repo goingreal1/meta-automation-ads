@@ -3472,12 +3472,13 @@ async function kbUpsertDocs(admin, docs, startedAt) {
     for (const t of all) if (!t.chunks.length) res.errors.push(`${t.d.source}: no text to index`);
     const chunked = all.filter((t)=>t.chunks.length);
     if (!chunked.length) continue;
-    let vecs;
+    let vecs = null;
+    // If embedding is unavailable (spend cap, no OpenAI credit, outage) the text is still stored and searchable by words; vectors are backfilled by a later run.
     try { vecs = await kbEmbed(admin, chunked.flatMap((t)=>t.chunks.map((c)=>c.content))); }
-    catch (e) { if (e.capped) { res.capped = true; res.remaining = todo.length - i; res.errors.push(String(e.message)); break; } res.errors.push(String(e.message ?? e).slice(0, 200)); continue; }
+    catch (e) { if (e.capped) res.capped = true; res.embedding_pending = true; if (res.errors.length < 5) res.errors.push("embedding unavailable, stored text only: " + String(e.message ?? e).slice(0, 160)); }
     let vi = 0;
     for (const t of chunked) {
-      const my = vecs.slice(vi, vi + t.chunks.length); vi += t.chunks.length;
+      const my = vecs ? vecs.slice(vi, vi + t.chunks.length) : []; vi += t.chunks.length;
       try {
         let id = t.ex?.id;
         if (!id) {
@@ -3485,7 +3486,7 @@ async function kbUpsertDocs(admin, docs, startedAt) {
           if (error) throw new Error(error.message);
           id = data.id;
         } else await admin.from("kb_chunks").delete().eq("document_id", id);
-        const rows = t.chunks.map((c, n)=>({ document_id: id, chunk_index: c.index, content: c.content, embedding: kbVec(my[n]), meta: { heading: c.heading } }));
+        const rows = t.chunks.map((c, n)=>({ document_id: id, chunk_index: c.index, content: c.content, embedding: my[n] ? kbVec(my[n]) : null, meta: { heading: c.heading } }));
         for (let k = 0; k < rows.length; k += 40) { const { error } = await admin.from("kb_chunks").insert(rows.slice(k, k + 40)); if (error) throw new Error(error.message); }
         const patch = { hash: t.d.hash, kind: t.d.kind, title: t.d.title, url: t.d.url ?? null, updated_at: new Date().toISOString() };
         if (typeof t.d.shareable === "boolean") patch.shareable = t.d.shareable;
@@ -3620,6 +3621,19 @@ async function kbCollectLearned(admin) {
   return { docs, errors: errors.length ? errors : [], prefixes, hadErrors: errors.length > 0 };
 }
 
+// Embed chunks that were stored without a vector (embedding was unavailable at ingest time). Called at the end of every kb_ingest.
+async function kbBackfill(admin, startedAt) {
+  const out = { embedded: 0, left: 0 };
+  for (let round = 0; round < 6 && Date.now() - startedAt < 100000; round++) {
+    const { data } = await admin.from("kb_chunks").select("id, content").is("embedding", null).limit(64);
+    if (!data?.length) break;
+    let vecs; try { vecs = await kbEmbed(admin, data.map((c)=>c.content)); } catch (_) { break; }
+    for (let i = 0; i < data.length; i++) { const { error } = await admin.from("kb_chunks").update({ embedding: kbVec(vecs[i]) }).eq("id", data[i].id); if (!error) out.embedded++; }
+  }
+  const { count } = await admin.from("kb_chunks").select("id", { count: "exact", head: true }).is("embedding", null);
+  out.left = count ?? 0;
+  return out;
+}
 async function handleKbIngest(req, body) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   if (!(await kbIsService(req, admin))) throw new HttpError(401, "Not allowed.");
@@ -3640,7 +3654,8 @@ async function handleKbIngest(req, body) {
   }
   const res = await kbUpsertDocs(admin, docs, t0);
   const deleted = res.timed_out || res.capped ? 0 : await kbPrune(admin, prune, docs);
-  return { ok: true, received: docs.length, ...res, deleted, builtin: info, errors: [...errors, ...res.errors].slice(0, 30), ms: Date.now() - t0 };
+  const backfill = await kbBackfill(admin, t0);
+  return { ok: true, received: docs.length, ...res, deleted, backfill, builtin: info, errors: [...errors, ...res.errors].slice(0, 30), ms: Date.now() - t0 };
 }
 
 async function handleKbSearch(req, body) {
