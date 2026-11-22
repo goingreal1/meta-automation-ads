@@ -319,10 +319,54 @@ export async function runPending(db: Db, id: string, ctx: BridgeCtx, reg: Map<st
   await db.from("ai_chat_pending").update({ status: failed ? "failed" : "done", result: { text: forModel(out, 6000) }, done_at: new Date().toISOString() }).eq("id", id);
   const keep = Object.fromEntries(Object.entries(args).filter(([k]) => !(CONFIRM_FIELDS as readonly string[]).includes(k)).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 200) : v]));
   await db.from("mcp_audit").insert({ company_id: ctx.companyId, user_id: ctx.userId, tool: d.name, args: keep, ok: !failed, client: "dashboard-ai" }).then(() => {}, () => {});
-  return failed ? { ok: false, error: String(out.error), tool: d.name } : { ok: true, tool: d.name, title: d.title || words(d.name), out };
+  return failed ? { ok: false, error: String(out.error), tool: d.name } : { ok: true, tool: d.name, title: d.title || words(d.name), out, args };
 }
 export async function cancelPending(db: Db, id: string, ctx: BridgeCtx) {
   if (!UUID.test(id)) return { ok: false };
   const { data } = await db.from("ai_chat_pending").update({ status: "cancelled", done_at: new Date().toISOString() }).eq("id", id).eq("user_id", ctx.userId).eq("status", "pending").select("id");
   return { ok: !!data?.length };
+}
+
+// ══ CARDS, NOT LINKS ═════════════════════════════════════════════════════════════════════════════════════════════════
+// A tool answer becomes a card in the chat (the person is already in the dashboard). Links to other pages are never shown;
+// pictures become thumbnails.
+const QUIET = new Set(["get_creative_brief", "get_sales_page_brief", "view_image", "site_read_file", "site_search", "get_sales_page", "get_lessons", "search_locations", "get_object"]);
+const PLAN_TOOLS = new Set(["get_plan", "update_plan", "add_ad_set"]);
+const SECRETISH = /token|secret|password|key|signature|link|url|html|content/i;
+const scalar = (v: any) => v !== null && v !== undefined && typeof v !== "object";
+const pretty = (v: any) => typeof v === "boolean" ? (v ? "yes" : "no") : String(v).length > 90 ? String(v).slice(0, 90) + "…" : String(v);
+const isImg = (v: any) => typeof v === "string" && /^https?:\/\/.+\.(png|jpe?g|webp|gif)(\?|$)/i.test(v) || (typeof v === "string" && /\/storage\/v1\/object\/public\//.test(v));
+
+export function cardFor(d: ToolDef, args: Record<string, any>, out: any): any | null {
+  if (!out || typeof out !== "object" || out.error) return null;
+  if (PLAN_TOOLS.has(d.name)) {
+    const pid = String(out.plan_id ?? args.plan_id ?? "");
+    return UUID.test(pid) ? { type: "plan_ref", plan_id: pid } : null;
+  }
+  if (d.name === "site_list_files" && Array.isArray(out.files)) {
+    return {
+      type: "site", site_id: String(out.site_id ?? args.site_id ?? ""), name: String(out.name ?? "Website"), status: String(out.status ?? ""),
+      files: out.files.slice(0, 60).map((f: any) => ({ path: String(f.path), lines: f.lines ?? null, version: f.version ?? null })),
+      preview: typeof out.test_link === "string" ? out.test_link : null, live: typeof out.live_link === "string" ? out.live_link : null,
+    };
+  }
+  if (QUIET.has(d.name)) return null;
+  const title = d.title || words(d.name);
+  // the first list of items in the answer becomes a small table (with thumbnails when the items have pictures)
+  const listKey = Object.keys(out).find((k) => Array.isArray(out[k]) && out[k].length && typeof out[k][0] === "object");
+  if (listKey) {
+    const items: any[] = out[listKey];
+    const first = items[0];
+    const img = Object.keys(first).find((k) => isImg(first[k]) && /preview|image|thumb|photo|url/i.test(k));
+    const cols = Object.keys(first).filter((k) => scalar(first[k]) && k !== img && !SECRETISH.test(k) && !/(^id$|_id$|uuid)/i.test(k)).slice(0, 4);
+    if (!cols.length && !img) return null;
+    return {
+      type: "result", title, count: items.length,
+      cols: cols.map(words),
+      rows: items.slice(0, 8).map((it) => ({ img: img && isImg(it[img]) ? it[img] : null, cells: cols.map((k) => (scalar(it[k]) ? pretty(it[k]) : "")) })),
+      more: Math.max(0, items.length - 8),
+    };
+  }
+  const kv = Object.entries(out).filter(([k, v]) => scalar(v) && v !== "" && !SECRETISH.test(k) && !/(^id$|_id$|uuid)/i.test(k)).slice(0, 10).map(([k, v]) => ({ k: words(k), v: pretty(v) }));
+  return kv.length ? { type: "result", title, kv } : null;
 }

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { AREAS, cancelPending, forModel, isReadOnly, queueWrite, registry, routeAreas, runExtra, runPending, extraTools, toOpenAI, toolsForAreas, callTool as bridgeCall } from "./bridge.ts";
+import { purgeSiteCache } from "../_shared/cfpurge.ts";
+import { AREAS, cancelPending, cardFor, readSchedule, forModel, isReadOnly, queueWrite, registry, routeAreas, runExtra, runPending, extraTools, toOpenAI, toolsForAreas, callTool as bridgeCall } from "./bridge.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
@@ -613,7 +614,16 @@ function planKind(plan) {
   const ch = plan.destination === "whatsapp" ? "WhatsApp" : plan.destination === "messenger" ? "Messenger" : "Instagram";
   return `${ch} messages${o === "OUTCOME_LEADS" ? " (leads)" : o === "OUTCOME_ENGAGEMENT" ? " (engagement)" : ""}`;
 }
-async function planCard(plan, planId, ctx, estimate = true) {
+async function planCard(plan0, planId, ctx, estimate = true) {
+  const plan = {
+    ...plan0,
+    asset_ids: Array.isArray(plan0.asset_ids) ? plan0.asset_ids : [],
+    copies: Array.isArray(plan0.copies) ? plan0.copies : [],
+    adsets: Array.isArray(plan0.adsets) ? plan0.adsets : []
+  };
+  const { data: opt } = await supabase.from("ai_plan_options").select("start_time, end_time").eq("plan_id", planId).maybeSingle().then((x)=>x, ()=>({
+      data: null
+    }));
   const rows = await Promise.all((plan.adsets || []).map(async (a)=>{
     let reach = null;
     if (estimate) {
@@ -661,8 +671,34 @@ async function planCard(plan, planId, ctx, estimate = true) {
     pixel: plan.pixel_ok === null ? null : plan.pixel_ok,
     rules: plan.destination === "website" && objName(plan) !== "OUTCOME_SALES" || plan.destination === "form" ? "Automatic kill rules only cover purchase and message campaigns. Watch this one by its cost per result." : rule ? `Your ${ruleLabel} kill rule: ${rule.auto_kill === false ? "flag" : "pause"} an ad when it passes ${fmtNaira(Number(rule.min_spend))} spend with cost per ${plan.destination === "website" ? "purchase" : "message"} above ${fmtNaira(Number(rule.max_cost_per_result))}.` : `No ${ruleLabel} kill rule set yet, so nothing will be paused automatically for this campaign. Set one in Settings.`,
     warnings: plan.warnings || [],
-    campaign_name: plan.campaign_name
+    campaign_name: plan.campaign_name,
+    start_time: opt?.start_time ?? null,
+    end_time: opt?.end_time ?? null,
+    start_label: lagosWhen(opt?.start_time),
+    end_label: lagosWhen(opt?.end_time)
   };
+}
+function lagosWhen(v) {
+  return v ? new Date(v).toLocaleString("en-NG", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  }) + " (Nigeria time)" : null;
+}
+// A plan card for any draft in this company (plans made by the connected-assistant tools too).
+async function planCardById(planId, p) {
+  const { data: row } = await supabase.from("ai_plans").select("id, plan, status, user_id, ad_account_id").eq("id", planId).eq("company_id", p.companyId).maybeSingle();
+  if (!row || row.status !== "draft") return null;
+  if (p.role === "buyer" && row.user_id !== p.userId) return null;
+  return await planCard(row.plan, row.id, {
+    authHeader: p.authHeader,
+    accountId: row.ad_account_id,
+    companyId: p.companyId,
+    userId: p.userId
+  }, false);
 }
 async function planCampaignTool(args, ctx) {
   if (![
@@ -1100,6 +1136,25 @@ async function planAction(body, p) {
       "INSTAGRAM_MESSAGE"
     ].includes(String(plan.cta))) plan.cta = e.cta.trim().toUpperCase();
     if (typeof e.launch_paused === "boolean") plan.launch_paused = e.launch_paused;
+    if ("start_time" in e || "end_time" in e) {
+      const sc = readSchedule({
+        ..."start_time" in e ? {
+          start_time: e.start_time ?? ""
+        } : {},
+        ..."end_time" in e ? {
+          end_time: e.end_time ?? ""
+        } : {}
+      });
+      if (sc.error) throw new Error(sc.error);
+      const { data: cur } = await supabase.from("ai_plan_options").select("start_time, end_time").eq("plan_id", row.id).maybeSingle();
+      await supabase.from("ai_plan_options").upsert({
+        plan_id: row.id,
+        company_id: p.companyId,
+        start_time: sc.start === undefined ? cur?.start_time ?? null : sc.start,
+        end_time: sc.end === undefined ? cur?.end_time ?? null : sc.end,
+        updated_at: new Date().toISOString()
+      });
+    }
     (Array.isArray(e.adsets) ? e.adsets : []).forEach((ea, i)=>{
       const a = plan.adsets[i];
       if (!a) return;
@@ -1134,6 +1189,16 @@ async function planAction(body, p) {
   }).eq("id", row.id).eq("status", "launching").or(`launching_at.is.null,launching_at.lt.${new Date(Date.now() - 5 * 60_000).toISOString()}`).select("id");
   if (!claim.data?.length) throw new Error("This plan is already being launched.");
   try {
+    // A start time chosen on the card (or by the assistant) is passed on to the launcher, which creates the campaign scheduled.
+    const { data: sched } = await supabase.from("ai_plan_options").select("start_time, end_time").eq("plan_id", row.id).maybeSingle();
+    if (sched?.start_time && plan.launch_paused !== true) {
+      if (Date.parse(sched.start_time) < Date.now() + 3 * 60_000) throw new Error("The start time you chose has already passed. Edit the plan and pick a later time, or clear it to start now.");
+      plan.scheduled_for = sched.start_time;
+      if (sched.end_time) plan.campaign_end_date = sched.end_time;
+      await supabase.from("ai_plans").update({
+        plan
+      }).eq("id", row.id);
+    }
     const { data: srcs } = await supabase.from("creative_assets").select("id, ad_account_id, file_name, storage_path, public_url, asset_type, meta_video_id, meta_image_hash, mechanism, format, meta_post_id, carousel_cards, feed_only").eq("company_id", p.companyId).in("id", plan.asset_ids);
     const planAds = Array.isArray(plan.ads) && plan.ads.length ? plan.ads : plan.asset_ids.map((id, j)=>({
         asset_id: id,
@@ -1604,6 +1669,49 @@ Deno.serve(async (req)=>{
       }, 500);
     }
   }
+  if (body?.action === "queue_publish") {
+    // The Publish button on a site card: it only prepares the confirm card; the person's tap on that card is what publishes.
+    if (![
+      "owner",
+      "admin",
+      "buyer"
+    ].includes(profile.role)) return json({
+      error: "Only owners, admins and buyers can publish."
+    }, 403);
+    const qctx = {
+      token,
+      userId: user.id,
+      email: user.email ?? null,
+      companyId: profile.company_id,
+      role: profile.role,
+      mediaBuyerId: profile.media_buyer_id ?? null,
+      displayName: profile.display_name || ""
+    };
+    const siteId = String(body?.site_id ?? "");
+    const { data: site } = await supabase.from("sites").select("id, company_id, settings").eq("id", siteId).eq("company_id", profile.company_id).maybeSingle();
+    if (!site) return json({
+      error: "Site not found."
+    }, 404);
+    const regq = await registry();
+    const live = body?.live !== false;
+    const imported = site.settings?.imported === true;
+    const def = regq.get(imported ? "site_set_live" : "publish_sales_page");
+    if (!def) return json({
+      error: "Publishing is not available right now."
+    }, 503);
+    const q = await queueWrite(supabase, def, imported ? {
+      site_id: siteId,
+      live
+    } : {
+      site_id: siteId,
+      unpublish: !live
+    }, qctx);
+    return json(q.card ? {
+      card: q.card
+    } : {
+      error: q.result?.error || "Could not prepare it."
+    });
+  }
   if (body?.action === "confirm_tool" || body?.action === "cancel_tool") {
     if (![
       "owner",
@@ -1624,13 +1732,26 @@ Deno.serve(async (req)=>{
     const pid = String(body?.pending_id ?? "");
     if (body.action === "cancel_tool") return json(await cancelPending(supabase, pid, cctx));
     try {
-      const rr = await runPending(supabase, pid, cctx, await registry());
-      if (rr.ok) return json({
-        ok: true,
-        title: rr.title,
-        tool: rr.tool,
-        text: forModel(rr.out, 3500)
-      });
+      const regc = await registry();
+      const rr = await runPending(supabase, pid, cctx, regc);
+      if (rr.ok) {
+        if (rr.args?.site_id && /^site_|publish_sales_page|edit_sales_page|build_sales_page|import_html_page/.test(rr.tool)) await purgeSiteCache(supabase, String(rr.args.site_id)).catch(()=>{});
+        const bc = cardFor(regc.get(rr.tool), rr.args ?? {}, rr.out);
+        let card = bc;
+        if (bc?.type === "plan_ref") card = await planCardById(bc.plan_id, {
+          companyId: profile.company_id,
+          role: profile.role,
+          userId: user.id,
+          authHeader
+        }).catch(()=>null);
+        return json({
+          ok: true,
+          title: rr.title,
+          tool: rr.tool,
+          text: forModel(rr.out, 3500),
+          card
+        });
+      }
       return json(rr);
     } catch (e) {
       return json({
@@ -1809,6 +1930,32 @@ ${JSON.stringify(data)}`;
             }
           },
           required: []
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "ask_for_image",
+        description: "Show the person an upload card right in the chat so they can drop or pick pictures or videos from their phone or computer. They go straight into their creative vault. Use it whenever you need an image from them (a product photo, a creative, a logo) instead of asking for a link. Write ONE short line, then stop and wait: when they upload, you get a message with the new creative ids.",
+        parameters: {
+          type: "object",
+          properties: {
+            purpose: {
+              type: "string",
+              description: "What it is for, in a few plain words (shown on the card)."
+            },
+            product_name: {
+              type: "string",
+              description: "The product the pictures belong to, if known."
+            },
+            allow_video: {
+              type: "boolean"
+            }
+          },
+          required: [
+            "purpose"
+          ]
         }
       }
     },
@@ -2822,7 +2969,14 @@ ${JSON.stringify(data)}`;
             const q = await queueWrite(supabase, bdef, args, bctx);
             if (q.card) ctx.cards.push(q.card);
             result = q.result;
-          } else result = await bridgeCall(bdef, args, bctx);
+          } else {
+            result = await bridgeCall(bdef, args, bctx);
+            const bc = cardFor(bdef, args, result);
+            if (bc?.type === "plan_ref") {
+              const pc = await planCardById(bc.plan_id, ctx).catch(()=>null);
+              if (pc) ctx.cards.push(pc);
+            } else if (bc) ctx.cards.push(bc);
+          }
         } else if (tname === "write_ad_copy") result = await writeAdCopy(args, ctx, brief).catch((e)=>({
             error: "Could not write the copy: " + e.message
           }));
@@ -2913,6 +3067,17 @@ async function runTool(name, args, ctx) {
   switch(name){
     case "ask_questions":
       return askQuestionsTool(args, ctx);
+    case "ask_for_image":
+      ctx.cards.push({
+        type: "upload",
+        purpose: String(args?.purpose || "Add pictures").slice(0, 140),
+        product: args?.product_name ? String(args.product_name).slice(0, 80) : null,
+        video: args?.allow_video !== false
+      });
+      return {
+        ok: true,
+        note: "The upload card is on screen. Write one short line and stop. When the person uploads, a message with the creative ids arrives."
+      };
     case "show_creatives":
       return await showCreativesTool(args, ctx);
     case "search_audiences":

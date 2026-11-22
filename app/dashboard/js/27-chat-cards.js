@@ -19,6 +19,9 @@ function appendCards(list) {
       else if (c.type === "plan") el = ccPlan(c);
       else if (c.type === "review") el = ccReview(c);
       else if (c.type === "confirm") el = ccConfirm(c);
+      else if (c.type === "upload") el = ccUpload(c);
+      else if (c.type === "site") el = ccSite(c);
+      else if (c.type === "result") el = ccResult(c);
     } catch (e) { console.warn("card", e); }
     if (el) msgs.appendChild(el);
   }
@@ -41,12 +44,86 @@ function ccConfirm(c) {
     if (r?.ok) {
       ccDone(card, "");
       const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "#1a9a4a"; n.textContent = "✅ Done: " + (r.title || c.title); card.appendChild(n);
+      if (r.card) appendCards([r.card]);
       chatHistory.push({ role: "user", content: `[I tapped Confirm on "${c.title}". It ran. Result: ${String(r.text || "ok").slice(0, 1500)}]` });
       // let the assistant carry on with the next step (for example the next file of a site) or say what happened
       askChat("I confirmed it. Carry on with the next step if there is one, or tell me in plain words what was done.", "Confirmed ✓");
     } else { b.disabled = false; b.textContent = "Try again"; res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not do that."); }
   };
   return card;
+}
+
+// "2026-11-05T07:00:00Z" -> "2026-11-05T08:00" (Nigeria time) for a date-time box
+function ccLagosLocal(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleString("sv-SE", { timeZone: "Africa/Lagos" }).replace(" ", "T").slice(0, 16); } catch { return ""; }
+}
+
+// UPLOAD CARD: pictures and videos go straight into the creative vault from the chat (no upload links).
+function ccUpload(c) {
+  const card = ccEl(`<h4>${escH(c.purpose || "Add pictures")}</h4><div class="cc-sub">${c.product ? "For " + escH(c.product) + ". " : ""}Tap to pick ${c.video === false ? "pictures" : "pictures or videos"} from your phone or computer, or drop them here.</div>
+    <label class="cc-drop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:96px;border:1.5px dashed var(--borderStrong,var(--border));border-radius:14px;background:var(--panel2);color:var(--text2);cursor:pointer;text-align:center;padding:14px">
+      <b style="color:var(--text)">Tap to add</b><span style="font-size:12px">${c.video === false ? "Pictures" : "Pictures or videos"}</span>
+      <input type="file" accept="${c.video === false ? "image/*" : "image/*,video/*"}" multiple hidden></label>
+    <div class="cc-thumbs"></div>
+    <div class="cc-row act" style="margin-top:8px"><span class="cc-sp"></span><button type="button" class="cc-btn p go" disabled>Use these</button></div><div class="cc-res"></div>`);
+  const fi = card.querySelector("input"), box = card.querySelector(".cc-thumbs"), res = card.querySelector(".cc-res"), go = card.querySelector(".go"), drop = card.querySelector(".cc-drop");
+  const got = [];
+  const send = async (files) => {
+    for (const f of files) {
+      res.style.color = "var(--muted)"; res.textContent = "Uploading " + f.name + "…";
+      const fd = new FormData(); fd.append("file", f); fd.append("uploaded_by", "ai_chat"); fd.append("ad_account_id", activeAccountId || "");
+      const pr = (window.bvProductsCache || []).find(x => c.product && String(x.product_name).toLowerCase() === String(c.product).toLowerCase()); if (pr) fd.append("product_id", pr.id);
+      try {
+        const r = await bvCreFetch(fd).then(x => x.json());
+        if (r.error || !r.asset?.id) throw new Error(r.error || "upload failed");
+        got.push(r.asset.id);
+        const t = document.createElement("div"); t.className = "cc-th"; t.style.cursor = "default";
+        t.innerHTML = /video/.test(r.asset.asset_type || f.type) ? `<video src="${escH(r.asset.public_url)}" muted preload="metadata"></video>` : `<img src="${escH(r.asset.public_url)}" alt="">`;
+        box.appendChild(t); res.textContent = ""; go.disabled = false;
+      } catch (e) { res.style.color = "#d93025"; res.textContent = "Could not upload " + f.name + ": " + e.message; }
+    }
+  };
+  fi.onchange = async () => { const fs = [...fi.files]; fi.value = ""; await send(fs); };
+  drop.ondragover = e => { e.preventDefault(); drop.style.borderColor = "var(--accent)"; };
+  drop.ondragleave = () => { drop.style.borderColor = ""; };
+  drop.ondrop = e => { e.preventDefault(); drop.style.borderColor = ""; send([...(e.dataTransfer?.files || [])]); };
+  go.onclick = () => {
+    ccDone(card, `Added ${got.length} file${got.length > 1 ? "s" : ""} to your creatives.`);
+    askChat(`I uploaded ${got.length} file${got.length > 1 ? "s" : ""} to my creative vault (creative ids: ${got.join(",")}). ${c.purpose || ""} Carry on.`, `Uploaded ${got.length} file${got.length > 1 ? "s" : ""}`);
+  };
+  return card;
+}
+
+// SITE CARD: the files of a website the assistant is building, with an in-chat preview and a Publish button (which still asks for a confirm tap).
+function ccSite(c) {
+  const live = /publish|live/i.test(c.status || "") && !/draft/i.test(c.status || "");
+  const card = ccEl(`<div class="cc-row"><h4 style="margin:0">${escH(c.name)}</h4><span class="cc-sp"></span><span class="cc-tag ${live ? "cc-keep" : "cc-watch"}">${live ? "Live" : "Draft"}</span></div>
+    <div class="cc-sub">${(c.files || []).length} file${(c.files || []).length === 1 ? "" : "s"}</div>
+    <div style="max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--panel2)">${(c.files || []).map(f => `<div class="cc-item" style="padding:6px 10px"><span style="font-family:ui-monospace,monospace;font-size:12px;word-break:break-all">${escH(f.path)}</span><span style="color:var(--muted);font-size:11.5px;white-space:nowrap">${f.lines ? f.lines + " lines" : ""}</span></div>`).join("") || '<div style="padding:10px;color:var(--muted)">No files yet.</div>'}</div>
+    <div class="cc-row act" style="margin-top:12px">${c.preview ? '<button type="button" class="cc-btn pv">Preview</button>' : ""}<span class="cc-sp"></span><button type="button" class="cc-btn ${live ? "" : "p"} pub">${live ? "Take offline" : "Publish"}</button></div>
+    <div class="cc-pvbox"></div><div class="cc-res"></div>`);
+  const res = card.querySelector(".cc-res"), box = card.querySelector(".cc-pvbox");
+  const pv = card.querySelector(".pv");
+  if (pv) pv.onclick = () => {
+    if (box.firstChild) { box.innerHTML = ""; pv.textContent = "Preview"; return; }
+    box.innerHTML = `<iframe src="${escH(c.preview)}" style="width:100%;height:380px;border:1px solid var(--border);border-radius:10px;margin-top:10px;background:#fff" loading="lazy"></iframe>`; pv.textContent = "Hide preview";
+  };
+  card.querySelector(".pub").onclick = async (ev) => {
+    const b = ev.target; b.disabled = true;
+    const r = await sbFn("ai-chat", { action: "queue_publish", site_id: c.site_id, live: !live }).catch(e => ({ error: e.message }));
+    b.disabled = false;
+    if (r?.card) appendCards([r.card]); else { res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not prepare that."); }
+  };
+  return card;
+}
+
+// RESULT CARD: any answer of a reading tool (lists with pictures, or a few facts)
+function ccResult(c) {
+  const body = c.rows
+    ? `<table><thead><tr>${c.rows.some(r => r.img) ? "<th></th>" : ""}${(c.cols || []).map(h => `<th>${escH(h)}</th>`).join("")}</tr></thead><tbody>${c.rows.map(r => `<tr>${c.rows.some(x => x.img) ? `<td style="width:52px">${r.img ? `<img src="${escH(r.img)}" alt="" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:8px;display:block">` : ""}</td>` : ""}${r.cells.map(v => `<td style="word-break:break-word">${escH(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>${c.more ? `<div class="cc-note">+ ${c.more} more. Ask me to narrow it down.</div>` : ""}`
+    : `<div class="cc-f">${(c.kv || []).map(x => `<div class="cc-fld"><span>${escH(x.k)}</span><b>${escH(x.v)}</b></div>`).join("")}</div>`;
+  return ccEl(`<h4>${escH(c.title)}${c.count != null ? ` <span style="color:var(--muted);font-weight:500">(${c.count})</span>` : ""}</h4><div style="overflow-x:auto;margin-top:6px">${body}</div>`);
 }
 
 function ccQuestions(c) {
@@ -122,13 +199,14 @@ function ccPlan(c) {
     const rows = c.adsets.map(a => `<tr><td><b>${escH(a.label)}</b></td><td>${escH(a.who)}</td><td>${escH(a.where)}</td><td>${fN(a.budget)}</td><td>${a.reach ? "≈ " + escH(a.reach) : "—"}</td></tr>`).join("");
     card.innerHTML = `<div class="cc-row"><h4 style="font-size:16px;margin:0">${escH(c.title)}</h4><span class="cc-sp"></span><span class="cc-tag cc-watch">Draft</span></div>
       <div class="cc-sub">${escH(c.summary)}</div>
+      <div class="cc-sub" style="margin-top:-6px"><b>${c.start_label ? "Starts " + escH(c.start_label) : "Starts right away"}</b>${c.end_label ? " · Stops " + escH(c.end_label) : ""}</div>
       <table><thead><tr><th>Ad set</th><th>Who</th><th>Where</th><th>Budget</th><th>Reach</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="cc-f"><div class="cc-fld"><span>Creatives</span><b>${escH(c.creatives)}</b></div>
         <div class="cc-fld"><span>Tracking</span><b style="color:${c.pixel === false ? "#d93025" : "#1a9a4a"}">${c.pixel === null ? "● WhatsApp messages counted by Meta" : c.pixel ? "● Pixel saved on this account" : "● No pixel saved"}</b></div>
         <div class="cc-fld w"><span>Rules I will follow</span><b>${escH(c.rules)}</b></div></div>
       ${(c.warnings || []).map(w => `<div class="cc-warn">⚠️ ${escH(w)}</div>`).join("")}
-      <div class="cc-row act" style="margin-top:14px"><button type="button" class="cc-btn no">Cancel</button><span class="cc-sp"></span><button type="button" class="cc-btn ed">Edit plan</button><button type="button" class="cc-btn g ok">Approve and launch</button></div>
-      <div class="cc-res"></div><div class="cc-note">Approving creates the campaign and turns it on right away.</div>`;
+      <div class="cc-row act" style="margin-top:14px"><button type="button" class="cc-btn no">Cancel</button><span class="cc-sp"></span><button type="button" class="cc-btn ed">Edit plan</button><button type="button" class="cc-btn g ok">${c.start_time ? "Approve and schedule" : "Approve and launch"}</button></div>
+      <div class="cc-res"></div><div class="cc-note">${c.start_time ? "Approving creates the campaign now. It shows as Scheduled and spends nothing until the start time." : "Approving creates the campaign and turns it on right away."}</div>`;
     const res = card.querySelector(".cc-res");
     card.querySelector(".no").onclick = async () => { await sbFn("ai-chat", { action: "cancel_plan", plan_id: c.plan_id }); ccDone(card, "Plan cancelled."); };
     card.querySelector(".ok").onclick = async (ev) => {
@@ -146,6 +224,8 @@ function ccPlan(c) {
   const edit = (c) => {
     card.innerHTML = `<h4>Edit plan</h4><div class="cc-sub">Change what you need, then save. Reach is re-checked.</div>
       <div class="cc-lbl">Campaign name</div><input type="text" class="cn" value="${escH(c.campaign_name || "")}">
+      <div class="cc-f"><div class="cc-fld"><span>Starts (Nigeria time, empty = right away)</span><input type="datetime-local" class="st" value="${ccLagosLocal(c.start_time)}" style="width:100%"></div>
+        <div class="cc-fld"><span>Stops (optional)</span><input type="datetime-local" class="en" value="${ccLagosLocal(c.end_time)}" style="width:100%"></div></div>
       ${c.adsets.map((a, i) => `<div class="cc-f" data-i="${i}" style="border-top:1px solid var(--border);padding-top:10px;margin-top:12px"><div class="cc-fld w"><span>${escH(a.label)}</span><b>${escH(a.who)}</b></div>
         <div class="cc-fld"><span>Daily budget (₦)</span><input type="number" class="eb" value="${a.budget}"></div><div class="cc-fld"><span>Ages</span><div class="cc-row"><input type="number" class="amin" value="${a.age_min}" style="width:70px"><input type="number" class="amax" value="${a.age_max}" style="width:70px"></div></div>
         <div class="cc-fld w"><span>States (comma separated, empty = all Nigeria)</span><input type="text" class="es" value="${escH((a.states || []).join(", "))}"></div>
@@ -154,7 +234,8 @@ function ccPlan(c) {
     card.querySelector(".bk").onclick = () => paint(c);
     card.querySelector(".sv").onclick = async (ev) => {
       const b = ev.target; b.disabled = true; b.textContent = "Saving…";
-      const edits = { campaign_name: card.querySelector(".cn").value, adsets: [...card.querySelectorAll("[data-i]")].map(e => ({
+      const stv = card.querySelector(".st").value, env = card.querySelector(".en").value;
+      const edits = { ...(stv !== ccLagosLocal(c.start_time) ? { start_time: stv } : {}), ...(env !== ccLagosLocal(c.end_time) ? { end_time: env } : {}), campaign_name: card.querySelector(".cn").value, adsets: [...card.querySelectorAll("[data-i]")].map(e => ({
         budget_naira: +e.querySelector(".eb").value, age_min: +e.querySelector(".amin").value, age_max: +e.querySelector(".amax").value,
         states: e.querySelector(".es").value.split(",").map(x => x.trim()).filter(Boolean), remove: !!e.querySelector(".rm")?.checked })) };
       const r = await sbFn("ai-chat", { action: "update_plan", plan_id: c.plan_id, edits });
