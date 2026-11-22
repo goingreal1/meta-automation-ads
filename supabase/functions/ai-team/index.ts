@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withR2, R2_ON } from "../_shared/r2storage.ts";
+import { type MetaRow, type Numbers, type KillRow, type Need, runRows, numbersForRun, teamLines, todayLine, proposeHook } from "../_shared/autopilot_watch.ts";
 
 // AI Team: a team lead, a creative agent, a media buyer and customer service hold a LIVE daily meeting about the business.
 // The meeting runs in the background and writes into ai_meeting_messages word by word; the page watches it with Realtime.
@@ -1147,14 +1148,106 @@ async function apAdvance(id: string) {
   } finally { await db.from("autopilot_runs").update({ lock_until: null }).eq("id", id); }
 }
 
-// 7. WATCH: while live, record how the launch stands; when its last day has passed the run is done.
+// 7. WATCH: while live, every tick (about every 10 minutes) it records today's numbers for THIS run's campaign, says what the team did,
+// proposes what needs the owner's tap, and when the last day has passed the run is done. It never launches, spends or moves money by itself.
+async function apAdsList(token: string, adAccountId: string, range: "today" | "lifetime") {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/ads-manager`, { method: "POST", headers: { Authorization: `Bearer ${token}`, apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", "Content-Type": "application/json" }, body: JSON.stringify({ action: "list", ad_account_id: adAccountId, range }) });
+  const o = await r.json().catch(() => null);
+  if (!o?.ok) throw new Error(String(o?.error ?? `Meta numbers unavailable (${r.status})`).slice(0, 160));
+  return o as { campaigns?: MetaRow[]; adsets?: MetaRow[]; ads?: MetaRow[] };
+}
+const watToday = () => new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+
 async function apWatch(run: Record<string, any>) {
-  const { data: l } = await db.from("ai_launches").select("status, start_at, run_days, note").eq("id", run.launch_id).maybeSingle();
+  const { data: l } = await db.from("ai_launches").select("status, start_at, run_days, note, plan_id").eq("id", run.launch_id).maybeSingle();
   if (!l) return;
   const end = l.start_at && l.run_days ? new Date(new Date(l.start_at).getTime() + Number(l.run_days) * 86400_000) : null;
-  if (end && Date.now() > end.getTime() + 3600_000) { await apSet(run.id, "watch", "done", "The run is over."); await apSet(run.id, "learn", "done", "What sold and what did not goes into the next daily meeting.", { status: "done" }); return; }
-  const note = new Date(l.start_at ?? 0).getTime() > Date.now() ? `Scheduled. Starts ${new Date(l.start_at).toISOString().slice(0, 16).replace("T", " ")} UTC.` : "Live. The team watches spend and sales and pauses what wastes money.";
-  await apSet(run.id, "watch", "now", note);
+  const cur = String(run.billing_currency ?? "NGN"), money = (x: number) => moneyText(x, cur);
+  const w = (run.watch ?? {}) as Record<string, any>;
+  const finish = async () => {
+    const lf = w.life as Numbers | undefined;
+    await apLog(run.id, "Ada", lf ? `The run is over. In total: ${money(lf.spend)} spent, ${lf.orders} order${lf.orders === 1 ? "" : "s"}${lf.cost_per_order != null ? `, ${money(lf.cost_per_order)} an order` : ""}.` : "The run is over.");
+    await apSet(run.id, "watch", "done", "The run is over.");
+    await apSet(run.id, "learn", "done", "What sold and what did not goes into the daily learning notes.", { status: "done" });
+  };
+  if (end && Date.now() > end.getTime() + 3600_000) return await finish();
+  if (l.start_at && new Date(l.start_at).getTime() > Date.now()) { await apSet(run.id, "watch", "now", `Scheduled. Starts ${new Date(l.start_at).toISOString().slice(0, 16).replace("T", " ")} UTC.`); return; }
+  // look at Meta at most every 8 minutes
+  if (w.checked_at && Date.now() - new Date(w.checked_at).getTime() < 8 * 60_000) return;
+  let ids: string[] = Array.isArray(w.campaign_ids) ? w.campaign_ids : [];
+  if (!ids.length && l.plan_id) { const { data: pl } = await db.from("ai_plans").select("result").eq("id", l.plan_id).maybeSingle(); ids = ((pl?.result as any)?.campaign_ids ?? []).filter(Boolean).map(String); }
+  const save = (patch: Record<string, unknown>) => db.from("autopilot_runs").update({ watch: { ...w, ...patch, checked_at: new Date().toISOString() } }).eq("id", run.id);
+  if (!ids.length) { await save({}); await apSet(run.id, "watch", "now", "Live. Waiting for Meta to show the campaign."); return; }
+  const token = await mintToken(String(run.created_by ?? ""));
+  if (!token) { await apSet(run.id, "watch", "now", "Live. I could not read the numbers just now; I will try again."); return; }
+  let today: ReturnType<typeof runRows>, life: ReturnType<typeof runRows>;
+  try { [today, life] = [runRows(await apAdsList(token, run.ad_account_id, "today"), ids), runRows(await apAdsList(token, run.ad_account_id, "lifetime"), ids)]; }
+  catch (e) { await apSet(run.id, "watch", "now", `Live. Meta did not answer just now (${String((e as Error).message).slice(0, 80)}); I will try again.`); return; }
+  const day = watToday(), t = numbersForRun(today), lf = numbersForRun(life);
+  // what the team did: pauses and budget moves in the auto-off log (ad_kill_log) on this run's campaign, ad sets and ads, since the last look
+  const mine = new Set<string>([...ids, ...life.adsets.map((x) => String(x.id)), ...life.ads.map((x) => String(x.id))]);
+  const since = String(w.kills_since ?? run.created_at);
+  const { data: kills } = await db.from("ad_kill_log").select("level, meta_object_id, object_name, action, source, reason, created_at").eq("ad_account_id", run.ad_account_id).gt("created_at", since).order("created_at", { ascending: true }).limit(60);
+  const myKills = ((kills ?? []) as KillRow[]).filter((k) => mine.has(String(k.meta_object_id)));
+  for (const ln of teamLines(myKills)) await apLog(run.id, ln.who, ln.text);
+  // a short history of the days so far (learn_daily); managed accounts are shown with Revora's markup, like everywhere else
+  const { data: acct } = await db.from("ad_accounts").select("billing_mode, markup_pct").eq("id", run.ad_account_id).maybeSingle();
+  const factor = acct?.billing_mode === "managed" ? 1 + Number(acct?.markup_pct ?? 0) / 100 : 1;
+  const { data: hist } = await db.from("learn_daily").select("day, spend, purchases").eq("ad_account_id", run.ad_account_id).eq("level", "campaign").in("object_id", ids).gte("day", new Date(Date.now() - 6 * 86400_000).toISOString().slice(0, 10)).order("day", { ascending: true });
+  const byDay = new Map<string, { day: string; spend: number; orders: number }>();
+  for (const h of hist ?? []) { const x = byDay.get(h.day) ?? { day: h.day, spend: 0, orders: 0 }; x.spend += Number(h.spend ?? 0) * factor; x.orders += Number(h.purchases ?? 0); byDay.set(h.day, x); }
+  byDay.set(day, { day, spend: t.spend, orders: t.orders }); // today always comes from the live numbers
+  const days = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)).slice(-7).map((x) => ({ ...x, spend: Math.round(x.spend * 100) / 100 }));
+  // say today in words: when an order arrives, and otherwise about every three hours
+  const prevOrders = w.day === day ? Number(w.today?.orders ?? 0) : 0;
+  const lastSay = w.said_at ? new Date(w.said_at).getTime() : 0;
+  let said = false;
+  if (t.orders > prevOrders) { const ln = todayLine(t, money); await apLog(run.id, ln.who, (t.orders - prevOrders === 1 ? "A new order came in. " : `${t.orders - prevOrders} new orders came in. `) + ln.text); said = true; }
+  else if (Date.now() - lastSay > 3 * 3600_000) { const ln = todayLine(t, money); await apLog(run.id, ln.who, ln.text); said = true; }
+  // needs you: a new hook, only when the money spent so far has bought nothing; it never goes live without a tap
+  const needs: Need[] = Array.isArray(w.needs) ? w.needs : [];
+  const used = (await db.from("ai_team_images").select("brief").eq("meeting_id", run.meeting_id)).data?.map((i: any) => String(i.brief?.headline_on_image ?? "")) ?? [];
+  const hook = proposeHook({ hooks: ((run.research?.hooks ?? []) as unknown[]).map(String), used, lifeSpend: lf.spend, lifeOrders: lf.orders, dailyBudget: Number(run.daily_budget), needs });
+  if (hook) {
+    needs.push({ id: crypto.randomUUID(), kind: "hook", title: "Try a new hook", hook, body: `${money(lf.spend)} has been spent and nothing has sold yet. I would try this hook next: “${hook.slice(0, 160)}”. If you say yes I make the picture for it and keep it in your vault. It does not go live by itself.`, status: "open", at: new Date().toISOString() });
+    await apLog(run.id, "Zara", `Nothing has sold after ${money(lf.spend)}. I have a new hook ready for you to look at: “${hook.slice(0, 140)}”. It needs your tap.`);
+    await notify(run.company_id, "autopilot_needs_you", `${run.id}:${needs.length}`, "Autopilot: a new hook needs your tap", `Nothing has sold after ${money(lf.spend)}. The team has a new hook for you to look at.`);
+  }
+  await save({ campaign_ids: ids, day, today: t, life: lf, days, kills_since: new Date().toISOString(), needs, ...(said ? { said_at: new Date().toISOString() } : {}) });
+  await apSet(run.id, "watch", "now", t.spend > 0 || lf.spend > 0 ? `Live. Today ${money(t.spend)} spent, ${t.orders} order${t.orders === 1 ? "" : "s"}.` : "Live. No spend yet today.");
+}
+
+// The owner's tap on an item the team put in "Needs you". Nothing here launches an ad or spends on Meta:
+// "make" asks Zara for the picture (kept in the vault only after a second tap), "dismiss" closes the item.
+async function apNeed(runId: string, companyId: string, userId: string, needId: string, decision: string) {
+  const { data: run } = await db.from("autopilot_runs").select("*").eq("id", runId).maybeSingle();
+  if (!run || run.company_id !== companyId) return { error: "Run not found." };
+  const w = (run.watch ?? {}) as Record<string, any>;
+  const needs: Need[] = Array.isArray(w.needs) ? w.needs : [];
+  const nd = needs.find((x) => x.id === needId);
+  if (!nd) return { error: "That item is not on the list any more." };
+  const put = (patch: Partial<Need>) => db.from("autopilot_runs").update({ watch: { ...w, needs: needs.map((x) => (x.id === needId ? { ...x, ...patch } : x)) }, updated_at: new Date().toISOString() }).eq("id", runId);
+  if (decision === "dismiss") { await put({ status: "dismissed" }); await apLog(runId, "Zara", "Understood, I will not use that hook."); return { ok: true }; }
+  if (decision === "keep" || decision === "drop") {
+    if (!nd.image_id) return { error: "There is no picture to decide on yet." };
+    const { data: im } = await db.from("ai_team_images").select("*").eq("id", nd.image_id).maybeSingle();
+    if (!im || im.company_id !== companyId) return { error: "Picture not found." };
+    if (decision === "drop") { await db.from("ai_team_images").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", im.id); await put({ status: "dismissed" }); await apLog(runId, "Zara", "Dropped that picture."); return { ok: true }; }
+    const r = await approveImage(im, companyId, userId);
+    if (r.error) return { error: r.error };
+    await put({ status: "dismissed" }); await apLog(runId, "Zara", "Saved the new picture in your vault. It is not in the campaign: nothing was launched and nothing was spent."); return { ok: true };
+  }
+  if (decision !== "make" || nd.kind !== "hook" || nd.status !== "open") return { error: "Nothing to do for that." };
+  if (!OPENAI && !RUNWAY) return { error: "Image making is not switched on yet." };
+  const prod = await apProduct(run.product_id, companyId);
+  const br = { product: prod?.product_name ?? "", angle: "New hook from the watch step", image_concept: `The product pack shown clearly, in a real home setting, speaking to this hook: ${String(nd.hook ?? "")}`, headline_on_image: String(nd.hook ?? "").toUpperCase().slice(0, 90), cta_on_image: "ORDER NOW - PAY ON DELIVERY", primary_text: String(nd.hook ?? ""), ...(prod?.product_image_url ? { _ref: prod.product_image_url } : {}) };
+  const { data: row, error } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: run.meeting_id, brief: br, prompt: adLayout(br, `${br.image_concept} (advertising photo for ${br.product.slice(0, 80)})`).slice(0, 2900) }).select("id").single();
+  if (error || !row) return { error: error?.message ?? "Could not start the picture." };
+  await put({ status: "accepted", image_id: row.id });
+  await apLog(runId, "Zara", `Making the picture for “${String(nd.hook ?? "").slice(0, 100)}”. When it is ready you can keep it in your vault or drop it.`);
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil(generateImage(row.id, companyId));
+  return { ok: true };
 }
 
 async function apTickAll() {
@@ -1321,7 +1414,7 @@ Deno.serve(async (req) => {
   // ---- AUTOPILOT ----
   if (b?.action === "ap_state") {
     if (!["owner", "admin"].includes(String(p.role ?? ""))) return json({ error: "Autopilot is for owners and admins." }, 403);
-    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, step, steps, research, page, launch_id, meeting_id, market_countries, billing_currency, market_currency, daily_budget, total_budget, launch_mode, note, log, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8);
+    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, step, steps, research, page, launch_id, meeting_id, market_countries, billing_currency, market_currency, daily_budget, total_budget, launch_mode, note, log, watch, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8);
     const { data: prods } = await db.from("products").select("id, product_name, target_countries, ad_account_id, landing_page_url, product_image_url, is_active").eq("company_id", companyId).eq("is_active", true).order("created_at", { ascending: false });
     const { data: accts } = await db.from("ad_accounts").select("id, currency, nickname, name").eq("company_id", companyId);
     const { data: co } = await db.from("companies").select("country, currency").eq("id", companyId).maybeSingle();
@@ -1330,10 +1423,11 @@ Deno.serve(async (req) => {
     const { data: imgs } = (runs ?? []).some((r) => r.meeting_id) ? await db.from("ai_team_images").select("id, meeting_id, image_url, status, brief").in("meeting_id", (runs ?? []).map((r) => r.meeting_id).filter(Boolean)) : { data: [] };
     return json({ runs: runs ?? [], products: prods ?? [], accounts: accts ?? [], company: co, launches: ls ?? [], images: imgs ?? [] });
   }
-  if (b?.action === "ap_start" || b?.action === "ap_approve" || b?.action === "ap_cancel" || b?.action === "ap_retry") {
+  if (b?.action === "ap_start" || b?.action === "ap_approve" || b?.action === "ap_cancel" || b?.action === "ap_retry" || b?.action === "ap_need") {
     if (!["owner", "admin"].includes(String(p.role ?? ""))) return json({ error: "Only an owner or admin can run Autopilot." }, 403);
     if (b.action === "ap_start") { if (!OPENAI) return json({ error: "The AI team needs the OpenAI key." }, 503); const r = await apStart(b, ud.user.id, companyId); return json(r, "error" in r ? 409 : 200); }
     if (b.action === "ap_cancel") { const r = await apCancel(String(b.run_id ?? ""), companyId); return json(r, "error" in r ? 409 : 200); }
+    if (b.action === "ap_need") { const r = await apNeed(String(b.run_id ?? ""), companyId, ud.user.id, String(b.need_id ?? ""), String(b.decision ?? "")); return json(r, "error" in r ? 409 : 200); }
     if (b.action === "ap_retry") { const r = await apRetry(String(b.run_id ?? ""), companyId); return json(r, "error" in r ? 409 : 200); }
     const ctx = { token, userId: ud.user.id, email: ud.user.email ?? null, companyId, role: p.role ?? "", mediaBuyerId: null, displayName: "" };
     const r = await apApprove(String(b.run_id ?? ""), ctx); return json(r, "error" in r ? 409 : 200);
