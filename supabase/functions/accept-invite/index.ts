@@ -57,11 +57,13 @@ Deno.serve(async (req)=>{
       error: "This invite has expired -- ask for a new one."
     }, 400);
     const email = invite.email;
-    const { error: createErr } = await supabase.auth.admin.createUser({
+    let newUid = null;
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true
     });
+    newUid = created?.user?.id ?? null;
     if (createErr) {
       if (!/already.*registered|already.*exist/i.test(createErr.message || "")) throw createErr;
       // An account for this email already exists -- most likely a leftover
@@ -83,7 +85,10 @@ Deno.serve(async (req)=>{
         email_confirm: true
       });
       if (updErr) throw updErr;
+      newUid = link.user.id;
     }
+    // The invite link proves they own this email, so the sign-in gate lets this first password sign-in through once.
+    if (newUid) await supabase.from("login_grants").insert({ user_id: newUid, expires_at: new Date(Date.now() + 120000).toISOString() });
     return json({
       email
     });
