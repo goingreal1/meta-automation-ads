@@ -3650,9 +3650,9 @@ async function handleKbSearch(req, body) {
   const kinds = Array.isArray(body.kinds) ? body.kinds.map(String).filter((x)=>/^[a-z_]{1,30}$/.test(x)).slice(0, 12) : [];
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   let companyId = null, priv = false;
-  const internal = req.headers.get("x-internal-key");
-  if (internal) { // another edge function (ai-chat, ai-team, autopilot) acting for a user: it passes the same ctx it already has
-    if (!kbEq(internal, SERVICE_KEY)) throw new HttpError(401, "Not allowed.");
+  const internal = req.headers.get("x-internal-key") || req.headers.get("x-cron-secret");
+  if (internal) { // another edge function (ai-chat, ai-team, autopilot) acting for a user: it passes the same ctx it already has (cron secret also accepted, for tests from SQL)
+    if (!(await kbIsService(req, admin))) throw new HttpError(401, "Not allowed.");
     const c = body.ctx && typeof body.ctx === "object" ? body.ctx : {};
     companyId = KB_UUID.test(String(c.companyId ?? c.company_id ?? "")) ? String(c.companyId ?? c.company_id) : null;
     priv = ["owner", "admin"].includes(String(c.role ?? ""));
