@@ -90,7 +90,7 @@ function bvCatAdd() {
   bvCloseModal();
   const o = document.createElement("div"); o.id = "bvModalOverlay"; o.className = "bv-overlay"; o.onclick = e => { if (e.target === o) bvCloseModal(); };
   o.innerHTML = `<div class="bv-modal" style="max-width:420px;"><div class="ph"><div class="ph-title">Add a product</div><button type="button" class="btn btn-g" onclick="bvCloseModal()">✕</button></div>
-    <div class="cat-lbl">What are you selling?</div><select class="cat-in" id="ca_type"><option value="physical">A product we deliver</option><option value="booking">Appointments and bookings (salon, spa, clinic, consultation)</option></select>
+    <div class="cat-lbl">What are you selling?</div><select class="cat-in" id="ca_type"><option value="physical">A product we deliver</option><option value="booking">Appointments and bookings (salon, spa, clinic, consultation)</option><option value="housing">Housing or rentals (homes, tours, applications)</option></select>
     <div class="cat-lbl">Name</div><input class="cat-in" id="ca_name" placeholder="e.g. Lunessa, or Tresses Salon">
     <div class="cat-lbl">Country you sell in</div><select class="cat-in" id="ca_cc" onchange="document.getElementById('ca_curl').textContent=bvCurOf(this.value)">${BV_COUNTRIES.map(([c, n]) => `<option value="${c}">${escH(n)}</option>`).join("")}</select>
     <div class="cat-lbl">Price (<span id="ca_curl">NGN</span>)</div><input class="cat-in" id="ca_price" type="number" min="0" placeholder="12500">
@@ -104,9 +104,9 @@ function bvCatAdd() {
     if (!name) { msg.innerHTML = '<div class="msg err">Give it a name.</div>'; return; }
     if (!(price > 0)) { msg.innerHTML = '<div class="msg err">Enter the price.</div>'; return; }
     const b = document.getElementById("ca_go"); b.disabled = true; b.textContent = "Adding…";
-    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, ...(document.getElementById("ca_type").value === "booking" ? { product_type: "booking", is_service: false, booking_settings: bvBookingDefaults(name, price) } : {}), currency: bvCurOf(document.getElementById("ca_cc").value), target_countries: [document.getElementById("ca_cc").value], is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
+    const { data, error } = await supabaseClient.from("products").insert({ product_name: name, default_order_value_naira: price, ...(document.getElementById("ca_type").value === "booking" ? { product_type: "booking", is_service: false, booking_settings: bvBookingDefaults(name, price) } : document.getElementById("ca_type").value === "housing" ? { product_type: "housing", is_service: true, destination_type: "website", housing_settings: { flow: "both" } } : {}), currency: bvCurOf(document.getElementById("ca_cc").value), target_countries: [document.getElementById("ca_cc").value], is_active: true, description: document.getElementById("ca_desc").value.trim() || null, destination_type: "whatsapp", ad_account_id: activeAccountId }).select("id").single();
     if (error) { msg.innerHTML = `<div class="msg err">${escH(error.message)}</div>`; b.disabled = false; b.textContent = "Add product"; return; }
-    bvCloseModal(); bvCatOpen(data.id);
+    bvCloseModal(); try { if (typeof bvApplyKinds === "function") bvApplyKinds(); } catch (e) {} bvCatOpen(data.id);
   };
 }
 function bvCatLegacy(id) { window.bvLegacyOk = true; activeTab = "products"; document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "catalog")); render().then(() => { try { bvEditProduct(id); } catch (e) {} }); }
