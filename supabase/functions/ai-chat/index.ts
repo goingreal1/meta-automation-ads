@@ -1524,7 +1524,7 @@ async function llmRoute(question, history) {
         messages: [
           {
             role: "system",
-            content: `Pick which tool areas a message to an ads and orders assistant needs. Areas: plans (campaign drafts, start time, ad sets, live ads, budgets), creatives (images, videos, vault), products (catalog, packages), pages (sales pages, websites, files), money (wallet, transfers, top ups, fund requests), orders (orders, leads, customers), social (posts), housing (properties, tours). Answer JSON only: {"areas":[...]} with 0 to 3 areas, [] for plain questions about numbers or chat.`
+            content: `Pick which tool areas a message to an ads and orders assistant needs. Areas: autopilot (the AI team that runs ads for a product: start, status, approve, cancel), plans (campaign drafts, start time, ad sets, live ads, budgets), creatives (images, videos, vault), products (catalog, packages), pages (sales pages, websites, files), money (wallet, transfers, top ups, fund requests), orders (orders, leads, customers), social (posts), housing (properties, tours). Answer JSON only: {"areas":[...]} with 0 to 3 areas, [] for plain questions about numbers or chat.`
           },
           {
             role: "user",
@@ -1552,6 +1552,9 @@ const STATUS_TEXT = {
   update_plan: "Preparing the change…",
   list_plans: "Looking at your drafts…",
   site_list_files: "Looking at the site files…",
+  autopilot_status: "Checking on Autopilot…",
+  start_autopilot: "Getting Autopilot ready…",
+  approve_autopilot_launch: "Getting the launch ready to approve…",
   more_tools: "Getting the right tools…"
 };
 // reading tools that can safely run side by side in one step
@@ -1736,6 +1739,41 @@ Deno.serve(async (req)=>{
         error: e.message
       }, 500);
     }
+  }
+  if (body?.action === "queue_autopilot") {
+    // A button on the Autopilot card: it only prepares a confirm card; the tap on that card is what runs it.
+    if (![
+      "owner",
+      "admin"
+    ].includes(profile.role)) return json({
+      error: "Autopilot is for owners and admins."
+    }, 403);
+    const kind = String(body?.kind ?? "");
+    if (![
+      "approve_autopilot_launch",
+      "cancel_autopilot",
+      "retry_autopilot"
+    ].includes(kind)) return json({
+      error: "Unknown action."
+    }, 400);
+    const actx = {
+      token,
+      userId: user.id,
+      email: user.email ?? null,
+      companyId: profile.company_id,
+      role: profile.role,
+      mediaBuyerId: profile.media_buyer_id ?? null,
+      displayName: profile.display_name || ""
+    };
+    const def = (await registry()).get(kind);
+    const q = await queueWrite(supabase, def, {
+      product: String(body?.product ?? "")
+    }, actx);
+    return json(q.card ? {
+      card: q.card
+    } : {
+      error: q.result?.error || "Could not prepare it."
+    });
   }
   if (body?.action === "queue_publish") {
     // The Publish button on a site card: it only prepares the confirm card; the person's tap on that card is what publishes.
@@ -1966,7 +2004,7 @@ Rules:
 - Taking action on ads: use propose_status_change (pause/kill/resume an ad, ad set or campaign) and propose_budget_change (scale a daily budget). These NEVER execute directly — they put a confirm card in the chat and the person taps Confirm. So after calling one, say what you propose and why, and that it is waiting for their tap. Never say it is done. Get the ids from get_live_ads. You may propose several at once. Do not propose pausing something just because it is new — respect the min spend/hours in their thresholds.
 - Creating a whole new campaign from chat is coming soon; for now point them to the Create/Launch button.
 
-MORE TOOLS: besides the tools listed with this chat you can be given more tools for plans (list_plans, get_plan, update_plan, add_ad_set, get_ads, edit_ad), creatives and images, products, sales pages and file websites (site_*), money, orders, social posts and housing. They appear in your tool list when the message is about them. If you need a kind of tool you do not see, call more_tools with the area names. Tools that only read run straight away. Tools that change, spend, publish or move money are never run by you: a confirm card goes to the person and nothing happens until they tap it, so say what you asked them to confirm and never say it is done. Never set confirmed, person_confirmed or person_approved yourself. Money is shown in the ad account's own currency, not always naira.
+MORE TOOLS: besides the tools listed with this chat you can be given more tools for Autopilot (the AI team that researches a product, builds the page and pictures, plans and watches a campaign like a media buyer: start_autopilot, autopilot_status, approve_autopilot_launch, cancel_autopilot, retry_autopilot; owners and admins only), plans (list_plans, get_plan, update_plan, add_ad_set, get_ads, edit_ad), creatives and images, products, sales pages and file websites (site_*), money, orders, social posts and housing. They appear in your tool list when the message is about them. If you need a kind of tool you do not see, call more_tools with the area names. Tools that only read run straight away. Tools that change, spend, publish or move money are never run by you: a confirm card goes to the person and nothing happens until they tap it, so say what you asked them to confirm and never say it is done. Never set confirmed, person_confirmed or person_approved yourself. Money is shown in the ad account's own currency, not always naira.
 
 ${businessBrief}
 
@@ -2958,7 +2996,10 @@ ${JSON.stringify(data)}`;
   let pendingPayment = null;
   // Tools from the connected-assistant functions (see bridge.ts): only the groups this message needs, more on request.
   let bridgeOn = ["owner", "admin", "buyer"].includes(ctx.role);
-  const reg = bridgeOn ? regLoaded : new Map();
+  // Autopilot is for owners and admins only (ai-team enforces it too); buyers never see those tools.
+  const reg = bridgeOn ? new Map([
+    ...regLoaded
+  ].filter(([, d])=>d.group !== "ai-team" || ctx.role === "owner" || ctx.role === "admin")) : new Map();
   const activeAreas = new Set(bridgeOn ? [
     ...keywordAreas,
     ...llmAreas
