@@ -1323,7 +1323,7 @@ async function learnNotesDay(day: string) {
   const { data: cos } = await db.from("ad_accounts").select("company_id");
   const companies = [...new Set([...(cos ?? []).map((x: any) => x.company_id), ...((await db.from("autopilot_runs").select("company_id").gte("updated_at", from).lt("updated_at", to)).data ?? []).map((x: any) => x.company_id)].filter(Boolean))].slice(0, 200);
   const { data: glob } = await db.from("learn_lessons").select("id, scope, feature, value, direction, n, winners, lift, confidence, claim, how_to").eq("scope", "global").gte("first_seen", from).lt("first_seen", to).limit(20);
-  let written = 0;
+  let written = 0; const errors: string[] = [];
   for (const companyId of companies as string[]) {
     const notes: Note[] = [];
     const { data: ls } = await db.from("learn_lessons").select("id, scope, feature, value, direction, n, winners, lift, confidence, claim, how_to").eq("company_id", companyId).gte("first_seen", from).lt("first_seen", to).limit(20);
@@ -1332,7 +1332,8 @@ async function learnNotesDay(day: string) {
     for (const v of vs ?? []) { const n = videoNote(v as any); if (n) notes.push(n); }
     const { data: pgs } = await db.from("learn_pages").select("url_norm, title, meta_description").contains("company_ids", [companyId]).eq("status", "ok").gte("fetched_at", from).lt("fetched_at", to).limit(8);
     const pn = pageNote((pgs ?? []) as any); if (pn) notes.push(pn);
-    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, daily_budget, total_budget, billing_currency, market_countries, steps, watch, log, updated_at").eq("company_id", companyId).gte("updated_at", from).lt("updated_at", to).limit(10);
+    const { data: runs, error: runsErr } = await db.from("autopilot_runs").select("id, product_id, status, daily_budget, total_budget, billing_currency, market_countries, steps, watch, log, updated_at").eq("company_id", companyId).gte("updated_at", from).lt("updated_at", to).limit(10);
+    if (runsErr) errors.push("runs: " + runsErr.message);
     const fails: { what: string; why: string; ref?: Record<string, unknown> }[] = [];
     for (const r of runs ?? []) {
       const { data: pr } = await db.from("products").select("product_name").eq("id", r.product_id).maybeSingle();
@@ -1345,11 +1346,18 @@ async function learnNotesDay(day: string) {
     for (const b of badImg ?? []) fails.push({ what: `Ad picture for ${String((b.brief as any)?.product ?? "a product")}`, why: b.error, ref: { image_id: b.id } });
     const fn = failureNote(day, fails); if (fn) notes.push(fn);
     if (!notes.length) continue;
-    const rows = notes.map((n) => ({ company_id: companyId, day, kind: n.kind, title: n.title, body_md: n.body_md, source_refs: n.source_refs }));
+    // two notes with the same title on one day (e.g. two cancelled runs of one product) become one note: bodies joined, refs listed
+    const merged = new Map<string, { company_id: string; day: string; kind: string; title: string; body_md: string; source_refs: Record<string, unknown> }>();
+    for (const n of notes) {
+      const k = n.kind + "|" + n.title, o = merged.get(k);
+      if (!o) merged.set(k, { company_id: companyId, day, kind: n.kind, title: n.title, body_md: n.body_md, source_refs: n.source_refs });
+      else { o.body_md += "\n\n---\n\n" + n.body_md; o.source_refs = { ...o.source_refs, also: [...(((o.source_refs.also as unknown[]) ?? [])), n.source_refs] }; }
+    }
+    const rows = [...merged.values()];
     const { error } = await db.from("learn_notes").upsert(rows, { onConflict: "company_id,day,kind,title" });
-    if (!error) written += rows.length; else console.error("learn_notes", companyId, error.message);
+    if (!error) written += rows.length; else errors.push("save: " + error.message);
   }
-  return { day, companies: companies.length, notes: written };
+  return { day, companies: companies.length, notes: written, errors: errors.slice(0, 5) };
 }
 
 async function apTickAll() {
