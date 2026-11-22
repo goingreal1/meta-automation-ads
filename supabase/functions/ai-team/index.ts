@@ -111,12 +111,31 @@ async function addMessage(meetingId: string, companyId: string, speaker: string,
 
 // The creative agent: one Runway image per brief. The picture lands in the company's vault storage (R2) and waits for a person's approval.
 // Images come from OpenAI (gpt-image-1, then dall-e-3 if that model is not open to this account). Runway is only used when there is no OpenAI key.
-async function openaiImage(prompt: string): Promise<{ bytes?: Uint8Array; error?: string }> {
+async function openaiImage(prompt: string, opts: { refs?: string[]; size?: string } = {}): Promise<{ bytes?: Uint8Array; error?: string }> {
+  const size = opts.size ?? "1024x1024";
+  const refs = (opts.refs ?? []).filter(Boolean).slice(0, 3);
+  // reference pictures (the real product pack): fetched once, then every model is tried with the same bytes
+  const refFiles: { blob: Blob; name: string }[] = [];
+  for (const [k, u] of refs.entries()) {
+    try { const im = await fetch(u); if (!im.ok) continue; const ct = (im.headers.get("content-type") ?? "image/png").split(";")[0]; refFiles.push({ blob: new Blob([await im.arrayBuffer()], { type: ct }), name: `ref${k + 1}.${ct.includes("jpeg") ? "jpg" : ct.includes("webp") ? "webp" : "png"}` }); } catch (_) { /* a reference that cannot be read is skipped */ }
+  }
+  const toBytes = (b64: string) => { const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return bytes; };
   const tryModel = async (model: string, extra: Record<string, unknown>) => {
-    const r = await fetch("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, prompt: prompt.slice(0, 3000), n: 1, size: "1024x1024", ...extra }) });
+    let r: Response;
+    if (refFiles.length) {
+      const fd = new FormData();
+      fd.append("model", model); fd.append("n", "1"); fd.append("size", size);
+      for (const [k, v] of Object.entries(extra)) fd.append(k, String(v));
+      for (const f of refFiles) fd.append("image[]", f.blob, f.name);
+      fd.append("input_fidelity", "high");
+      fd.append("prompt", ("Image 1 is the REAL product pack: keep its shape, colours, logo and label text exactly as they are. " + prompt).slice(0, 3000));
+      r = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}` }, body: fd });
+    } else {
+      r = await fetch("https://api.openai.com/v1/images/generations", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, prompt: prompt.slice(0, 3000), n: 1, size, ...extra }) });
+    }
     const o = await r.json().catch(() => ({}));
     const b64 = o?.data?.[0]?.b64_json;
-    if (r.ok && b64) { const bin = atob(b64); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return { bytes }; }
+    if (r.ok && b64) return { bytes: toBytes(b64) };
     return { error: `${model}: ${o?.error?.message ?? r.status}` };
   };
   // the newest image model this account has first; each is tried with a quality setting and then without it
@@ -134,10 +153,10 @@ async function openaiImage(prompt: string): Promise<{ bytes?: Uint8Array; error?
 async function generateImage(id: string, companyId: string) {
   const fail = (e: string) => db.from("ai_team_images").update({ status: "failed", error: e.slice(0, 300), updated_at: new Date().toISOString() }).eq("id", id);
   try {
-    const { data: im } = await db.from("ai_team_images").select("prompt").eq("id", id).single();
+    const { data: im } = await db.from("ai_team_images").select("prompt, brief").eq("id", id).single();
     let bytes: Uint8Array | undefined;
     if (OPENAI) {
-      const r = await openaiImage(String(im?.prompt ?? ""));
+      const r = await openaiImage(String(im?.prompt ?? ""), { refs: im?.brief?._ref ? [String(im.brief._ref)] : [] });
       if (r.error || !r.bytes) return await fail(r.error ?? "OpenAI could not make this image.");
       bytes = r.bytes;
     } else {
@@ -315,8 +334,10 @@ async function makeImages(meetingId: string, companyId: string): Promise<{ error
   const { data: already } = await db.from("ai_team_images").select("id").eq("meeting_id", m.id).limit(1);
   if (already?.length) return { error: "Images for this meeting were already requested." };
   const rows = [];
+  const { data: pph } = await db.from("products").select("product_name, product_image_url").eq("company_id", companyId).eq("is_active", true);
   for (const [bi, br0] of briefs.entries()) {
-    const br = { ...br0, _i: bi };
+    const photo = (pph ?? []).find((x) => normName(x.product_name) === normName(br0?.product))?.product_image_url;
+    const br = { ...br0, _i: bi, ...(photo ? { _ref: photo } : {}) };
     const prompt = adLayout(br, `${String(br.image_concept ?? br.angle ?? "").slice(0, 600)} (advertising photo for ${String(br.product ?? "the product").slice(0, 80)})`).slice(0, 2900);
     const { data: r } = await db.from("ai_team_images").insert({ company_id: companyId, meeting_id: m.id, brief: br, prompt }).select("id").single();
     if (r) rows.push(r.id);
@@ -749,11 +770,44 @@ async function apSet(id: string, key: string, state: ApStep["state"], note: stri
   await db.from("autopilot_runs").update({ steps, step: key, updated_at: new Date().toISOString(), ...patch }).eq("id", id);
 }
 
+// What the team says it is doing, step by step, in its own names (Ada leads, Zara makes pictures, Tobi buys media, Ife watches orders).
+async function apLog(id: string, who: "Ada" | "Zara" | "Tobi" | "Ife", text: string) {
+  const { data: r } = await db.from("autopilot_runs").select("log").eq("id", id).maybeSingle();
+  const log = [...((r?.log ?? []) as unknown[]), { t: new Date().toISOString(), who, text: text.slice(0, 320) }].slice(-80);
+  await db.from("autopilot_runs").update({ log }).eq("id", id);
+}
+const SYMBOL: Record<string, string> = { NGN: "₦", KES: "KSh ", GHS: "GH₵", ZAR: "R", UGX: "USh ", TZS: "TSh ", USD: "$", GBP: "£", CAD: "CA$", AED: "AED " };
+const moneyText = (n: number, cur: string) => `${SYMBOL[cur] ?? cur + " "}${Math.round(n).toLocaleString("en-US")}`;
+const packsOf = (label: string) => { const t = String(label).toLowerCase(); const m = t.match(/buy\s*(\d+).*?get\s*(\d+)/); if (m) return Number(m[1]) + Number(m[2]); const pl = t.match(/(\d+)\s*\+\s*(\d+)/); if (pl) return Math.min(Number(pl[1]) + Number(pl[2]), 8); const n = t.match(/(\d+)/); return n ? Math.min(Number(n[1]), 6) : 1; };
+
+// Reads the text that actually came out in a picture, so a wrong price or a garbled label is caught before it is used.
+async function apReadText(url: string): Promise<string> {
+  try {
+    const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o-mini", max_tokens: 200, messages: [{ role: "user", content: [{ type: "text", text: "List every word and number written in this picture, exactly as written, separated by ' | '. Nothing else." }, { type: "image_url", image_url: { url } }] }] }) });
+    const j = await r.json().catch(() => ({})); return String(j?.choices?.[0]?.message?.content ?? "");
+  } catch { return ""; }
+}
+// Makes one picture for the sales page and keeps it in the vault; returns its public address.
+async function apMakeImage(run: Record<string, any>, name: string, prompt: string, opts: { refs?: string[]; size?: string; expect?: string[] } = {}): Promise<string | null> {
+  for (let attempt = 0; attempt < (opts.expect?.length ? 2 : 1); attempt++) {
+    const r = await openaiImage(prompt, { refs: opts.refs, size: opts.size });
+    if (!r.bytes) continue;
+    const path = `autopilot/${run.company_id}/${run.id}/${name}-${attempt}.png`;
+    const up = await db.storage.from("creative-vault").upload(path, r.bytes, { contentType: "image/png", upsert: true });
+    if (up.error) continue;
+    const url = db.storage.from("creative-vault").getPublicUrl(path).data.publicUrl;
+    if (!opts.expect?.length) return url;
+    const read = (await apReadText(url)).toLowerCase().replace(/[\s,]/g, "");
+    if (opts.expect.every((e) => read.includes(e.toLowerCase().replace(/[\s,]/g, "")))) return url;
+  }
+  return null;
+}
+
 // the facts the page and ads may use: only what the owner entered about the product
 async function apProduct(productId: string, companyId: string) {
   const { data: p } = await db.from("products").select("id, product_name, description, benefits, safety_notes, ai_approved_claims, notes, payment_note, default_order_value_naira, currency, target_countries, landing_page_url, destination_type, ad_account_id, product_image_url, nafdac_reg_no, is_active, company_id").eq("id", productId).eq("company_id", companyId).maybeSingle();
   if (!p) return null;
-  const { data: tiers } = await db.from("product_tiers").select("label, price_naira, features").eq("product_id", p.id).eq("is_active", true).order("sort_order", { ascending: true });
+  const { data: tiers } = await db.from("product_tiers").select("label, price_naira, features, image_url").eq("product_id", p.id).eq("is_active", true).order("sort_order", { ascending: true });
   return { ...p, tiers: tiers ?? [] };
 }
 
@@ -773,16 +827,19 @@ async function apBuilder(run: Record<string, unknown>, body: Record<string, unkn
 // 1. RESEARCH: the product, what already wins in this business, the sales pages it has read (screenshots, in order), and what to say.
 async function apResearch(run: Record<string, any>) {
   const prod = await apProduct(run.product_id, run.company_id); if (!prod) throw new Error("The product is gone.");
+  await apLog(run.id, "Ada", "I am reading your winning ads and the sales pages we have seen, top to bottom, to plan what to say first.");
   const x = await extraBriefing(run.company_id);
   const { data: pages } = await db.from("learn_pages").select("url_norm, title, vision, signals, blocks").contains("company_ids", [run.company_id]).eq("status", "ok").not("vision", "is", null).order("fetched_at", { ascending: false }).limit(4);
   const read = (pages ?? []).map((p: any) => ({ page: p.url_norm, title: p.title, sections_in_order: (p.vision?.sections ?? p.vision?.structure ?? []).slice(0, 25), opening: p.vision?.above_the_fold, offer: p.vision?.offer, proof: p.vision?.social_proof, trust: p.vision?.trust, order_form: p.vision?.order_form, hooks: (p.vision?.hooks ?? []).slice(0, 8) }));
   const sys = `You are the research lead of an AI media-buying team. A direct-response seller in ${run.market_countries.join(", ")} will sell ONE product with paid Facebook and Instagram ads and a sales page. Study the product and what already sells for this business, then write the plan the page and the ads will follow. Return ONLY JSON:
-{"audience":"who buys and why, in plain words","fears":["the fears or pains, in the customer's own words"],"problem_story":"3-4 sentences: the story of the problem a buyer lives with, then what made them look for a fix","solution":"how this product answers it, using ONLY the product facts","proof_available":["proof the seller really has (from the product facts or the pages read)"],"proof_missing":["proof the page needs but the seller has not given (real testimonials, photos, certificates). Never invent any"],"objections":["why a buyer hesitates"],"offer":"the offer to put forward, only from the product facts (price, packages, delivery, payment on delivery, guarantee)","hooks":["5 ad hooks, each one line, aggressive but true"],"angles":["3 ad angles"],"blueprint":[{"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form","goal":"what this section must do for the buyer","guidance":"what to say, using only real facts"}],"niche":"health|beauty|fashion|food|gadgets|home|general"}
+{"audience":"who buys and why, in plain words","fears":["the fears or pains, in the customer's own words"],"problem_story":"3-4 sentences: the story of the problem a buyer lives with, then what made them look for a fix","solution":"how this product answers it, using ONLY the product facts","proof_available":["proof the seller really has (from the product facts or the pages read)"],"proof_missing":["proof the page needs but the seller has not given (real testimonials, photos, certificates). Never invent any"],"objections":["why a buyer hesitates"],"offer":"the offer to put forward, only from the product facts (price, packages, delivery, payment on delivery, guarantee)","hooks":["5 ad hooks, each one line, aggressive but true"],"angles":["3 ad angles"],"blueprint":[{"role":"one of: hook, fear, problem_story, solution, product, how_it_works, benefits, testimonials, assurance, offer_cards, faq, order_form","goal":"what this section must do for the buyer","guidance":"what to say, using only real facts"}],"offer_card_look":"how the best pages in PAGES_READ show their package or offer cards: what the picture shows (how many packs), how the price and the label are written, any badge like Best value. Say plainly if no page was read","niche":"health|beauty|fashion|food|gadgets|home|general"}
 HARD RULES: use ONLY facts in PRODUCT. Never invent prices, claims, numbers, testimonials, certificates or guarantees. No medical cures or guaranteed results; for health products describe support in careful words and keep to ai_approved_claims when they exist. The blueprint order follows how the best pages in PAGES_READ are built (fear, then the problem story, then the solution, then proof, then assurance, then offer cards, then the order form); when no page was read, use that order. PAGES_READ are for STRUCTURE and order only: never copy a number, claim or promise from them. The page text is for shoppers in ${run.market_countries.join(", ")}: their words, their currency (${run.market_currency}).`;
   const raw = await decideJson(sys, `PRODUCT:\n${JSON.stringify(prod).slice(0, 5000)}\n\nWHAT ALREADY WINS (this business):\n${JSON.stringify({ winning_ads: x.winning_ads_the_learner_saw ?? [], winning_video_anatomy: x.winning_video_anatomy ?? [], lessons: x.lessons_learned ?? [] }).slice(0, 9000)}\n\nPAGES_READ (screenshots read top to bottom):\n${JSON.stringify(read).slice(0, 9000)}`);
   const research = apParse(raw);
   if (!Array.isArray(research.blueprint) || !research.blueprint.length) throw new Error("The research did not come back in a usable shape. It will be tried again.");
   const hooks = Array.isArray(research.hooks) ? research.hooks.length : 0;
+  await apLog(run.id, "Ada", `Found it. Who buys: ${String(research.audience ?? "").slice(0, 140)}. The page will go: ${(research.blueprint as any[]).map((b) => b.role).join(", ")}.`);
+  await apLog(run.id, "Ada", `Strongest hook so far: "${String((research.hooks as string[] | undefined)?.[0] ?? "").slice(0, 140)}".`);
   await apSet(run.id, "research", "done", `Read ${(pages ?? []).length} sales page${(pages ?? []).length === 1 ? "" : "s"} and ${((x.winning_ads_the_learner_saw as unknown[]) ?? []).length} winning ad${((x.winning_ads_the_learner_saw as unknown[]) ?? []).length === 1 ? "" : "s"}. ${hooks} hooks, ${(research.blueprint as unknown[]).length} sections planned.`, { research });
 }
 
@@ -793,6 +850,7 @@ async function apPage(run: Record<string, any>) {
   let url = prod.landing_page_url as string | null;
   if (!url) { const { data: s } = await db.from("sites").select("id, status").eq("product_id", prod.id).eq("status", "published").limit(1).maybeSingle(); if (s) url = "published-site"; }
   if (url) {
+    await apLog(run.id, "Ada", "You already have a sales page for this product, so I will read it and compare it to the plan. I will not change it.");
     const { data: pg } = url.startsWith("http") ? await db.from("learn_pages").select("url_norm, vision, signals, blocks, status").ilike("url_norm", `%${url.replace(/^https?:\/\//, "").replace(/\/+$/, "").slice(0, 120)}%`).limit(1).maybeSingle() : { data: null };
     let review: Record<string, unknown> = { read: false };
     if (pg?.vision) {
@@ -806,6 +864,7 @@ async function apPage(run: Record<string, any>) {
     return;
   }
   // build a draft
+  await apLog(run.id, "Ada", "There is no sales page for this product yet, so I am writing one from the plan, in the order the best pages use.");
   const brief = await apBuilder(run, { mode: "page_brief", niche: rs.niche ?? "general" });
   const roleMap = "fear/problem_story -> problem (title + paragraphs) ; solution/product -> solution ; benefits -> benefits ; how_it_works -> how_to ; testimonials -> testimonials ONLY if real ones are given (they are not, so leave it out) ; assurance -> guarantee or trust ONLY from product facts ; offer_cards -> offer then packages ; order_form -> form";
   const raw = await decideJson(`You write the sales page for ONE product as a JSON spec for a page builder. Return ONLY JSON {"niche":string,"title":string,"seo_title":string,"seo_description":string,"cta":string,"sections":[{"type":...}]}. Section types and their fields (use only these): ${JSON.stringify(brief.sections ?? {}).slice(0, 2500)}. Follow the BLUEPRINT order exactly. Mapping of blueprint roles to section types: ${roleMap}. Start with an offerbar and a hero (headline = the strongest hook; subheadline = what the buyer gets), end with form then footer.
@@ -813,16 +872,42 @@ HARD RULES: use ONLY the product facts. Never invent prices, numbers, claims, te
   const spec = apParse(raw);
   const sections = (Array.isArray(spec.sections) ? spec.sections : []).slice(0, 24) as Record<string, unknown>[];
   if (!sections.length) throw new Error("The page plan came back empty. It will be tried again.");
+  // Zara's pictures for the page, made from the real product photo when there is one; the offer cards show the pack count and the price.
+  const photo = prod.product_image_url ? [String(prod.product_image_url)] : [];
+  await apLog(run.id, "Zara", photo.length ? "I have your product photo, so every picture shows the real pack." : "There is no product photo yet, so I will draw the pack from its description. Add a photo in the Catalog and I will redo them with the real pack.");
+  const cur = String(prod.currency ?? run.billing_currency ?? "NGN").toUpperCase();
+  const look = String(rs.offer_card_look ?? "").slice(0, 400);
+  const jobs: Promise<void>[] = [];
+  const need = (type: string) => sections.find((s) => s.type === type && !s.image_url);
+  const setImg = (sec: Record<string, unknown> | undefined, url: string | null) => { if (sec && url) sec.image_url = url; };
+  const hero = need("hero"), prob = need("problem"), sol = need("solution");
+  const scene = `${prod.product_name}, for shoppers in ${run.market_countries.join(", ")}`;
+  if (hero) jobs.push(apMakeImage(run, "hero", `Wide, bright hero picture for a sales page: the real product pack in an appealing everyday setting for ${scene}. Warm natural light, uncluttered, no words, no logos other than the pack's own.`, { refs: photo, size: "1536x1024" }).then((u) => { setImg(hero, u); }));
+  if (prob) jobs.push(apMakeImage(run, "problem", `Realistic photo of an ordinary adult in ${run.market_countries.join(", ")} having a worried, tired moment at home, related to this: ${String((rs.fears ?? [])[0] ?? "the problem the product helps with")}. No medical equipment, no body parts exposed, no text, no before and after.`, { size: "1536x1024" }).then((u) => { setImg(prob, u); }));
+  if (sol) jobs.push(apMakeImage(run, "solution", `Clean product shot for a sales page: the real pack on a simple surface with a few natural ingredient props. No words other than the pack's own.`, { refs: photo }).then((u) => { setImg(sol, u); }));
+  const tierImgs: Record<string, string> = {};
+  for (const t of (prod.tiers ?? []).slice(0, 4)) {
+    if (t.image_url) continue; // the seller's own card picture stays
+    const n = packsOf(String(t.label)), price = moneyText(Number(t.price_naira), cur);
+    jobs.push(apMakeImage(run, `offer-${tierImgs ? Object.keys(tierImgs).length : 0}-${String(t.label).slice(0, 12).replace(/[^a-z0-9]/gi, "")}`, `Offer card picture: ${n} ${n === 1 ? "pack" : "packs"} of the real product arranged neatly side by side on a clean light background. Write exactly two things on the picture: the label "${String(t.label).slice(0, 40)}" and the price "${price}", large and easy to read. No other words. Style the card like the winners: ${look || "clear pack count, big price, a simple badge"}.`, { refs: photo, expect: [price.replace(/[^0-9]/g, "")] }).then((u) => { if (u) tierImgs[String(t.label)] = u; }));
+  }
+  if (jobs.length) { await apLog(run.id, "Zara", `Making ${jobs.length} picture${jobs.length === 1 ? "" : "s"} for the page: hero, the problem moment, the product, and an offer card for each package with its price.`); await Promise.all(jobs); }
+  for (const t of (prod.tiers ?? [])) if (tierImgs[String(t.label)]) await db.from("product_tiers").update({ image_url: tierImgs[String(t.label)] }).eq("product_id", prod.id).eq("label", t.label).is("image_url", null);
+  const madeTiers = Object.keys(tierImgs).length, tierTotal = (prod.tiers ?? []).filter((t: any) => !t.image_url).length;
+  await apLog(run.id, "Zara", `Pictures done: ${[hero && hero.image_url ? "hero" : "", prob && prob.image_url ? "problem" : "", sol && sol.image_url ? "product" : ""].filter(Boolean).join(", ") || "none of the section pictures"}, and ${madeTiers} of ${tierTotal} offer cards${madeTiers < tierTotal ? " (the price on the other cards would not come out right, so the page keeps its own cards for those)" : " with the price checked"}.`);
   if (prod.product_image_url && sections.some((s) => s.type === "hero") && !sections.find((s) => s.type === "hero")?.image_url) sections.find((s) => s.type === "hero")!.image_url = prod.product_image_url;
-  const built = await apBuilder(run, { mode: "page_build", product_id: prod.id, niche: String(spec.niche || rs.niche || "general"), title: String(spec.title ?? prod.product_name).slice(0, 80), business_name: prod.product_name, spec: { ...spec, sections } });
+  const { data: oldDraft } = await db.from("sites").select("id").eq("product_id", prod.id).eq("status", "draft").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const built = await apBuilder(run, { mode: "page_build", ...(oldDraft ? { site_id: oldDraft.id } : {}), product_id: prod.id, niche: String(spec.niche || rs.niche || "general"), title: String(spec.title ?? prod.product_name).slice(0, 80), business_name: prod.product_name, spec: { ...spec, sections } });
   if (!built.ok || built.error) throw new Error(String(built.error ?? "The page could not be saved.").slice(0, 250));
   const test = String((built as any).test_link ?? ""), live = String((built as any).live_link || test.split("?")[0]); // a draft has no live link yet: its address is the preview address without the preview key
+  await apLog(run.id, "Ada", `Page built: ${sections.length} sections. It stays a draft until you approve.`);
   const gaps = [...((built as any).still_needs_images ?? []).map((s: string) => `picture: ${s}`), ...((rs.proof_missing ?? []) as string[]).slice(0, 4).map((s) => `proof: ${s}`)];
   await apSet(run.id, "page", "done", `Built a draft page (${sections.length} sections). It goes live only when you approve.${gaps.length ? ` Still needs: ${gaps.slice(0, 3).join("; ")}.` : ""}`, { page: { mode: "built", site_id: (built as any).site_id ?? (built as any).id ?? null, live_link: live, test_link: test, sections: sections.map((s) => s.type), gaps } });
 }
 
 // 3. TRACKING: is the pixel firing, and does a sale get marked on the thank-you page?
 async function apTracking(run: Record<string, any>) {
+  await apLog(run.id, "Tobi", "I am checking that the pixel fires and that a sale will be counted on the thank-you page.");
   const out = await apTool(run, "check_pixel", { ad_account_id: run.ad_account_id }).catch(() => null);
   const verdict = String((out as any)?.verdict ?? (out as any)?.message ?? (out as any)?.error ?? "").slice(0, 200);
   const pg = (run.page ?? {}) as Record<string, any>;
@@ -842,6 +927,7 @@ async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue
     const { data: m, error } = await db.from("ai_meetings").insert({ company_id: run.company_id, topic, trigger: "autopilot", started_by: run.created_by }).select("id").single();
     if (error || !m) throw new Error(error?.message ?? "Could not start the team meeting.");
     await db.from("autopilot_runs").update({ meeting_id: m.id }).eq("id", run.id);
+    await apLog(run.id, "Ada", "Team meeting started on this product only, with the research in front of us. Zara, Tobi and I are agreeing the angle and the ad briefs.");
     await apSet(run.id, "creatives", "now", "The team is meeting about this product.");
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil(runMeeting(m.id, run.company_id, topic, false, false, false));
@@ -859,12 +945,13 @@ async function apCreatives(run: Record<string, any>): Promise<"wait" | "continue
     if (!briefs.length) throw new Error("The team did not write any ad briefs.");
   }
   const { data: imgs } = await db.from("ai_team_images").select("*").eq("meeting_id", m.id);
-  if (!imgs?.length) { const r = await makeImages(m.id, run.company_id); if (r.error) throw new Error(r.error); await apSet(run.id, "creatives", "now", `Zara is making ${r.started} images.`); return "wait"; }
+  if (!imgs?.length) { const r = await makeImages(m.id, run.company_id); if (r.error) throw new Error(r.error); await apLog(run.id, "Zara", `Briefs agreed. I am making ${r.started} ad image${r.started === 1 ? "" : "s"} now, each with a hook on top, the pack in the middle and the order button below.`); await apSet(run.id, "creatives", "now", `Zara is making ${r.started} images.`); return "wait"; }
   for (const i of imgs) if (i.status === "generating" && Date.now() - new Date(i.updated_at).getTime() > 8 * 60_000) await db.from("ai_team_images").update({ status: "failed", error: "Timed out." }).eq("id", i.id);
   if (imgs.some((i: any) => i.status === "generating" && Date.now() - new Date(i.updated_at).getTime() <= 8 * 60_000)) return "wait";
   let n = 0; for (const i of imgs) if (i.status === "ready") { const r = await approveImage(i, run.company_id, run.created_by); if (!r.error) n++; }
   const total = n + imgs.filter((i: any) => i.status === "approved").length;
   if (!total) throw new Error("No image could be made.");
+  await apLog(run.id, "Zara", `${total} ad image${total === 1 ? "" : "s"} done and saved to your vault.`);
   await apSet(run.id, "creatives", "done", `${total} image${total === 1 ? "" : "s"} ready, each with a hook on top, the pack in the middle and the order button below.`);
   return "continue";
 }
@@ -880,6 +967,8 @@ async function apPlan(run: Record<string, any>) {
   if (!l) { const why = (r.launches ?? []).map((x: any) => x?.note).filter(Boolean)[0] ?? "The launch could not be planned."; await apSet(run.id, "plan", "needs_you", String(why), { status: "waiting" }); return; }
   const days = Math.max(1, Math.floor(Number(run.total_budget) / Math.max(1, Number(run.daily_budget))));
   await db.from("ai_launches").update({ run_days: days, currency: run.billing_currency }).eq("id", l.id);
+  for (const a of ((l.ad_sets ?? []) as any[]).slice(0, 4)) await apLog(run.id, "Tobi", `Ad set "${a.label}": ages ${a.age_min}-${a.age_max}${a.gender && a.gender !== "all" ? ", " + a.gender : ""}${(a.interest_keywords ?? []).length ? ", interests " + a.interest_keywords.join(", ") : ", broad so Meta finds the buyers"}, ${moneyText(Number(a.budget_naira), run.billing_currency)} a day. ${String(a.why ?? "")}`.slice(0, 300));
+  await apLog(run.id, "Tobi", `Plan ready: ${moneyText(Number(run.daily_budget), run.billing_currency)} a day for ${days} day${days === 1 ? "" : "s"}, ending by itself so the total stays under ${moneyText(Number(run.total_budget), run.billing_currency)}. I will not launch anything until you tap approve.`);
   await apSet(run.id, "plan", "needs_you", `${(l.ad_sets ?? []).length} ad set${(l.ad_sets ?? []).length === 1 ? "" : "s"} in ${(l.countries ?? run.market_countries).join(", ")}, ${run.daily_budget} ${run.billing_currency} a day for ${days} day${days === 1 ? "" : "s"}. Waiting for your tap.`, { launch_id: l.id, status: "waiting" });
   await apSet(run.id, "launch", "wait", "Starts at midnight once you approve.");
   await notify(run.company_id, "autopilot_ready", run.id, "Autopilot: ready for your tap", `${prod.product_name} is ready: research, page, ads and campaign plan. Open Autopilot to approve the launch. Nothing runs until you do.`);
@@ -891,12 +980,14 @@ async function apApprove(runId: string, ctx: Record<string, unknown>) {
   if (!run || run.company_id !== ctx.companyId) return { error: "Run not found." };
   if (run.status !== "waiting" || !run.launch_id) return { error: "This run is not waiting for approval." };
   const pg = (run.page ?? {}) as Record<string, any>;
+  await apLog(run.id, "Tobi", "Approved. " + (pg.mode === "built" ? "Putting the page live first, then scheduling the campaign." : "Scheduling the campaign."));
   if (pg.mode === "built" && pg.site_id) {
     const pub = await apBuilder(run, { mode: "page_publish", site_id: pg.site_id });
     if (!pub.ok || pub.error) { await apSet(run.id, "launch", "failed", `The page could not go live: ${String(pub.error ?? "").slice(0, 200)}`); return { error: String(pub.error ?? "The page could not go live.") }; }
   }
   const r = await approveLaunch(String(run.launch_id), ctx);
   if ("error" in r) { await apSet(run.id, "launch", "failed", String(r.error).slice(0, 250)); return r; }
+  await apLog(run.id, "Tobi", "Scheduled on Meta for midnight. I will watch spend and sales and pause what wastes money.");
   await apSet(run.id, "plan", "done", "Approved by you.");
   await apSet(run.id, "launch", "done", `Scheduled on Meta for midnight${run.total_budget ? `, ends by itself so the total stays under ${run.total_budget} ${run.billing_currency}` : ""}.`, { status: "live" });
   await apSet(run.id, "watch", "now", "The team watches the numbers and pauses what wastes money.");
@@ -1136,7 +1227,7 @@ Deno.serve(async (req) => {
   // ---- AUTOPILOT ----
   if (b?.action === "ap_state") {
     if (!["owner", "admin"].includes(String(p.role ?? ""))) return json({ error: "Autopilot is for owners and admins." }, 403);
-    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, step, steps, research, page, launch_id, meeting_id, market_countries, billing_currency, market_currency, daily_budget, total_budget, launch_mode, note, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8);
+    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, step, steps, research, page, launch_id, meeting_id, market_countries, billing_currency, market_currency, daily_budget, total_budget, launch_mode, note, log, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8);
     const { data: prods } = await db.from("products").select("id, product_name, target_countries, ad_account_id, landing_page_url, product_image_url, is_active").eq("company_id", companyId).eq("is_active", true).order("created_at", { ascending: false });
     const { data: accts } = await db.from("ad_accounts").select("id, currency, nickname, name").eq("company_id", companyId);
     const { data: co } = await db.from("companies").select("country, currency").eq("id", companyId).maybeSingle();
