@@ -22,6 +22,7 @@ function appendCards(list) {
       else if (c.type === "upload") el = ccUpload(c);
       else if (c.type === "site") el = ccSite(c);
       else if (c.type === "result") el = ccResult(c);
+      else if (c.type === "autopilot") el = ccAutopilot(c);
     } catch (e) { console.warn("card", e); }
     if (el) msgs.appendChild(el);
   }
@@ -124,6 +125,29 @@ function ccResult(c) {
     ? `<table><thead><tr>${c.rows.some(r => r.img) ? "<th></th>" : ""}${(c.cols || []).map(h => `<th>${escH(h)}</th>`).join("")}</tr></thead><tbody>${c.rows.map(r => `<tr>${c.rows.some(x => x.img) ? `<td style="width:52px">${r.img ? `<img src="${escH(r.img)}" alt="" loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:8px;display:block">` : ""}</td>` : ""}${r.cells.map(v => `<td style="word-break:break-word">${escH(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>${c.more ? `<div class="cc-note">+ ${c.more} more. Ask me to narrow it down.</div>` : ""}`
     : `<div class="cc-f">${(c.kv || []).map(x => `<div class="cc-fld"><span>${escH(x.k)}</span><b>${escH(x.v)}</b></div>`).join("")}</div>`;
   return ccEl(`<h4>${escH(c.title)}${c.count != null ? ` <span style="color:var(--muted);font-weight:500">(${c.count})</span>` : ""}</h4><div style="overflow-x:auto;margin-top:6px">${body}</div>`);
+}
+
+// AUTOPILOT CARD: the steps of a run, what the team said, and buttons that only PREPARE a confirm card (the tap there is the approval).
+function ccAutopilot(c) {
+  const dot = { done: ["#1a9a4a", "✓"], now: ["var(--accent)", "●"], needs_you: ["#c77700", "!"], failed: ["#d93025", "✕"], wait: ["var(--muted)", "○"] };
+  const card = ccEl((c.runs || []).map((r, i) => `<div data-r="${i}" style="${i ? "border-top:1px solid var(--border);margin-top:14px;padding-top:14px" : ""}">
+    <div class="cc-row"><h4 style="margin:0">Autopilot · ${escH(r.product)}</h4><span class="cc-sp"></span><span class="cc-tag ${r.waiting_for_approval ? "cc-watch" : r.status === "failed" || r.status === "cancelled" ? "cc-stop" : "cc-keep"}">${escH(r.waiting_for_approval ? "Needs your OK" : r.status)}</span></div>
+    ${r.money ? `<div class="cc-sub">Daily ${escH(r.money.daily)} · Hard stop ${escH(r.money.total)}</div>` : ""}
+    <div>${(r.steps || []).map(s => { const d = dot[s.state] || dot.wait; return `<div class="cc-item" style="padding:6px 0;align-items:flex-start"><span style="display:flex;gap:10px;min-width:0"><b style="color:${d[0]};width:14px;text-align:center">${d[1]}</b><span style="min-width:0"><span style="${s.state === "wait" ? "color:var(--muted)" : ""}">${escH(s.label)}</span>${s.note ? `<small>${escH(s.note)}</small>` : ""}</span></span></div>`; }).join("")}</div>
+    ${(r.team_log || []).length ? `<div class="cc-lbl">What the team said</div>${r.team_log.slice(-4).map(l => `<div class="cc-note" style="margin:2px 0"><b>${escH(l.who)}:</b> ${escH(l.text)}</div>`).join("")}` : ""}
+    ${r.today && typeof r.today === "object" ? `<div class="cc-f">${Object.entries(r.today).filter(([k, v]) => v !== null && typeof v !== "object").slice(0, 6).map(([k, v]) => `<div class="cc-fld"><span>${escH(k.replace(/_/g, " "))}</span><b>${escH(v)}</b></div>`).join("")}</div>` : ""}
+    <div class="cc-row act" style="margin-top:12px">${["running", "waiting", "live"].includes(r.status) ? '<button type="button" class="cc-btn s cx">Cancel run</button>' : ""}${(r.steps || []).some(s => s.state === "failed") ? '<button type="button" class="cc-btn s rt">Try again</button>' : ""}<span class="cc-sp"></span>${r.waiting_for_approval ? '<button type="button" class="cc-btn g ap">Approve launch</button>' : ""}</div></div>`).join("") + '<div class="cc-res"></div>');
+  const res = card.querySelector(".cc-res");
+  const ask = async (kind, r) => {
+    const x = await sbFn("ai-chat", { action: "queue_autopilot", kind, product: r.product }).catch(e => ({ error: e.message }));
+    if (x?.card) appendCards([x.card]); else { res.style.color = "#d93025"; res.textContent = "❌ " + (x?.error || "Could not prepare that."); }
+  };
+  card.querySelectorAll("[data-r]").forEach(el => { const r = c.runs[+el.dataset.r];
+    const b1 = el.querySelector(".ap"), b2 = el.querySelector(".cx"), b3 = el.querySelector(".rt");
+    if (b1) b1.onclick = () => ask("approve_autopilot_launch", r);
+    if (b2) b2.onclick = () => ask("cancel_autopilot", r);
+    if (b3) b3.onclick = () => ask("retry_autopilot", r); });
+  return card;
 }
 
 function ccQuestions(c) {

@@ -8,6 +8,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 // Same order the main MCP function uses: where two groups define one name (plan_campaign, update_plan) the first one wins.
+import { AP_GROUP, AUTOPILOT_DEFS, autopilotCard, prepAutopilot, runAutopilot } from "./autopilot.ts";
 export const MCP_GROUPS = ["mcp-plan", "mcp-ads", "mcp-money", "mcp-studio", "mcp-social", "mcp-code", "mcp-housing"] as const;
 
 export type ToolDef = {
@@ -54,6 +55,7 @@ export async function registry(): Promise<Map<string, ToolDef>> {
   if (!fresh) { inflight = inflight ?? refresh().finally(() => { inflight = null; }); await inflight; }
   const out = new Map<string, ToolDef>();
   for (const g of MCP_GROUPS) for (const d of known.get(g)?.defs ?? []) if (!out.has(d.name)) out.set(d.name, d);
+  for (const d of AUTOPILOT_DEFS) out.set(d.name, d); // the dashboard assistant's own Autopilot tools (ai-team)
   return out;
 }
 
@@ -68,9 +70,10 @@ export const HAND_WRITTEN = new Set([
 export const NEVER_BRIDGED = new Set(["launch_plan", "get_playbook", "whoami", "get_upload_link", "get_edit_link", "get_ad_copy_link", "get_order_form_link"]);
 
 // ── intent groups ───────────────────────────────────────────────────────────────────────────────────────────────
-export type Area = "plans" | "creatives" | "products" | "pages" | "money" | "orders" | "social" | "housing";
-export const AREAS: Area[] = ["plans", "creatives", "products", "pages", "money", "orders", "social", "housing"];
+export type Area = "autopilot" | "plans" | "creatives" | "products" | "pages" | "money" | "orders" | "social" | "housing";
+export const AREAS: Area[] = ["autopilot", "plans", "creatives", "products", "pages", "money", "orders", "social", "housing"];
 const AREA_TOOLS: Record<Area, string[]> = {
+  autopilot: ["autopilot_status", "start_autopilot", "approve_autopilot_launch", "cancel_autopilot", "retry_autopilot"],
   plans: ["list_plans", "get_plan", "update_plan", "add_ad_set", "cancel_plan", "get_ads", "edit_ad", "search_locations", "duplicate_ad", "set_status", "set_budget",
     "get_object", "update_object", "get_account_performance", "get_alerts", "get_daily_brief", "get_kill_rules", "set_kill_rules", "get_lessons", "import_past_ads",
     "list_lead_forms", "create_lead_form", "get_leads", "link_instagram", "list_page_posts", "add_page_post", "add_carousel", "update_carousel", "list_ad_creatives", "list_creatives", "assign_creative"],
@@ -90,6 +93,7 @@ const AREA_TOOLS: Record<Area, string[]> = {
 const GROUP_AREA: Record<string, Area> = { "mcp-plan": "plans", "mcp-ads": "plans", "mcp-money": "money", "mcp-studio": "creatives", "mcp-social": "social", "mcp-code": "pages", "mcp-housing": "housing" };
 
 const KEYWORDS: Record<Area, RegExp> = {
+  autopilot: /auto ?pilot|ai team|media buyer team|run (my )?ads for me|handle (my )?ads|hands.?off/i,
   plans: /\b(plan|draft|campaign|ad ?set|adset|start time|start date|schedul|launch|budget|audience|targeting|placement|ads?\b|creative copy|headline|primary text|carousel|lead form|instagram|pixel|kill rule|scale|pause|duplicate|relaunch)/i,
   creatives: /\b(creative|image|picture|photo|video|banner|upload|vault|generate|design|thumbnail|flyer|logo|assign)/i,
   products: /\b(product|catalog|catalogue|package|bundle|price|pricing|tier|sku)/i,
@@ -188,6 +192,7 @@ export function readSchedule(args: Record<string, any>): { start?: string | null
 }
 
 export async function callTool(d: ToolDef, args: Record<string, any>, ctx: BridgeCtx): Promise<any> {
+  if (d.group === AP_GROUP) return await runAutopilot(d, args, ctx).catch((e) => ({ error: (e as Error).message }));
   try {
     const r = await groupPost(d.group, { action: "call", tool: d.name, args: args && typeof args === "object" ? args : {}, ctx }, 140_000);
     return r?.out ?? { error: r?.error ?? "The tool did not answer." };
@@ -271,11 +276,18 @@ export async function confirmCard(db: Db, id: string, d: ToolDef, args: Record<s
 export async function queueWrite(db: Db, d: ToolDef, rawArgs: Record<string, any>, ctx: BridgeCtx) {
   const args: Record<string, any> = { ...(rawArgs ?? {}) };
   for (const f of CONFIRM_FIELDS) delete args[f];
+  let apPrep: Awaited<ReturnType<typeof prepAutopilot>> | null = null;
+  if (d.group === AP_GROUP) {
+    apPrep = await prepAutopilot(d, args, ctx);
+    if (apPrep.error) return { result: { error: apPrep.error } };
+    Object.keys(args).forEach((k) => delete args[k]);
+    Object.assign(args, apPrep.args);
+  }
   if (SCHEDULE_TOOLS.has(d.name)) { const sc = readSchedule(args); if (sc.error) return { result: { error: sc.error } }; }
   // pending asks for the same thing twice (model retried) are one card
   const { data: row, error } = await db.from("ai_chat_pending").insert({ user_id: ctx.userId, company_id: ctx.companyId, tool: d.name, args }).select("id").single();
   if (error || !row) return { result: { error: "Could not prepare the confirm card: " + (error?.message ?? "unknown") } };
-  const card = await confirmCard(db, row.id, d, args, ctx);
+  const card: any = apPrep ? { type: "confirm", pending_id: row.id, tool: d.name, title: d.title || words(d.name), risk: apPrep.risk, warn: apPrep.warn, lines: apPrep.lines } : await confirmCard(db, row.id, d, args, ctx);
   await db.from("ai_chat_pending").update({ summary: card }).eq("id", row.id);
   return {
     card,
@@ -350,6 +362,7 @@ export function cardFor(d: ToolDef, args: Record<string, any>, out: any): any | 
       preview: typeof out.test_link === "string" ? out.test_link : null, live: typeof out.live_link === "string" ? out.live_link : null,
     };
   }
+  if (d.name === "autopilot_status") return autopilotCard(out);
   if (QUIET.has(d.name)) return null;
   const title = d.title || words(d.name);
   // the first list of items in the answer becomes a small table (with thumbnails when the items have pictures)
