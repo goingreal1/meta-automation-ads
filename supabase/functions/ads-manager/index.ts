@@ -920,30 +920,49 @@ async function handleFramesCheck(body) {
   if (!key || !/^\d{5,25}$/.test(id) || !(exp > Date.now()) || exp > Date.now() + 15 * 60_000) return { ok: false };
   return { ok: (await hmacHexKey(key, `frames:${id}:${exp}`)) === String(body.sig ?? "") };
 }
-async function openaiVideoAnalysis(frames, transcript, meta) {
+async function openaiVideoAnalysis(frames, segments, meta) {
   const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
   if (!OPENAI) throw new Error("OPENAI_API_KEY is not set");
-  const content = [{ type: "text", text: `You are studying ONE winning video ad for a direct-response ad learning system. The pictures are frames of the video in time order, one per scene change (the time in seconds is given before each). The spoken words (transcript) are given too. Describe ONLY what you can see and hear. Reply with JSON only:
-{"scenes":[{"t":seconds,"shows":"what is on screen","text_on_screen":"every word visible, exactly","voiceover":"what is said during this scene, or empty","role":"hook|problem|proof|offer|call_to_action|other"}],
- "structure":{"hook":"the first 3 seconds: what grabs the viewer","problem":"how the problem or fear is shown","proof":"what makes it believable (people, results, demonstration)","offer":"what is offered and how","call_to_action":"how and when the viewer is told to act, with the exact words"},
- "style":"look and feel, pace, how it was filmed, music or silence, who appears","length_s":${meta.length ?? 0},
- "why_it_may_work":"2 sentences","how_to_recreate":"a short brief someone could follow to make a similar video or a still image for this product"}
-Ad headline: ${String(meta.headline ?? "").slice(0, 200)}. Transcript: ${String(transcript ?? "").slice(0, 3000) || "(no speech)"}` }];
-  for (const f of frames){ content.push({ type: "text", text: `Frame at ${f.t}s:` }); content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${f.jpg}`, detail: "low" } }); }
-  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "user", content }] }) });
+  const model = Deno.env.get("LEARN_VIDEO_MODEL") ?? "gpt-4o";
+  const script = (segments ?? []).map((x)=>`[${Number(x.start).toFixed(1)}s-${Number(x.end).toFixed(1)}s] ${x.text}`).join("\n").slice(0, 5000) || "(no speech)";
+  const content = [{ type: "text", text: `You are describing ONE video ad, scene by scene, for an advertising learning system. Your description must be EXACT and complete: someone who has never seen the video must be able to rebuild it from your words. The pictures are frames in time order (the second of each is given before it). The timed script of everything spoken is below.
+
+RULES
+- Describe ONLY what is visible in the frames or written in the script. If you cannot see something, write "not visible". Never guess, never generalise ("a person") when you can be specific.
+- text_on_screen: every word visible on the frame, exactly as written, in its original capitals and spelling. Empty only if there is no text.
+- voiceover: the exact words spoken during the scene, taken from the timed script by matching the seconds. Empty if nothing is said.
+- people: how many, apparent gender and age range, clothing, what they do, expression. objects: product and props, and whether the product or its label is visible. setting: where it is. camera: close-up, wide, handheld, screen recording, animation, stock footage, slides. graphics: logos, arrows, stickers, subtitles, price or offer badges, colours.
+- role of each scene, chosen by what it DOES: "hook" = the opening moments that stop the scroll, before the main subject is named; "problem" = shows or says the pain, fear or need; "proof" = evidence it works (demonstration, results, testimonial, authority, certification); "product" = introduces or shows the product itself; "offer" = price, bundle, discount, guarantee, delivery or payment terms; "call_to_action" = tells the viewer to act (order, tap, call) and how; "bridge" = a transition or an unrelated link between parts; "other". Use "product" for a scene that mainly shows the bottle or pack. Never use "problem" for a scene that shows the product.
+- The ad's overall structure must name the exact seconds where each part starts.
+
+Reply with JSON only:
+{"scenes":[{"t":seconds,"ends_t":seconds,"role":"hook|problem|proof|product|offer|call_to_action|bridge|other","shows":"2 to 3 plain sentences: exactly what is on screen","people":"","objects":"","setting":"","camera":"","graphics":"","text_on_screen":"","voiceover":""}],
+ "structure":{"hook":{"from_s":0,"to_s":0,"what":""},"problem":{"from_s":0,"to_s":0,"what":""},"proof":{"from_s":0,"to_s":0,"what":""},"product":{"from_s":0,"to_s":0,"what":""},"offer":{"from_s":0,"to_s":0,"what":""},"call_to_action":{"from_s":0,"to_s":0,"what":"the exact words and when they appear"}},
+ "full_script":"the whole voiceover, verbatim, with [seconds] markers",
+ "on_screen_text_all":["every distinct piece of on-screen text, in order"],
+ "style":"look, pace, how it was filmed, music or silence as far as the frames and script show, who appears","length_s":${meta.length ?? 0},
+ "why_it_may_work":"2 sentences, tied to specific scenes","how_to_recreate":"a precise brief: scene by scene what to film or draw, what to say, what text to show, for a similar video or a still image of this product"}
+Ad headline (not in the video): ${String(meta.headline ?? "").slice(0, 200)}
+TIMED SCRIPT:
+${script}` }];
+  for (const f of frames){ content.push({ type: "text", text: `Frame at ${f.t}s:` }); content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${f.jpg}`, detail: "high" } }); }
+  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model, temperature: 0.1, max_tokens: 4000, response_format: { type: "json_object" }, messages: [{ role: "user", content }] }) });
   const j = await r.json().catch(()=>({}));
   if (!r.ok) throw new Error(j?.error?.message || `OpenAI HTTP ${r.status}`);
-  await learnCount("gpt-4o-mini", { input_tokens: j.usage?.prompt_tokens, output_tokens: j.usage?.completion_tokens });
+  await learnCount(model, { input_tokens: j.usage?.prompt_tokens, output_tokens: j.usage?.completion_tokens });
   try { return JSON.parse(j.choices?.[0]?.message?.content ?? "{}"); } catch (_) { return { why_it_may_work: String(j.choices?.[0]?.message?.content ?? "").slice(0, 600) }; }
 }
+// Whisper with timings: each spoken segment with its start and end second, so every scene gets its exact words.
 async function transcribeAudio(b64) {
   const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
-  if (!OPENAI || !b64) return "";
+  if (!OPENAI || !b64) return { text: "", segments: [] };
   const bin = Uint8Array.from(atob(b64), (c)=>c.charCodeAt(0));
-  const fd = new FormData(); fd.append("file", new Blob([bin], { type: "audio/mpeg" }), "audio.mp3"); fd.append("model", "whisper-1"); fd.append("response_format", "text");
+  const fd = new FormData(); fd.append("file", new Blob([bin], { type: "audio/mpeg" }), "audio.mp3"); fd.append("model", "whisper-1"); fd.append("response_format", "verbose_json"); fd.append("timestamp_granularities[]", "segment");
   const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}` }, body: fd });
-  if (!r.ok) return "";
-  return String(await r.text()).trim().slice(0, 4000);
+  if (!r.ok) return { text: "", segments: [] };
+  const j = await r.json().catch(()=>({}));
+  await learnCount("whisper-1", { input_tokens: Math.round((Number(j.duration) || 0) * 100), output_tokens: 0 });
+  return { text: String(j.text ?? "").trim().slice(0, 4000), segments: (j.segments ?? []).map((x)=>({ start: Number(x.start) || 0, end: Number(x.end) || 0, text: String(x.text ?? "").trim() })) };
 }
 async function handleLearnVideo(limit = 2, only = "") {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -994,10 +1013,10 @@ async function handleLearnVideo(limit = 2, only = "") {
         await admin.storage.from("learn-media").upload(path, Uint8Array.from(atob(fr.jpg), (ch)=>ch.charCodeAt(0)), { contentType: "image/jpeg", upsert: true });
         frames.push({ t: fr.t, path });
       }
-      const transcript = await transcribeAudio(f.audio);
-      const analysis = await openaiVideoAnalysis(f.frames, transcript, { length: f.duration, headline: c.ad.creative?.headline });
-      await admin.from("learn_videos").upsert({ ...row, length_s: f.duration, frames, transcript, analysis, error: null, analyzed_at: new Date().toISOString() });
-      out.push({ video: c.vid, ad: c.ad.name, scenes: f.frames.length, seconds: f.duration, spoken_words: transcript.split(/\s+/).filter(Boolean).length });
+      const tr = await transcribeAudio(f.audio);
+      const analysis = await openaiVideoAnalysis(f.frames, tr.segments, { length: f.duration, headline: c.ad.creative?.headline });
+      await admin.from("learn_videos").upsert({ ...row, length_s: f.duration, frames, transcript: tr.text, segments: tr.segments, analysis, error: null, analyzed_at: new Date().toISOString() });
+      out.push({ video: c.vid, ad: c.ad.name, pictures: f.frames.length, seconds: f.duration, scenes: (analysis.scenes ?? []).length, spoken_words: tr.text.split(/\s+/).filter(Boolean).length });
     } catch (e) {
       await admin.from("learn_videos").upsert({ ...row, error: String(e.message ?? e).slice(0, 240) });
       out.push({ video: c.vid, error: String(e.message ?? e).slice(0, 160) });
@@ -2596,7 +2615,7 @@ async function handleLearnShots(limit = 3, only = null) {
 // ---- What creatives and pages LOOK like: pictures, video frames and a Claude vision description of each -----------------------------------
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 // Per-million-token prices (USD) for what the learner uses, and a running count of real spend per day and model.
-const LEARN_PRICES = { "claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.00, 10.00], "gpt-4o-mini": [0.15, 0.60] };
+const LEARN_PRICES = { "claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.00, 10.00], "gpt-4o-mini": [0.15, 0.60], "gpt-4o": [2.50, 10.00] };
 async function learnCount(model, usage) {
   try {
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
