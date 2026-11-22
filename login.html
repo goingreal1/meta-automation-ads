@@ -369,13 +369,16 @@ body.invite .hero{padding-top:34px;}
   });
 
   // Check if already logged in
-  // Every sign-in needs a second step: an authenticator-app code if the person set one up, otherwise a 6-digit code emailed to them.
+  // Lockdown: the password alone never opens a session. The password is checked first, a 6-digit code is emailed, and only after the
+  // right code does the database issue a one-time pass that lets the sign-in go through. If an authenticator app is set up, its code is asked for too.
   let codeMode = "email";
+  let pending = null; // { email, password } kept only in memory for this one sign-in
   const codeForm = document.getElementById('codeForm');
-  const callSec = async (type, extra) => {
-    const { data: { session } } = await supaClient.auth.getSession();
-    const r = await fetch(SUPA_URL + "/functions/v1/send-internal-email", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ type, ...(extra || {}) }) });
-    return await r.json().catch(() => ({}));
+  const fnCall = async (type, body) => {
+    try {
+      const r = await fetch(SUPA_URL + "/functions/v1/send-internal-email", { method: "POST", headers: { apikey: ANON, Authorization: "Bearer " + ANON, "Content-Type": "application/json" }, body: JSON.stringify({ type, ...(body || {}) }) });
+      return await r.json();
+    } catch (e) { return { ok: false, error: "Network problem. Try again." }; }
   };
   function goOn() { window.location.href = (nextUrl || setupUrl); }
   function showCodeStep(mode, email) {
@@ -393,16 +396,11 @@ body.invite .hero{padding-top:34px;}
   async function proceed() {
     const { data: { session } } = await supaClient.auth.getSession();
     if (!session) return;
-    statusMsg.className = "msg";
     try {
       const aal = await supaClient.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aal.data && aal.data.nextLevel === 'aal2' && aal.data.currentLevel !== 'aal2') { showCodeStep('totp'); return; }
-      const st = await callSec('login_code_status');
-      if (st.verified) { goOn(); return; }
-      const sent = await callSec('login_code_send');
-      if (sent && sent.error) { goOn(); return; } // email trouble must never lock someone out of their own account
-      showCodeStep('email', session.user.email);
-    } catch (e) { goOn(); }
+    } catch (e) { /* no authenticator check available: carry on */ }
+    goOn();
   }
   codeForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -417,12 +415,18 @@ body.invite .hero{padding-top:34px;}
         if (!factor) throw new Error('No authenticator is set up on this account.');
         const { error } = await supaClient.auth.mfa.challengeAndVerify({ factorId: factor.id, code });
         if (error) throw new Error("That code isn't right.");
-      } else {
-        const r = await callSec('login_code_verify', { code });
-        if (!r.ok) throw new Error(r.error || "That code isn't right.");
+        statusMsg.textContent = 'Verified. Redirecting...'; statusMsg.className = 'msg ok';
+        goOn();
+        return;
       }
+      if (!pending) throw new Error('Please start the sign-in again.');
+      const r = await fnCall('login_verify', { ...pending, code });
+      if (!r.ok) throw new Error(r.error || "That code isn't right.");
+      const { error } = await supaClient.auth.signInWithPassword(pending);
+      if (error) throw new Error('Sign-in was refused. Please start again.');
+      pending = null;
       statusMsg.textContent = 'Verified. Redirecting...'; statusMsg.className = 'msg ok';
-      goOn();
+      await proceed();
     } catch (err) {
       statusMsg.textContent = err.message; statusMsg.className = 'msg err';
       btn.disabled = false; btn.textContent = 'Verify';
@@ -430,11 +434,12 @@ body.invite .hero{padding-top:34px;}
   });
   document.getElementById('codeResend').addEventListener('click', async (e) => {
     e.preventDefault();
-    const r = await callSec('login_code_send');
-    statusMsg.textContent = r.wait ? 'A code was just sent. Give it a moment.' : (r.sent ? 'A new code is on its way.' : 'Could not send a code. Try again.');
-    statusMsg.className = r.sent || r.wait ? 'msg ok' : 'msg err';
+    if (!pending) { window.location.reload(); return; }
+    const r = await fnCall('login_start', pending);
+    statusMsg.textContent = r.wait ? 'A code was just sent. Give it a moment.' : (r.sent ? 'A new code is on its way.' : (r.error || 'Could not send a code. Try again.'));
+    statusMsg.className = (r.sent || r.wait) ? 'msg ok' : 'msg err';
   });
-  document.getElementById('codeOut').addEventListener('click', async (e) => { e.preventDefault(); await supaClient.auth.signOut(); window.location.reload(); });
+  document.getElementById('codeOut').addEventListener('click', async (e) => { e.preventDefault(); pending = null; await supaClient.auth.signOut(); window.location.reload(); });
   async function checkSession() {
     const { data: { session } } = await supaClient.auth.getSession();
     if (session) proceed();
@@ -490,11 +495,11 @@ body.invite .hero{padding-top:34px;}
     try {
       if (isLogin) {
         // LOGIN FLOW
-        const { data, error } = await supaClient.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        statusMsg.textContent = "Password accepted. One more step...";
-        statusMsg.className = "msg ok";
-        await proceed();
+        const r = await fnCall('login_start', { email, password });
+        if (!r.ok) throw new Error(r.error || 'Could not sign in.');
+        pending = { email, password };
+        statusMsg.className = "msg";
+        showCodeStep('email', email);
       } else {
         // SIGNUP FLOW
         const confirmPass = document.getElementById('f_pass2').value;

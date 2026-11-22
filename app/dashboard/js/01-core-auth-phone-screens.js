@@ -51,14 +51,10 @@ async function init() {
   }
   sessionData = session;
 
-  // Second step on every sign-in: an authenticator code (if set up) or the code emailed at login. A session that has not passed it goes back to the login page.
-  // If the check itself cannot run, the person is let in rather than locked out of their own account.
+  // The emailed code is enforced by the database sign-in gate. Here, only the authenticator step is checked for people who set one up.
   try {
     const aal = await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aal.data && aal.data.nextLevel === "aal2" && aal.data.currentLevel !== "aal2") { window.location.href = "/login"; return; }
-    const r = await fetch(SUPA_URL + "/functions/v1/send-internal-email", { method: "POST", headers: { Authorization: "Bearer " + session.access_token, apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ type: "login_code_status" }) });
-    const st = await r.json().catch(() => ({}));
-    if (st && st.required && !st.verified) { window.location.href = "/login"; return; }
   } catch (_) { /* never block on an error here */ }
 
   // Multi-tenancy (Phase 1): every signed-in user must belong to a company.

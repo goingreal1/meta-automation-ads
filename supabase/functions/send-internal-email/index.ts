@@ -147,50 +147,60 @@ Deno.serve(async (req)=>{
   try {
     const reqBody = await req.json();
     const { type, fund_request_id } = reqBody;
-    // Sign-in codes: every sign-in needs a 6-digit code sent to the person's email. The code is tied to that one login session.
-    // Works for anyone with a valid session (even before their company is set up), so it runs before the company check below.
-    if (typeof type === "string" && type.startsWith("login_code_")) {
-      const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-      const { data: u } = await supabase.auth.getUser(token);
-      if (!u?.user) return json({ error: "Not signed in" }, 401);
-      let sid = "";
-      try { sid = String(JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).session_id ?? ""); } catch { /* none */ }
-      if (!sid) return json({ error: "No session" }, 400);
-      const uid = u.user.id;
-      const hashOf = (code)=>shaShort(`${code}|${uid}|${sid}|${SVC_KEY.slice(-12)}`);
-      const { data: row } = await supabase.from("login_challenges").select("*").eq("user_id", uid).eq("session_id", sid).maybeSingle();
-      if (type === "login_code_status") return json({ ok: true, required: true, verified: !!row?.verified_at });
-      if (type === "login_code_verify") {
-        if (row?.verified_at) return json({ ok: true, verified: true });
-        if (!row || new Date(row.expires_at).getTime() < Date.now()) return json({ ok: false, error: "That code has expired. Ask for a new one." }, 400);
-        if ((row.attempts ?? 0) >= 5) return json({ ok: false, error: "Too many wrong tries. Ask for a new code." }, 429);
+    // Sign-in lockdown. The login page never gets a session from the password alone:
+    //   login_start  {email, password}       -> checks the password, emails a 6-digit code
+    //   login_verify {email, password, code} -> checks the code, then leaves a one-time pass that the database sign-in gate needs
+    //   check_password {password} (signed in) -> re-checks the person's own password for sensitive actions
+    // The Supabase sign-in gate (rv_access_token_hook) refuses every password sign-in that has no pass, so knowing the password is not enough.
+    if (type === "login_start" || type === "login_verify" || type === "check_password") {
+      const email = String(reqBody.email ?? "").trim().toLowerCase();
+      let ownerId = null;
+      if (type === "check_password") {
+        const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+        const { data: me } = await supabase.auth.getUser(token);
+        if (!me?.user?.email) return json({ ok: false, error: "Not signed in" }, 401);
+        ownerId = me.user.id;
+        reqBody.email = me.user.email;
+      }
+      const pw = String(reqBody.password ?? "");
+      const em = type === "check_password" ? String(reqBody.email).toLowerCase() : email;
+      if (!em || !pw) return json({ ok: false, error: "Enter your email and password." }, 400);
+      const { data: chk } = await supabase.rpc("rv_login_check", { p_email: em, p_password: pw });
+      if (chk?.status === "locked") return json({ ok: false, error: "Too many tries. Wait 15 minutes, then try again." }, 429);
+      if (chk?.status !== "ok") return json({ ok: false, error: "Wrong email or password." }, 401);
+      const uid = chk.user_id;
+      if (type === "check_password") return json({ ok: uid === ownerId });
+      const pepper = SVC_KEY.slice(-12);
+      const hashOf = (code)=>shaShort(`${code}|${uid}|${pepper}`);
+      if (type === "login_verify") {
+        const { data: row } = await supabase.from("login_codes").select("*").eq("user_id", uid).maybeSingle();
+        if (!row || new Date(row.expires_at).getTime() < Date.now()) return json({ ok: false, error: "That code has expired. Send a new one." }, 400);
+        if ((row.attempts ?? 0) >= 5) { await supabase.from("login_codes").delete().eq("user_id", uid); return json({ ok: false, error: "Too many wrong tries. Send a new code." }, 429); }
         const good = (await hashOf(String(reqBody.code ?? "").replace(/\D/g, ""))) === row.code_hash;
-        if (!good) { await supabase.from("login_challenges").update({ attempts: (row.attempts ?? 0) + 1 }).eq("user_id", uid).eq("session_id", sid); return json({ ok: false, error: "That code isn't right." }, 400); }
-        await supabase.from("login_challenges").update({ verified_at: new Date().toISOString() }).eq("user_id", uid).eq("session_id", sid);
-        return json({ ok: true, verified: true });
+        if (!good) { await supabase.from("login_codes").update({ attempts: (row.attempts ?? 0) + 1 }).eq("user_id", uid); return json({ ok: false, error: "That code isn't right." }, 400); }
+        await supabase.from("login_codes").delete().eq("user_id", uid);
+        await supabase.from("login_grants").insert({ user_id: uid, expires_at: new Date(Date.now() + 90000).toISOString() });
+        return json({ ok: true });
       }
-      if (type === "login_code_send") {
-        if (row?.verified_at) return json({ ok: true, verified: true });
-        if (row && Date.now() - new Date(row.created_at).getTime() < 20000) return json({ ok: true, sent: false, wait: true });
-        if (!u.user.email) return json({ error: "No email on this account" }, 400);
-        const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
-        await supabase.from("login_challenges").upsert({ user_id: uid, session_id: sid, code_hash: await hashOf(code), expires_at: new Date(Date.now() + 10 * 60000).toISOString(), attempts: 0, verified_at: null, created_at: new Date().toISOString() });
-        // Device note (also tells them when it is a browser or country we have not seen).
-        const ua = req.headers.get("user-agent") ?? "";
-        const country = (req.headers.get("cf-ipcountry") ?? req.headers.get("x-vercel-ip-country") ?? "").toUpperCase().slice(0, 2) || null;
-        const dv = describeUa(ua);
-        const fp = await shaShort(`${dv.browser}|${dv.os}|${country ?? ""}`);
-        const { count } = await supabase.from("login_devices").select("id", { count: "exact", head: true }).eq("user_id", uid);
-        const { data: known } = await supabase.from("login_devices").select("id").eq("user_id", uid).eq("fingerprint", fp).maybeSingle();
-        if (known) await supabase.from("login_devices").update({ last_seen: new Date().toISOString() }).eq("id", known.id);
-        else await supabase.from("login_devices").insert({ user_id: uid, fingerprint: fp, device: dv.label, country, alerted_at: (count ?? 0) > 0 ? new Date().toISOString() : null });
-        const isNew = !known && (count ?? 0) > 0;
-        const when = new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" });
-        const html = brandedHtml(`Your sign-in code: ${code}`, [`Enter this code to finish signing in. It works once and expires in 10 minutes.`, `Device: ${dv.label}${isNew ? " (new to this account)" : ""}`, `Country: ${country ?? "unknown"}`, `Time: ${when} (Lagos)`, "If this wasn't you, don't share the code. Reset your password now."], { url: "https://dash.revoracrm.online/login", label: "Secure my account" });
-        await sendEmail(u.user.email, `${code} is your Revora sign-in code`, html);
-        return json({ ok: true, sent: true, new_device: isNew });
-      }
-      return json({ error: "Unknown request" }, 400);
+      // login_start
+      const { data: prev } = await supabase.from("login_codes").select("created_at").eq("user_id", uid).maybeSingle();
+      if (prev && Date.now() - new Date(prev.created_at).getTime() < 20000) return json({ ok: true, sent: false, wait: true });
+      const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0");
+      await supabase.from("login_codes").upsert({ user_id: uid, code_hash: await hashOf(code), expires_at: new Date(Date.now() + 10 * 60000).toISOString(), attempts: 0, created_at: new Date().toISOString() });
+      const ua = req.headers.get("user-agent") ?? "";
+      const country = (req.headers.get("cf-ipcountry") ?? req.headers.get("x-vercel-ip-country") ?? "").toUpperCase().slice(0, 2) || null;
+      const dv = describeUa(ua);
+      const fp = await shaShort(`${dv.browser}|${dv.os}|${country ?? ""}`);
+      const { count } = await supabase.from("login_devices").select("id", { count: "exact", head: true }).eq("user_id", uid);
+      const { data: known } = await supabase.from("login_devices").select("id").eq("user_id", uid).eq("fingerprint", fp).maybeSingle();
+      if (known) await supabase.from("login_devices").update({ last_seen: new Date().toISOString() }).eq("id", known.id);
+      else await supabase.from("login_devices").insert({ user_id: uid, fingerprint: fp, device: dv.label, country, alerted_at: (count ?? 0) > 0 ? new Date().toISOString() : null });
+      const isNew = !known && (count ?? 0) > 0;
+      const when = new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short" });
+      const html = brandedHtml(`Your sign-in code: ${code}`, ["Enter this code to finish signing in. It works once and expires in 10 minutes.", `Device: ${dv.label}${isNew ? " (new to this account)" : ""}`, `Country: ${country ?? "unknown"}`, `Time: ${when} (Lagos)`, "If this wasn't you, someone has your password. Don't share the code, and reset your password now."], { url: "https://dash.revoracrm.online/login", label: "Secure my account" });
+      try { await sendEmail(em, `${code} is your Revora sign-in code`, html); }
+      catch (e) { console.error("login code email failed:", e); return json({ ok: false, error: "We couldn't send the code. Try again in a minute." }, 502); }
+      return json({ ok: true, sent: true, new_device: isNew });
     }
     if (!await getCaller(req, supabase)) return json({
       error: "Not signed in"

@@ -69,8 +69,8 @@ function bvRenderPwPanel() {
     try {
       const { data: u } = await supabaseClient.auth.getUser();
       const email = u?.user?.email; if (!email) throw new Error("Please log in again first.");
-      const chk = await supabaseClient.auth.signInWithPassword({ email, password: o });
-      if (chk.error) throw new Error("Your current password is not correct.");
+      const chk = await fetch(SUPA_URL + "/functions/v1/send-internal-email", { method: "POST", headers: { Authorization: "Bearer " + sessionData.access_token, apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ type: "check_password", password: o }) }).then((x) => x.json()).catch(() => ({}));
+      if (!chk.ok) throw new Error("Your current password is not correct.");
       const up = await supabaseClient.auth.updateUser({ password: n });
       if (up.error) throw new Error(up.error.message);
       ["pwOld", "pwNew", "pwNew2"].forEach(id => document.getElementById(id).value = "");

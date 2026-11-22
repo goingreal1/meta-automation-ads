@@ -330,8 +330,8 @@ function bvShowChatPaymentConfirm(payment) {
     if (!password) { msg.innerHTML = `<div class="msg err">❌ Enter your password.</div>`; return; }
     btn.disabled = true; btn.textContent = "Verifying…";
     try {
-      const { error: authErr } = await supabaseClient.auth.signInWithPassword({ email: sessionData.user.email, password });
-      if (authErr) throw new Error("Incorrect password.");
+      const pwChk = await fetch(SUPA_URL + "/functions/v1/send-internal-email", { method: "POST", headers: { Authorization: "Bearer " + sessionData.access_token, apikey: ANON, "Content-Type": "application/json" }, body: JSON.stringify({ type: "check_password", password }) }).then((x) => x.json()).catch(() => ({}));
+      if (!pwChk.ok) throw new Error("Incorrect password.");
       btn.textContent = "Sending…";
       const r = payment.kind === "meta_transfer"
         ? await sbFn("paystack-transfer-to-meta", {
