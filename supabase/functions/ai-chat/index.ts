@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { AREAS, forModel, isReadOnly, registry, routeAreas, runExtra, extraTools, toOpenAI, toolsForAreas, callTool as bridgeCall } from "./bridge.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
@@ -1708,6 +1709,8 @@ Rules:
 - Taking action on ads: use propose_status_change (pause/kill/resume an ad, ad set or campaign) and propose_budget_change (scale a daily budget). These NEVER execute directly — they put a confirm card in the chat and the person taps Confirm. So after calling one, say what you propose and why, and that it is waiting for their tap. Never say it is done. Get the ids from get_live_ads. You may propose several at once. Do not propose pausing something just because it is new — respect the min spend/hours in their thresholds.
 - Creating a whole new campaign from chat is coming soon; for now point them to the Create/Launch button.
 
+MORE TOOLS: besides the tools listed with this chat you can be given more tools for plans (list_plans, get_plan, update_plan, add_ad_set, get_ads, edit_ad), creatives and images, products, sales pages and file websites (site_*), money, orders, social posts and housing. They appear in your tool list when the message is about them. If you need a kind of tool you do not see, call more_tools with the area names. Tools that only read run straight away. Tools that change, spend, publish or move money are never run by you: a confirm card goes to the person and nothing happens until they tap it, so say what you asked them to confirm and never say it is done. Never set confirmed, person_confirmed or person_approved yourself. Money is shown in the ad account's own currency, not always naira.
+
 ${businessBrief}
 
 ${PLAYBOOK}
@@ -2670,23 +2673,75 @@ ${JSON.stringify(data)}`;
   ];
   let quickReplies = [];
   let pendingPayment = null;
+  // Tools from the connected-assistant functions (see bridge.ts): only the groups this message needs, more on request.
+  let bridgeOn = ["owner", "admin", "buyer"].includes(ctx.role);
+  const reg = bridgeOn ? await registry().catch(()=>new Map()) : new Map();
+  const activeAreas = new Set(bridgeOn ? routeAreas(question, history) : []);
+  const bctx = {
+    token: authHeader.replace(/^Bearer\s+/i, ""),
+    userId: ctx.userId,
+    email: user.email ?? null,
+    companyId: ctx.companyId,
+    role: ctx.role,
+    mediaBuyerId: ctx.mediaBuyerId ?? null,
+    displayName: ctx.displayName || ""
+  };
+  const MORE_TOOLS = {
+    type: "function",
+    function: {
+      name: "more_tools",
+      description: "Get more tools when the ones you have do not cover the request. Pass the areas you need.",
+      parameters: {
+        type: "object",
+        properties: {
+          areas: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: AREAS
+            }
+          }
+        },
+        required: [
+          "areas"
+        ]
+      }
+    }
+  };
+  const bridgeTools = ()=>bridgeOn ? [
+      ...toolsForAreas(reg, [
+        ...activeAreas
+      ]).map(toOpenAI),
+      ...extraTools(),
+      MORE_TOOLS
+    ] : [];
   try {
     for(let step = 0; step < 8; step++){
-      const r = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages,
-          tools: TOOLS,
-          tool_choice: "auto",
-          temperature: 0.4,
-          max_tokens: 2200
-        })
-      });
+      const askModel = (withBridge)=>fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages,
+            tools: [
+              ...TOOLS,
+              ...withBridge ? bridgeTools() : []
+            ],
+            tool_choice: "auto",
+            temperature: 0.4,
+            max_tokens: 2200
+          })
+        });
+      let r = await askModel(true);
+      // If the model service refuses one of the connected tools' definitions, carry on with the built-in tools instead of failing the chat.
+      if (r.status === 400 && bridgeOn) {
+        console.error("bridge tools refused, retrying without them");
+        bridgeOn = false;
+        r = await askModel(false);
+      }
       const out = await r.json();
       if (!r.ok) return json({
         error: out?.error?.message || "AI request failed"
@@ -2714,9 +2769,28 @@ ${JSON.stringify(data)}`;
         try {
           args = JSON.parse(tc.function.arguments || "{}");
         } catch  {}
-        const result = tc.function.name === "write_ad_copy" ? await writeAdCopy(args, ctx, brief).catch((e)=>({
+        const tname = tc.function.name;
+        const bdef = bridgeOn && toolsForAreas(reg, [
+          ...activeAreas
+        ]).some((d)=>d.name === tname) ? reg.get(tname) : null;
+        let result;
+        if (tname === "more_tools") {
+          const asked = (Array.isArray(args?.areas) ? args.areas : []).filter((a)=>AREAS.includes(a));
+          asked.forEach((a)=>activeAreas.add(a));
+          result = {
+            ok: true,
+            added: asked,
+            note: "Those tools are available from your next step."
+          };
+        } else if (bdef) {
+          if (!isReadOnly(bdef)) result = {
+            error: "This changes something, so it needs the person's tap on a confirm card. That is not switched on yet: tell the person you cannot do it from chat for now."
+          };
+          else result = await bridgeCall(bdef, args, bctx);
+        } else if (tname === "write_ad_copy") result = await writeAdCopy(args, ctx, brief).catch((e)=>({
             error: "Could not write the copy: " + e.message
-          })) : await runTool(tc.function.name, args, ctx);
+          }));
+        else result = (await runExtra(tname, args, bctx)) ?? await runTool(tname, args, ctx);
         if (tc.function.name === "list_ad_accounts" && Array.isArray(result) && result.length > 1) {
           quickReplies = result.slice(0, 6).map((a)=>`What's the balance on ${a.name}?`);
         }
@@ -2732,7 +2806,7 @@ ${JSON.stringify(data)}`;
         messages.push({
           role: "tool",
           tool_call_id: tc.id,
-          content: JSON.stringify(result)
+          content: bdef ? forModel(result) : JSON.stringify(result)
         });
       }
     }
