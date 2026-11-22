@@ -792,10 +792,11 @@ async function apMakeImage(run: Record<string, any>, name: string, prompt: strin
   for (let attempt = 0; attempt < (opts.expect?.length ? 2 : 1); attempt++) {
     const r = await openaiImage(prompt, { refs: opts.refs, size: opts.size });
     if (!r.bytes) continue;
+    // The page builder only accepts pictures stored on Supabase itself, so these go to Supabase Storage directly (not through the R2 switch).
     const path = `autopilot/${run.company_id}/${run.id}/${name}-${attempt}.png`;
-    const up = await db.storage.from("creative-vault").upload(path, r.bytes, { contentType: "image/png", upsert: true });
+    const up = await createClient(SUPABASE_URL, SERVICE).storage.from("creative-vault").upload(path, r.bytes, { contentType: "image/png", upsert: true });
     if (up.error) continue;
-    const url = db.storage.from("creative-vault").getPublicUrl(path).data.publicUrl;
+    const url = `${SUPABASE_URL}/storage/v1/object/public/creative-vault/${path}`;
     if (!opts.expect?.length) return url;
     const read = (await apReadText(url)).toLowerCase().replace(/[\s,]/g, "");
     if (opts.expect.every((e) => read.includes(e.toLowerCase().replace(/[\s,]/g, "")))) return url;
