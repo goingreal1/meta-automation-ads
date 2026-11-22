@@ -156,6 +156,8 @@ async function renderSettings(el) {
 
     <div class="panel" data-sec="automation" id="emailPanel"></div>
 
+    <div class="panel" data-sec="automation" id="securityPanel"></div>
+
     <div class="panel" data-sec="automation" id="killRulesPanel"></div>
 
     <div class="panel" data-sec="domains" id="domainsPanel"></div>

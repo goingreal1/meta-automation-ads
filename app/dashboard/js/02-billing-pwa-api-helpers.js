@@ -274,6 +274,52 @@ function bvIosInstallSteps() {
 
 // The Notifications card on the Settings tab.
 
+
+// Security: every sign-in already needs the code we email. An authenticator app (Google Authenticator, Authy, 1Password...) can replace the emailed code with a stronger one.
+async function bvRenderSecurityPanel() {
+  const el = document.getElementById("securityPanel");
+  if (!el) return;
+  const head = `<div class="ph"><div class="ph-title">Sign-in security</div></div>`;
+  const row = (l, sub, right) => `<div class="np-row"><div><div class="np-lbl">${l}</div><div class="np-sub">${sub}</div></div>${right || ""}</div>`;
+  let factors = [];
+  try { const r = await supabaseClient.auth.mfa.listFactors(); factors = (r.data && r.data.all) || []; } catch (_) {}
+  const on = factors.find((f) => f.factor_type === "totp" && f.status === "verified");
+  el.innerHTML = head
+    + row("Email code on every sign-in", "We email a 6-digit code each time you log in, and tell you when it is a new device.", `<span class="np-status on">On</span>`)
+    + (on
+      ? row("Authenticator app", "Logging in asks for the code from your app instead of the emailed code.", `<button class="btn btn-g" id="secOffBtn">Turn off</button>`)
+      : row("Authenticator app", "Add an app like Google Authenticator for a stronger second step.", `<button class="btn btn-a" id="secOnBtn">Set up</button>`))
+    + `<div id="secBox" style="margin-top:10px;"></div>`;
+  const box = document.getElementById("secBox");
+  const msg = (t, ok) => { box.innerHTML = `<div class="msg ${ok ? "ok" : "err"}" style="display:block;">${escH(t)}</div>`; };
+  document.getElementById("secOffBtn")?.addEventListener("click", async () => {
+    if (!confirm("Turn off the authenticator app? You will go back to the emailed code at sign-in.")) return;
+    try { const { error } = await supabaseClient.auth.mfa.unenroll({ factorId: on.id }); if (error) throw error; bvRenderSecurityPanel(); }
+    catch (e) { msg("Couldn't turn it off: " + e.message); }
+  });
+  document.getElementById("secOnBtn")?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    try {
+      for (const f of factors.filter((x) => x.factor_type === "totp" && x.status !== "verified")) await supabaseClient.auth.mfa.unenroll({ factorId: f.id });
+      const { data, error } = await supabaseClient.auth.mfa.enroll({ factorType: "totp", friendlyName: "Revora " + new Date().toISOString().slice(0, 10) });
+      if (error) throw error;
+      box.innerHTML = `<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:10px;">1. Open your authenticator app and scan this code (or type the key).<br>2. Enter the 6-digit code it shows.</div>
+        <div style="background:#fff;display:inline-block;padding:8px;border-radius:12px;border:1px solid var(--border);"><img src="${data.totp.qr_code}" alt="QR code" width="168" height="168" style="display:block;"></div>
+        <div style="font-size:12px;color:var(--muted);margin:8px 0 12px;word-break:break-all;">Key: <b>${escH(data.totp.secret)}</b></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><input id="secCode" inputmode="numeric" maxlength="6" placeholder="123456" style="max-width:150px;letter-spacing:.25em;text-align:center;"><button class="btn btn-a" id="secVerifyBtn">Turn on</button></div><div id="secMsg" style="margin-top:8px;"></div>`;
+      document.getElementById("secVerifyBtn").onclick = async (e2) => {
+        const code = document.getElementById("secCode").value.replace(/\D/g, "");
+        const m = document.getElementById("secMsg");
+        if (code.length !== 6) { m.innerHTML = `<div class="msg err" style="display:block;">Enter the 6-digit code.</div>`; return; }
+        e2.currentTarget.disabled = true;
+        const v = await supabaseClient.auth.mfa.challengeAndVerify({ factorId: data.id, code });
+        if (v.error) { m.innerHTML = `<div class="msg err" style="display:block;">That code isn't right. Check your phone's clock and try again.</div>`; e2.currentTarget.disabled = false; return; }
+        bvRenderSecurityPanel();
+      };
+    } catch (e) { msg("Couldn't start setup: " + e.message); ev.currentTarget.disabled = false; }
+  });
+}
+
 // Email preferences: report emails and new-device sign-in alerts, each switchable per person.
 function bvRenderEmailPanel() {
   const el = document.getElementById("emailPanel");
