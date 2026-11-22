@@ -273,6 +273,35 @@ function ccReview(c) {
   return card;
 }
 
+// Talks to ai-chat as a server-sent stream. If the stream cannot be used, it falls back to the plain request.
+async function chStream(body, on) {
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/ai-chat`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${sessionData?.access_token || ANON}`, "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ ...body, stream: true }),
+    });
+    if (!/event-stream/.test(res.headers.get("content-type") || "")) return await res.json();
+    const rd = res.body.getReader(), dec = new TextDecoder();
+    let buf = "", final = null;
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+        if (!line.startsWith("data:")) continue;
+        let e; try { e = JSON.parse(line.slice(5)); } catch { continue; }
+        if (e.type === "done") final = e; else on[e.type]?.(e.text);
+      }
+    }
+    return final || { error: "The answer was cut off. Try again." };
+  } catch (e) {
+    return await sbFn("ai-chat", body);
+  }
+}
+
 async function askChat(q, display) {
   if (chBusy) return;
   chBusy = true;
@@ -285,7 +314,13 @@ async function askChat(q, display) {
   thinking.innerHTML = '<span class="ch-typing"><i></i><i></i><i></i></span>';
   thinking.style.padding = "0";
   try {
-    const r = await sbFn("ai-chat", { question: q, history: chatHistory, active_ad_account_id: activeAccountId || null });
+    // The answer arrives as it is written, with short progress lines while tools run ("Checking your live ads...").
+    let streamed = "";
+    const r = await chStream({ question: q, history: chatHistory, active_ad_account_id: activeAccountId || null }, {
+      status: t => { if (!streamed) thinking.innerHTML = `<span class="ch-typing"><i></i><i></i><i></i></span><span style="margin-left:8px;color:var(--muted);font-size:12.5px">${escH(t)}</span>`; },
+      delta: t => { streamed += t; thinking.style.padding = ""; thinking.classList.remove("typing"); thinking.innerHTML = chFmt(streamed); const m = document.getElementById("chMsgs"); m.scrollTop = m.scrollHeight; },
+      reset: () => { streamed = ""; thinking.classList.add("typing"); thinking.style.padding = "0"; },
+    });
     thinking.style.padding = "";
     if (r?.answer) {
       chSetBot(thinking, r.answer);

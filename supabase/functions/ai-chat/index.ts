@@ -1499,6 +1499,74 @@ EDIT THEM into the final version. Rules: keep ${count} ads. FIRST run a PRODUCT 
     note: "Show copy_markdown exactly as written. Do not rewrite or shorten it."
   };
 }
+const DATA_CACHE = new Map();
+const BRIEF_CACHE = new Map();
+// The small fast model decides which tool groups an unclear message needs. It never answers the person.
+async function llmRoute(question, history) {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(()=>ctl.abort(), 2500);
+    const recent = history.slice(-2).map((m)=>`${m.role}: ${String(m.content).slice(0, 300)}`).join("\n");
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      signal: ctl.signal,
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        max_tokens: 40,
+        response_format: {
+          type: "json_object"
+        },
+        messages: [
+          {
+            role: "system",
+            content: `Pick which tool areas a message to an ads and orders assistant needs. Areas: plans (campaign drafts, start time, ad sets, live ads, budgets), creatives (images, videos, vault), products (catalog, packages), pages (sales pages, websites, files), money (wallet, transfers, top ups, fund requests), orders (orders, leads, customers), social (posts), housing (properties, tours). Answer JSON only: {"areas":[...]} with 0 to 3 areas, [] for plain questions about numbers or chat.`
+          },
+          {
+            role: "user",
+            content: `${recent ? recent + "\n" : ""}message: ${question.slice(0, 500)}`
+          }
+        ]
+      })
+    });
+    clearTimeout(t);
+    const j = await r.json();
+    const a = JSON.parse(j?.choices?.[0]?.message?.content || "{}").areas;
+    return (Array.isArray(a) ? a : []).filter((x)=>AREAS.includes(x)).slice(0, 3);
+  } catch  {
+    return [];
+  }
+}
+const STATUS_TEXT = {
+  get_live_ads: "Checking your live ads…",
+  get_ad_account_performance: "Reading your ad results…",
+  query_data: "Looking that up…",
+  list_ad_accounts: "Checking your ad accounts…",
+  write_ad_copy: "Writing your ad copy…",
+  plan_campaign: "Building your plan…",
+  get_plan: "Reading your plan…",
+  update_plan: "Preparing the change…",
+  list_plans: "Looking at your drafts…",
+  site_list_files: "Looking at the site files…",
+  more_tools: "Getting the right tools…"
+};
+// reading tools that can safely run side by side in one step
+const PARALLEL_SAFE = new Set([
+  "get_live_ads",
+  "get_ad_account_performance",
+  "query_data",
+  "list_ad_accounts",
+  "get_wallet_balance",
+  "get_product",
+  "check_pixel",
+  "search_audiences",
+  "estimate_reach",
+  "list_pending_fund_requests"
+]);
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", {
     headers: CORS
@@ -1794,36 +1862,69 @@ Deno.serve(async (req)=>{
       lowThreshold: a.low_balance_threshold_naira ?? null
     };
   }
-  let killRules = [];
-  if ([
+  // Everything the prompt needs is loaded at the same time, and the slow parts are remembered for a short while
+  // (the data snapshot for a minute, the business brief for five), so a follow-up question does not pay for them again.
+  const sinceIso = new Date(Date.now() - 7 * 24 * 3600 * 1e3).toISOString();
+  const canBridge = [
     "owner",
     "admin",
     "buyer"
-  ].includes(ctx.role)) {
-    const { data: kr } = await supabase.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", ctx.userId);
-    killRules = kr || [];
-  }
-  const { data: companyRow } = await supabase.from("companies").select("name").eq("id", ctx.companyId).maybeSingle();
-  const companyName = companyRow?.name || "the company";
-  let data;
-  const sinceIso = new Date(Date.now() - 7 * 24 * 3600 * 1e3).toISOString();
-  try {
-    if (ctx.role === "owner" || ctx.role === "admin") data = await buildAdminContext(ctx.companyId, sinceIso);
-    else if (ctx.role === "buyer") data = await buildBuyerContext(ctx.companyId, ctx.mediaBuyerId, sinceIso);
-    else if (ctx.role === "customer_care") data = await buildCareContext(ctx.companyId, sinceIso);
-    else if (ctx.role === "delivery_agent") data = await buildDeliveryContext(ctx.companyId, ctx.deliveryAgentId, sinceIso);
-    else data = {
+  ].includes(ctx.role);
+  const dataKey = `${ctx.role}:${ctx.companyId}:${ctx.mediaBuyerId ?? ctx.deliveryAgentId ?? ""}`;
+  const loadData = async ()=>{
+    const hit = DATA_CACHE.get(dataKey);
+    if (hit && Date.now() - hit.at < 60_000 && body?.fresh !== true) return hit.v;
+    let v;
+    if (ctx.role === "owner" || ctx.role === "admin") v = await buildAdminContext(ctx.companyId, sinceIso);
+    else if (ctx.role === "buyer") v = await buildBuyerContext(ctx.companyId, ctx.mediaBuyerId, sinceIso);
+    else if (ctx.role === "customer_care") v = await buildCareContext(ctx.companyId, sinceIso);
+    else if (ctx.role === "delivery_agent") v = await buildDeliveryContext(ctx.companyId, ctx.deliveryAgentId, sinceIso);
+    else v = {
       note: "No specific data view defined for this role yet."
     };
-  } catch (e) {
-    return json({
-      error: "Couldn't pull your data: " + e.message
-    }, 500);
-  }
-  const brief = await buildBusinessBrief(ctx.companyId, companyName).catch(()=>({
-      text: `BUSINESS: ${companyName}.`,
-      language: "pidgin_mix"
-    }));
+    DATA_CACHE.set(dataKey, {
+      at: Date.now(),
+      v
+    });
+    return v;
+  };
+  const companyP = supabase.from("companies").select("name").eq("id", ctx.companyId).maybeSingle();
+  const briefP = companyP.then(async ({ data: cr })=>{
+    const nm = cr?.name || "the company";
+    const hit = BRIEF_CACHE.get(ctx.companyId);
+    if (hit && Date.now() - hit.at < 300_000) return hit.v;
+    const v = await buildBusinessBrief(ctx.companyId, nm).catch(()=>({
+        text: `BUSINESS: ${nm}.`,
+        language: "pidgin_mix"
+      }));
+    BRIEF_CACHE.set(ctx.companyId, {
+      at: Date.now(),
+      v
+    });
+    return v;
+  });
+  const keywordAreas = canBridge ? routeAreas(question, history) : [];
+  const [krRes, { data: companyRow }, dataRes, brief, regLoaded, llmAreas] = await Promise.all([
+    canBridge ? supabase.from("kill_rules").select("kind, enabled, auto_kill, max_cost_per_result, min_spend, min_hours").eq("profile_id", ctx.userId) : Promise.resolve({
+      data: []
+    }),
+    companyP,
+    loadData().then((v)=>({
+        v
+      }), (e)=>({
+        err: e
+      })),
+    briefP,
+    canBridge ? registry().catch(()=>new Map()) : Promise.resolve(new Map()),
+    // a cheap, fast model works out which tool groups an unclear message needs while the data loads
+    canBridge && !keywordAreas.length && question.length >= 20 ? llmRoute(question, history) : Promise.resolve([])
+  ]);
+  if (dataRes.err) return json({
+    error: "Couldn't pull your data: " + dataRes.err.message
+  }, 500);
+  const data = dataRes.v;
+  const killRules = krRes.data || [];
+  const companyName = companyRow?.name || "the company";
   const businessBrief = brief.text;
   const roleLabel = {
     owner: "the company owner",
@@ -2857,8 +2958,11 @@ ${JSON.stringify(data)}`;
   let pendingPayment = null;
   // Tools from the connected-assistant functions (see bridge.ts): only the groups this message needs, more on request.
   let bridgeOn = ["owner", "admin", "buyer"].includes(ctx.role);
-  const reg = bridgeOn ? await registry().catch(()=>new Map()) : new Map();
-  const activeAreas = new Set(bridgeOn ? routeAreas(question, history) : []);
+  const reg = bridgeOn ? regLoaded : new Map();
+  const activeAreas = new Set(bridgeOn ? [
+    ...keywordAreas,
+    ...llmAreas
+  ] : []);
   const bctx = {
     token: authHeader.replace(/^Bearer\s+/i, ""),
     userId: ctx.userId,
@@ -2897,117 +3001,250 @@ ${JSON.stringify(data)}`;
       ...extraTools(),
       MORE_TOOLS
     ] : [];
-  try {
-    for(let step = 0; step < 8; step++){
-      const askModel = (withBridge)=>fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "gpt-4o",
-            messages,
-            tools: [
-              ...TOOLS,
-              ...withBridge ? bridgeTools() : []
-            ],
-            tool_choice: "auto",
-            temperature: 0.4,
-            max_tokens: 2200
-          })
-        });
-      let r = await askModel(true);
-      // If the model service refuses one of the connected tools' definitions, carry on with the built-in tools instead of failing the chat.
-      if (r.status === 400 && bridgeOn) {
-        console.error("bridge tools refused, retrying without them");
-        bridgeOn = false;
-        r = await askModel(false);
+  const fail = (status, error)=>({
+      status,
+      body: {
+        error
       }
-      const out = await r.json();
-      if (!r.ok) return json({
+    });
+  // One model call. When streaming, the answer's words are sent to the person as they are written.
+  const callModel = async (withBridge, emit)=>{
+    const stream = typeof emit === "function";
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages,
+        tools: [
+          ...TOOLS,
+          ...withBridge ? bridgeTools() : []
+        ],
+        tool_choice: "auto",
+        temperature: 0.4,
+        max_tokens: 2200,
+        ...stream ? {
+          stream: true
+        } : {}
+      })
+    });
+    if (!r.ok) {
+      const out = await r.json().catch(()=>({}));
+      return {
+        ok: false,
+        status: r.status,
         error: out?.error?.message || "AI request failed"
-      }, 502);
+      };
+    }
+    if (!stream) {
+      const out = await r.json();
       const msg = out?.choices?.[0]?.message;
-      if (!msg) return json({
+      return msg ? {
+        ok: true,
+        msg
+      } : {
+        ok: false,
+        status: 502,
         error: "AI returned no response"
-      }, 502);
-      messages.push(msg);
-      if (!msg.tool_calls || !msg.tool_calls.length) {
-        return json({
-          answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.",
-          quick_replies: quickReplies,
-          pending_payment: pendingPayment,
-          proposals: ctx.proposals,
-          cards: ctx.cards,
-          active_account: ctx.account ? {
-            id: ctx.account.id,
-            name: ctx.account.name
-          } : null
-        });
-      }
-      for (const tc of msg.tool_calls){
-        let args = {};
+      };
+    }
+    const msg = {
+      role: "assistant",
+      content: "",
+      tool_calls: []
+    };
+    const dec = new TextDecoder();
+    const reader = r.body.getReader();
+    let buf = "", sentText = false;
+    for(;;){
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {
+        stream: true
+      });
+      let i;
+      while((i = buf.indexOf("\n")) >= 0){
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        let j;
         try {
-          args = JSON.parse(tc.function.arguments || "{}");
-        } catch  {}
-        const tname = tc.function.name;
-        const bdef = bridgeOn && toolsForAreas(reg, [
-          ...activeAreas
-        ]).some((d)=>d.name === tname) ? reg.get(tname) : null;
-        let result;
-        if (tname === "more_tools") {
-          const asked = (Array.isArray(args?.areas) ? args.areas : []).filter((a)=>AREAS.includes(a));
-          asked.forEach((a)=>activeAreas.add(a));
-          result = {
-            ok: true,
-            added: asked,
-            note: "Those tools are available from your next step."
-          };
-        } else if (bdef) {
-          if (!isReadOnly(bdef)) {
-            const q = await queueWrite(supabase, bdef, args, bctx);
-            if (q.card) ctx.cards.push(q.card);
-            result = q.result;
-          } else {
-            result = await bridgeCall(bdef, args, bctx);
-            const bc = cardFor(bdef, args, result);
-            if (bc?.type === "plan_ref") {
-              const pc = await planCardById(bc.plan_id, ctx).catch(()=>null);
-              if (pc) ctx.cards.push(pc);
-            } else if (bc) ctx.cards.push(bc);
+          j = JSON.parse(payload);
+        } catch  {
+          continue;
+        }
+        const d = j?.choices?.[0]?.delta;
+        if (!d) continue;
+        if (d.content) {
+          msg.content += d.content;
+          if (!msg.tool_calls.length) {
+            sentText = true;
+            emit({
+              type: "delta",
+              text: d.content
+            });
           }
-        } else if (tname === "write_ad_copy") result = await writeAdCopy(args, ctx, brief).catch((e)=>({
-            error: "Could not write the copy: " + e.message
-          }));
-        else result = (await runExtra(tname, args, bctx)) ?? await runTool(tname, args, ctx);
-        if (tc.function.name === "list_ad_accounts" && Array.isArray(result) && result.length > 1) {
-          quickReplies = result.slice(0, 6).map((a)=>`What's the balance on ${a.name}?`);
         }
-        if (tc.function.name === "get_ad_account_performance" && result?.ambiguous) {
-          quickReplies = (result.matches || []).slice(0, 6).map((n)=>`KPI for ${n}`);
+        for (const t of d.tool_calls || []){
+          if (!msg.tool_calls.length && sentText) {
+            emit({
+              type: "reset"
+            });
+            sentText = false;
+          }
+          const c = msg.tool_calls[t.index] ??= {
+            id: "",
+            type: "function",
+            function: {
+              name: "",
+              arguments: ""
+            }
+          };
+          if (t.id) c.id = t.id;
+          if (t.function?.name) c.function.name += t.function.name;
+          if (t.function?.arguments) c.function.arguments += t.function.arguments;
         }
-        if (tc.function.name === "resolve_bank_account" && result?.verified) {
-          pendingPayment = result;
-        }
-        if (tc.function.name === "request_funds" && result?.ambiguous) {
-          quickReplies = (result.matches || []).slice(0, 6).map((m)=>`Use ${m}`);
-        }
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: bdef ? forModel(result) : JSON.stringify(result)
-        });
       }
     }
-    return json({
-      error: "That took too many steps to work out — try asking in a simpler way."
-    }, 502);
-  } catch (e) {
-    return json({
-      error: "AI request failed: " + e.message
-    }, 502);
+    msg.tool_calls = msg.tool_calls.filter(Boolean);
+    if (!msg.tool_calls.length) delete msg.tool_calls;
+    return {
+      ok: true,
+      msg
+    };
+  };
+  // Runs one tool call the model asked for and returns the message that goes back to the model.
+  const execTool = async (tc)=>{
+    let args = {};
+    try {
+      args = JSON.parse(tc.function.arguments || "{}");
+    } catch  {}
+    const tname = tc.function.name;
+    const bdef = bridgeOn && toolsForAreas(reg, [
+      ...activeAreas
+    ]).some((d)=>d.name === tname) ? reg.get(tname) : null;
+    let result;
+    if (tname === "more_tools") {
+      const asked = (Array.isArray(args?.areas) ? args.areas : []).filter((a)=>AREAS.includes(a));
+      asked.forEach((a)=>activeAreas.add(a));
+      result = {
+        ok: true,
+        added: asked,
+        note: "Those tools are available from your next step."
+      };
+    } else if (bdef) {
+      if (!isReadOnly(bdef)) {
+        const q = await queueWrite(supabase, bdef, args, bctx);
+        if (q.card) ctx.cards.push(q.card);
+        result = q.result;
+      } else {
+        result = await bridgeCall(bdef, args, bctx);
+        const bc = cardFor(bdef, args, result);
+        if (bc?.type === "plan_ref") {
+          const pc = await planCardById(bc.plan_id, ctx).catch(()=>null);
+          if (pc) ctx.cards.push(pc);
+        } else if (bc) ctx.cards.push(bc);
+      }
+    } else if (tname === "write_ad_copy") result = await writeAdCopy(args, ctx, brief).catch((e)=>({
+        error: "Could not write the copy: " + e.message
+      }));
+    else result = (await runExtra(tname, args, bctx)) ?? await runTool(tname, args, ctx);
+    if (tname === "list_ad_accounts" && Array.isArray(result) && result.length > 1) {
+      quickReplies = result.slice(0, 6).map((a)=>`What's the balance on ${a.name}?`);
+    }
+    if (tname === "get_ad_account_performance" && result?.ambiguous) {
+      quickReplies = (result.matches || []).slice(0, 6).map((n)=>`KPI for ${n}`);
+    }
+    if (tname === "resolve_bank_account" && result?.verified) {
+      pendingPayment = result;
+    }
+    if (tname === "request_funds" && result?.ambiguous) {
+      quickReplies = (result.matches || []).slice(0, 6).map((m)=>`Use ${m}`);
+    }
+    return {
+      role: "tool",
+      tool_call_id: tc.id,
+      content: bdef ? forModel(result) : JSON.stringify(result)
+    };
+  };
+  const runLoop = async (emit)=>{
+    try {
+      for(let step = 0; step < 8; step++){
+        let r = await callModel(true, emit);
+        // If the model service refuses one of the connected tools' definitions, carry on with the built-in tools instead of failing the chat.
+        if (!r.ok && r.status === 400 && bridgeOn) {
+          console.error("bridge tools refused, retrying without them");
+          bridgeOn = false;
+          r = await callModel(false, emit);
+        }
+        if (!r.ok) return fail(502, r.error);
+        const msg = r.msg;
+        messages.push(msg);
+        if (!msg.tool_calls || !msg.tool_calls.length) {
+          return {
+            status: 200,
+            body: {
+              answer: msg.content?.trim() || "I couldn't generate a response from your data just now — try again.",
+              quick_replies: quickReplies,
+              pending_payment: pendingPayment,
+              proposals: ctx.proposals,
+              cards: ctx.cards,
+              active_account: ctx.account ? {
+                id: ctx.account.id,
+                name: ctx.account.name
+              } : null
+            }
+          };
+        }
+        for (const tc of msg.tool_calls)emit?.({
+          type: "status",
+          text: STATUS_TEXT[tc.function.name] || (reg.get(tc.function.name)?.title ? `${reg.get(tc.function.name).title}…` : "Working on it…")
+        });
+        // Several reading tools in one step run side by side; anything that can change or show something runs in order.
+        const calls = msg.tool_calls;
+        const together = calls.length > 1 && calls.every((tc)=>PARALLEL_SAFE.has(tc.function.name) || (reg.get(tc.function.name) && isReadOnly(reg.get(tc.function.name)) && !TOOLS.some((t)=>t.function.name === tc.function.name)));
+        if (together) messages.push(...await Promise.all(calls.map((tc)=>execTool(tc))));
+        else for (const tc of calls)messages.push(await execTool(tc));
+      }
+      return fail(502, "That took too many steps to work out — try asking in a simpler way.");
+    } catch (e) {
+      return fail(502, "AI request failed: " + e.message);
+    }
+  };
+  if (body?.stream === true) {
+    const enc = new TextEncoder();
+    const st = new ReadableStream({
+      async start (c) {
+        const send = (o)=>c.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`));
+        send({
+          type: "status",
+          text: "Thinking…"
+        });
+        const res = await runLoop(send);
+        send({
+          type: "done",
+          status: res.status,
+          ...res.body
+        });
+        c.close();
+      }
+    });
+    return new Response(st, {
+      headers: {
+        ...CORS,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no"
+      }
+    });
   }
+  const res = await runLoop(undefined);
+  return json(res.body, res.status);
 });
 const ADS_URL = `${SUPABASE_URL}/functions/v1/ads-manager`;
 async function accountFor(ctx, requested) {
