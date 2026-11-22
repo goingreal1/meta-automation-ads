@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withR2, R2_ON } from "../_shared/r2storage.ts";
+import { lessonNote, videoNote, pageNote, runNote, failureNote, type Note } from "../_shared/learn_notes.ts";
 import { type MetaRow, type Numbers, type KillRow, type Need, runRows, numbersForRun, teamLines, todayLine, proposeHook, hardStopCheck, campaignsToPause } from "../_shared/autopilot_watch.ts";
 
 // AI Team: a team lead, a creative agent, a media buyer and customer service hold a LIVE daily meeting about the business.
@@ -1270,6 +1271,43 @@ async function apNeed(runId: string, companyId: string, userId: string, needId: 
   return { ok: true };
 }
 
+// ============================ LEARNING NOTES: what was learned, in plain words, one row per thing per day ============================
+// Daily (pg_cron -> action learn_notes). For every business: new lessons, winning video/page findings, what each autopilot run did and how it ended,
+// and what failed and why. Text only, built from rows already in the database (no model call, no Meta call, nothing is spent).
+async function learnNotesDay(day: string) {
+  const from = new Date(`${day}T00:00:00+01:00`).toISOString(), to = new Date(new Date(from).getTime() + 86400_000).toISOString();
+  const { data: cos } = await db.from("ad_accounts").select("company_id");
+  const companies = [...new Set([...(cos ?? []).map((x: any) => x.company_id), ...((await db.from("autopilot_runs").select("company_id").gte("updated_at", from).lt("updated_at", to)).data ?? []).map((x: any) => x.company_id)].filter(Boolean))].slice(0, 200);
+  const { data: glob } = await db.from("learn_lessons").select("id, scope, feature, value, direction, n, winners, lift, confidence, claim, how_to").eq("scope", "global").gte("first_seen", from).lt("first_seen", to).limit(20);
+  let written = 0;
+  for (const companyId of companies as string[]) {
+    const notes: Note[] = [];
+    const { data: ls } = await db.from("learn_lessons").select("id, scope, feature, value, direction, n, winners, lift, confidence, claim, how_to").eq("company_id", companyId).gte("first_seen", from).lt("first_seen", to).limit(20);
+    for (const l of [...(ls ?? []), ...(glob ?? [])]) notes.push(lessonNote(l as any));
+    const { data: vs } = await db.from("learn_videos").select("video_id, ad_id, length_s, analysis").eq("company_id", companyId).gte("analyzed_at", from).lt("analyzed_at", to).limit(6);
+    for (const v of vs ?? []) { const n = videoNote(v as any); if (n) notes.push(n); }
+    const { data: pgs } = await db.from("learn_pages").select("url_norm, title, meta_description").contains("company_ids", [companyId]).eq("status", "ok").gte("fetched_at", from).lt("fetched_at", to).limit(8);
+    const pn = pageNote((pgs ?? []) as any); if (pn) notes.push(pn);
+    const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, daily_budget, total_budget, billing_currency, market_countries, steps, watch, log, updated_at").eq("company_id", companyId).gte("updated_at", from).lt("updated_at", to).limit(10);
+    const fails: { what: string; why: string; ref?: Record<string, unknown> }[] = [];
+    for (const r of runs ?? []) {
+      const { data: pr } = await db.from("products").select("product_name").eq("id", r.product_id).maybeSingle();
+      notes.push(runNote(r as any, pr?.product_name ?? "a product", moneyText));
+      for (const st of ((r.steps ?? []) as any[]).filter((x) => x.state === "failed")) fails.push({ what: `Autopilot step “${st.label}” for ${pr?.product_name ?? "a product"}`, why: st.note, ref: { run_id: r.id } });
+    }
+    const { data: bad } = await db.from("ai_launches").select("id, product_name, note").eq("company_id", companyId).eq("status", "failed").gte("updated_at", from).lt("updated_at", to).limit(6);
+    for (const b of bad ?? []) fails.push({ what: `Launch of ${b.product_name}`, why: b.note, ref: { launch_id: b.id } });
+    const { data: badImg } = await db.from("ai_team_images").select("id, brief, error").eq("company_id", companyId).eq("status", "failed").gte("updated_at", from).lt("updated_at", to).limit(6);
+    for (const b of badImg ?? []) fails.push({ what: `Ad picture for ${String((b.brief as any)?.product ?? "a product")}`, why: b.error, ref: { image_id: b.id } });
+    const fn = failureNote(day, fails); if (fn) notes.push(fn);
+    if (!notes.length) continue;
+    const rows = notes.map((n) => ({ company_id: companyId, day, kind: n.kind, title: n.title, body_md: n.body_md, source_refs: n.source_refs }));
+    const { error } = await db.from("learn_notes").upsert(rows, { onConflict: "company_id,day,kind,title" });
+    if (!error) written += rows.length; else console.error("learn_notes", companyId, error.message);
+  }
+  return { day, companies: companies.length, notes: written };
+}
+
 async function apTickAll() {
   const { data: runs } = await db.from("autopilot_runs").select("id").in("status", ["running", "waiting", "live"]).order("updated_at", { ascending: true }).limit(6);
   for (const r of runs ?? []) await apAdvance(r.id);
@@ -1306,6 +1344,8 @@ Deno.serve(async (req) => {
   if (cron) {
     const { data: sec } = await db.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
     if (!sec?.value || sec.value !== cron) return json({ error: "Not allowed." }, 401);
+    const cb = await req.clone().json().catch(() => ({}));
+    if (cb?.action === "learn_notes") { const day = /^\d{4}-\d{2}-\d{2}$/.test(String(cb.day ?? "")) ? String(cb.day) : new Date(Date.now() + 3600_000 - 86400_000).toISOString().slice(0, 10); return json({ ok: true, ...(await learnNotesDay(day)) }); }
     const log = await tick(); const aps = await apTickAll().catch(() => -1);
     return json({ ok: true, log, autopilot_runs_advanced: aps });
   }
