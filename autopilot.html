@@ -88,13 +88,21 @@ async function load() {
 }
 function acctCur(p) { var a = (S.accounts || []).find(function (x) { return x.id === p.ad_account_id; }); return a ? (a.currency || "NGN") : "NGN"; }
 function marketOf(p) { var c = (p.target_countries && p.target_countries.length) ? p.target_countries : (S.company && S.company.country ? [S.company.country] : []); return c; }
+function missingFor(p, mk) {
+  var m = [], has = function (v) { return Array.isArray(v) ? v.length > 0 : !!(v && String(v).trim()); };
+  if (!has(p.description)) m.push("What the product is and does (description)");
+  if (!has(p.benefits)) m.push("Its benefits");
+  if (!has(p.product_image_url)) m.push("A photo of the real product");
+  if (!mk.length) m.push("The country it sells in (target countries)");
+  return m;
+}
 function drawStart() {
   var prods = (S.products || []).filter(function (p) { return p.ad_account_id; });
   if (!prods.length) return '<div class="card"><div class="r"><div><b>No product is ready</b><span class="d">Add a product in the Catalog and assign an ad account to it first.</span></div></div></div>';
   if (!sel.product) sel.product = prods[0].id;
   var p = prods.filter(function (x) { return x.id === sel.product; })[0] || prods[0];
   var bill = acctCur(p), mk = marketOf(p), mcur = mk.length ? CUR[mk[0]] : "";
-  var diff = mcur && mcur !== bill;
+  var diff = mcur && mcur !== bill, miss = missingFor(p, mk);
   var h = '<div class="lbl">Product</div><div class="card"><div class="r"><div style="flex:1"><select id="prod">' + prods.map(function (x) { return '<option value="' + x.id + '"' + (x.id === p.id ? " selected" : "") + ">" + esc(x.product_name) + "</option>"; }).join("") + "</select></div></div>"
     + '<div class="r"><div><b>Market</b><span class="d">Where it sells</span></div><div class="v">' + (mk.length ? esc(countries(mk)) : '<span style="color:var(--bad)">Not set in the Catalog</span>') + "</div></div>"
     + '<div class="r"><div><b>Ad account bills in</b><span class="d">Meta decides this</span></div><div class="v">' + esc(bill) + "</div></div></div>"
@@ -103,8 +111,9 @@ function drawStart() {
     + '<div class="r"><div><b>Testing budget</b><span class="d">Per day</span></div><input class="num" id="daily" inputmode="numeric" placeholder="3000" value="' + esc(sel.daily) + '"></div>'
     + '<div class="r"><div><b>Hard stop</b><span class="d">The run ends before it can spend more than this</span></div><input class="num" id="total" inputmode="numeric" placeholder="9000" value="' + esc(sel.total) + '"></div></div>'
     + '<div class="lbl">Launch</div><div class="opts"><div class="opt on"><b>Ask me first</b>One tap to launch</div><div class="opt off"><b>Go alone</b>Coming later</div></div>'
+    + (miss.length ? '<div class="lbl">Needs you</div><div class="card" style="padding:12px 14px;border-color:var(--warn)"><b>Add this in the Catalog first, so the run does not stop halfway:</b><ul class="li">' + miss.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + '</ul><div class="note">Then come back and tap Start.</div></div>' : "")
     + '<div class="note">Nothing goes live and no money is spent until you tap approve.</div><div class="err" id="err"></div>'
-    + '<button class="pri" id="go"' + (mk.length ? "" : " disabled") + ">Start autopilot</button>";
+    + '<button class="pri" id="go"' + (miss.length ? " disabled" : "") + ">Start autopilot</button>";
   return h;
 }
 function stepsHtml(run) {

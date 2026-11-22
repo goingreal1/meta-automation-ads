@@ -1527,7 +1527,7 @@ Deno.serve(async (req) => {
   if (b?.action === "ap_state") {
     if (!["owner", "admin"].includes(String(p.role ?? ""))) return json({ error: "Autopilot is for owners and admins." }, 403);
     const { data: runs } = await db.from("autopilot_runs").select("id, product_id, status, step, steps, research, page, launch_id, meeting_id, market_countries, billing_currency, market_currency, daily_budget, total_budget, launch_mode, note, log, watch, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false }).limit(8);
-    const { data: prods } = await db.from("products").select("id, product_name, target_countries, ad_account_id, landing_page_url, product_image_url, is_active").eq("company_id", companyId).eq("is_active", true).order("created_at", { ascending: false });
+    const { data: prods } = await db.from("products").select("id, product_name, target_countries, ad_account_id, landing_page_url, product_image_url, is_active, description, benefits").eq("company_id", companyId).eq("is_active", true).order("created_at", { ascending: false });
     const { data: accts } = await db.from("ad_accounts").select("id, currency, nickname, name").eq("company_id", companyId);
     const { data: co } = await db.from("companies").select("country, currency").eq("id", companyId).maybeSingle();
     const launchIds = (runs ?? []).map((r) => r.launch_id).filter(Boolean);
