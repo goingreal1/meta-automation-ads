@@ -887,6 +887,25 @@ async function handleMetaAppInfo() {
     probe_status: probe.status
   };
 }
+
+// Read-only live spend for a company's active ad accounts, straight from Meta: today and yesterday (Lagos days). Cron secret only.
+async function handleLiveSpend(companyId) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const { data: accts } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, name, company_id, meta_connection_id, media_buyer_id, user_id, billing_mode, markup_pct, currency").eq("company_id", companyId).eq("status", "active");
+  const today = wat(0), yday = wat(-1);
+  const out = [];
+  for (const a of accts ?? []){
+    const actId = String(a.meta_ad_account_id ?? "").replace(/^act_/, "");
+    if (!/^\d+$/.test(actId)) continue;
+    try {
+      const token = await resolveToken(admin, a), factor = factorOf(a);
+      const rows = await graphGetAll(`act_${actId}/insights`, { level: "account", time_increment: "1", time_range: JSON.stringify({ since: yday, until: today }), fields: "spend,impressions,actions,date_start" }, token);
+      const by = {}; for (const r of rows) by[r.date_start] = insightRow(r, factor);
+      out.push({ account: a.nickname || a.name, today: Math.round(by[today]?.spend ?? 0), yesterday: Math.round(by[yday]?.spend ?? 0), purchases_today: by[today]?.purchases ?? 0, purchases_yesterday: by[yday]?.purchases ?? 0 });
+    } catch (e) { out.push({ account: a.nickname || a.name, error: String(e?.message ?? e) }); }
+  }
+  return { ok: true, today, yesterday: yday, accounts: out };
+}
 async function handleTeamSnapshot(body) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const companyId = String(body.company_id ?? "");
@@ -3197,7 +3216,7 @@ Deno.serve(async (req)=>{
   });
   try {
     const body = await req.json().catch(()=>({}));
-    if (body.action === "purchase_alerts" || body.action === "meta_app_info" || body.action === "daily_digest" || body.action === "meta_report" || body.action === "wa_report_setup") {
+    if (body.action === "purchase_alerts" || body.action === "meta_app_info" || body.action === "live_spend" || body.action === "daily_digest" || body.action === "meta_report" || body.action === "wa_report_setup") {
       const admin0 = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret0 } = await admin0.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       if (!secret0?.value || (req.headers.get("x-cron-secret") ?? "") !== secret0.value) throw new HttpError(401, "Not allowed.");
@@ -3209,7 +3228,7 @@ Deno.serve(async (req)=>{
         const r = await fetch(`${SUPABASE_URL}/functions/v1/send-internal-whatsapp`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}` }, body: JSON.stringify({ type: "report_template", action: body.mode === "status" ? "status" : "create" }) });
         return json({ status: r.status, ...(await r.json().catch(()=>({}))) });
       }
-      return json(body.action === "meta_app_info" ? await handleMetaAppInfo() : body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
+      return json(body.action === "live_spend" ? await handleLiveSpend(String(body.company_id ?? "")) : body.action === "meta_app_info" ? await handleMetaAppInfo() : body.action === "purchase_alerts" ? await handlePurchaseAlerts() : body.action === "meta_report" ? await handleMetaReport(Number(body.hour) || reportSlot(), body.push !== false) : await handleDailyDigest(body.push !== false));
     }
     if (body.action === "learn_shot_get") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
