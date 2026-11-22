@@ -906,6 +906,97 @@ async function handleLiveSpend(companyId) {
   }
   return { ok: true, today, yesterday: yday, accounts: out };
 }
+
+// ======================= VIDEO ANATOMY: how a winning video ad is built, scene by scene =======================================
+// Once a day, for the best video ads that were not studied yet: the video file from Meta goes to the AWS video machine, which returns a picture
+// at every scene change and the sound; the words are transcribed, and the pictures and words are described scene by scene (what is shown, the text
+// on screen, what is said, and the job of the scene: hook, problem, proof, offer, call to action). The result teaches the creative agent.
+const hmacHexKey = async (key, text)=>{ const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]); return [...new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(text)))].map((b)=>b.toString(16).padStart(2, "0")).join(""); };
+async function framesTicketKey(admin) { const { data } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle(); return String(data?.value ?? ""); }
+// The AWS machine asks this to check a signed request. Nothing secret is returned.
+async function handleFramesCheck(body) {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const id = String(body.video_id ?? ""), exp = Number(body.exp), key = await framesTicketKey(admin);
+  if (!key || !/^\d{5,25}$/.test(id) || !(exp > Date.now()) || exp > Date.now() + 15 * 60_000) return { ok: false };
+  return { ok: (await hmacHexKey(key, `frames:${id}:${exp}`)) === String(body.sig ?? "") };
+}
+async function openaiVideoAnalysis(frames, transcript, meta) {
+  const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!OPENAI) throw new Error("OPENAI_API_KEY is not set");
+  const content = [{ type: "text", text: `You are studying ONE winning video ad for a direct-response ad learning system. The pictures are frames of the video in time order, one per scene change (the time in seconds is given before each). The spoken words (transcript) are given too. Describe ONLY what you can see and hear. Reply with JSON only:
+{"scenes":[{"t":seconds,"shows":"what is on screen","text_on_screen":"every word visible, exactly","voiceover":"what is said during this scene, or empty","role":"hook|problem|proof|offer|call_to_action|other"}],
+ "structure":{"hook":"the first 3 seconds: what grabs the viewer","problem":"how the problem or fear is shown","proof":"what makes it believable (people, results, demonstration)","offer":"what is offered and how","call_to_action":"how and when the viewer is told to act, with the exact words"},
+ "style":"look and feel, pace, how it was filmed, music or silence, who appears","length_s":${meta.length ?? 0},
+ "why_it_may_work":"2 sentences","how_to_recreate":"a short brief someone could follow to make a similar video or a still image for this product"}
+Ad headline: ${String(meta.headline ?? "").slice(0, 200)}. Transcript: ${String(transcript ?? "").slice(0, 3000) || "(no speech)"}` }];
+  for (const f of frames){ content.push({ type: "text", text: `Frame at ${f.t}s:` }); content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${f.jpg}`, detail: "low" } }); }
+  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "user", content }] }) });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j?.error?.message || `OpenAI HTTP ${r.status}`);
+  await learnCount("gpt-4o-mini", { input_tokens: j.usage?.prompt_tokens, output_tokens: j.usage?.completion_tokens });
+  try { return JSON.parse(j.choices?.[0]?.message?.content ?? "{}"); } catch (_) { return { why_it_may_work: String(j.choices?.[0]?.message?.content ?? "").slice(0, 600) }; }
+}
+async function transcribeAudio(b64) {
+  const OPENAI = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!OPENAI || !b64) return "";
+  const bin = Uint8Array.from(atob(b64), (c)=>c.charCodeAt(0));
+  const fd = new FormData(); fd.append("file", new Blob([bin], { type: "audio/mpeg" }), "audio.mp3"); fd.append("model", "whisper-1"); fd.append("response_format", "text");
+  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${OPENAI}` }, body: fd });
+  if (!r.ok) return "";
+  return String(await r.text()).trim().slice(0, 4000);
+}
+async function handleLearnVideo(limit = 2, only = "") {
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const lambda = Deno.env.get("TRANSCODE_URL") ?? "";
+  if (!lambda) return { ok: false, error: "TRANSCODE_URL is not set." };
+  const cap = await learnOverCap(admin);
+  if (cap.over) return { ok: true, skipped: "monthly learning budget reached", spent_usd: cap.spent, cap_usd: cap.cap };
+  const { data: cos } = await admin.from("companies").select("id").eq("learning_enabled", false);
+  const off = new Set((cos ?? []).map((c)=>c.id));
+  // Winners: video ads that sold or got messages in the last 30 days, best first.
+  const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const { data: days } = await admin.from("learn_daily").select("object_id, ad_account_id, spend, purchases, messages").eq("level", "ad").gte("day", since).limit(20000);
+  const agg = new Map();
+  for (const d of days ?? []){ const x = agg.get(d.object_id) ?? { acct: d.ad_account_id, spend: 0, wins: 0 }; x.spend += Number(d.spend) || 0; x.wins += (Number(d.purchases) || 0) + (Number(d.messages) || 0); agg.set(d.object_id, x); }
+  const ranked = [...agg.entries()].filter(([, x])=>x.wins > 0).sort((a, b)=>b[1].wins - a[1].wins || a[1].spend - b[1].spend).map(([id])=>id);
+  const { data: ads } = ranked.length ? await admin.from("learn_objects").select("ad_account_id, company_id, meta_id, name, creative").eq("level", "ad").in("meta_id", ranked.slice(0, 120)) : { data: [] };
+  const byId = new Map((ads ?? []).map((a)=>[a.meta_id, a]));
+  const cands = [];
+  for (const id of ranked){ const a = byId.get(id); const vid = a?.creative?.video_ids?.[0]; if (a && vid && !off.has(a.company_id) && (!only || String(vid) === only)) cands.push({ ad: a, vid: String(vid) }); }
+  const { data: have } = cands.length ? await admin.from("learn_videos").select("video_id, error, created_at, analyzed_at").in("video_id", cands.map((c)=>c.vid)) : { data: [] };
+  const haveMap = new Map((have ?? []).map((h)=>[h.video_id, h]));
+  const todo = cands.filter((c)=>{ const h = haveMap.get(c.vid); return !h || (!h.analyzed_at && Date.now() - new Date(h.created_at).getTime() > 3 * 86400_000); }).slice(0, limit);
+  const key = await framesTicketKey(admin), out = [];
+  const deadline = Date.now() + 110_000;
+  for (const c of todo){
+    if (Date.now() > deadline) break;
+    const row = { video_id: c.vid, ad_account_id: c.ad.ad_account_id, company_id: c.ad.company_id, ad_id: c.ad.meta_id, created_at: new Date().toISOString() };
+    try {
+      const { data: acct } = await admin.from("ad_accounts").select("id, meta_connection_id, company_id").eq("id", c.ad.ad_account_id).maybeSingle();
+      const token = await resolveToken(admin, acct);
+      const v = await graphGet(c.vid, { fields: "source,length" }, token);
+      if (!v.source) throw new Error("Meta did not give the video file for this ad.");
+      const exp = Date.now() + 10 * 60_000, sig = await hmacHexKey(key, `frames:${c.vid}:${exp}`);
+      const r = await fetch(lambda, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "frames", video_id: c.vid, video_url: v.source, exp, sig }), signal: AbortSignal.timeout(100_000) });
+      const f = await r.json().catch(()=>({}));
+      if (!r.ok || !f.ok || !(f.frames ?? []).length) throw new Error(f.error || `video machine HTTP ${r.status}`);
+      const frames = [];
+      for (const [k, fr] of f.frames.entries()){
+        const path = `video/${c.vid}/${k}.jpg`;
+        await admin.storage.from("learn-media").upload(path, Uint8Array.from(atob(fr.jpg), (ch)=>ch.charCodeAt(0)), { contentType: "image/jpeg", upsert: true });
+        frames.push({ t: fr.t, path });
+      }
+      const transcript = await transcribeAudio(f.audio);
+      const analysis = await openaiVideoAnalysis(f.frames, transcript, { length: f.duration, headline: c.ad.creative?.headline });
+      await admin.from("learn_videos").upsert({ ...row, length_s: f.duration, frames, transcript, analysis, error: null, analyzed_at: new Date().toISOString() });
+      out.push({ video: c.vid, ad: c.ad.name, scenes: f.frames.length, seconds: f.duration, spoken_words: transcript.split(/\s+/).filter(Boolean).length });
+    } catch (e) {
+      await admin.from("learn_videos").upsert({ ...row, error: String(e.message ?? e).slice(0, 240) });
+      out.push({ video: c.vid, error: String(e.message ?? e).slice(0, 160) });
+    }
+  }
+  return { ok: true, candidates: cands.length, studied: out };
+}
 async function handleTeamSnapshot(body) {
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const companyId = String(body.company_id ?? "");
@@ -2497,7 +2588,7 @@ async function handleLearnShots(limit = 3, only = null) {
 // ---- What creatives and pages LOOK like: pictures, video frames and a Claude vision description of each -----------------------------------
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 // Per-million-token prices (USD) for what the learner uses, and a running count of real spend per day and model.
-const LEARN_PRICES = { "claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.00, 10.00] };
+const LEARN_PRICES = { "claude-haiku-5-5": [0.10, 0.50], "claude-sonnet-5-5": [2.00, 10.00], "gpt-4o-mini": [0.15, 0.60] };
 async function learnCount(model, usage) {
   try {
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -3257,11 +3348,13 @@ Deno.serve(async (req)=>{
       if (!secret?.value || (req.headers.get("x-cron-secret") ?? "") !== secret.value) throw new HttpError(401, "Not allowed.");
       return json(await handleLearnPatterns(body.dry_run === true));
     }
-    if (body.action === "learn_sync" || body.action === "learn_pages" || body.action === "learn_shots" || body.action === "learn_vision") {
+    if (body.action === "frames_check") return json(await handleFramesCheck(body));
+    if (body.action === "learn_sync" || body.action === "learn_pages" || body.action === "learn_shots" || body.action === "learn_vision" || body.action === "learn_video") {
       const admin = createClient(SUPABASE_URL, SERVICE_KEY);
       const { data: secret } = await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
       const given = req.headers.get("x-cron-secret") ?? "";
       if (!secret?.value || given !== secret.value) throw new HttpError(401, "Not allowed.");
+      if (body.action === "learn_video") return json(await handleLearnVideo(Math.min(Number(body.limit) || 2, 4), /^\d{5,25}$/.test(String(body.video_id ?? "")) ? String(body.video_id) : ""));
       return json(body.action === "learn_vision" ? await handleLearnVision(Math.min(Number(body.limit) || 4, 8)) : body.action === "learn_sync" ? await handleLearnSync(Math.min(Number(body.max_accounts) || 2, 6), /^[0-9a-f-]{36}$/.test(String(body.ad_account_id ?? "")) ? String(body.ad_account_id) : "") : body.action === "learn_shots" ? await handleLearnShots(Math.min(Number(body.limit) || 3, 6), body.url ? String(body.url) : null) : await handleLearnPages(Math.min(Number(body.limit) || 8, 20)));
     }
     if (body.action === "purchase_timing_digest") {
