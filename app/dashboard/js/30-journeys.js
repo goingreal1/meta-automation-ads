@@ -306,7 +306,7 @@ async function jyOpenViewer(s0) {
   const marker = (e) => `<i class="fs-mk${e.good || /form/i.test(e.text) ? " g" : ""}" style="left:${Math.min(100, e.t / Math.max(1, total) * 100)}%"></i>`;
   ov.innerHTML = `<div class="fs-stage" id="fsStage"><div class="fs-note" id="fsNote">${s.has_recording ? "Loading the recording…" : "No recording for this visit."}</div></div>
     <div class="fs-ui"><div class="fs-top"><div class="fs-circle glass" id="fsBack" aria-label="Back">‹</div><div class="fs-title glass"><b>Visit #${s.visit_no}</b><small id="fsSub"></small></div><div class="fs-circle glass" id="fsMore" aria-label="More">•••</div></div>
-      <div class="fs-menu glass" id="fsMenu"><div id="mSpeed"><span>Speed</span><span id="mSpeedV">1x</span></div><div id="mSkip"><span>Skip quiet parts</span><span id="mSkipV">On</span></div><div id="mFollow" style="display:none"><span>Follow live</span><span id="mFollowV">On</span></div></div>
+      <div class="fs-menu glass" id="fsMenu"><div id="mSpeed"><span>Speed</span><span id="mSpeedV">1x</span></div><div id="mSkip"><span>Skip quiet parts</span><span id="mSkipV">On</span></div><div id="mStart" style="display:none"><span>Watch from the start</span><span>&#8634;</span></div><div id="mFollow" style="display:none"><span>Follow live</span><span id="mFollowV">On</span></div></div>
       <div class="fs-bot"><div class="fs-bar glass"><div class="fs-play" id="fsPlay">❚❚</div><div class="fs-track" id="fsTrack"><div class="fs-line"></div><div class="fs-fill" id="fsFill"></div><div id="fsMarks"></div><div class="fs-knob" id="fsKnob"></div></div><div class="fs-time" id="fsTime">0:00 / 0:00</div></div>
         <div class="fs-acts glass"><div class="fs-act" id="aTl">☰ <span>Timeline</span></div><div class="fs-act" id="aInfo">ⓘ <span>Details</span></div></div></div></div>
     <div class="fs-scrim" id="fsScrim"></div>
@@ -385,22 +385,41 @@ async function jyOpenViewer(s0) {
       // Real time. 1) Tell the server someone is watching (the visitor's page then sends small batches every second).
       // 2) Show the page as it is right now, then switch the player to live mode. 3) Receive each new batch through Supabase Realtime
       // and hand it straight to the player, so the visitor's scrolling and taps play as they happen, with no reload.
-      let applied = Number(res.chunks) || 0, catching = false;
+      let applied = Number(res.chunks) || 0, catching = false, mode = "catchup", mountedEnd = 0;
       const watchNow = () => { try { supabaseClient.rpc("rv_live_watch", { p_session: s.id }).then(() => {}, () => {}); } catch (x) {} };
       watchNow(); timers.push(setInterval(watchNow, 10000));
-      try { mount(events, Math.max(0, total - 1500)); const rp = player.getReplayer(); rp.setConfig({ liveMode: true }); rp.startLive(); } catch (x) {}
+      // A small pill on the video: "Catching up" (tap to jump to now) or "Live".
+      ov.insertAdjacentHTML("beforeend", '<div id="fsChip" style="position:absolute;z-index:6;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 62px);padding:7px 14px;border-radius:99px;background:rgba(48,54,58,.72);border:1px solid rgba(255,255,255,.18);color:#fff;font:600 12.5px Inter,system-ui,sans-serif;white-space:nowrap;cursor:pointer;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)"></div>');
+      const chip = $("fsChip");
+      const setChip = () => { if (!jyLive(s)) { chip.innerHTML = "Visit ended"; chip.style.cursor = "default"; return; } chip.innerHTML = mode === "live" ? '<span style="display:inline-block;width:7px;height:7px;border-radius:99px;background:#4ade80;margin-right:6px"></span>Live' : "Catching up &middot; tap to jump to live"; chip.style.cursor = mode === "live" ? "default" : "pointer"; };
+      // Live mode: show the page as it is now and play each new batch the moment it arrives.
+      const goLive = () => {
+        mode = "live"; speed = 1; $("mSpeedV").textContent = "1x";
+        try { mount(events, Math.max(0, total - 1500)); const rp = player.getReplayer(); rp.setConfig({ liveMode: true }); rp.startLive(); } catch (x) {}
+        follow = true; $("mFollowV").textContent = "On"; setChip();
+      };
+      // Catch-up: play what already happened from the very start, fast, while new batches queue up; when it reaches now it switches to live.
+      const startOver = () => {
+        mode = "catchup"; speed = Math.min(16, Math.max(2, Math.round(total / 25000))); $("mSpeedV").textContent = speed + "x";
+        try { mount(events, 0); mountedEnd = total; } catch (x) {}
+        setChip();
+      };
+      chip.onclick = (e) => { e.stopPropagation(); if (mode !== "live") goLive(); };
+      $("mStart").style.display = ""; $("mStart").onclick = (e) => { e.stopPropagation(); $("fsMenu").classList.remove("open"); startOver(); };
+      timers.push(setInterval(() => { if (mode !== "catchup" || userSeek) return; let cur = 0; try { cur = player.getReplayer().getCurrentTime(); } catch (x) {} if (cur >= mountedEnd - 800) goLive(); }, 500));
       const feed = (evs) => {
         if (!evs || !evs.length) return;
-        evs.forEach((e) => { try { player.addEvent(e); } catch (x) {} });
+        if (mode === "live") evs.forEach((e) => { try { player.addEvent(e); } catch (x) {} });
         events = events.concat(evs); total = Math.max(1, events[events.length - 1].timestamp - events[0].timestamp);
         tl = jyTimeline(events, s); if (ov.classList.contains("sheet") && sheetTab === "timeline") drawSheet();
       };
+      startOver();
       // Anything stored between loading the page and the live stream starting (and a safety net if the stream drops): only the chunks we do not have yet.
       const catchUp = async () => {
         if (catching || userSeek) return; catching = true; const from = applied;
         try {
           const more = await sbFn("ads-manager", { action: "rec_get", session_id: s.id, from_seq: from });
-          if (more && more.session) { s = { ...s, ...more.session }; subline(); if (!jyLive(s)) $("mFollow").style.display = "none"; }
+          if (more && more.session) { s = { ...s, ...more.session }; subline(); if (!jyLive(s)) { $("mFollow").style.display = "none"; setChip(); } }
           if (more && more.events && more.events.length && applied === from) { applied = Number(more.chunks) || applied; feed(more.events); }
         } catch (x) {} finally { catching = false; }
       };
