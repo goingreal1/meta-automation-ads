@@ -91,7 +91,8 @@ async function init() {
   }
 }
 
-function phoneOk(v) { const d = String(v || "").replace(/\D/g, ""); return (d.length === 11 && d.startsWith("0")) || (d.length === 13 && d.startsWith("234")); }
+const COUNTRIES = [["NG", "Nigeria", "NGN", "Naira"], ["KE", "Kenya", "KES", "Kenyan shilling"], ["GH", "Ghana", "GHS", "Ghana cedi"], ["ZA", "South Africa", "ZAR", "Rand"], ["UG", "Uganda", "UGX", "Ugandan shilling"], ["TZ", "Tanzania", "TZS", "Tanzanian shilling"], ["US", "United States", "USD", "US dollar"], ["GB", "United Kingdom", "GBP", "Pound"], ["CA", "Canada", "CAD", "Canadian dollar"], ["AE", "United Arab Emirates", "AED", "Dirham"]];
+function phoneOk(v, c) { const d = String(v || "").replace(/\D/g, ""); if ((d.length === 11 && d.startsWith("0") && (c || "NG") === "NG") || (d.length === 13 && d.startsWith("234"))) return true; return (c || "NG") !== "NG" && d.length >= 9 && d.length <= 15 && !d.startsWith("0"); }
 
 function renderJoin() {
   box.innerHTML = `
@@ -134,7 +135,7 @@ const GOALS = [["launch_ads", "Launch and manage ads"], ["track_orders", "Track 
 
 function renderWizard(session, isProfile) {
   document.querySelector(".wrap").classList.add("wide");
-  const st = { step: 0, account_type: isProfile ? "company" : "", name: "", phone: "", company_name: "", team_roles: [], team_size: "", buyers_count: "", business_types: [], sales_channels: [], fulfilment: "", description: "", monthly_ad_spend: "", copy_language: "pidgin_mix", goals: [] };
+  const st = { step: 0, account_type: isProfile ? "company" : "", name: "", phone: "", company_name: "", country: "NG", team_roles: [], team_size: "", buyers_count: "", business_types: [], sales_channels: [], fulfilment: "", description: "", monthly_ad_spend: "", copy_language: "pidgin_mix", goals: [] };
   const steps = isProfile ? ["team", "sell", "about", "ai"] : ["type", "you", "sell", "about", "ai"];
   const toggle = (arr, v) => { const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); };
   const personal = () => st.account_type === "personal";
@@ -151,7 +152,8 @@ function renderWizard(session, isProfile) {
       ${cards([["company", "🏢", "A company or team", "Owner or manager with media buyers, customer care or riders"], ["personal", "🧑‍💻", "Just me, as a media buyer", "One person running ads and orders. No company needed"]], st.account_type, "account_type", false, true)}`;
     if (name === "you") return `<h1>${personal() ? "About you" : "About you and your company"}</h1><div class="sub">${personal() ? "We'll create your personal workspace." : "This creates your own private workspace. Your data is never visible to any other company."}</div>
       <div class="field"><label>Your name</label><input id="name" value="${st.name}" placeholder="Full name"></div>
-      ${isProfile ? "" : `<div class="field"><label>Phone / WhatsApp number</label><input id="phone" type="tel" inputmode="tel" value="${st.phone}" placeholder="08012345678"><div style="font-size:11.5px;color:var(--muted,#888);margin-top:4px">Used to open your Revora payment account and for important alerts. By continuing you agree that Revora can message you on WhatsApp to welcome you and help you set up.</div></div>`}
+      <div class="field"><label>Country</label><select id="country">${COUNTRIES.map(([c, n]) => `<option value="${c}" ${st.country === c ? "selected" : ""}>${n}</option>`).join("")}</select><div style="font-size:11.5px;color:var(--muted,#888);margin-top:4px">Sets your currency (${(COUNTRIES.find(x => x[0] === st.country) || COUNTRIES[0])[3]}, ${(COUNTRIES.find(x => x[0] === st.country) || COUNTRIES[0])[2]}). If Meta bills your ad account in a different currency, Revora follows Meta for ad spend.</div></div>
+      ${isProfile ? "" : `<div class="field"><label>Phone / WhatsApp number</label><input id="phone" type="tel" inputmode="tel" value="${st.phone}" placeholder="${st.country === "NG" ? "08012345678" : "+254 7XX XXX XXX"}"><div style="font-size:11.5px;color:var(--muted,#888);margin-top:4px">Used to open your Revora payment account and for important alerts. By continuing you agree that Revora can message you on WhatsApp to welcome you and help you set up.</div></div>`}
       ${personal() ? "" : `<div class="field"><label>Company name</label><input id="company_name" value="${st.company_name}" placeholder="e.g. Quality Herb Nigeria"></div>`}
       ${personal() ? "" : teamBlock()}`;
     if (name === "team") return `<h1>Your team</h1><div class="sub">Who will use Revora with you? You can invite them from Settings any time.</div>${teamBlock()}`;
@@ -173,11 +175,11 @@ function renderWizard(session, isProfile) {
       ${st.team_roles.includes("buyers") ? `<div class="field" style="margin-top:12px"><label>How many media buyers?</label><input id="buyers_count" type="number" min="1" value="${st.buyers_count}" placeholder="e.g. 3"></div>` : ""}`;
   }
   function read() {
-    for (const id of ["name", "phone", "company_name", "description", "copy_language", "buyers_count"]) { const el = document.getElementById(id); if (el) st[id] = el.value; }
+    for (const id of ["name", "country", "phone", "company_name", "description", "copy_language", "buyers_count"]) { const el = document.getElementById(id); if (el) st[id] = el.value; }
   }
   function valid(name) {
     if (name === "type" && !st.account_type) return "Choose how you will use Revora.";
-    if (name === "you") { if (!st.name.trim()) return "Enter your name."; if (!isProfile && !phoneOk(st.phone)) return "Enter a valid Nigerian phone number, e.g. 08012345678."; if (!personal() && !st.company_name.trim()) return "Enter your company name."; }
+    if (name === "you") { if (!st.name.trim()) return "Enter your name."; if (!isProfile && !phoneOk(st.phone, st.country)) return st.country === "NG" ? "Enter a valid Nigerian phone number, e.g. 08012345678." : "Enter your number with the country code, e.g. +254 712 345 678."; if (!personal() && !st.company_name.trim()) return "Enter your company name."; }
     if (name === "sell" && !st.business_types.length) return "Pick at least one thing you sell.";
     return "";
   }
@@ -193,6 +195,7 @@ function renderWizard(session, isProfile) {
       if (Array.isArray(st[k])) toggle(st[k], v); else st[k] = v;
       draw();
     }));
+    document.getElementById("country")?.addEventListener("change", () => { read(); draw(); });
     document.getElementById("back")?.addEventListener("click", () => { read(); st.step--; draw(); });
     document.getElementById("later")?.addEventListener("click", () => { localStorage.setItem("rv_onb_snooze", String(Date.now() + 3 * 86400000)); location.href = "dashboard_new.html"; });
     document.getElementById("next").addEventListener("click", async () => {
@@ -209,7 +212,7 @@ function renderWizard(session, isProfile) {
     btn.disabled = true; btn.innerHTML = '<div class="spin"></div> Setting up…';
     const profile = {
       account_type: st.account_type, business_types: st.business_types, sales_channels: st.sales_channels, fulfilment: st.fulfilment || undefined,
-      description: st.description, team_size: personal() ? "1" : st.team_size || undefined, buyers_count: personal() ? 1 : (st.buyers_count || undefined),
+      country: st.country, description: st.description, team_size: personal() ? "1" : st.team_size || undefined, buyers_count: personal() ? 1 : (st.buyers_count || undefined),
       monthly_ad_spend: st.monthly_ad_spend || undefined, copy_language: st.copy_language, goals: st.goals,
       team_roles: personal() ? [] : st.team_roles,
     };

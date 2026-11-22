@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autopilot · Revora</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f0f2f5">
+<script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("qh_theme")||"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
+<link rel="icon" href="/images/brands/revora-logo-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f0f2f5;--card:#fff;--ink:#1c1e21;--ink2:#5f6368;--line:#e4e6eb;--hover:#f2f3f5;--brand:#1877f2;--brandbg:#e7f0ff;--ok:#14703b;--okbg:#e1f4e8;--warn:#8a5200;--warnbg:#fff0d6;--bad:#a1271b;--badbg:#fde8e6}
+:root[data-theme="dark"]{--bg:#0f1115;--card:#171a21;--ink:#eef0f4;--ink2:#a4acb9;--line:#262b35;--hover:#1f2430;--brandbg:#1b2a44;--okbg:#12301f;--warnbg:#3a2a0d;--badbg:#3a161c;--ok:#4cc38a;--warn:#e0a135;--bad:#ff8a95}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:720px;margin:0 auto;padding:16px 16px 60px}
+a.back{color:var(--ink2);text-decoration:none;font-size:13px}
+h1{font-size:28px;letter-spacing:-.02em;margin:8px 0 2px}
+.sub{color:var(--ink2);margin:0 0 14px}
+.lbl{font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--ink2);margin:18px 0 8px;text-transform:uppercase}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.r{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line)}
+.r:last-child{border-bottom:0}.r b{display:block;font-size:15px}.r span.d{display:block;font-size:13px;color:var(--ink2)}
+.r .v{font-weight:600;text-align:right}
+input,select{font:inherit;color:var(--ink);background:var(--hover);border:1px solid var(--line);border-radius:10px;height:44px;padding:0 12px;min-width:0}
+input.num{width:150px;text-align:right}
+select{width:100%}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:0 16px;height:48px;font-weight:700}
+button.pri{background:var(--brand);border-color:var(--brand);color:#fff;width:100%}
+button.sec{height:40px;font-size:14px}button:disabled{opacity:.5;cursor:default}
+.opts{display:flex;gap:8px}
+.opt{flex:1;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--card);cursor:pointer;font-size:13px}
+.opt.on{border:2px solid var(--brand);background:var(--brandbg);padding:9px 11px}.opt.off{opacity:.55;cursor:default}
+.opt b{display:block;font-size:14px}
+.note{font-size:13px;color:var(--ink2);margin:8px 2px 0}
+.err{color:var(--bad);font-size:14px;margin:10px 2px 0;min-height:1em}
+.st{display:flex;gap:12px;padding:0 4px}
+.col{display:flex;flex-direction:column;align-items:center}
+.dt{width:26px;height:26px;border-radius:99px;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-top:2px;background:var(--card);border:2px solid var(--line);color:var(--ink2)}
+.dt.done{background:var(--ok);border-color:var(--ok);color:#fff}.dt.now{background:var(--brand);border-color:var(--brand);color:#fff}.dt.needs_you{background:var(--warn);border-color:var(--warn);color:#fff}.dt.failed{background:var(--bad);border-color:var(--bad);color:#fff}
+.ln{width:2px;background:var(--line);margin:2px auto 0;flex:1}
+.bd{flex:1;padding-bottom:16px;min-width:0}.bd b{font-size:15px;display:block}.bd span{font-size:13px;color:var(--ink2);display:block;margin-top:2px;overflow-wrap:anywhere}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-top:6px}
+.tag.done{background:var(--okbg);color:var(--ok)}.tag.needs_you{background:var(--warnbg);color:var(--warn)}.tag.failed{background:var(--badbg);color:var(--bad)}.tag.now{background:var(--brandbg);color:var(--brand)}
+.imgs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.imgs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;background:var(--hover)}
+details{margin-top:10px}summary{cursor:pointer;font-weight:600;padding:6px 0}
+.li{margin:6px 0 0;padding-left:18px;color:var(--ink)}.li li{margin:3px 0}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--hover);color:var(--ink2);margin:2px 4px 2px 0}
+.row2{display:flex;gap:8px;margin-top:14px}.row2 .pri{flex:2}.row2 .sec{flex:1;height:48px}
+.past a{color:var(--brand);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/dashboard_new.html">&larr; Back</a>
+  <h1>Autopilot</h1>
+  <p class="sub" id="sub">Pick a product. The team researches it, builds the page, makes the ads and gets a launch ready for you.</p>
+  <div id="app"><div class="note">Loading&hellip;</div></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script>
+var SUPA_URL = "https://oicqtpjjwmgsiluvkmpu.supabase.co", ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9pY3F0cGpqd21nc2lsdXZrbXB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5NDQyOTUsImV4cCI6MjExMDUyMDI5NX0.2Psx3_IHVSTL0wY0G6Y8M7IjNCtQi2RDKM0GG4WtMto";
+var sb = window.supabase.createClient(SUPA_URL, ANON);
+var $ = function (id) { return document.getElementById(id); };
+var S = null, poll = null, sel = { product: "", daily: "", total: "" };
+var SYM = { NGN: "₦", KES: "KSh ", GHS: "GH₵", ZAR: "R", UGX: "USh ", TZS: "TSh ", USD: "$", GBP: "£", CAD: "CA$", AED: "AED " };
+var NAME = { NG: "Nigeria", KE: "Kenya", GH: "Ghana", ZA: "South Africa", UG: "Uganda", TZ: "Tanzania", US: "United States", GB: "United Kingdom", CA: "Canada", AE: "UAE" };
+var CUR = { NG: "NGN", KE: "KES", GH: "GHS", ZA: "ZAR", UG: "UGX", TZ: "TZS", US: "USD", GB: "GBP", CA: "CAD", AE: "AED" };
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function money(n, c) { return (SYM[c] || (c ? c + " " : "")) + Math.round(Number(n) || 0).toLocaleString("en-US"); }
+function countries(a) { return (a || []).map(function (c) { return NAME[c] || c; }).join(", "); }
+async function api(body) {
+  var s = (await sb.auth.getSession()).data.session;
+  if (!s) { location.href = "/login.html?next=" + encodeURIComponent(location.pathname); throw new Error("login"); }
+  var r = await fetch(SUPA_URL + "/functions/v1/ai-team", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.access_token, apikey: ANON }, body: JSON.stringify(body) });
+  var o = await r.json().catch(function () { return {}; }); o._status = r.status; return o;
+}
+function activeRun() { return (S.runs || []).find(function (r) { return ["running", "waiting", "live", "failed"].indexOf(r.status) >= 0; }); }
+async function load() {
+  var o = await api({ action: "ap_state" });
+  if (o.error) { $("app").innerHTML = '<div class="card"><div class="r"><div><b>' + esc(o.error) + "</b></div></div></div>"; return; }
+  S = o; draw();
+  clearTimeout(poll);
+  var r = activeRun(); if (r && (r.status === "running" || r.status === "live")) poll = setTimeout(load, 6000);
+}
+function acctCur(p) { var a = (S.accounts || []).find(function (x) { return x.id === p.ad_account_id; }); return a ? (a.currency || "NGN") : "NGN"; }
+function marketOf(p) { var c = (p.target_countries && p.target_countries.length) ? p.target_countries : (S.company && S.company.country ? [S.company.country] : []); return c; }
+function drawStart() {
+  var prods = (S.products || []).filter(function (p) { return p.ad_account_id; });
+  if (!prods.length) return '<div class="card"><div class="r"><div><b>No product is ready</b><span class="d">Add a product in the Catalog and assign an ad account to it first.</span></div></div></div>';
+  if (!sel.product) sel.product = prods[0].id;
+  var p = prods.filter(function (x) { return x.id === sel.product; })[0] || prods[0];
+  var bill = acctCur(p), mk = marketOf(p), mcur = mk.length ? CUR[mk[0]] : "";
+  var diff = mcur && mcur !== bill;
+  var h = '<div class="lbl">Product</div><div class="card"><div class="r"><div style="flex:1"><select id="prod">' + prods.map(function (x) { return '<option value="' + x.id + '"' + (x.id === p.id ? " selected" : "") + ">" + esc(x.product_name) + "</option>"; }).join("") + "</select></div></div>"
+    + '<div class="r"><div><b>Market</b><span class="d">Where it sells</span></div><div class="v">' + (mk.length ? esc(countries(mk)) : '<span style="color:var(--bad)">Not set in the Catalog</span>') + "</div></div>"
+    + '<div class="r"><div><b>Ad account bills in</b><span class="d">Meta decides this</span></div><div class="v">' + esc(bill) + "</div></div></div>"
+    + (diff ? '<div class="note">Shoppers in ' + esc(countries(mk)) + " pay in " + esc(mcur) + ", but this ad account is billed in " + esc(bill) + ". Budgets below are in " + esc(bill) + ".</div>" : "")
+    + '<div class="lbl">Money (' + esc(bill) + ')</div><div class="card">'
+    + '<div class="r"><div><b>Testing budget</b><span class="d">Per day</span></div><input class="num" id="daily" inputmode="numeric" placeholder="3000" value="' + esc(sel.daily) + '"></div>'
+    + '<div class="r"><div><b>Hard stop</b><span class="d">The run ends before it can spend more than this</span></div><input class="num" id="total" inputmode="numeric" placeholder="9000" value="' + esc(sel.total) + '"></div></div>'
+    + '<div class="lbl">Launch</div><div class="opts"><div class="opt on"><b>Ask me first</b>One tap to launch</div><div class="opt off"><b>Go alone</b>Coming later</div></div>'
+    + '<div class="note">Nothing goes live and no money is spent until you tap approve.</div><div class="err" id="err"></div>'
+    + '<button class="pri" id="go"' + (mk.length ? "" : " disabled") + ">Start autopilot</button>";
+  return h;
+}
+function stepsHtml(run) {
+  var n = 0;
+  return '<div class="card" style="padding:16px 12px 0">' + (run.steps || []).map(function (s, i, a) {
+    n++;
+    var tag = s.state === "done" ? "Done" : s.state === "now" ? "Working" : s.state === "needs_you" ? "Needs you" : s.state === "failed" ? "Stopped" : "";
+    return '<div class="st"><div class="col"><div class="dt ' + s.state + '">' + (s.state === "done" ? "✓" : n) + "</div>" + (i < a.length - 1 ? '<div class="ln"></div>' : "") + '</div><div class="bd"><b>' + esc(s.label) + "</b>" + (s.note ? "<span>" + esc(s.note) + "</span>" : "") + (tag ? '<span class="tag ' + s.state + '">' + tag + "</span>" : "") + "</div></div>";
+  }).join("") + "</div>";
+}
+function findsHtml(run) {
+  var rs = run.research; if (!rs) return "";
+  var li = function (a) { return '<ul class="li">' + (a || []).map(function (x) { return "<li>" + esc(typeof x === "string" ? x : x.role + ": " + (x.goal || "")) + "</li>"; }).join("") + "</ul>"; };
+  var pg = run.page || {}, ph = "";
+  if (pg.mode === "built") ph = "<details><summary>The page it built</summary><div class=\"note\">Draft with " + (pg.sections || []).length + " sections: " + esc((pg.sections || []).join(", ")) + ".</div>" + (pg.gaps && pg.gaps.length ? "<div class=\"note\">Still needs: " + esc(pg.gaps.join("; ")) + "</div>" : "") + (pg.test_link ? '<div class="note"><a href="' + esc(pg.test_link) + '" target="_blank" rel="noopener">Preview the draft</a></div>' : "") + "</details>";
+  if (pg.mode === "existing") ph = "<details><summary>Your page</summary><div class=\"note\">" + esc(pg.url) + "</div>" + (pg.review && pg.review.missing && pg.review.missing.length ? "<div class=\"note\">Missing from the plan: " + esc(pg.review.missing.join(", ")) + "</div>" : "") + (pg.review && pg.review.suggestions ? li(pg.review.suggestions) : "") + "</details>";
+  return '<div class="lbl">What it found</div><div class="card" style="padding:6px 14px 12px">'
+    + "<details open><summary>Who buys and why</summary><div class=\"note\">" + esc(rs.audience) + "</div></details>"
+    + "<details><summary>Fears and the problem story</summary>" + li(rs.fears) + '<div class="note">' + esc(rs.problem_story) + "</div></details>"
+    + "<details><summary>Offer and hooks</summary><div class=\"note\"><b>Offer:</b> " + esc(rs.offer) + "</div>" + li(rs.hooks) + "</details>"
+    + "<details><summary>The page order it follows</summary>" + li(rs.blueprint) + "</details>"
+    + (rs.proof_missing && rs.proof_missing.length ? "<details><summary>What it still needs from you</summary>" + li(rs.proof_missing) + "</details>" : "")
+    + ph + "</div>";
+}
+function approveHtml(run) {
+  var l = (S.launches || []).filter(function (x) { return x.id === run.launch_id; })[0];
+  if (run.status !== "waiting" || !l || l.status !== "proposed") return "";
+  var imgs = (S.images || []).filter(function (i) { return i.meeting_id === run.meeting_id && i.status === "approved" && i.image_url; }).slice(0, 6);
+  var days = l.run_days || 1, cur = run.billing_currency;
+  var sets = (l.ad_sets || []).map(function (a) { return "<li>" + esc(a.label) + " · " + esc(a.age_min + "-" + a.age_max) + (a.gender && a.gender !== "all" ? " · " + esc(a.gender) : "") + (a.interest_keywords && a.interest_keywords.length ? " · " + esc(a.interest_keywords.join(", ")) : " · broad") + " · " + money(a.budget_naira, cur) + "</li>"; }).join("");
+  var pg = run.page || {};
+  return '<div class="lbl">Ready to launch</div>'
+    + (imgs.length ? '<div class="imgs">' + imgs.map(function (i) { return '<img src="' + esc(i.image_url) + '" alt="Ad image">'; }).join("") + "</div>" : "")
+    + '<div class="card" style="margin-top:12px">'
+    + '<div class="r"><div>Sends buyers to</div><div class="v" style="overflow-wrap:anywhere;max-width:60%">' + esc(l.landing_url || "") + "</div></div>"
+    + '<div class="r"><div>Where</div><div class="v">' + esc(countries(l.countries || run.market_countries)) + "</div></div>"
+    + '<div class="r"><div>Daily budget</div><div class="v">' + money(run.daily_budget, cur) + "</div></div>"
+    + '<div class="r"><div>Hard stop</div><div class="v">' + money(run.total_budget, cur) + " (" + days + " day" + (days === 1 ? "" : "s") + ")</div></div>"
+    + '<div class="r"><div>Starts</div><div class="v">Tonight at midnight</div></div></div>'
+    + '<ul class="li" style="margin-top:10px">' + sets + "</ul>"
+    + (pg.mode === "built" ? '<div class="note">Approving also puts the new sales page live.</div>' : "")
+    + (run.market_currency && run.market_currency !== cur ? '<div class="note">Shoppers pay in ' + esc(run.market_currency) + "; your ad account bills in " + esc(cur) + ". The amounts above are in " + esc(cur) + ".</div>" : "")
+    + '<div class="err" id="err"></div><div class="row2"><button class="sec" id="cancel">Cancel run</button><button class="pri" id="approve">Approve and launch</button></div>';
+}
+function drawRun(run) {
+  var prod = (S.products || []).filter(function (p) { return p.id === run.product_id; })[0];
+  var st = run.status === "live" ? "Live" : run.status === "waiting" ? "Waiting for you" : run.status === "failed" ? "Stopped" : "Working";
+  var h = '<div class="note" style="font-weight:600;margin:0 0 4px">' + esc(prod ? prod.product_name : "Product") + " · " + esc(countries(run.market_countries)) + "</div>"
+    + '<div class="card" style="margin-bottom:12px"><div class="r"><div><b>' + st + '</b><span class="d">' + money(run.daily_budget, run.billing_currency) + " a day, hard stop " + money(run.total_budget, run.billing_currency) + '</span></div></div></div>'
+    + stepsHtml(run) + approveHtml(run) + findsHtml(run);
+  if (run.status === "failed" || (run.steps || []).some(function (s) { return s.state === "needs_you"; }) && run.status !== "waiting" || (run.status === "waiting" && !approveHtml(run))) h += '<div class="err" id="err"></div><div class="row2"><button class="sec" id="cancel">Cancel run</button><button class="pri" id="retry">Try again</button></div>';
+  return h;
+}
+function draw() {
+  var run = activeRun();
+  $("app").innerHTML = (run ? drawRun(run) : drawStart()) + pastHtml(run);
+  var g = function (id, ev, fn) { var e = $(id); if (e) e[ev] = fn; };
+  g("prod", "onchange", function () { sel.product = $("prod").value; sel.daily = $("daily").value; sel.total = $("total").value; draw(); });
+  g("go", "onclick", async function () {
+    sel.daily = $("daily").value; sel.total = $("total").value; $("go").disabled = true; $("err").textContent = "";
+    var o = await api({ action: "ap_start", product_id: sel.product, daily_budget: Number(sel.daily), total_budget: Number(sel.total), launch_mode: "ask" });
+    if (o.error) { $("err").textContent = o.error; $("go").disabled = false; return; }
+    load();
+  });
+  g("approve", "onclick", async function () { $("approve").disabled = true; $("approve").textContent = "Launching…"; var o = await api({ action: "ap_approve", run_id: run.id }); if (o.error) { $("err").textContent = o.error; $("approve").disabled = false; $("approve").textContent = "Approve and launch"; return; } load(); });
+  g("cancel", "onclick", async function () { if (!confirm("Cancel this run? Nothing has been launched.")) return; var o = await api({ action: "ap_cancel", run_id: run.id }); if (o.error) { $("err").textContent = o.error; return; } load(); });
+  g("retry", "onclick", async function () { var o = await api({ action: "ap_retry", run_id: run.id }); if (o.error) { $("err").textContent = o.error; return; } load(); });
+}
+function pastHtml(run) {
+  var past = (S.runs || []).filter(function (r) { return !run || r.id !== run.id; });
+  if (!past.length) return "";
+  return '<div class="lbl">Earlier runs</div><div class="card past">' + past.map(function (r) {
+    var p = (S.products || []).filter(function (x) { return x.id === r.product_id; })[0];
+    return '<div class="r"><div><b>' + esc(p ? p.product_name : "Product") + '</b><span class="d">' + esc(new Date(r.created_at).toLocaleDateString()) + " · " + esc(r.status) + "</span></div></div>";
+  }).join("") + "</div>";
+}
+load();
+</script>
+</body>
+</html>
