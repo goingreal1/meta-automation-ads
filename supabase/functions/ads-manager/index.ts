@@ -978,9 +978,16 @@ async function handleLearnVideo(limit = 2, only = "") {
   const off = new Set((cos ?? []).map((c)=>c.id));
   // Winners: video ads that sold or got messages in the last 30 days, best first.
   const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
-  const { data: days } = await admin.from("learn_daily").select("object_id, ad_account_id, spend, purchases, messages").eq("level", "ad").gte("day", since).limit(20000);
+  // learn_daily only holds campaign and ad set days, so the ads' own results come from learn_insights (one total per ad: last 30 days, else all time).
+  const { data: ins } = await admin.from("learn_insights").select("object_id, ad_account_id, win, spend, purchases, messages").eq("level", "ad").eq("breakdown", "total").in("win", ["30d", "all"]).limit(10000);
   const agg = new Map();
-  for (const d of days ?? []){ const x = agg.get(d.object_id) ?? { acct: d.ad_account_id, spend: 0, wins: 0 }; x.spend += Number(d.spend) || 0; x.wins += (Number(d.purchases) || 0) + (Number(d.messages) || 0); agg.set(d.object_id, x); }
+  for (const d of ins ?? []){
+    const w = (Number(d.purchases) || 0) + (Number(d.messages) || 0);
+    const x = agg.get(d.object_id) ?? { acct: d.ad_account_id, spend: 0, wins: 0, recent: false };
+    if (d.win === "30d" && w > 0){ x.recent = true; x.spend = Number(d.spend) || 0; x.wins = w; }
+    else if (d.win === "all" && !x.recent){ x.spend = Number(d.spend) || 0; x.wins = w; }
+    agg.set(d.object_id, x);
+  }
   // Today's winners are not in the daily numbers yet: an ad that Meta counted a purchase for in the last 7 days (the purchase alerts) counts too, and goes first.
   const { data: buys } = await admin.from("notifications").select("data").eq("kind", "meta_purchase").gte("created_at", new Date(Date.now() - 7 * 86400_000).toISOString()).limit(200);
   const fresh = [...new Set((buys ?? []).map((n)=>String(n.data?.ad_id ?? "")).filter(Boolean))];
