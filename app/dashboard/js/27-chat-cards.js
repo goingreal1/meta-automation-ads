@@ -18,10 +18,35 @@ function appendCards(list) {
       else if (c.type === "creatives") el = ccCreatives(c);
       else if (c.type === "plan") el = ccPlan(c);
       else if (c.type === "review") el = ccReview(c);
+      else if (c.type === "confirm") el = ccConfirm(c);
     } catch (e) { console.warn("card", e); }
     if (el) msgs.appendChild(el);
   }
   msgs.scrollTop = msgs.scrollHeight;
+}
+
+// CONFIRM CARD: the assistant never changes, spends, publishes or moves money by itself. It asks here with the exact settings,
+// and only this Confirm tap (a signed-in call to the server) runs it.
+function ccConfirm(c) {
+  const warnCol = { money: "#d93025", spend: "#c77700", live: "#c77700", delete: "#d93025", edit: "var(--muted)" }[c.risk] || "var(--muted)";
+  const card = ccEl(`<div class="cc-row"><h4 style="margin:0">${escH(c.title)}</h4><span class="cc-sp"></span><span class="cc-tag cc-watch">Needs your OK</span></div>
+    <table><tbody>${(c.lines || []).map(l => `<tr><td style="color:var(--muted);white-space:nowrap">${escH(l.k)}</td><td style="word-break:break-word"><b>${escH(l.v)}</b></td></tr>`).join("")}</tbody></table>
+    <div class="cc-note" style="color:${warnCol}">${escH(c.warn || "")}</div>
+    <div class="cc-row act" style="margin-top:12px"><button type="button" class="cc-btn no">Cancel</button><span class="cc-sp"></span><button type="button" class="cc-btn p ok">Confirm</button></div><div class="cc-res"></div>`);
+  const res = card.querySelector(".cc-res");
+  card.querySelector(".no").onclick = async () => { await sbFn("ai-chat", { action: "cancel_tool", pending_id: c.pending_id }).catch(() => {}); ccDone(card, "Cancelled. Nothing was changed."); chatHistory.push({ role: "user", content: `[I cancelled the confirm card: ${c.title}. Nothing was done.]` }); };
+  card.querySelector(".ok").onclick = async (ev) => {
+    const b = ev.target; b.disabled = true; b.textContent = "Working…";
+    const r = await sbFn("ai-chat", { action: "confirm_tool", pending_id: c.pending_id }).catch(e => ({ ok: false, error: e.message }));
+    if (r?.ok) {
+      ccDone(card, "");
+      const n = document.createElement("div"); n.className = "cc-res"; n.style.color = "#1a9a4a"; n.textContent = "✅ Done: " + (r.title || c.title); card.appendChild(n);
+      chatHistory.push({ role: "user", content: `[I tapped Confirm on "${c.title}". It ran. Result: ${String(r.text || "ok").slice(0, 1500)}]` });
+      // let the assistant carry on with the next step (for example the next file of a site) or say what happened
+      askChat("I confirmed it. Carry on with the next step if there is one, or tell me in plain words what was done.", "Confirmed ✓");
+    } else { b.disabled = false; b.textContent = "Try again"; res.style.color = "#d93025"; res.textContent = "❌ " + (r?.error || "Could not do that."); }
+  };
+  return card;
 }
 
 function ccQuestions(c) {

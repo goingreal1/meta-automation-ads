@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { AREAS, forModel, isReadOnly, registry, routeAreas, runExtra, extraTools, toOpenAI, toolsForAreas, callTool as bridgeCall } from "./bridge.ts";
+import { AREAS, cancelPending, forModel, isReadOnly, queueWrite, registry, routeAreas, runExtra, runPending, extraTools, toOpenAI, toolsForAreas, callTool as bridgeCall } from "./bridge.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
@@ -1604,6 +1604,41 @@ Deno.serve(async (req)=>{
       }, 500);
     }
   }
+  if (body?.action === "confirm_tool" || body?.action === "cancel_tool") {
+    if (![
+      "owner",
+      "admin",
+      "buyer"
+    ].includes(profile.role)) return json({
+      error: "Only owners, admins and buyers can do this."
+    }, 403);
+    const cctx = {
+      token,
+      userId: user.id,
+      email: user.email ?? null,
+      companyId: profile.company_id,
+      role: profile.role,
+      mediaBuyerId: profile.media_buyer_id ?? null,
+      displayName: profile.display_name || ""
+    };
+    const pid = String(body?.pending_id ?? "");
+    if (body.action === "cancel_tool") return json(await cancelPending(supabase, pid, cctx));
+    try {
+      const rr = await runPending(supabase, pid, cctx, await registry());
+      if (rr.ok) return json({
+        ok: true,
+        title: rr.title,
+        tool: rr.tool,
+        text: forModel(rr.out, 3500)
+      });
+      return json(rr);
+    } catch (e) {
+      return json({
+        ok: false,
+        error: e.message
+      });
+    }
+  }
   const question = (body?.question || "").toString().trim();
   if (!question) return json({
     error: "A question is required"
@@ -2783,10 +2818,11 @@ ${JSON.stringify(data)}`;
             note: "Those tools are available from your next step."
           };
         } else if (bdef) {
-          if (!isReadOnly(bdef)) result = {
-            error: "This changes something, so it needs the person's tap on a confirm card. That is not switched on yet: tell the person you cannot do it from chat for now."
-          };
-          else result = await bridgeCall(bdef, args, bctx);
+          if (!isReadOnly(bdef)) {
+            const q = await queueWrite(supabase, bdef, args, bctx);
+            if (q.card) ctx.cards.push(q.card);
+            result = q.result;
+          } else result = await bridgeCall(bdef, args, bctx);
         } else if (tname === "write_ad_copy") result = await writeAdCopy(args, ctx, brief).catch((e)=>({
             error: "Could not write the copy: " + e.message
           }));

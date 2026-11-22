@@ -214,3 +214,115 @@ export function forModel(out: any, cap = 14_000): string {
 // definition to the list returned by extraTools() and answer it in runExtra(). Nothing calls it yet.
 export function extraTools(): any[] { return []; }
 export async function runExtra(_name: string, _args: Record<string, any>, _ctx: BridgeCtx): Promise<any | undefined> { return undefined; }
+
+// ══ SAFETY: nothing that changes, spends, publishes or moves money runs when the model asks ═══════════════════════════
+// The model's call is stored (ai_chat_pending) and a confirm card with the exact settings goes to the person. Only their tap
+// on that card (action confirm_tool, signed in as them) runs it, and only then does the server add the confirmed flags.
+const MONEY_TOOLS = new Set(["transfer_money", "top_up_meta", "request_funds", "decide_fund_request", "get_deposit_account"]);
+const SPEND_TOOLS = new Set(["set_budget", "set_status", "duplicate_ad", "add_ad_set", "edit_ad", "update_object", "social_create_post"]);
+const LIVE_TOOLS = new Set(["publish_sales_page", "site_set_live", "social_manage_post", "social_create_post", "edit_ad"]);
+export type Risk = "money" | "spend" | "live" | "delete" | "edit";
+export function riskOf(d: ToolDef): Risk {
+  if (d.group === "mcp-money" || MONEY_TOOLS.has(d.name)) return "money";
+  if (LIVE_TOOLS.has(d.name)) return "live";
+  if (SPEND_TOOLS.has(d.name)) return "spend";
+  if (d.annotations?.destructiveHint === true) return "delete";
+  return "edit";
+}
+const RISK_WARN: Record<Risk, string> = {
+  money: "This moves real money. Nothing is sent until you tap Confirm.",
+  spend: "This can change what your ads spend. Nothing changes until you tap Confirm.",
+  live: "This changes what the public can see. Nothing changes until you tap Confirm.",
+  delete: "This removes something and may not be undoable.",
+  edit: "Nothing changes until you tap Confirm.",
+};
+const words = (k: string) => k.replace(/_/g, " ").replace(/\bid\b/i, "").replace(/\s+/g, " ").trim().replace(/^./, (c) => c.toUpperCase());
+function shortVal(v: any): string {
+  if (v === null || v === undefined || v === "") return "";
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") return v.length > 220 ? v.slice(0, 220) + "…" : v;
+  if (Array.isArray(v)) return v.length ? v.slice(0, 6).map(shortVal).join("; ") + (v.length > 6 ? ` … (${v.length} in all)` : "") : "";
+  try { const s = JSON.stringify(v); return s.length > 220 ? s.slice(0, 220) + "…" : s; } catch { return ""; }
+}
+const UUID = /^[0-9a-f-]{36}$/i;
+type Db = any;
+async function friendly(db: Db, key: string, val: string, ctx: BridgeCtx): Promise<string | null> {
+  try {
+    if (key === "plan_id") { const { data } = await db.from("ai_plans").select("plan").eq("id", val).eq("company_id", ctx.companyId).maybeSingle(); return data?.plan?.campaign_name ? `${data.plan.campaign_name} (draft plan)` : null; }
+    if (key === "site_id") { const { data } = await db.from("sites").select("name").eq("id", val).eq("company_id", ctx.companyId).maybeSingle(); return data?.name ? `${data.name} (site)` : null; }
+    if (key === "product_id") { const { data } = await db.from("products").select("product_name").eq("id", val).eq("company_id", ctx.companyId).maybeSingle(); return data?.product_name ?? null; }
+  } catch { /* fall back to the raw value */ }
+  return null;
+}
+export async function confirmCard(db: Db, id: string, d: ToolDef, args: Record<string, any>, ctx: BridgeCtx) {
+  const lines: { k: string; v: string }[] = [];
+  for (const [k, v] of Object.entries(args)) {
+    let s = shortVal(v);
+    if (k === "start_time" || k === "end_time") s = v === "" ? "cleared" : new Date(Date.parse(String(v).includes("T") ? String(v) : String(v).replace(" ", "T") + "+01:00")).toLocaleString("en-NG", { timeZone: "Africa/Lagos", weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) + " (Nigeria time)";
+    else if (typeof v === "string" && UUID.test(v)) s = (await friendly(db, k, v, ctx)) ?? s;
+    if (s !== "") lines.push({ k: k === "start_time" ? "Starts" : k === "end_time" ? "Stops" : words(k), v: s });
+  }
+  const risk = riskOf(d);
+  return { type: "confirm", pending_id: id, tool: d.name, title: d.title || words(d.name), risk, warn: RISK_WARN[risk], lines: lines.slice(0, 14) };
+}
+
+// Called when the model asks for a tool that is not read-only.
+export async function queueWrite(db: Db, d: ToolDef, rawArgs: Record<string, any>, ctx: BridgeCtx) {
+  const args: Record<string, any> = { ...(rawArgs ?? {}) };
+  for (const f of CONFIRM_FIELDS) delete args[f];
+  if (SCHEDULE_TOOLS.has(d.name)) { const sc = readSchedule(args); if (sc.error) return { result: { error: sc.error } }; }
+  // pending asks for the same thing twice (model retried) are one card
+  const { data: row, error } = await db.from("ai_chat_pending").insert({ user_id: ctx.userId, company_id: ctx.companyId, tool: d.name, args }).select("id").single();
+  if (error || !row) return { result: { error: "Could not prepare the confirm card: " + (error?.message ?? "unknown") } };
+  const card = await confirmCard(db, row.id, d, args, ctx);
+  await db.from("ai_chat_pending").update({ summary: card }).eq("id", row.id);
+  return {
+    card,
+    result: { status: "waiting_for_the_persons_tap", note: "NOTHING HAS RUN. A confirm card with these settings is now showing for the person. Tell them in one or two plain sentences what you asked them to confirm. Do not say it is done, and do not call this tool again." },
+  };
+}
+
+// The person tapped Confirm (or Cancel) on a card. Only their own, still-open, not-yet-used card can run.
+export async function runPending(db: Db, id: string, ctx: BridgeCtx, reg: Map<string, ToolDef>) {
+  if (!UUID.test(id)) return { ok: false, error: "That confirm card is not valid." };
+  const { data: row } = await db.from("ai_chat_pending").select("*").eq("id", id).maybeSingle();
+  if (!row || row.user_id !== ctx.userId || row.company_id !== ctx.companyId) return { ok: false, error: "That confirm card was not found on your account." };
+  if (row.status !== "pending") return { ok: false, error: row.status === "done" ? "You already confirmed this one." : `This card is ${row.status} and can no longer be used.` };
+  if (Date.parse(row.expires_at) < Date.now()) { await db.from("ai_chat_pending").update({ status: "expired" }).eq("id", id).eq("status", "pending"); return { ok: false, error: "This card ran out of time (30 minutes). Ask me again." }; }
+  const d = reg.get(row.tool);
+  if (!d || NEVER_BRIDGED.has(d.name) || isReadOnly(d)) return { ok: false, error: "That action is not available any more." };
+  // take it once: a double tap cannot run it twice
+  const { data: took } = await db.from("ai_chat_pending").update({ status: "running" }).eq("id", id).eq("status", "pending").select("id");
+  if (!took?.length) return { ok: false, error: "This card was already used." };
+  let args: Record<string, any> = { ...row.args };
+  let sched: { start?: string | null; end?: string | null } = {};
+  if (SCHEDULE_TOOLS.has(d.name)) {
+    const sc = readSchedule(args);
+    if (sc.error) { await db.from("ai_chat_pending").update({ status: "failed", result: { error: sc.error }, done_at: new Date().toISOString() }).eq("id", id); return { ok: false, error: sc.error }; }
+    args = sc.rest; sched = { start: sc.start, end: sc.end };
+  }
+  for (const f of CONFIRM_FIELDS) args[f] = true; // added here, only after the tap
+  let out = await callTool(d, args, ctx);
+  const failed = !!out?.error;
+  if (!failed && (sched.start !== undefined || sched.end !== undefined)) {
+    try {
+      const pid = String(args.plan_id ?? "");
+      const { data: pl } = pid ? await db.from("ai_plans").select("id").eq("id", pid).eq("company_id", ctx.companyId).maybeSingle() : { data: null };
+      if (pl) {
+        const { data: cur } = await db.from("ai_plan_options").select("start_time, end_time").eq("plan_id", pid).maybeSingle();
+        await db.from("ai_plan_options").upsert({ plan_id: pid, company_id: ctx.companyId, start_time: sched.start === undefined ? cur?.start_time ?? null : sched.start, end_time: sched.end === undefined ? cur?.end_time ?? null : sched.end, updated_at: new Date().toISOString() });
+        out = typeof out === "object" && out ? { ...out, schedule_saved: { start_time: sched.start ?? "unchanged", end_time: sched.end ?? "unchanged" } } : out;
+      }
+    } catch (e) { console.error("schedule save", (e as Error).message); }
+  }
+  await db.from("ai_chat_pending").update({ status: failed ? "failed" : "done", result: { text: forModel(out, 6000) }, done_at: new Date().toISOString() }).eq("id", id);
+  const keep = Object.fromEntries(Object.entries(args).filter(([k]) => !(CONFIRM_FIELDS as readonly string[]).includes(k)).map(([k, v]) => [k, typeof v === "string" ? v.slice(0, 200) : v]));
+  await db.from("mcp_audit").insert({ company_id: ctx.companyId, user_id: ctx.userId, tool: d.name, args: keep, ok: !failed, client: "dashboard-ai" }).then(() => {}, () => {});
+  return failed ? { ok: false, error: String(out.error), tool: d.name } : { ok: true, tool: d.name, title: d.title || words(d.name), out };
+}
+export async function cancelPending(db: Db, id: string, ctx: BridgeCtx) {
+  if (!UUID.test(id)) return { ok: false };
+  const { data } = await db.from("ai_chat_pending").update({ status: "cancelled", done_at: new Date().toISOString() }).eq("id", id).eq("user_id", ctx.userId).eq("status", "pending").select("id");
+  return { ok: !!data?.length };
+}
