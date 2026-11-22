@@ -680,4 +680,5 @@ function bvApplyCompanyProfile() {
   hide.forEach(t => document.querySelector(`[data-tab="${t}"]`)?.style.setProperty("display", "none"));
   document.body.dataset.account = c.account_type || "company";
   try { if (typeof bvSyncBottomNav === "function") bvSyncBottomNav(); } catch {}
+  try { if (typeof bvApplyKinds === "function") bvApplyKinds(); } catch {}
 }

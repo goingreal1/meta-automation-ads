@@ -49,9 +49,9 @@ async function renderHousing(c) {
   const { data: prods, error } = await supabaseClient.from("products").select("id, product_name, currency, housing_settings, payment_note, payment_link_url, bank_name, bank_account_number, bank_account_name").eq("product_type", "housing").order("created_at", { ascending: true });
   if (error) { c.innerHTML = `<div class="rv-ui hs"><div class="hs-empty">Could not load housing: ${escH(error.message)}</div></div>`; return; }
   HS.products = prods || [];
-  if (!HS.products.length) { c.innerHTML = `<div class="rv-ui hs"><h2>Housing</h2><div class="hs-empty">No housing project yet. Ask Revora in chat to create one ("create a housing project"), then your homes, tours and applications show here.</div></div>`; return; }
+  if (!HS.products.length) { c.innerHTML = `<div class="rv-ui hs"><h2>Rentals</h2><div class="hs-empty">No housing project yet. Ask Revora in chat to create one ("create a housing project"), then your homes, tours and applications show here.</div></div>`; return; }
   if (!HS.pid || !HS.products.some((p) => p.id === HS.pid)) HS.pid = HS.products[0].id;
-  c.innerHTML = `<div class="rv-ui hs"><div class="hs-top"><div><h2>Housing</h2><div class="sub">Tour requests, rental applications and your homes. Anything you save here shows on your rental site.</div></div>
+  c.innerHTML = `<div class="rv-ui hs"><div class="hs-top"><div><h2>Rentals</h2><div class="sub">Tour requests, rental applications and your homes. Anything you save here shows on your rental site.</div></div>
     ${HS.products.length > 1 ? `<select id="hsProj" class="cat-in" style="max-width:260px">${HS.products.map((p) => `<option value="${p.id}" ${p.id === HS.pid ? "selected" : ""}>${escH(p.product_name)}</option>`).join("")}</select>` : ""}</div>
     <div class="hs-chips" id="hsTabs"></div><div id="hsBody">${typeof bvSkel === "function" ? bvSkel("list") : ""}</div></div>`;
   const sel = document.getElementById("hsProj"); if (sel) sel.onchange = () => { HS.pid = sel.value; renderHousing(c); };

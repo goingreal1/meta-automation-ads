@@ -251,8 +251,8 @@ async function render() {
     if      (activeTab === "overview")  await renderOverview(c);
     else if (activeTab === "wallet")    await renderWallet(c);
     else if (activeTab === "journeys")  await renderJourneys(c);
-    else if (activeTab === "bookings")  await renderBookings(c);
-    else if (activeTab === "housing")   await renderHousing(c);
+    else if (activeTab === "bookings")  await renderOrdersHub(c, "bookings");
+    else if (activeTab === "housing")   await renderOrdersHub(c, "housing");
     else if (activeTab === "hq")        await renderHq(c);
     else if (activeTab === "catalog")   await renderCatalog(c);
     else if (activeTab === "vault")     await renderVault(c);
@@ -261,7 +261,7 @@ async function render() {
     else if (activeTab === "leaderboard") await renderLeaderboard(c);
     else if (activeTab === "products")  { await renderProducts(c); c.insertAdjacentHTML("afterbegin", `<button type="button" class="btn btn-g" style="margin-bottom:12px" onclick="window.bvLegacyOk=false;bvGoToTab('catalog')">← Back to Catalog</button>`); }
     else if (activeTab === "shop")      await renderShop(c);
-    else if (activeTab === "orders")    await renderOrders(c);
+    else if (activeTab === "orders")    await renderOrdersHub(c);
     else if (activeTab === "calllogs")  await renderCallLogs(c);
     else if (activeTab === "support")   await renderSupportQueue(c);
     else if (activeTab === "riders")    await renderRiders(c);
