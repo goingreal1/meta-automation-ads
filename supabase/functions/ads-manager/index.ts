@@ -2825,7 +2825,12 @@ async function handleRecIngest(req, body) {
   if (!sess.country) { if (geo.country) upd.country = geo.country; if (geo.city) upd.city = geo.city; if (geo.region) upd.region = geo.region; }
   if (!sess.host && body.host) upd.host = String(body.host).toLowerCase().replace(/^www\./, "").slice(0, 120);
   await admin.from("site_sessions").update(upd).eq("id", sess.id);
-  return json({ ok: true });
+  // Someone is watching this visit live: also push this batch through the live table (Supabase Realtime delivers it), and tell the
+  // recorder to send small batches every second while that lasts.
+  const { data: w } = await admin.from("live_watch").select("until_at").eq("session_id", sess.id).maybeSingle();
+  const watch = !!w && new Date(w.until_at).getTime() > Date.now();
+  if (watch && JSON.stringify(events).length < 450_000) await admin.from("live_events").insert({ session_id: sess.id, seq, events });
+  return json({ ok: true, watch });
 }
 // Logged in: the replay of one visit the person is allowed to see (the table's own rules decide).
 async function handleRecGet(userClient, body) {
@@ -2835,7 +2840,9 @@ async function handleRecGet(userClient, body) {
   if (!sess.has_recording || !sess.rec_chunks) return { ok: true, events: [], session: sess, note: "No recording for this visit." };
   const scope = sess.site_id ?? sess.project_id;
   let all = [], total = 0;
-  for(let i = 0; i < Math.min(sess.rec_chunks, 700); i++){
+  // from_seq: only the chunks after those the viewer already has (the live view asks for just the new part).
+  const from = Math.max(0, Math.min(Number(body.from_seq) || 0, 699));
+  for(let i = from; i < Math.min(sess.rec_chunks, 700); i++){
     const r = await recAws.fetch(recUrl(recKey(sess.company_id, scope, sess.session_key, i)));
     if (!r.ok) continue;
     const bytes = new Uint8Array(await r.arrayBuffer()); total += bytes.length;
@@ -2843,7 +2850,7 @@ async function handleRecGet(userClient, body) {
     try { all = all.concat(JSON.parse(await gunzipBytes(bytes))); } catch (_) { /* skip a damaged chunk */ }
   }
   all.sort((x, y)=>x.timestamp - y.timestamp);
-  return { ok: true, events: all, session: sess };
+  return { ok: true, events: all, session: sess, chunks: Number(sess.rec_chunks) };
 }
 // Cron: recordings are kept 60 days. Removes the files first, then the visit rows that have none left.
 async function handleRecCleanup() {

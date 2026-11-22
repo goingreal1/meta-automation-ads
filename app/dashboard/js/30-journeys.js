@@ -106,8 +106,23 @@ async function renderJourneys(c) {
   const dd = document.getElementById("jyDays"); dd.value = String(JY.days); dd.onchange = () => { JY.days = Number(dd.value); jyLoad(); };
   document.getElementById("jySetup").onclick = () => jySetup();
   await jyLoad();
-  clearInterval(JY.timer); JY.timer = setInterval(() => { if (document.getElementById("jyList")) jyLoad(); else clearInterval(JY.timer); }, 15000);
+  jyRealtime();
+  // Realtime keeps the list current by itself; this slower reload is only a safety net.
+  clearInterval(JY.timer); JY.timer = setInterval(() => { if (document.getElementById("jyList")) jyLoad(); else { clearInterval(JY.timer); jyRealtimeStop(); } }, 60000);
 }
+// Visits appear, go live and update by themselves (Supabase Realtime), with no need to go back and reopen the screen.
+function jyRealtime() {
+  if (JY.rt || typeof supabaseClient === "undefined") return;
+  try {
+    JY.rt = supabaseClient.channel("jy-sessions").on("postgres_changes", { event: "*", schema: "public", table: "site_sessions" }, async (p) => {
+      const r = p.new; if (!r || !r.id || p.eventType === "DELETE") return;
+      const i = JY.rows.findIndex((x) => x.id === r.id);
+      if (i >= 0) JY.rows[i] = { ...JY.rows[i], ...r }; else if (new Date(r.started_at).getTime() >= Date.now() - JY.days * 86400000) JY.rows.unshift(r);
+      clearTimeout(JY.rtT); JY.rtT = setTimeout(async () => { if (!document.getElementById("jyList")) return; await jyNames(JY.rows.slice(0, 40).flatMap((x) => [x.meta_ad_id, x.meta_campaign_id])); jyDraw(); }, 700);
+    }).subscribe();
+  } catch (e) { JY.rt = null; }
+}
+function jyRealtimeStop() { try { if (JY.rt) supabaseClient.removeChannel(JY.rt); } catch (e) {} JY.rt = null; }
 async function jyNames(ids) {
   const need = [...new Set(ids.filter((x) => x && !JY.names[x]))]; if (!need.length) return;
   const o = await sbRpc("rv_names", { p_ids: need }).catch(() => []);
@@ -298,7 +313,8 @@ async function jyOpenViewer(s0) {
     <div class="fs-sheet" id="fsSheet"><div class="sh-grab"></div><div class="sh-head"><b>Visit #${s.visit_no}</b><div class="sh-x" id="shX">✕</div></div><div class="sh-seg"><div id="tabD" class="on">Details</div><div id="tabT">Timeline</div></div><div class="sh-body" id="shBody"></div></div>`;
   document.body.appendChild(ov);
   const $ = (id) => ov.querySelector("#" + id);
-  const close = () => { timers.forEach(clearInterval); try { player && player.pause(); } catch (e) {} ov.remove(); };
+  let liveCh = null;
+  const close = () => { timers.forEach(clearInterval); try { if (liveCh) supabaseClient.removeChannel(liveCh); } catch (e) {} try { player && player.pause(); } catch (e) {} ov.remove(); };
   const clock = (ms) => jyClock(ms);
   // controls show on tap and hide by themselves while playing
   const showUi = (stay) => { ov.classList.add("show"); clearTimeout(hideT); if (!stay && playing && !ov.classList.contains("sheet")) hideT = setTimeout(() => { ov.classList.remove("show"); $("fsMenu").classList.remove("open"); }, 3200); };
@@ -326,7 +342,7 @@ async function jyOpenViewer(s0) {
   // menu
   $("mSpeed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("mSpeedV").textContent = speed + "x"; try { player.setSpeed(speed); } catch (e) {} };
   $("mSkip").onclick = () => { skip = !skip; $("mSkipV").textContent = skip ? "On" : "Off"; try { player.toggleSkipInactive(); } catch (e) {} };
-  $("mFollow").onclick = () => { follow = !follow; $("mFollowV").textContent = follow ? "On" : "Off"; };
+  $("mFollow").onclick = () => { follow = !follow; $("mFollowV").textContent = follow ? "On" : "Off"; try { if (follow) player.getReplayer().startLive(); else player.pause(); } catch (e) {} };
   const subline = () => { $("fsSub").innerHTML = (jyLive(s) ? '<i class="fs-live"></i>Live · ' : "") + new Date(s.started_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }) + " · " + escH(jyWhere(s)); };
   subline();
   if (desk) drawSheet();
@@ -344,6 +360,7 @@ async function jyOpenViewer(s0) {
     const vp = String(s.viewport || "375x667").split("x"), vw = Number(vp[0]) || 375, vh = Number(vp[1]) || 667;
     const P = typeof window.rrwebPlayer === "function" ? window.rrwebPlayer : (window.rrwebPlayer.default || window.rrwebPlayer.Player);
     const mount = (evs, at) => {
+      try { player && player.pause(); } catch (e) {}
       const stage = $("fsStage"); stage.innerHTML = '<div id="fsHost"></div>';
       const W = window.innerWidth - (desk ? 380 : 0), H = window.innerHeight, k = Math.min(W / vw, H / vh), width = Math.round(vw * k), height = Math.round(vh * k);
       player = new P({ target: $("fsHost"), props: { events: evs, width, height, autoPlay: true, skipInactive: skip, showController: false, speed } });
@@ -365,19 +382,35 @@ async function jyOpenViewer(s0) {
     showUi();
     if (jyLive(s)) {
       $("mFollow").style.display = "";
-      let last = events.length, busy = false;
-      timers.push(setInterval(async () => {
-        if (!document.getElementById("jyFs")) return; if (busy || userSeek) return; busy = true;
+      // Real time. 1) Tell the server someone is watching (the visitor's page then sends small batches every second).
+      // 2) Show the page as it is right now, then switch the player to live mode. 3) Receive each new batch through Supabase Realtime
+      // and hand it straight to the player, so the visitor's scrolling and taps play as they happen, with no reload.
+      let applied = Number(res.chunks) || 0, catching = false;
+      const watchNow = () => { try { supabaseClient.rpc("rv_live_watch", { p_session: s.id }).then(() => {}, () => {}); } catch (x) {} };
+      watchNow(); timers.push(setInterval(watchNow, 10000));
+      try { mount(events, Math.max(0, total - 1500)); const rp = player.getReplayer(); rp.setConfig({ liveMode: true }); rp.startLive(); } catch (x) {}
+      const feed = (evs) => {
+        if (!evs || !evs.length) return;
+        evs.forEach((e) => { try { player.addEvent(e); } catch (x) {} });
+        events = events.concat(evs); total = Math.max(1, events[events.length - 1].timestamp - events[0].timestamp);
+        tl = jyTimeline(events, s); if (ov.classList.contains("sheet") && sheetTab === "timeline") drawSheet();
+      };
+      // Anything stored between loading the page and the live stream starting (and a safety net if the stream drops): only the chunks we do not have yet.
+      const catchUp = async () => {
+        if (catching || userSeek) return; catching = true; const from = applied;
         try {
-          const more = await sbFn("ads-manager", { action: "rec_get", session_id: s.id });
-          if (more && more.events && more.events.length > last) {
-            last = more.events.length; events = more.events; if (more.session) s = { ...s, ...more.session };
-            tl = jyTimeline(events, s); subline();
-            if (follow) mount(events, Math.max(0, events[events.length - 1].timestamp - events[0].timestamp - 3000));
-            if (ov.classList.contains("sheet")) drawSheet();
-          } else if (more && more.session && !jyLive(more.session)) { s = { ...s, ...more.session }; subline(); $("mFollow").style.display = "none"; }
-        } catch (x) {} finally { busy = false; }
-      }, 5000));
+          const more = await sbFn("ads-manager", { action: "rec_get", session_id: s.id, from_seq: from });
+          if (more && more.session) { s = { ...s, ...more.session }; subline(); if (!jyLive(s)) $("mFollow").style.display = "none"; }
+          if (more && more.events && more.events.length && applied === from) { applied = Number(more.chunks) || applied; feed(more.events); }
+        } catch (x) {} finally { catching = false; }
+      };
+      try {
+        liveCh = supabaseClient.channel("live-" + s.id).on("postgres_changes", { event: "INSERT", schema: "public", table: "live_events", filter: "session_id=eq." + s.id }, (p) => {
+          const row = p.new; if (!row || row.seq < applied) return;
+          applied = row.seq + 1; feed(Array.isArray(row.events) ? row.events : []);
+        }).subscribe((st) => { if (st === "SUBSCRIBED") catchUp(); });
+      } catch (x) {}
+      timers.push(setInterval(catchUp, 15000));
     }
   } catch (e) { const n = ov.querySelector("#fsNote"); if (n) n.textContent = "Could not load the recording: " + (e.message || e); ov.classList.add("show"); }
 }
