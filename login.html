@@ -308,7 +308,7 @@ body.invite .hero{padding-top:34px;}
   const switchMode = document.getElementById('switchMode');
   const statusMsg = document.getElementById('statusMsg');
   const confirmField = document.getElementById('confirmField');
-  const setupUrl = 'setup-company.html' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
+  const setupUrl = 'setup-company' + (inviteToken ? '?invite=' + encodeURIComponent(inviteToken) : '');
   // After logging in, go back to a transfer approval page if that is where the person came from (this one exact page shape only).
   const nextUrl = (() => { const n = new URLSearchParams(window.location.search).get('next') || ''; return /^approve\.html\?a=[0-9a-f-]{36}$/i.test(n) ? n : ''; })();
   // Supabase's own confirmation email (sent automatically on signUp, separate
@@ -342,7 +342,7 @@ body.invite .hero{padding-top:34px;}
   }
 
   paintMode();
-  const absoluteResetUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'reset-password.html';
+  const absoluteResetUrl = window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'reset-password';
   document.getElementById('forgotLink').addEventListener('click', async (e) => {
     e.preventDefault();
     const email = document.getElementById('f_email').value.trim();
