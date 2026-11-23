@@ -189,13 +189,20 @@ Deno.serve(async (req)=>{
         const rep: any = { page: pid, threads: 0, new_inbound: 0 };
         try {
           const pt = await pageToken(pid, await tokenOf(acct));
-          const r = await g(`/${pid}/conversations?platform=messenger&limit=25&fields=id,updated_time,participants,messages.limit(10){id,message,created_time,from,attachments{mime_type,name}}`, pt);
-          for (const conv of r?.data ?? []) {
+          // The newest 25 conversations every run (new activity always floats to the top); { "deep": true } pages further back to fill in older chats.
+          const convs: any[] = []; let after = "";
+          for (let pg = 0; pg < (b.deep ? 6 : 1); pg++) {
+            const r = await g(`/${pid}/conversations?platform=messenger&limit=25&fields=id,updated_time,participants,messages.limit(25){id,message,created_time,from,attachments{mime_type,name}}${after ? "&after=" + encodeURIComponent(after) : ""}`, pt);
+            convs.push(...(r?.data ?? [])); after = r?.paging?.next ? String(r?.paging?.cursors?.after ?? "") : "";
+            if (!after) break;
+          }
+          const attLabel = (atts: any[]) => { const n = atts.length, mt = atts.map((a: any)=>String(a.mime_type ?? "")); const all = (p: string)=>mt.every((m: string)=>m.startsWith(p)); return all("image") ? (n > 1 ? `Sent ${n} photos` : "Sent a photo") : all("video") ? (n > 1 ? `Sent ${n} videos` : "Sent a video") : all("audio") ? "Sent a voice message" : (n > 1 ? `Sent ${n} attachments` : "Sent an attachment"); };
+          for (const conv of convs) {
             const cust = (conv.participants?.data ?? []).find((p: any)=>String(p.id) !== pid);
             if (!cust?.id) continue;
             const { data: th } = await db.from("channel_threads").upsert({ company_id, channel: "messenger", page_id: pid, ext_id: String(cust.id), name: cust.name ?? null, fb_thread_id: conv.id }, { onConflict: "page_id,ext_id,channel" }).select("id, unread_count").single();
             if (!th) continue;
-            const msgs = (conv.messages?.data ?? []).map((m: any)=>({ thread_id: th.id, company_id, direction: String(m.from?.id ?? "") === pid ? "outbound" : "inbound", content: String(m.message ?? "").slice(0, 4000) || ((m.attachments?.data ?? []).length ? "[attachment]" : ""), ext_message_id: String(m.id), created_at: m.created_time, attachments: (m.attachments?.data ?? []).length ? m.attachments.data : null }));
+            const msgs = (conv.messages?.data ?? []).map((m: any)=>({ thread_id: th.id, company_id, direction: String(m.from?.id ?? "") === pid ? "outbound" : "inbound", content: String(m.message ?? "").slice(0, 4000) || ((m.attachments?.data ?? []).length ? attLabel(m.attachments.data) : ""), ext_message_id: String(m.id), created_at: m.created_time, attachments: (m.attachments?.data ?? []).length ? m.attachments.data : null }));
             if (!msgs.length) continue;
             const { data: ins } = await db.from("channel_messages").upsert(msgs, { onConflict: "ext_message_id", ignoreDuplicates: true }).select("direction, created_at, content");
             const fresh = (ins ?? []).filter((m: any)=>m.direction === "inbound" && Date.now() - Date.parse(m.created_at) < 48 * 3600 * 1000);

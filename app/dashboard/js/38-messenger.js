@@ -17,7 +17,12 @@
   .mx-empty{padding:40px 24px;text-align:center;color:var(--text2);font-size:15px}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
-  const needs = (t) => MX.last[t.id] && MX.last[t.id].direction === "inbound";
+  // "Needs your reply" only for chats you can still answer: the customer wrote last AND within the last 7 days (Messenger blocks replies after that).
+  const needs = (t) => {
+    const l = MX.last[t.id]; if (!l || l.direction !== "inbound") return false;
+    const at = Date.parse(t.last_inbound_at || l.created_at);
+    return !!at && Date.now() - at < 7 * 86400000;
+  };
   async function load() {
     const t = await sbQuery("channel_threads", "select=*&order=last_message_at.desc&limit=150").catch(() => []);
     MX.threads = t || [];
