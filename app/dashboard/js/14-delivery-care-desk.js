@@ -270,7 +270,7 @@ async function renderShipDelivery(el) {
     const acts = `<div class="sd-act">
       ${canBook ? (needsFix ? `<button class="sd-btn pri" onclick="bvShipFix('${o.id}')">Fix details</button><button class="sd-btn" onclick="bvShipAct('${o.id}','retry',this)">Book again</button>` : `<button class="sd-btn pri" onclick="bvShipAct('${o.id}','retry',this)">Book delivery</button>`) : ""}
       ${o.shipbubble_tracking_url ? `<a class="sd-btn" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
-      ${wa ? `<a class="sd-btn" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+      ${wa ? `<a class="sd-btn" href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)">Chat</a>` : ""}
       ${canBook ? `<button class="sd-link" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}</div>`;
     return `<div class="sd-card"><div class="sd-hd"><div class="sd-av">${escH(initials(o.customer_name))}</div><div class="sd-who"><b>${escH(o.customer_name || "Customer")}</b><span>${escH(loc)}<br><span class="sd-amt">${fN(o.order_value_naira)}</span>${cod ? '<span class="sd-cod">Pay on delivery</span>' : ""}${o.ordered_at ? ` <span style="white-space:nowrap">· ${escH(ago(o.ordered_at))}</span>` : ""}</span></div><span class="sd-pill ${pc}">${pl}</span></div>${riskBox}${issue || steps}${issue ? "" : meta}${codLine}${acts}</div>`;
   };
@@ -465,7 +465,7 @@ async function bvShowPayInfo(orderId) {
     <div style="font-size:12.5px;">${escH(data.bank || "")} · ${escH(data.account_name || "")}</div>
     ${data.code ? `<div style="font-size:12px;margin-top:6px;">Narration code: <b>${escH(data.code)}</b></div>` : ""}
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-      <a class="btn btn-a" target="_blank" rel="noopener" href="https://wa.me/${ph}?text=${encodeURIComponent(msg)}">Send on WhatsApp</a>
+      <a class="btn btn-a" href="#" data-chat-phone="${escH(data.customer_phone || "")}" data-chat-name="${escH(data.customer_name || "")}" data-chat-draft="${escH(msg)}" onclick="return bvOpenChatBtn(this)">Open chat with this message</a>
       <button type="button" class="btn btn-g" id="payInfoCopy">Copy</button>
     </div>`;
   document.getElementById("payInfoCopy").onclick = (e) => { navigator.clipboard?.writeText(msg); e.target.textContent = "Copied"; };
@@ -529,7 +529,7 @@ function renderMyDeliveries(el, orders, agents) {
         ${active.map(o => `<tr>
           <td class="s n">${escH(o.customer_name ?? "—")}</td>
           <td class="n">${o.customer_phone
-            ? `<a href="https://wa.me/${o.customer_phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${escH(o.customer_phone)}</a>`
+            ? `<a href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${escH(o.customer_phone)}</a>`
             : "—"}</td>
           <td class="n">${escH(o.customer_city ?? "—")}, ${escH(o.customer_state ?? "—")}</td>
           <td>${fN(o.order_value_naira)}</td>

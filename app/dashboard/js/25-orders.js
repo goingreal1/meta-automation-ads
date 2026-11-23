@@ -125,7 +125,7 @@ function ordCard(o) {
   return `<div class="ox-card" data-oid="${o.id}"><div class="r1"><b>${ordRef(o)}</b><span class="rv-pill ${st.c}">${st.l}</span><span class="rv-mut3" style="margin-left:auto">${ordDay(o.ordered_at)}</span></div>
     <div class="r2"><div style="min-width:0"><b>${escH(o.customer_name || "—")}</b><span class="s2">${escH(o.product_name || "")}</span></div>
       <div style="text-align:right"><b>${fN(o.order_value_naira)}</b> <span class="ox-chip ${pay.c}">${pay.k}</span></div></div>
-    ${phone ? `<div class="r3"><a class="rv-btn s" href="tel:${escH(o.customer_phone)}">${rvIc("phone")}Call</a><a class="rv-btn s" href="https://wa.me/${phone}" target="_blank" rel="noopener">${rvIc("chat")}WhatsApp</a></div>` : ""}</div>`;
+    ${phone ? `<div class="r3"><a class="rv-btn s" href="tel:${escH(o.customer_phone)}">${rvIc("phone")}Call</a><a class="rv-btn s" href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)">${rvIc("chat")}Chat</a></div>` : ""}</div>`;
 }
 
 function ordTimeline(o) {
@@ -172,7 +172,7 @@ function ordDetailHtml(o) {
   return `<div class="ox-sec"><div class="rv-back" onclick="ordBack()">${rvIc("chev")}Orders</div>
       <div class="ox-hd"><div><div class="rv-mut3">Order</div><div class="ox-no">${ordRef(o)}</div><div class="rv-mut3">Placed ${ordWhen(o.ordered_at)}</div></div><span class="rv-pill ${st.c}">${st.l}</span></div>
       ${o.possible_duplicate ? `<div class="rv-note warn" style="margin:12px 0 0">${rvIc("alert")}<span>Same customer and address ordered within the hour. Check this is not a double order.</span></div>` : ""}
-      <div class="ox-act">${phone ? `<a class="rv-btn s p" href="tel:${escH(o.customer_phone)}">${rvIc("phone")}Call</a><a class="rv-btn s" href="https://wa.me/${phone}" target="_blank" rel="noopener">${rvIc("chat")}WhatsApp</a>` : ""}
+      <div class="ox-act">${phone ? `<a class="rv-btn s p" href="tel:${escH(o.customer_phone)}">${rvIc("phone")}Call</a><a class="rv-btn s" href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)">${rvIc("chat")}Chat</a>` : ""}
         <details class="rv-menu"><summary class="rv-btn s" ${locked ? 'title="Delivered orders can only be changed by an admin" style="opacity:.55;pointer-events:none"' : ""}>Change status${rvIc("down")}</summary>
           <div class="rv-pop">${opts.map((x) => `<button type="button" data-st="${x.v}" ${x.ok && x.v !== cur ? "" : "disabled"}>${x.v === cur ? "✓ " : ""}${x.l === "Pending" ? "New" : x.l === "Valid" ? "Confirmed" : x.l}</button>`).join("")}</div></details>
         <button type="button" class="rv-btn s" data-hist="${o.id}">History</button></div></div>
@@ -218,7 +218,7 @@ function ordDraw() {
        <div class="ox-cards">${ORD.rows.map(ordCard).join("")}</div>
        <div class="ox-pg"><span class="rv-mut3">Showing ${a}–${b} of ${t}</span><span><button type="button" class="rv-btn s" data-pg="-1" ${ordersPage === 0 ? "disabled" : ""}>Prev</button> <span class="rv-mut3">Page ${ordersPage + 1} of ${pages}</span> <button type="button" class="rv-btn s" data-pg="1" ${ordersPage >= pages - 1 ? "disabled" : ""}>Next</button></span></div>`;
   root.innerHTML = head + ordFlaggedHtml() + `<div class="ox-split${ORD.mDetail ? " m-detail" : ""}${ORD.busy ? " busy" : ""}"><section class="rv-card ox-list">${filters}${stale}${body}</section><section class="rv-card ox-dt" id="ordDt">${ordDetailHtml(sel)}</section></div>
-    ${sel ? `<div class="ordx-bar">${(sel.customer_phone || "").replace(/\D/g, "") ? `<a class="rv-btn p" href="tel:${escH(sel.customer_phone)}">${rvIc("phone")}Call</a><a class="rv-btn" href="https://wa.me/${sel.customer_phone.replace(/\D/g, "")}" target="_blank" rel="noopener">${rvIc("chat")}WhatsApp</a>` : ""}<button type="button" class="rv-btn" onclick="ordMore()">${rvIc("dots")}Status</button></div>` : ""}`;
+    ${sel ? `<div class="ordx-bar">${(sel.customer_phone || "").replace(/\D/g, "") ? `<a class="rv-btn p" href="tel:${escH(sel.customer_phone)}">${rvIc("phone")}Call</a><a class="rv-btn" href="#" data-chat-phone="${escH(sel.customer_phone)}" data-chat-name="${escH(sel.customer_name || "")}" onclick="return bvOpenChatBtn(this)">${rvIc("chat")}Chat</a>` : ""}<button type="button" class="rv-btn" onclick="ordMore()">${rvIc("dots")}Status</button></div>` : ""}`;
   if (hadFocus) { const q = document.getElementById("ordQ"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
   const q = document.getElementById("ordQ"); let tm;
   if (q) q.oninput = () => { clearTimeout(tm); tm = setTimeout(() => { ORD.q = q.value; ordersPage = 0; ordLoad(null, true); }, 350); };

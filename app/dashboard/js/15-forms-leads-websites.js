@@ -131,7 +131,7 @@ async function renderWebsiteLeads(el) {
         ${all.map(l => `<tr>
           <td class="s n">${bvEscape(l.name ?? "—")}</td>
           <td class="n">${l.phone
-            ? `<a href="https://wa.me/${l.phone.replace(/\D/g,"")}" target="_blank" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${bvEscape(l.phone)}</a>`
+            ? `<a href="#" data-chat-phone="${bvEscape(l.phone)}" data-chat-name="${bvEscape(l.name || "")}" onclick="return bvOpenChatBtn(this)" style="color:var(--accent);text-decoration:none;display:flex;align-items:center;gap:4px;">${icon("phone",12)} ${bvEscape(l.phone)}</a>`
             : "—"}</td>
           <td class="n">${bvEscape(l.product_name ?? "—")}</td>
           <td class="n">${bvEscape(l.package ?? "—")}</td>
