@@ -192,7 +192,7 @@ Deno.serve(async (req)=>{
           // The newest 25 conversations every run (new activity always floats to the top); { "deep": true } pages further back to fill in older chats.
           const convs: any[] = []; let after = "";
           for (let pg = 0; pg < (b.deep ? 6 : 1); pg++) {
-            const r = await g(`/${pid}/conversations?platform=messenger&limit=25&fields=id,updated_time,participants,messages.limit(25){id,message,created_time,from,attachments{mime_type,name}}${after ? "&after=" + encodeURIComponent(after) : ""}`, pt);
+            const r = await g(`/${pid}/conversations?platform=messenger&limit=25&fields=id,updated_time,participants,messages.limit(25){id,message,created_time,from,attachments{id,mime_type,name,size,image_data,video_data,file_url}}${after ? "&after=" + encodeURIComponent(after) : ""}`, pt);
             convs.push(...(r?.data ?? [])); after = r?.paging?.next ? String(r?.paging?.cursors?.after ?? "") : "";
             if (!after) break;
           }
@@ -200,11 +200,16 @@ Deno.serve(async (req)=>{
           for (const conv of convs) {
             const cust = (conv.participants?.data ?? []).find((p: any)=>String(p.id) !== pid);
             if (!cust?.id) continue;
-            const { data: th } = await db.from("channel_threads").upsert({ company_id, channel: "messenger", page_id: pid, ext_id: String(cust.id), name: cust.name ?? null, fb_thread_id: conv.id }, { onConflict: "page_id,ext_id,channel" }).select("id, unread_count").single();
+            const { data: th } = await db.from("channel_threads").upsert({ company_id, channel: "messenger", page_id: pid, ext_id: String(cust.id), name: cust.name ?? null, fb_thread_id: conv.id }, { onConflict: "page_id,ext_id,channel" }).select("id, unread_count, avatar_url, avatar_at").single();
             if (!th) continue;
+            // Profile picture (Meta's User Profile API, page-scoped id): fetched when missing, then refreshed every 3 days because the link expires.
+            if (!th.avatar_url || !th.avatar_at || Date.now() - Date.parse(th.avatar_at) > 3 * 86400000) {
+              try { const pr = await g(`/${cust.id}?fields=profile_pic`, pt); await db.from("channel_threads").update({ avatar_url: pr?.profile_pic ? String(pr.profile_pic) : null, avatar_at: new Date().toISOString() }).eq("id", th.id); } catch (_) { await db.from("channel_threads").update({ avatar_at: new Date().toISOString() }).eq("id", th.id); }
+            }
             const msgs = (conv.messages?.data ?? []).map((m: any)=>({ thread_id: th.id, company_id, direction: String(m.from?.id ?? "") === pid ? "outbound" : "inbound", content: String(m.message ?? "").slice(0, 4000) || ((m.attachments?.data ?? []).length ? attLabel(m.attachments.data) : ""), ext_message_id: String(m.id), created_at: m.created_time, attachments: (m.attachments?.data ?? []).length ? m.attachments.data : null }));
             if (!msgs.length) continue;
             const { data: ins } = await db.from("channel_messages").upsert(msgs, { onConflict: "ext_message_id", ignoreDuplicates: true }).select("direction, created_at, content");
+            for (const m of msgs.filter((x: any)=>x.attachments)) await db.from("channel_messages").update({ attachments: m.attachments }).eq("ext_message_id", m.ext_message_id);
             const fresh = (ins ?? []).filter((m: any)=>m.direction === "inbound" && Date.now() - Date.parse(m.created_at) < 48 * 3600 * 1000);
             const latest = msgs.reduce((x: string, m: any)=>m.created_at > x ? m.created_at : x, "");
             const lastIn = msgs.filter((m: any)=>m.direction === "inbound").reduce((x: string, m: any)=>m.created_at > x ? m.created_at : x, "");
@@ -223,7 +228,7 @@ Deno.serve(async (req)=>{
       return json({ ok: true, pages: report });
     }
     // Signed-in people: send in a Messenger chat, mark it read, or answer a comment privately in Messenger (always on their own Pages).
-    if (!isPlatform && ["messenger_send", "messenger_read", "private_reply"].includes(String(b.action ?? ""))) {
+    if (!isPlatform && ["messenger_send", "messenger_read", "messenger_refresh", "private_reply"].includes(String(b.action ?? ""))) {
       const { data: mine } = await db.from("ad_accounts").select("id, fb_page_id, meta_connection_id, media_buyer_id").eq("company_id", companyId).eq("status", "active").not("fb_page_id", "is", null);
       const allowed = (mine ?? []).filter((a: any)=>role !== "buyer" || a.media_buyer_id === buyerId);
       const act = String(b.action);
@@ -252,6 +257,19 @@ Deno.serve(async (req)=>{
       const acct = th && th.company_id === companyId ? allowed.find((a: any)=>digits(a.fb_page_id) === th.page_id) : null;
       if (!th || !acct) return json({ error: "Chat not found." }, 404);
       if (act === "messenger_read") { await db.from("channel_threads").update({ unread_count: 0 }).eq("id", th.id); return json({ ok: true }); }
+      // Opening a chat: fresh picture and attachment links (Meta's links expire), so photos and the profile picture always show.
+      if (act === "messenger_refresh") {
+        try {
+          const pt = await pageToken(th.page_id, await tokenOf(acct));
+          let updated = 0;
+          if (th.fb_thread_id) {
+            const r = await g(`/${th.fb_thread_id}?fields=messages.limit(40){id,message,created_time,from,attachments{id,mime_type,name,size,image_data,video_data,file_url}}`, pt);
+            for (const m of r?.messages?.data ?? []) { const at = m.attachments?.data ?? []; if (at.length) { await db.from("channel_messages").update({ attachments: at }).eq("ext_message_id", String(m.id)).eq("thread_id", th.id); updated++; } }
+          }
+          try { const pr = await g(`/${th.ext_id}?fields=profile_pic`, pt); if (pr?.profile_pic) await db.from("channel_threads").update({ avatar_url: String(pr.profile_pic), avatar_at: new Date().toISOString() }).eq("id", th.id); } catch (_) { /* the person hides their photo */ }
+          return json({ ok: true, updated });
+        } catch (e) { return json({ ok: false, error: String(e.message ?? e).slice(0, 200) }); }
+      }
       const text = String(b.text ?? "").trim().slice(0, 2000);
       if (!text) return json({ error: "Write a message first." }, 400);
       const ageH = th.last_inbound_at ? (Date.now() - Date.parse(th.last_inbound_at)) / 3600000 : 999;

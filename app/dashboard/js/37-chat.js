@@ -26,6 +26,9 @@
   .ch2-win svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   .ch2-win.warn{background:#fdeee3;color:#7a3208}
   .ch2-win button{margin-left:auto;flex:none;height:32px;padding:0 12px;border-radius:9px;border:1px solid #e8b98f;background:#fff;color:#7a3208;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
+  .conv-compose .compose-attach-menu{min-width:270px;bottom:52px;z-index:70}
+  .conv-compose .compose-attach-menu button{width:100%;height:auto;min-height:46px;border-radius:0;justify-content:flex-start;white-space:nowrap;background:none;color:var(--text);font-size:14.5px;font-weight:500;padding:11px 16px;gap:12px}
+  .conv-compose .compose-attach-menu button:hover{background:var(--panel2)}
   .ch2-qr{display:flex;gap:8px;padding:10px 16px 2px;overflow-x:auto;background:var(--panel);scrollbar-width:none;flex:none}
   .ch2-qr::-webkit-scrollbar{display:none}
   .ch2-qr button{flex:none;height:36px;padding:0 14px;border-radius:18px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}`;

@@ -14,6 +14,7 @@
   .mx-compose textarea{flex:1;min-height:46px;max-height:140px;border:1px solid var(--border);border-radius:23px;padding:12px 16px;background:var(--panel2);color:var(--text);font:inherit;font-size:16px;line-height:1.35;resize:none;box-sizing:border-box}
   .mx-send{width:46px;height:46px;border-radius:50%;border:0;background:#2447d6;color:#fff;display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;padding:0}
   .mx-send:disabled{opacity:.5}.mx-send svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .mx-img{display:block;width:auto;max-width:100%;max-height:320px;border-radius:12px;margin:0 0 6px}
   .mx-empty{padding:40px 24px;text-align:center;color:var(--text2);font-size:15px}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -47,7 +48,7 @@
       return !q || String(t.name || "").toLowerCase().includes(q);
     }).map((t) => {
       const l = MX.last[t.id], at = Date.parse((l && l.created_at) || t.last_message_at) || 0, n = needs(t);
-      return { t: at, needs: n, html: K.row({ ch: "ms", ini: K.ini(t.name), name: t.name || "Messenger user", un: t.unread_count > 0 || n, wait: n, time: n ? K.wait(now - at) : (typeof bvListTime === "function" ? bvListTime((l && l.created_at) || t.last_message_at) : ""), text: l ? ((l.direction === "outbound" ? "You: " : "") + (l.content || "")) : "", tags: [K.pageName(t.page_id)], cnt: t.unread_count, click: `mxOpen('${t.id}')`, active: false }) };
+      return { t: at, needs: n, html: K.row({ ch: "ms", ini: K.ini(t.name), img: t.avatar_url, name: t.name || "Messenger user", un: t.unread_count > 0 || n, wait: n, time: n ? K.wait(now - at) : (typeof bvListTime === "function" ? bvListTime((l && l.created_at) || t.last_message_at) : ""), text: l ? ((l.direction === "outbound" ? "You: " : "") + (l.content || "")) : "", tags: [K.pageName(t.page_id)], cnt: t.unread_count, click: `mxOpen('${t.id}')`, active: false }) };
     });
   };
 
@@ -60,7 +61,18 @@
     if (h < 168) return { cls: "warn", html: clock + "<span>More than 24 hours since they wrote. Meta may only allow a late reply for some accounts.</span>", blocked: false };
     return { cls: "warn", html: clock + "<span>More than 7 days since they wrote. Messenger only lets you reply after they message the Page again.</span>", blocked: true };
   }
-  const bubble = (m) => `<div class="bubble ${m.direction === "outbound" ? "out" : "in"}">${esc(m.content || "[attachment]")}<small>${esc(typeof bvListTime === "function" ? bvListTime(m.created_at) : "")}</small></div>`;
+  // Pictures, videos, voice notes and files Meta gives us for a message (links expire, so opening a chat refreshes them).
+  const media = (m) => (Array.isArray(m.attachments) ? m.attachments : []).map((a) => {
+    const img = a.image_data && (a.image_data.url || a.image_data.preview_url), vid = a.video_data && a.video_data.url, mt = String(a.mime_type || "");
+    if (img) return `<a href="${esc(img)}" target="_blank" rel="noopener"><img class="mx-img" src="${esc(a.image_data.preview_url || img)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`;
+    if (vid) return `<video class="mx-img" src="${esc(vid)}" controls preload="metadata"></video>`;
+    if (a.file_url && mt.startsWith("audio")) return `<audio src="${esc(a.file_url)}" controls preload="none" style="max-width:100%"></audio>`;
+    if (a.file_url) return `<a href="${esc(a.file_url)}" target="_blank" rel="noopener">${esc(a.name || "Open the file")}</a>`;
+    return "";
+  }).join("");
+  const isLabel = (t) => /^Sent (a|an|\d+) (photo|photos|video|videos|voice message|attachment|attachments)$/.test(String(t || ""));
+  const bubble = (m) => { const md = media(m); const txt = md && isLabel(m.content) ? "" : (m.content || (md ? "" : "[attachment]")); return `<div class="bubble ${m.direction === "outbound" ? "out" : "in"}">${md}${txt ? esc(txt) : ""}<small>${esc(typeof bvListTime === "function" ? bvListTime(m.created_at) : "")}</small></div>`; };
+  const avatar = (t) => (t.avatar_url ? `<img src="${esc(t.avatar_url)}" alt="" referrerpolicy="no-referrer" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">` : "");
 
   window.mxOpen = async function (id) {
     const t = MX.threads.find((x) => x.id === id); if (!t) return;
@@ -71,7 +83,7 @@
     const msgs = (await sbQuery("channel_messages", `select=*&thread_id=eq.${id}&order=created_at.asc&limit=300`).catch(() => [])) || [];
     const K = window.ixKit, w = windowBar(t);
     th.innerHTML = `<div class="conv-thread-head ch2"><button type="button" class="conv-back-btn" onclick="bvBackToList()" aria-label="Back to inbox"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-        <div class="ch2-av"><div class="ch2-ini">${esc(K ? K.ini(t.name) : "?")}</div>${K ? K.badge("ms") : ""}</div>
+        <div class="ch2-av"><div class="ch2-ini" style="overflow:hidden">${avatar(t) || esc(K ? K.ini(t.name) : "?")}</div>${K ? K.badge("ms") : ""}</div>
         <div class="ch2-nm"><b>${esc(t.name || "Messenger user")}</b><span>Messenger${K ? " · " + esc(K.pageName(t.page_id)) : ""}</span></div></div>
       <div id="mxThreadMsgs">${msgs.length ? msgs.map(bubble).join("") : '<div class="mx-empty">No messages yet.</div>'}</div>
       <div class="ch2-win ${w.cls}">${w.html}</div>
@@ -89,6 +101,14 @@
     };
     btn.onclick = send;
     input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && window.innerWidth > 820) { e.preventDefault(); send(); } });
+    sbFn("page-tools", { action: "messenger_refresh", thread_id: id, ad_account_id: undefined }).then(async (r) => {
+      if (!r || !r.ok || !document.getElementById("mxThreadMsgs")) return;
+      const fresh = (await sbQuery("channel_messages", `select=*&thread_id=eq.${id}&order=created_at.asc&limit=300`).catch(() => [])) || [];
+      const box = document.getElementById("mxThreadMsgs"); if (!box || !fresh.length) return;
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      box.innerHTML = fresh.map(bubble).join(""); if (atBottom) box.scrollTop = box.scrollHeight;
+      const th2 = await sbQuery("channel_threads", `select=avatar_url&id=eq.${id}`).catch(() => []); if (th2 && th2[0]) t.avatar_url = th2[0].avatar_url;
+    }).catch(() => {});
     if (t.unread_count > 0) { t.unread_count = 0; sbFn("page-tools", { action: "messenger_read", thread_id: id, ad_account_id: undefined }).catch(() => {}); if (K) K.chrome(); }
     try { if (window.innerWidth <= 820 && !(history.state && history.state.ixChat)) history.pushState({ ixChat: id }, ""); } catch (_) { /* history is optional */ }
   };
