@@ -65,6 +65,72 @@ Deno.serve(async (req)=>{
       companyId = me.company_id;
       role = me.role;
     }
+    // Platform-only, read-only: how many comments a Page post (or an ad's post) has, and a small sample.
+    if (isPlatform && String(b.action ?? "") === "comments_read") {
+      const postId = String(b.post_id ?? "").replace(/[^0-9_]/g, "");
+      const pid = postId.split("_")[0];
+      if (!pid || !postId.includes("_")) return json({ error: "A post id like pageid_postid is needed." }, 400);
+      try {
+        const pt = await pageToken(pid, SHARED);
+        const r = await g(`/${postId}/comments?summary=total_count&filter=toplevel&order=reverse_chronological&limit=${Math.min(Number(b.limit) || 5, 10)}&fields=id,message,created_time,comment_count,can_comment,can_hide`, pt);
+        return json({ ok: true, post_id: postId, total: r?.summary?.total_count ?? null, sample: (r?.data ?? []).map((c)=>({ id: c.id, text: String(c.message ?? "").slice(0, 120), at: c.created_time, replies: c.comment_count ?? 0, can_reply: c.can_comment ?? null, can_hide: c.can_hide ?? null })) });
+      } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }); }
+    }
+    // Platform-only, read-only: scan many posts of one Page for recent comments (counts, plus the newest few).
+    if (isPlatform && String(b.action ?? "") === "comments_scan") {
+      const ids = (Array.isArray(b.post_ids) ? b.post_ids : []).map((x)=>String(x).replace(/[^0-9_]/g, "")).filter((x)=>x.includes("_")).slice(0, 320);
+      const pid = String(b.page_id ?? "").match(/\d+/)?.[0];
+      if (!pid || !ids.length) return json({ error: "page_id and post_ids are needed." }, 400);
+      const since = Date.now() - (Number(b.days) || 30) * 86400000;
+      let pt;
+      try { pt = await pageToken(pid, SHARED); } catch (e) { return json({ ok: false, error: e.message.slice(0, 200) }); }
+      const out = { scanned: 0, errors: 0, posts_with_recent: 0, recent_total: 0, all_time_total: 0, newest: [] as any[], first_error: "" };
+      let k = 0;
+      const worker = async ()=>{
+        while (k < ids.length) {
+          const id = ids[k++];
+          try {
+            const r = await g(`/${id}/comments?summary=total_count&filter=toplevel&order=reverse_chronological&limit=25&fields=id,message,created_time,comment_count`, pt);
+            out.scanned++;
+            out.all_time_total += Number(r?.summary?.total_count ?? 0);
+            const recent = (r?.data ?? []).filter((c)=>Date.parse(c.created_time) >= since);
+            if (recent.length) out.posts_with_recent++;
+            out.recent_total += recent.length;
+            for (const c of recent) out.newest.push({ post_id: id, at: c.created_time, text: String(c.message ?? "").slice(0, 100), replies: c.comment_count ?? 0 });
+          } catch (e) { out.errors++; if (!out.first_error) out.first_error = e.message.slice(0, 160); }
+        }
+      };
+      await Promise.all(Array.from({ length: 8 }, worker));
+      out.newest.sort((a, b)=>String(b.at).localeCompare(String(a.at)));
+      out.newest = out.newest.slice(0, 15);
+      return json({ ok: true, page_id: pid, days: Number(b.days) || 30, ...out });
+    }
+    // Platform-only: publish one normal (organic) photo post on the Facebook Page of an ad account, with the Page's own token.
+    if (isPlatform && String(b.action ?? "") === "post_photo") {
+      const { data: ac } = await db.from("ad_accounts").select("id, fb_page_id").eq("id", String(b.ad_account_id ?? "")).maybeSingle();
+      const pid = String(ac?.fb_page_id ?? "").match(/\d+/)?.[0];
+      const img = String(b.image_url ?? ""), msg = String(b.message ?? "").slice(0, 5000);
+      if (!pid) return json({ error: "This ad account has no Page saved." }, 400);
+      if (!/^https:\/\//.test(img) || !msg.trim()) return json({ error: "A public https image_url and a message are needed." }, 400);
+      try {
+        const pt = await pageToken(pid, SHARED);
+        const r = await g(`/${pid}/photos`, pt, "POST", { url: img, caption: msg, published: "true" });
+        const postId = String(r?.post_id ?? r?.id ?? "");
+        let link = null;
+        try { link = (await g(`/${postId}?fields=permalink_url,created_time`, pt))?.permalink_url ?? null; } catch (_) { /* the post exists even if the link cannot be read */ }
+        return json({ ok: true, page_id: pid, post_id: postId, link: link && link.startsWith("/") ? "https://www.facebook.com" + link : link });
+      } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }, 200); }
+    }
+    // A creative's own Page: "Post to my page" starts from the creative (its ad account, or its product's), never from a client-chosen account.
+    if (["post_preview", "post_creative"].includes(String(b.action ?? ""))) {
+      const { data: cr } = await db.from("creative_assets").select("id, company_id, public_url, asset_type, primary_text, headline, ad_account_id, product_id").eq("id", String(b.creative_id ?? "")).maybeSingle();
+      if (!cr || (companyId && cr.company_id !== companyId)) return json({ error: "Creative not found." }, 404);
+      let aid = cr.ad_account_id as string | null;
+      if (!aid && cr.product_id) aid = (await db.from("products").select("ad_account_id").eq("id", cr.product_id).maybeSingle()).data?.ad_account_id ?? null;
+      if (!aid) return json({ error: "This creative has no ad account yet, so no Page. Assign it to a product that has an ad account first." }, 400);
+      if (!["image", "video"].includes(String(cr.asset_type))) return json({ error: "Only a single picture or video can be posted." }, 400);
+      b.ad_account_id = aid; b._creative = cr;
+    }
     let q = db.from("ad_accounts").select("id, company_id, fb_page_id, ig_user_id, meta_connection_id, media_buyer_id").eq("id", String(b.ad_account_id ?? ""));
     if (companyId) q = q.eq("company_id", companyId);
     const { data: acct } = await q.maybeSingle();
@@ -82,6 +148,28 @@ Deno.serve(async (req)=>{
     if (acct.meta_connection_id) {
       const { data: conn } = await db.from("meta_connections").select("access_token, status").eq("id", acct.meta_connection_id).maybeSingle();
       if (conn?.status === "active" && conn.access_token) token = conn.access_token;
+    }
+    if (b._creative) {
+      const cr = b._creative;
+      let pageName = null;
+      try { pageName = (await g(`/${pageId}?fields=name`, token))?.name ?? null; } catch (_) { /* the name is only for the preview */ }
+      if (b.action === "post_preview") return json({ ok: true, page_id: pageId, page_name: pageName, kind: cr.asset_type, caption: cr.primary_text ?? "", url: cr.public_url });
+      if (b.confirmed !== true) return json({ error: "Confirm first: this publishes on the Page." }, 400);
+      const msg = String(b.message ?? cr.primary_text ?? "").slice(0, 5000);
+      if (!msg.trim()) return json({ error: "Write a caption first." }, 400);
+      try {
+        const pt = await pageToken(pageId, token);
+        let postId = "", link = null;
+        if (cr.asset_type === "video") {
+          const r = await g(`/${pageId}/videos`, pt, "POST", { file_url: cr.public_url, description: msg, published: "true" });
+          postId = String(r?.id ?? ""); link = postId ? `https://www.facebook.com/${pageId}/videos/${postId}` : null;
+        } else {
+          const r = await g(`/${pageId}/photos`, pt, "POST", { url: cr.public_url, caption: msg, published: "true" });
+          postId = String(r?.post_id ?? r?.id ?? "");
+          try { const l = (await g(`/${postId}?fields=permalink_url`, pt))?.permalink_url ?? null; link = l && l.startsWith("/") ? "https://www.facebook.com" + l : l; } catch (_) { /* the post exists even if the link cannot be read */ }
+        }
+        return json({ ok: true, page_id: pageId, page_name: pageName, post_id: postId, link });
+      } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }); }
     }
     const action = String(b.action ?? "");
     if (action === "diag") {

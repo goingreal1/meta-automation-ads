@@ -56,7 +56,7 @@ async function bvRenderProductVault(productId) {
             <div class="field"><label style="font-size:10.5px;">Button</label><select class="vf" data-k="cta_type" style="${inp}">${BV_CTAS.map(c => `<option value="${c[0]}" ${(a.cta_type || "SHOP_NOW") === c[0] ? "selected" : ""}>${c[1]}</option>`).join("")}</select></div></div>
             <div class="field" style="margin-top:6px;"><label style="font-size:10.5px;">Primary text (ad copy)</label><textarea class="vf" data-k="primary_text" rows="3" style="${inp}">${escH(a.primary_text || "")}</textarea></div>
             <div class="field" style="margin-top:6px;"><label style="font-size:10.5px;">Description</label><input class="vf" data-k="description" value="${escH(a.description || "")}" placeholder="Supporting line under the headline" style="${inp}"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;"><span class="vSaved" style="font-size:10.5px;color:var(--muted);"></span><button type="button" class="btn btn-g vEdit" style="padding:3px 8px;font-size:10px;margin-right:6px;">Edit</button><button type="button" class="btn btn-g vDel" style="padding:3px 8px;font-size:10px;color:var(--danger);">Delete creative</button></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;"><span class="vSaved" style="font-size:10.5px;color:var(--muted);"></span><button type="button" class="btn btn-g vPost" style="padding:3px 8px;font-size:10px;margin-right:6px;">Post to page</button><button type="button" class="btn btn-g vEdit" style="padding:3px 8px;font-size:10px;margin-right:6px;">Edit</button><button type="button" class="btn btn-g vDel" style="padding:3px 8px;font-size:10px;color:var(--danger);">Delete creative</button></div>
           </div>
         </div>`).join("") || `<div style="font-size:11.5px;color:var(--muted);">No creatives yet.</div>`}
     </div>`;
@@ -77,6 +77,7 @@ async function bvRenderProductVault(productId) {
     card.querySelectorAll(".vf").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { clearTimeout(timer); timer = setTimeout(save, 700); }));
     if (card.dataset.kind) { card.querySelector(".vCarEdit")?.addEventListener("click", () => bvCarouselSheet(productId, aid)); card.querySelector(".vDel").addEventListener("click", async () => { if (await bvDeleteCreative(aid)) bvRenderProductVault(productId); }); return; }
     card.querySelector(".vEdit").addEventListener("click", () => bvCreativeEdit(aid, () => bvRenderProductVault(productId)));
+    card.querySelector(".vPost")?.addEventListener("click", () => bvPostToPage(aid, card));
     card.querySelector(".vDel").addEventListener("click", async () => {
       if (!confirm("Delete this creative and its file?")) return;
       if (await bvDeleteCreative(aid)) bvRenderProductVault(productId);
@@ -474,4 +475,29 @@ async function bvSaveShopCreative(productId) {
     btn.disabled = false;
     btn.textContent = "Save";
   }
+}
+
+// ── Post a creative on the person's own Facebook Page (a normal post, not an ad). Always previewed and confirmed first. ──
+async function bvPostToPage(aid, card) {
+  const id = "bvPostSheet";
+  const pre = await sbFn("page-tools", { action: "post_preview", creative_id: aid, ad_account_id: undefined });
+  if (!pre || pre.error) return bvToast(pre?.error || "Couldn't check the Page for this creative.", "err");
+  const typed = card?.querySelector('[data-k="primary_text"]')?.value?.trim();
+  const media = pre.kind === "video" ? `<video src="${escH(pre.url)}#t=0.1" muted playsinline style="width:100%;max-height:240px;border-radius:10px;background:#000;object-fit:contain;"></video>` : `<img src="${escH(pre.url)}" alt="" style="width:100%;max-height:260px;border-radius:10px;object-fit:contain;background:var(--panel2);">`;
+  const ov = bvOpenSheet(id, `<div style="font-weight:600;font-size:16px;margin-bottom:4px;">Post to your Page</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">This publishes a normal post on <b>${escH(pre.page_name || "your Page")}</b> right now. It is not an ad. Everyone who follows the Page can see it.</div>
+    ${media}
+    <div class="field" style="margin-top:10px;"><label style="font-size:11px;">Caption</label><textarea id="bvPostCap" rows="6" style="width:100%;">${escH(typed || pre.caption || "")}</textarea></div>
+    <div id="bvPostRes" style="font-size:12.5px;margin-top:8px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;"><button type="button" class="btn btn-g" data-sheet-close>Cancel</button><button type="button" class="btn btn-p" id="bvPostGo">Post now</button></div>`, 520);
+  ov.querySelector("[data-sheet-close]").onclick = () => bvCloseSheet(id);
+  const go = ov.querySelector("#bvPostGo"), res = ov.querySelector("#bvPostRes");
+  go.onclick = async () => {
+    const message = ov.querySelector("#bvPostCap").value.trim();
+    if (!message) { res.style.color = "var(--danger,#d33)"; res.textContent = "Write a caption first."; return; }
+    go.disabled = true; go.textContent = "Posting…"; res.textContent = "";
+    const r = await sbFn("page-tools", { action: "post_creative", creative_id: aid, confirmed: true, message });
+    if (r?.ok) { res.style.color = "var(--green,#1a9a4a)"; res.innerHTML = `Posted ✓ ${r.link ? `<a href="${escH(r.link)}" target="_blank" rel="noopener">Open the post</a>` : ""}`; go.style.display = "none"; ov.querySelector("[data-sheet-close]").textContent = "Close"; }
+    else { go.disabled = false; go.textContent = "Try again"; res.style.color = "var(--danger,#d33)"; res.textContent = r?.error || "Meta did not accept the post."; }
+  };
 }
