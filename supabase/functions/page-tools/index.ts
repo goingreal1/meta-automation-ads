@@ -65,6 +65,17 @@ Deno.serve(async (req)=>{
       companyId = me.company_id;
       role = me.role;
     }
+    // Platform-only, read-only: how many comments a Page post (or an ad's post) has, and a small sample.
+    if (isPlatform && String(b.action ?? "") === "comments_read") {
+      const postId = String(b.post_id ?? "").replace(/[^0-9_]/g, "");
+      const pid = postId.split("_")[0];
+      if (!pid || !postId.includes("_")) return json({ error: "A post id like pageid_postid is needed." }, 400);
+      try {
+        const pt = await pageToken(pid, SHARED);
+        const r = await g(`/${postId}/comments?summary=total_count&filter=toplevel&order=reverse_chronological&limit=${Math.min(Number(b.limit) || 5, 10)}&fields=id,message,created_time,comment_count,can_comment,can_hide`, pt);
+        return json({ ok: true, post_id: postId, total: r?.summary?.total_count ?? null, sample: (r?.data ?? []).map((c)=>({ id: c.id, text: String(c.message ?? "").slice(0, 120), at: c.created_time, replies: c.comment_count ?? 0, can_reply: c.can_comment ?? null, can_hide: c.can_hide ?? null })) });
+      } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }); }
+    }
     // Platform-only: publish one normal (organic) photo post on the Facebook Page of an ad account, with the Page's own token.
     if (isPlatform && String(b.action ?? "") === "post_photo") {
       const { data: ac } = await db.from("ad_accounts").select("id, fb_page_id").eq("id", String(b.ad_account_id ?? "")).maybeSingle();
