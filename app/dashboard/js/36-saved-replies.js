@@ -53,9 +53,10 @@
       ? rows.map((r) => `<div class="sr-row" data-id="${r.id}" ${manage ? "" : 'role="button" tabindex="0"'}><div class="sr-t"><b>${esc(r.title)}</b><span class="sr-b">${esc(r.body)}</span></div>${manage ? `<button type="button" class="sr-mini" data-e="${r.id}">Edit</button><button type="button" class="sr-mini d" data-d="${r.id}">Delete</button>` : ""}</div>`).join("")
       : `<div class="sr-empty">Nothing saved yet. Save the replies you send again and again, and they stay private to you. Start with one of these:</div>` + STARTERS.map((s, i) => `<button type="button" class="sr-row" data-s="${i}"><div class="sr-t"><b>${esc(s[0])}</b><span class="sr-b">${esc(s[1])}</span></div><span class="sr-mini">Add</span></button>`).join("");
     const w = shell(`<div class="ix-sh"><b>Saved replies</b><button type="button" id="srMode">${manage ? "Done" : "Manage"}</button></div>
-      <div class="sr-list">${body}</div><button type="button" class="sr-add" id="srNew">+ New reply</button>`);
+      <div class="sr-list">${body}</div><button type="button" class="sr-add" id="srNew">+ New reply</button><button type="button" class="sr-add" id="srTpl" style="margin-top:8px;color:var(--text)">WhatsApp-approved templates (after 24 hours)</button>`);
     w.querySelector("#srMode").onclick = () => { manage = !manage; draw(); };
     w.querySelector("#srNew").onclick = () => { editing = { id: "", title: "", body: "" }; draw(); };
+    w.querySelector("#srTpl").onclick = () => window.bvTemplateModal();
     w.querySelectorAll("[data-s]").forEach((b) => (b.onclick = async () => { const s = STARTERS[Number(b.dataset.s)]; await save({ title: s[0], body: s[1] }); await load(); draw(); }));
     if (manage) {
       w.querySelectorAll("[data-e]").forEach((b) => (b.onclick = () => { editing = rows.find((r) => r.id === b.dataset.e) || null; draw(); }));
@@ -104,4 +105,80 @@
     await load();
     draw();
   };
+
+  // ======== WHATSAPP-APPROVED TEMPLATES (the only way to write after 24 hours of silence, or first) ========
+  const css2 = `
+  .wt-chip{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:6px;white-space:nowrap;flex:none}
+  .wt-chip.approved{background:#e3f4ea;color:#0f6b36}.wt-chip.pending{background:#fdeee3;color:#9a3a0b}.wt-chip.rejected{background:#fde8e6;color:#b42318}
+  .wt-note{margin:4px 20px 8px;padding:12px 14px;border-radius:12px;font-size:13.5px;line-height:1.45;background:var(--panel2);border:1px solid var(--border);color:var(--text2)}
+  .wt-note.warn{background:#fdeee3;border-color:#f5cfae;color:#7a3208}
+  .wt-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+  .wt-confirm{margin:0 20px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--panel2);font-size:14px;line-height:1.45}`;
+  const st2 = document.createElement("style"); st2.textContent = css2; document.head.appendChild(st2);
+  let tpls = [], tcat = "utility";
+  const tcall = (o) => sbFn("send-whatsapp-template", o).catch(() => null);
+  async function windowState() {
+    if (typeof bvSelectedConvId === "undefined" || !bvSelectedConvId) return null;
+    const r = await sbQuery("messages", `select=created_at&conversation_id=eq.${bvSelectedConvId}&direction=eq.inbound&order=created_at.desc&limit=1`).catch(() => []);
+    const at = r && r[0] && Date.parse(r[0].created_at);
+    if (!at) return { open: false, text: "This customer has not written to you yet, so only an approved template can start the chat." };
+    const h = (Date.now() - at) / 3600000;
+    return h < 24 ? { open: true, text: `The customer wrote ${h < 1 ? "less than an hour" : Math.round(h) + " h"} ago. You can reply freely, so a template is optional.` } : { open: false, text: "The customer last wrote more than 24 hours ago, so only an approved template can be sent." };
+  }
+  const chip = (t) => `<span class="wt-chip ${t.status === "approved" ? "approved" : t.status === "rejected" ? "rejected" : "pending"}">${t.status === "approved" ? "Approved" : t.status === "rejected" ? "Rejected" : "Waiting for Meta"}</span>`;
+
+  async function tplDraw(win, mode, sel) {
+    if (mode === "form") return tplForm();
+    if (mode === "confirm") {
+      const t = tpls.find((x) => x.id === sel);
+      const conv = typeof bvConversations !== "undefined" ? bvConversations.find((c) => c.id === bvSelectedConvId) : null;
+      const nm = conv && typeof bvName === "function" ? bvName(conv) : "this customer";
+      const w = shell(`<div class="ix-sh"><b>Send template</b><button type="button" id="tpBack">Back</button></div>
+        <div class="wt-confirm"><b>${esc(t.title)}</b><div style="margin-top:6px;color:var(--text2)">${esc(fill(t.body))}</div></div>
+        <div class="wt-note" style="margin-top:12px">This sends the message to ${esc(nm)} now. Meta may charge a small fee for a template message.</div>
+        <div class="ix-foot"><button type="button" id="tpSend" style="background:#2447d6;border-color:#2447d6;color:#fff">Send to ${esc(nm)}</button></div>`);
+      w.querySelector("#tpBack").onclick = () => tplDraw(win, "list");
+      w.querySelector("#tpSend").onclick = async (e) => {
+        e.target.disabled = true; e.target.textContent = "Sending…";
+        const conv2 = typeof bvConversations !== "undefined" ? bvConversations.find((c) => c.id === bvSelectedConvId) : null;
+        const r = await tcall({ action: "send", template_id: t.id, conversation_id: bvSelectedConvId, first_name: ((conv2 && bvName(conv2)) || "").trim().split(/\s+/)[0] });
+        if (r && r.success) { close(); if (typeof bvToast === "function") bvToast("Template sent."); if (typeof bvAfterAgentSend === "function") bvAfterAgentSend(); }
+        else { e.target.disabled = false; e.target.textContent = "Try again"; if (typeof bvToast === "function") bvToast((r && r.error) || "Could not send it.", "err"); }
+      };
+      return;
+    }
+    const rows = tpls.length ? tpls.map((t) => `<div class="sr-row" ${t.status === "approved" && win && win.send !== false ? `data-u="${t.id}" role="button" tabindex="0"` : ""}><div class="sr-t"><b>${esc(t.title)}</b><span class="sr-b">${esc(t.status === "rejected" && t.reject_reason ? "Meta said: " + t.reject_reason : t.body)}</span></div>${chip(t)}</div>`).join("") : `<div class="sr-empty">No templates yet. Write one, Meta checks it (minutes to a few hours), and once it says Approved you can send it to any customer, even after 24 hours. They stay private to you.</div>`;
+    const w = shell(`<div class="ix-sh"><b>WhatsApp templates</b><button type="button" id="tpSync">Refresh</button></div>
+      ${win ? `<div class="wt-note ${win.open ? "" : "warn"}">${esc(win.text)}</div>` : ""}<div class="sr-list">${rows}</div><button type="button" class="sr-add" id="tpNew">+ New template</button>`);
+    w.querySelector("#tpSync").onclick = () => openTemplates(win);
+    w.querySelector("#tpNew").onclick = () => tplDraw(win, "form");
+    w.querySelectorAll("[data-u]").forEach((b) => (b.onclick = () => tplDraw(win, "confirm", b.dataset.u)));
+  }
+  function tplForm() {
+    const w = shell(`<div class="ix-sh"><b>New template</b><button type="button" id="tpCancel">Cancel</button></div>
+      <div class="sr-form"><label for="tpTitle">Name</label><input id="tpTitle" maxlength="60" placeholder="For example: Delivery update">
+      <label for="tpBody">Message</label><textarea id="tpBody" maxlength="1024" placeholder="Write the message"></textarea>
+      <div class="sr-hint">Type {first_name} for the customer's first name, with words before and after it. Meta reads every template before approving it, so keep it clear and honest.</div>
+      <label>Type</label><div class="wt-pills"><button type="button" class="ix-pill ${tcat === "utility" ? "on" : ""}" data-c="utility">Order updates</button><button type="button" class="ix-pill ${tcat === "marketing" ? "on" : ""}" data-c="marketing">Promotion</button></div>
+      <div class="sr-hint">Order updates are for things like confirming an address or a delivery. Promotions cost more and need the customer's consent.</div></div>
+      <div class="ix-foot"><button type="button" id="tpSave" style="background:#2447d6;border-color:#2447d6;color:#fff">Send to Meta for approval</button></div>`);
+    w.querySelector("#tpCancel").onclick = () => openTemplates(null, true);
+    w.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => { tcat = b.dataset.c; w.querySelectorAll("[data-c]").forEach((x) => x.classList.toggle("on", x === b)); }));
+    w.querySelector("#tpSave").onclick = async (e) => {
+      const title = w.querySelector("#tpTitle").value.trim(), body = w.querySelector("#tpBody").value.trim();
+      if (!title || !body) { if (typeof bvToast === "function") bvToast("Add a name and a message first."); return; }
+      e.target.disabled = true; e.target.textContent = "Sending…";
+      const r = await tcall({ action: "create", title, body, category: tcat });
+      if (r && r.success) { if (typeof bvToast === "function") bvToast("Sent to Meta. It usually takes minutes to a few hours."); openTemplates(null, true); }
+      else { e.target.disabled = false; e.target.textContent = "Send to Meta for approval"; if (typeof bvToast === "function") bvToast((r && r.error) || "Meta did not accept it.", "err"); }
+    };
+    w.querySelector("#tpTitle").focus();
+  }
+  async function openTemplates(win, keepWin) {
+    shell(`<div class="ix-sh"><b>WhatsApp templates</b></div><div class="sr-empty">Checking with Meta…</div>`);
+    const [r, ws] = await Promise.all([tcall({ action: "sync" }), win && keepWin ? Promise.resolve(win) : windowState()]);
+    tpls = (r && r.templates) || [];
+    tplDraw(ws, "list");
+  }
+  window.bvTemplateModal = () => openTemplates(null);
 })();
