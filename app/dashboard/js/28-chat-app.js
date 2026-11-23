@@ -29,7 +29,7 @@
     body.assist-on{overflow:hidden;max-width:100vw}
   }
   #chatPanel.cm.page,#chatPanel.cm.page.empty{padding:0 !important;overflow:hidden}
-  #chatPanel.cm.page .cm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin:0;padding:calc(10px + env(safe-area-inset-top)) 16px 6px;box-sizing:border-box}
+  #chatPanel.cm.page .cm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin:0;padding:calc(10px + env(safe-area-inset-top)) 10px 6px;box-sizing:border-box}
   #chatPanel.cm.page .ch-head,#chatPanel.cm.page .ch-suggs{display:none !important}
   #chatPanel.cm.page .ch-acct{width:100%;margin:0;padding:0 16px 4px;box-sizing:border-box;font-size:12px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:transparent;border:0}
   #chatPanel.cm.page.empty .ch-acct{display:none}
@@ -46,14 +46,14 @@
   #chatPanel.cm.page.empty #chWelcomeMsg,#chatPanel.cm.page #chWelcomeMsg{display:none}
   #chatPanel.cm.page.empty .ch-inp{order:2}
   /* ongoing chat */
-  #chatPanel.cm.page .ch-msgs{width:100%;margin:0;padding:8px 16px;box-sizing:border-box;gap:0}
+  #chatPanel.cm.page .ch-msgs{width:100%;margin:0;padding:8px 14px;box-sizing:border-box;gap:0}
   #chatPanel.cm.page .ch-msg{max-width:100%;box-sizing:border-box}
   #chatPanel.cm.page .ch-msg.bot{font-family:var(--cm-serif);font-size:17px;line-height:1.5;color:var(--text);font-weight:400;text-align:left;align-self:stretch;margin:0 0 16px;padding:0;background:transparent;box-shadow:none}
   #chatPanel.cm.page .ch-msg.bot b{font-weight:600}
   #chatPanel.cm.page .ch-msg.user{background:var(--hover);color:var(--text);border-radius:20px 20px 6px 20px;font-family:var(--cm-sans);font-size:15px;line-height:1.4;padding:11px 14px;box-shadow:none;max-width:84%;margin:0 0 16px}
   #chatPanel.cm.page .cc,#chatPanel.cm.page .ch-pay-card,#chatPanel.cm.page .ch-act-card{max-width:100%;box-sizing:border-box;font-family:var(--cm-sans)}
   /* composer pill */
-  #chatPanel.cm.page .ch-inp{display:flex;align-items:center;gap:6px;width:auto;margin:0 16px;padding:7px;border:1px solid var(--border);border-radius:30px;background:var(--panel);box-shadow:0 4px 18px rgba(20,19,15,.07);position:relative;box-sizing:border-box}
+  #chatPanel.cm.page .ch-inp{display:flex;align-items:center;gap:6px;width:auto;margin:0 10px;padding:8px;border:1px solid var(--border);border-radius:32px;background:var(--panel);box-shadow:0 4px 18px rgba(20,19,15,.07);position:relative;box-sizing:border-box}
   #chatPanel.cm.page .ch-inp textarea{flex:1;min-width:0;min-height:40px;max-height:140px;padding:10px 4px;border:0;background:transparent;box-shadow:none;border-radius:0;font-family:var(--cm-sans);font-size:16px;color:var(--text)}
   #chatPanel.cm.page .ch-inp textarea:focus{box-shadow:none;border:0}
   #chatPanel.cm.page .ch-inp textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
@@ -66,9 +66,10 @@
   #cmPlus button{display:block;width:100%;text-align:left;background:none;border:0;padding:12px 14px;border-radius:10px;font:inherit;font-size:14px;color:var(--text);cursor:pointer;min-height:44px}
   #cmPlus button:hover{background:var(--hover)}
   /* pill bar */
-  #chatPanel.cm.page .cm-nav.on{display:flex;gap:4px;order:9;margin:10px 16px calc(14px + env(safe-area-inset-bottom));padding:6px;background:var(--panel);border:1px solid var(--border);border-radius:34px;box-shadow:0 4px 18px rgba(20,19,15,.07);box-sizing:border-box;align-self:stretch}
-  .cm-nav button{flex:1;min-height:44px;border:0;background:none;border-radius:28px;font:inherit;font-family:var(--cm-sans);font-size:12px;font-weight:600;color:var(--text2);padding:6px 0 5px;cursor:pointer}
-  .cm-nav button svg{display:block;margin:0 auto 2px;width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  #chatPanel.cm.page .cm-nav.on{display:flex;gap:4px;order:9;margin:10px 10px calc(12px + env(safe-area-inset-bottom));padding:7px;background:var(--panel);border:1px solid var(--border);border-radius:34px;box-shadow:0 4px 18px rgba(20,19,15,.07);box-sizing:border-box;align-self:stretch}
+  .cm-nav button{flex:1;min-height:60px;border:0;background:none;border-radius:30px;font:inherit;font-family:var(--cm-sans);font-size:13px;font-weight:600;color:var(--text2);padding:8px 0 7px;cursor:pointer}
+  .cm-nav button[aria-current=page]{flex:1.8}
+  .cm-nav button svg{display:block;margin:0 auto 3px;width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .cm-nav button[aria-current=page]{background:#eceae1;color:#14130f}
   [data-theme="dark"] .cm-nav button[aria-current=page]{background:var(--hover);color:var(--text)}
   #chatPanel.cm.page.cm-tab .ch-msgs,#chatPanel.cm.page.cm-tab .ch-inp,#chatPanel.cm.page.cm-tab .ch-acct{display:none !important}
@@ -157,6 +158,7 @@
     const n = document.getElementById("cmNew"); n.innerHTML = NEW[t][1]; n.setAttribute("aria-label", NEW[t][0]);
     document.getElementById("cmTitle").textContent = t === "chat" ? cmTitleText() : { plans: "Plans", code: "Code", projects: "Projects" }[t] || "";
     if (t !== "chat") { view.innerHTML = ""; try { window.cmTabs[t]?.(view); } catch (e) { view.textContent = "Could not open this: " + e.message; } }
+    if (t !== 'code') panel.classList.remove('cm-code');
     cmNavPaint();
   }
   window.cmTab = cmTab;
