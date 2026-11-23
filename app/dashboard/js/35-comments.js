@@ -156,7 +156,7 @@
   .ix-r{display:flex;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:flex-start;cursor:pointer;background:var(--panel)}
   .ix-r:active,.ix-r.active{background:var(--panel2)}
   .ix-av{position:relative;width:48px;height:48px;flex:none}
-  .ix-ini{width:48px;height:48px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);color:var(--text2);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .ix-ini{width:48px;height:48px;overflow:hidden;border-radius:50%;background:var(--panel2);border:1px solid var(--border);color:var(--text2);font-size:15px;font-weight:600;display:flex;align-items:center;justify-content:center}
   .ix-ch{position:absolute;right:-3px;bottom:-3px;width:20px;height:20px;border-radius:50%;border:2px solid var(--panel);display:flex;align-items:center;justify-content:center}
   .ix-ch svg{width:11px;height:11px;fill:#fff}
   .ix-ch.wa{background:#168a45}.ix-ch.ms{background:#0a6fe8}.ix-ch.ig{background:#b5307d}.ix-ch.fb{background:#1877f2}
@@ -212,7 +212,7 @@
   const badge = (k) => `<span class="ix-ch ${k}"><svg viewBox="0 0 24 24">${GL[k]}</svg></span>`;
 
   function ixRow(o) {
-    return `<div class="ix-r ${o.un ? "un" : ""} ${o.active ? "active" : ""}" onclick="${o.click}"><div class="ix-av"><div class="ix-ini">${escH(o.ini)}</div>${badge(o.ch)}</div>
+    return `<div class="ix-r ${o.un ? "un" : ""} ${o.active ? "active" : ""}" onclick="${o.click}"><div class="ix-av"><div class="ix-ini">${o.img ? `<img src="${escH(o.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;border-radius:50%;object-fit:cover" onerror="this.remove()">` : escH(o.ini)}</div>${badge(o.ch)}</div>
       <div class="ix-rb"><div class="ix-l1"><b>${escH(o.name)}</b><time class="${o.wait ? "wt" : ""}">${escH(o.time)}</time></div><div class="ix-l2">${o.ticks || ""}${escH(o.text)}</div>
       <div class="ix-l3"><span class="ix-tg">${CHN[o.ch]}</span>${(o.tags || []).map((t) => `<span class="ix-tg">${escH(t)}</span>`).join("")}</div></div>${o.cnt ? `<span class="ix-cnt">${o.cnt > 99 ? "99+" : o.cnt}</span>` : ""}</div>`;
   }

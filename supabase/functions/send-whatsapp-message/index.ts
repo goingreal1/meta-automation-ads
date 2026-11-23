@@ -90,6 +90,21 @@ async function metaPerms(body, req) {
   }
   return json({ ok: true, ...out });
 }
+// Read-only debug (platform secret only): one Graph GET made with a Page's own token, to see exactly what Meta answers. Never writes anything.
+async function graphProbe(body, req) {
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const sec = (await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle()).data?.value ?? "";
+  if (!sec || req.headers.get("x-cron-secret") !== sec) return json({ error: "Not allowed" }, 403);
+  const T = Deno.env.get("META_ACCESS_TOKEN") ?? "";
+  const path = String(body?.path ?? "");
+  if (!/^\/[0-9A-Za-z_\-\/]*(\?[0-9A-Za-z_,{}.=\-&%]*)?$/.test(path)) return json({ error: "Bad path" }, 400);
+  const pid = String(body?.page_id ?? "").replace(/\D/g, "");
+  let tok = T;
+  if (pid) { const pt = (await (await fetch(`${META_GRAPH_BASE}/${pid}?fields=access_token&access_token=${encodeURIComponent(T)}`)).json())?.access_token; if (pt) tok = pt; }
+  const r = await fetch(`${META_GRAPH_BASE}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(tok)}`);
+  const j = await r.json().catch(() => ({}));
+  return json({ ok: true, status: r.status, result: JSON.parse(JSON.stringify(j).split(tok).join("***")) });
+}
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -102,6 +117,7 @@ Deno.serve(async (req)=>{
   }
   try {
     const body = await req.json().catch(()=>({}));
+    if (body?.action === "graph_probe") return await graphProbe(body, req);
     if (body?.action === "meta_perms") return await metaPerms(body, req);
     if (body?.action === "start") return await startConversation(body, req, createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
     const conversationId = body?.conversation_id;
