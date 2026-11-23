@@ -1,0 +1,1 @@
+select cron.schedule('comments-sync-10min', '*/10 * * * *', $$select net.http_post(url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/page-tools', headers:=jsonb_build_object('Content-Type','application/json','x-cron-secret',(select value from public.app_secrets where key='ads_cron_secret')), body:='{"action":"comments_sync"}'::jsonb, timeout_milliseconds:=140000)$$);
