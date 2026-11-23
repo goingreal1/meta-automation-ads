@@ -71,6 +71,78 @@ async function syncLinks(links: { id: string; company_id: string; media_buyer_id
   return results;
 }
 
+// ======== AUTO-ASSIGN ========
+// Whenever a Page, ad account or pixel is shared with Revora's Business, the people listed in bm_auto_assign are given access to it, so nobody
+// has to click through Business Settings. Failures are logged (bm_assign_log) and retried after 6 hours, never in a tight loop.
+const TASKS: Record<string, string[]> = { page: ["MANAGE", "CREATE_CONTENT", "MODERATE", "MESSAGING", "ADVERTISE", "ANALYZE"], ad_account: ["MANAGE", "ADVERTISE", "ANALYZE"], pixel: ["EDIT", "ANALYZE", "ADVERTISE"] };
+async function bmList(path: string, fields = "id,name", cap = 20): Promise<any[]> {
+  const out: any[] = []; let url: string | null = `${GRAPH}/${path}${path.includes("?") ? "&" : "?"}fields=${fields}&limit=100&access_token=${META_ACCESS_TOKEN}`;
+  for (let i = 0; url && i < cap; i++) {
+    const r = await fetch(url); const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(String(j?.error?.message ?? "Meta error").replace(META_ACCESS_TOKEN, "***").slice(0, 200));
+    out.push(...(j.data ?? [])); url = j.paging?.next ?? null;
+  }
+  return out;
+}
+async function bmAssets() {
+  const safe = async (p: string, f?: string) => { try { return await bmList(p, f); } catch (e) { return { error: String((e as Error).message) } as any; } };
+  const rows = (v: any) => (Array.isArray(v) ? v : []);
+  const [cp, op, ca, oa, px, cpx] = await Promise.all([
+    safe(`${META_BUSINESS_ID}/client_pages`), safe(`${META_BUSINESS_ID}/owned_pages`),
+    safe(`${META_BUSINESS_ID}/client_ad_accounts`, "account_id,name"), safe(`${META_BUSINESS_ID}/owned_ad_accounts`, "account_id,name"),
+    safe(`${META_BUSINESS_ID}/adspixels`), safe(`${META_BUSINESS_ID}/client_pixels`)
+  ]);
+  const errors: Record<string, string> = {};
+  [["client_pages", cp], ["owned_pages", op], ["client_ad_accounts", ca], ["owned_ad_accounts", oa], ["adspixels", px], ["client_pixels", cpx]].forEach(([k, v]: any) => { if (v && !Array.isArray(v) && v.error) errors[k] = v.error; });
+  const pages = [...rows(cp), ...rows(op)].map((x: any) => ({ id: String(x.id), name: x.name ?? "" }));
+  const accts = [...rows(ca), ...rows(oa)].map((x: any) => ({ id: "act_" + String(x.account_id ?? x.id).replace(/^act_/, ""), name: x.name ?? "" }));
+  const pixels = [...rows(px), ...rows(cpx)].map((x: any) => ({ id: String(x.id), name: x.name ?? "" }));
+  return { pages, accts, pixels, errors };
+}
+async function bmProbe() {
+  const safe = async (p: string, f: string) => { try { return await bmList(p, f); } catch (e) { return { error: String((e as Error).message) }; } };
+  const a = await bmAssets();
+  const sample = [];
+  for (const pg of a.pages.slice(0, 12)) {
+    try { const au = await bmList(`${pg.id}/assigned_users?business=${META_BUSINESS_ID}`, "id,name,user_type,tasks", 2); sample.push({ page: pg.name || pg.id, id: pg.id, assigned: au.map((u: any) => `${u.name ?? u.id} (${u.user_type ?? ""}): ${(u.tasks ?? []).join(",")}`) }); }
+    catch (e) { sample.push({ page: pg.name || pg.id, id: pg.id, error: String((e as Error).message) }); }
+  }
+  const { data: cfg } = await supabase.from("bm_auto_assign").select("meta_user_id, kind, label, enabled");
+  return { system_users: await safe(`${META_BUSINESS_ID}/system_users`, "id,name,role"), business_users: await safe(`${META_BUSINESS_ID}/business_users`, "id,name,email,role"), pages: a.pages.map((x) => x.name || x.id), ad_account_count: a.accts.length, pixels: a.pixels.map((x) => x.name || x.id), list_errors: a.errors, page_access_sample: sample, auto_assign_config: cfg ?? [] };
+}
+async function autoAssign() {
+  const { data: people } = await supabase.from("bm_auto_assign").select("meta_user_id, kind, label").eq("enabled", true);
+  if (!people?.length) return { people: 0, note: "No people are set to be assigned automatically yet." };
+  const assets = await bmAssets();
+  const sixH = Date.now() - 6 * 3600 * 1000;
+  const { data: log } = await supabase.from("bm_assign_log").select("asset_id, meta_user_id, status, attempted_at");
+  const done = new Map((log ?? []).map((l: any) => [l.asset_id + "|" + l.meta_user_id, l]));
+  const kinds: [string, { id: string; name: string }[]][] = [["page", assets.pages], ["ad_account", assets.accts], ["pixel", assets.pixels]];
+  const report = { checked: 0, assigned: 0, failed: 0, already: 0, errors: assets.errors, first_error: "" };
+  for (const [kind, list] of kinds) {
+    for (const a of list) {
+      const todo = people.filter((p: any) => { const l = done.get(a.id + "|" + p.meta_user_id) as any; return !l || (l.status === "failed" && Date.parse(l.attempted_at) < sixH); });
+      if (!todo.length) { report.already += people.length; continue; }
+      let have = new Set<string>();
+      try { have = new Set((await bmList(`${a.id}/assigned_users?business=${META_BUSINESS_ID}`, "id", 2)).map((u: any) => String(u.id))); } catch (_) { /* assign anyway; Meta says if it is already there */ }
+      for (const p of todo) {
+        report.checked++;
+        const key = { asset_id: a.id, asset_kind: kind, meta_user_id: p.meta_user_id };
+        if (have.has(p.meta_user_id)) { await supabase.from("bm_assign_log").upsert({ ...key, status: "ok", error: null, attempted_at: new Date().toISOString() }); report.already++; continue; }
+        try {
+          const r = await fetch(`${GRAPH}/${a.id}/assigned_users`, { method: "POST", body: new URLSearchParams({ user: p.meta_user_id, tasks: JSON.stringify(TASKS[kind]), business: META_BUSINESS_ID, access_token: META_ACCESS_TOKEN }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || j?.error) throw new Error(String(j?.error?.error_user_msg || j?.error?.message || "Meta refused").replace(META_ACCESS_TOKEN, "***").slice(0, 240));
+          await supabase.from("bm_assign_log").upsert({ ...key, status: "ok", error: null, attempted_at: new Date().toISOString() }); report.assigned++;
+        } catch (e) {
+          const m = String((e as Error).message); await supabase.from("bm_assign_log").upsert({ ...key, status: "failed", error: m, attempted_at: new Date().toISOString() }); report.failed++; if (!report.first_error) report.first_error = `${kind} ${a.name || a.id}: ${m}`;
+        }
+      }
+    }
+  }
+  return { people: people.length, ...report };
+}
+
 async function requireAuth(accessToken: string) {
   const { data: { user }, error } = await supabase.auth.getUser(accessToken);
   if (error || !user) throw new Error("Not signed in.");
@@ -93,7 +165,16 @@ Deno.serve(async (req) => {
       if (!META_ACCESS_TOKEN || !META_BUSINESS_ID) return json({ error: "Partner sync isn't configured yet." }, 500);
       const { data: links } = await supabase.from("media_buyer_bms").select("id, company_id, media_buyer_id, business_id");
       const results = links?.length ? await syncLinks(links) : [];
-      return json({ checked: results.length, imported: results.reduce((a, r) => a + r.imported, 0) });
+      let assign: unknown = null;
+      try { assign = await autoAssign(); } catch (e) { assign = { error: String((e as Error).message).slice(0, 200) }; }
+      return json({ checked: results.length, imported: results.reduce((a, r) => a + r.imported, 0), auto_assign: assign });
+    }
+    if (mode === "bm_probe" || mode === "auto_assign") {
+      const hdr = req.headers.get("x-cron-secret") ?? body.cron_secret ?? "";
+      const { data: sec } = await supabase.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle();
+      if (!hdr || (hdr !== sec?.value && hdr !== CRON_SECRET)) return json({ error: "Not authorized." }, 403);
+      if (!META_ACCESS_TOKEN || !META_BUSINESS_ID) return json({ error: "Partner sync isn't configured yet." }, 500);
+      return json(mode === "bm_probe" ? await bmProbe() : await autoAssign());
     }
 
     if (!access_token) return json({ error: "access_token is required" }, 400);
