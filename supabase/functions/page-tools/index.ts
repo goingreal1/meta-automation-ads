@@ -65,6 +65,22 @@ Deno.serve(async (req)=>{
       companyId = me.company_id;
       role = me.role;
     }
+    // Platform-only: publish one normal (organic) photo post on the Facebook Page of an ad account, with the Page's own token.
+    if (isPlatform && String(b.action ?? "") === "post_photo") {
+      const { data: ac } = await db.from("ad_accounts").select("id, fb_page_id").eq("id", String(b.ad_account_id ?? "")).maybeSingle();
+      const pid = String(ac?.fb_page_id ?? "").match(/\d+/)?.[0];
+      const img = String(b.image_url ?? ""), msg = String(b.message ?? "").slice(0, 5000);
+      if (!pid) return json({ error: "This ad account has no Page saved." }, 400);
+      if (!/^https:\/\//.test(img) || !msg.trim()) return json({ error: "A public https image_url and a message are needed." }, 400);
+      try {
+        const pt = await pageToken(pid, SHARED);
+        const r = await g(`/${pid}/photos`, pt, "POST", { url: img, caption: msg, published: "true" });
+        const postId = String(r?.post_id ?? r?.id ?? "");
+        let link = null;
+        try { link = (await g(`/${postId}?fields=permalink_url,created_time`, pt))?.permalink_url ?? null; } catch (_) { /* the post exists even if the link cannot be read */ }
+        return json({ ok: true, page_id: pid, post_id: postId, link: link && link.startsWith("/") ? "https://www.facebook.com" + link : link });
+      } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }, 200); }
+    }
     let q = db.from("ad_accounts").select("id, company_id, fb_page_id, ig_user_id, meta_connection_id, media_buyer_id").eq("id", String(b.ad_account_id ?? ""));
     if (companyId) q = q.eq("company_id", companyId);
     const { data: acct } = await q.maybeSingle();
