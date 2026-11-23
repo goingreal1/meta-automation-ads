@@ -121,6 +121,16 @@ Deno.serve(async (req)=>{
         return json({ ok: true, page_id: pid, post_id: postId, link: link && link.startsWith("/") ? "https://www.facebook.com" + link : link });
       } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }, 200); }
     }
+    // A creative's own Page: "Post to my page" starts from the creative (its ad account, or its product's), never from a client-chosen account.
+    if (["post_preview", "post_creative"].includes(String(b.action ?? ""))) {
+      const { data: cr } = await db.from("creative_assets").select("id, company_id, public_url, asset_type, primary_text, headline, ad_account_id, product_id").eq("id", String(b.creative_id ?? "")).maybeSingle();
+      if (!cr || (companyId && cr.company_id !== companyId)) return json({ error: "Creative not found." }, 404);
+      let aid = cr.ad_account_id as string | null;
+      if (!aid && cr.product_id) aid = (await db.from("products").select("ad_account_id").eq("id", cr.product_id).maybeSingle()).data?.ad_account_id ?? null;
+      if (!aid) return json({ error: "This creative has no ad account yet, so no Page. Assign it to a product that has an ad account first." }, 400);
+      if (!["image", "video"].includes(String(cr.asset_type))) return json({ error: "Only a single picture or video can be posted." }, 400);
+      b.ad_account_id = aid; b._creative = cr;
+    }
     let q = db.from("ad_accounts").select("id, company_id, fb_page_id, ig_user_id, meta_connection_id, media_buyer_id").eq("id", String(b.ad_account_id ?? ""));
     if (companyId) q = q.eq("company_id", companyId);
     const { data: acct } = await q.maybeSingle();
@@ -138,6 +148,28 @@ Deno.serve(async (req)=>{
     if (acct.meta_connection_id) {
       const { data: conn } = await db.from("meta_connections").select("access_token, status").eq("id", acct.meta_connection_id).maybeSingle();
       if (conn?.status === "active" && conn.access_token) token = conn.access_token;
+    }
+    if (b._creative) {
+      const cr = b._creative;
+      let pageName = null;
+      try { pageName = (await g(`/${pageId}?fields=name`, token))?.name ?? null; } catch (_) { /* the name is only for the preview */ }
+      if (b.action === "post_preview") return json({ ok: true, page_id: pageId, page_name: pageName, kind: cr.asset_type, caption: cr.primary_text ?? "", url: cr.public_url });
+      if (b.confirmed !== true) return json({ error: "Confirm first: this publishes on the Page." }, 400);
+      const msg = String(b.message ?? cr.primary_text ?? "").slice(0, 5000);
+      if (!msg.trim()) return json({ error: "Write a caption first." }, 400);
+      try {
+        const pt = await pageToken(pageId, token);
+        let postId = "", link = null;
+        if (cr.asset_type === "video") {
+          const r = await g(`/${pageId}/videos`, pt, "POST", { file_url: cr.public_url, description: msg, published: "true" });
+          postId = String(r?.id ?? ""); link = postId ? `https://www.facebook.com/${pageId}/videos/${postId}` : null;
+        } else {
+          const r = await g(`/${pageId}/photos`, pt, "POST", { url: cr.public_url, caption: msg, published: "true" });
+          postId = String(r?.post_id ?? r?.id ?? "");
+          try { const l = (await g(`/${postId}?fields=permalink_url`, pt))?.permalink_url ?? null; link = l && l.startsWith("/") ? "https://www.facebook.com" + l : l; } catch (_) { /* the post exists even if the link cannot be read */ }
+        }
+        return json({ ok: true, page_id: pageId, page_name: pageName, post_id: postId, link });
+      } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }); }
     }
     const action = String(b.action ?? "");
     if (action === "diag") {
