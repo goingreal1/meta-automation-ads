@@ -72,6 +72,24 @@ async function startConversation(body, req, supabase) {
   const lastIn = last?.created_at ?? null;
   return json({ success: true, conversation_id: conv.id, created, last_inbound_at: lastIn, window_open: !!lastIn && Date.now() - Date.parse(lastIn) < 24 * 3600 * 1000 });
 }
+// Read-only diagnostic (platform secret only): which Meta permissions the shared token holds, and whether a Page's Messenger inbox can be read.
+async function metaPerms(body, req) {
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const sec = (await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle()).data?.value ?? "";
+  if (!sec || req.headers.get("x-cron-secret") !== sec) return json({ error: "Not allowed" }, 403);
+  const T = Deno.env.get("META_ACCESS_TOKEN") ?? "";
+  const g = async (p, t) => (await fetch(`${META_GRAPH_BASE}${p}${p.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(t)}`)).json();
+  const out = {};
+  const perms = await g("/me/permissions?limit=100", T);
+  out.permissions = perms?.data ? perms.data.map((x) => `${x.permission}:${x.status}`) : (perms?.error?.message ?? "unknown");
+  const pid = String(body?.page_id ?? "").replace(/\D/g, "");
+  if (pid) {
+    const pt = (await g(`/${pid}?fields=access_token`, T))?.access_token;
+    out.page_token = !!pt;
+    if (pt) { const c = await g(`/${pid}/conversations?platform=messenger&limit=1&fields=id`, pt); out.messenger = c?.error ? c.error.message : `readable, ${(c.data ?? []).length} found`; }
+  }
+  return json({ ok: true, ...out });
+}
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -84,6 +102,7 @@ Deno.serve(async (req)=>{
   }
   try {
     const body = await req.json().catch(()=>({}));
+    if (body?.action === "meta_perms") return await metaPerms(body, req);
     if (body?.action === "start") return await startConversation(body, req, createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
     const conversationId = body?.conversation_id;
     const text = body?.text?.trim();
