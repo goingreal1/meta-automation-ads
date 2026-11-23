@@ -170,7 +170,11 @@
   .ix-opt b{flex:1;font-size:15px;font-weight:600}
   .ix-rad{width:22px;height:22px;border-radius:50%;border:2px solid #cfc9ba;flex:none}.ix-rad.on{border:7px solid #2447d6}
   .ix-foot{display:flex;gap:10px;padding:16px 20px 0}
-  .ix-foot button{flex:1;height:50px;border-radius:14px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit;font-size:15px;font-weight:700;cursor:pointer}`;
+  .ix-foot button{flex:1;height:50px;border-radius:14px;border:1px solid var(--border);background:var(--panel);color:var(--text);font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+  @media(max-width:820px){
+    #convTabRoot.thread-open > .ix-head,#convTabRoot.thread-open > .ix-tabs,#convTabRoot.thread-open > #cm2Box{display:none}
+    #convTabRoot .conv-list-items{height:calc(100vh - 275px);height:calc(100dvh - 275px)}
+  }`;
   const ixst = document.createElement("style"); ixst.textContent = ixcss; document.head.appendChild(ixst);
 
   const GL = {

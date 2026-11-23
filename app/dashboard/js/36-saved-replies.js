@@ -99,6 +99,9 @@
     box.dispatchEvent(new Event("input", { bubbles: true }));
     box.focus();
   }
+  // For the quick chips above the reply box: the person's first few saved replies, and a way to use one.
+  window.bvSavedForChips = async function (n) { await load(); return rows.slice(0, n || 4); };
+  window.bvUseSavedReply = function (id) { use(rows.find((r) => r.id === id)); };
   window.bvSavedReplies = async function () {
     manage = false; editing = null;
     shell(`<div class="ix-sh"><b>Saved replies</b></div><div class="sr-empty">Loading…</div>`);
