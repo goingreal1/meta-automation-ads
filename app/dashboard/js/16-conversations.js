@@ -587,7 +587,7 @@ async function bvSelectConversation(id) {
           <button onclick="bvAttachMenuAction('form')">${icon("form",14)} Order form</button>
           <button onclick="bvAttachMenuAction('packages')">${icon("list",14)} Package info</button>
           <button onclick="bvAttachMenuAction('website')">${icon("link",14)} Website link</button>
-          <button onclick="bvAttachMenuAction('template')">${icon("chat",14)} Send template (re-open after 24h)</button>
+          <button onclick="bvAttachMenuAction('template')">${icon("chat",14)} WhatsApp-approved template (after 24h)</button>
         </div>
       </div>
       <textarea id="convReplyInput" rows="1" placeholder="Type a reply to ${bvEscape(bvName(conv))}…" oninput="bvAutoGrow(this);bvSyncComposeBtns()" onkeydown="bvReplyKey(event)" onpaste="bvPasteMedia(event)"></textarea>
@@ -596,6 +596,7 @@ async function bvSelectConversation(id) {
         <span class="rec-hint">Recording… tap ✓ to send</span>
         <button type="button" class="compose-icon-btn" onclick="bvStopRecording(false)" title="Cancel" style="margin-left:auto;">✕</button>
       </div>
+      <button type="button" id="convSavedBtn" class="compose-mic-btn" onclick="bvSavedReplies()" title="Saved replies" aria-label="Saved replies">${icon("list",16)}</button>
       <button id="convMicBtn" class="compose-mic-btn" onclick="bvStartRecording()" title="Record voice note">${icon("mic",16)}</button>
       <button id="convSendBtn" onclick="bvSendReply()" title="Send">${icon("send",16)}</button>
     </div>`;
