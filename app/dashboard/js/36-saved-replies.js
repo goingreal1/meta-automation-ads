@@ -150,7 +150,7 @@
       };
       return;
     }
-    const rows = tpls.length ? tpls.map((t) => `<div class="sr-row" ${t.status === "approved" && win && win.send !== false ? `data-u="${t.id}" role="button" tabindex="0"` : ""}><div class="sr-t"><b>${esc(t.title)}</b><span class="sr-b">${esc(t.status === "rejected" && t.reject_reason ? "Meta said: " + t.reject_reason : t.body)}</span></div>${chip(t)}</div>`).join("") : `<div class="sr-empty">No templates yet. Write one, Meta checks it (minutes to a few hours), and once it says Approved you can send it to any customer, even after 24 hours. They stay private to you.</div>`;
+    const rows = tpls.length ? tpls.map((t) => `<div class="sr-row" ${t.status === "approved" && win && win.send !== false ? `data-u="${t.id}" role="button" tabindex="0"` : ""}><div class="sr-t"><b>${esc(t.title)}</b><span class="sr-b">${esc(t.status === "rejected" && t.reject_reason ? "Meta said: " + t.reject_reason : t.body)}</span>${t.resend_status === "waiting" ? '<span class="sr-b" style="color:#9a3a0b;margin-top:4px">Will be sent to the customer automatically when Meta approves it.</span>' : t.resend_status === "sent" ? '<span class="sr-b" style="color:#0f6b36;margin-top:4px">Sent to the customer.</span>' : ""}</div>${chip(t)}</div>`).join("") : `<div class="sr-empty">No templates yet. Write one, Meta checks it (minutes to a few hours), and once it says Approved you can send it to any customer, even after 24 hours. They stay private to you.</div>`;
     const w = shell(`<div class="ix-sh"><b>WhatsApp templates</b><button type="button" id="tpSync">Refresh</button></div>
       ${win ? `<div class="wt-note ${win.open ? "" : "warn"}">${esc(win.text)}</div>` : ""}<div class="sr-list">${rows}</div><button type="button" class="sr-add" id="tpNew">+ New template</button>`);
     w.querySelector("#tpSync").onclick = () => openTemplates(win);
@@ -184,4 +184,33 @@
     tplDraw(ws, "list");
   }
   window.bvTemplateModal = () => openTemplates(null);
+
+  // Pressing send after the customer's 24-hour window has closed: WhatsApp will only deliver an approved template, so offer to submit THIS message to Meta
+  // and send it to the chat automatically the moment Meta approves it (the poll job in send-whatsapp-template does the sending and the notification).
+  window.bvClosedWindowSheet = function (text) {
+    const conv = typeof bvConversations !== "undefined" ? bvConversations.find((c) => c.id === bvSelectedConvId) : null;
+    const nm = conv && typeof bvName === "function" ? bvName(conv) : "the customer";
+    const w = shell(`<div class="ix-sh"><b>Cannot send yet</b><button type="button" id="cwX">Close</button></div>
+      <div class="wt-note warn">${esc(nm)} last wrote more than 24 hours ago, so WhatsApp only delivers a Meta-approved template now.</div>
+      <div class="wt-confirm" style="margin-top:10px"><div style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text2)">Your message</div><div style="margin-top:6px;white-space:pre-wrap">${esc(text)}</div></div>
+      <div class="sr-form"><label class="sr-chk" style="display:flex;gap:10px;align-items:center;text-transform:none;letter-spacing:0;font-size:14.5px;font-weight:500;color:var(--text)"><input type="checkbox" id="cwKeep" checked style="width:20px;height:20px;flex:none"> Also keep it in my saved replies</label></div>
+      <div class="ix-foot" style="flex-direction:column"><button type="button" id="cwSend" style="flex:none;height:52px;background:#2447d6;border-color:#2447d6;color:#fff">Send to Meta for approval, then auto-send</button><button type="button" id="cwTpl" style="flex:none;height:52px">Use an approved template instead</button></div>
+      <div class="sr-hint" style="padding:12px 20px 0">Meta usually approves in minutes to a few hours. When it does, we send this to ${esc(nm)} for you and notify you. Meta may charge a small fee for a template message.</div>`);
+    w.querySelector("#cwX").onclick = close;
+    w.querySelector("#cwTpl").onclick = () => openTemplates(null);
+    w.querySelector("#cwSend").onclick = async (e) => {
+      const b = e.target; b.disabled = true; b.textContent = "Sending to Meta…";
+      const title = text.replace(/\s+/g, " ").slice(0, 40).trim() || "Message";
+      const r = await tcall({ action: "create", title, body: text, category: "utility", resend_conversation_id: bvSelectedConvId });
+      if (r && r.success) {
+        if (w.querySelector("#cwKeep").checked) await save({ title, body: text });
+        const box = document.getElementById("convReplyInput"); if (box) { box.value = ""; box.dispatchEvent(new Event("input", { bubbles: true })); }
+        close();
+        if (typeof bvToast === "function") bvToast("Sent to Meta. We will send it to " + nm + " and notify you when it is approved.");
+      } else {
+        b.disabled = false; b.textContent = "Send to Meta for approval, then auto-send";
+        if (typeof bvToast === "function") bvToast((r && r.error) || "Meta did not accept it.", "err");
+      }
+    };
+  };
 })();

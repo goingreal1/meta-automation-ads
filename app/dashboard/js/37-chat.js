@@ -105,8 +105,8 @@
     window.bvSendReply = async function () {
       const w = window.__ixWin, box = document.getElementById("convReplyInput");
       if (w && w.id === bvSelectedConvId && w.open === false && box && box.value.trim()) {
-        if (typeof bvToast === "function") bvToast("The 24-hour window has closed. Send an approved template instead. Your text stays in the box.");
-        if (typeof bvTemplateModal === "function") bvTemplateModal();
+        if (typeof bvClosedWindowSheet === "function") bvClosedWindowSheet(box.value.trim());
+        else if (typeof bvTemplateModal === "function") bvTemplateModal();
         return;
       }
       return origSend.apply(this, arguments);
