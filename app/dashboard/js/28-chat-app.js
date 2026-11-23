@@ -1,7 +1,7 @@
 // Revora dashboard, part 28: CHAT APP LOOK (Claude-mobile style chat screen)
-// Restyles the Assistant tab: greeting + four suggestion cards, a pill composer (plus, hold-to-talk mic, send), a header with a
-// hamburger that goes back to Overview, and a pill bar Chat / Plans / Code / Projects. The chat logic itself (22-ai-chat.js,
-// 27-chat-cards.js) is unchanged, and every confirm card still works the same: nothing runs without a tap.
+// Restyles the Assistant tab: a calm greeting, a pill composer (plus, hold-to-talk mic, send), a header with a hamburger that goes
+// back to Overview, and a pill bar Chat / Plans / Code / Projects. On phones it fills the whole screen edge to edge.
+// The chat logic (22-ai-chat.js, 27-chat-cards.js) is unchanged and every confirm card still works the same: nothing runs without a tap.
 // Add ?classic=1 to the address to get the old look back.
 (function () {
   if (/[?&]classic=1/.test(location.search)) return;
@@ -9,32 +9,54 @@
   if (!panel) return;
   panel.classList.add("cm");
 
-  // ── look (uses the dashboard's own colour tokens, so light and dark both work) ──────────────────────────────
+  // fonts: Newsreader for the greeting and the assistant's words, Inter for the rest
+  try {
+    const l = document.createElement("link"); l.rel = "stylesheet";
+    l.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap";
+    document.head.appendChild(l);
+  } catch {}
+
   const css = `
+  /* warm colours, only inside this screen (dark mode gets matching dark ones) */
+  #chatPanel.cm{--bg:#faf9f5;--panel:#ffffff;--panel2:#f1efe7;--hover:#eceae1;--border:#ebe8df;--borderStrong:#e3dfd3;--text:#14130f;--text2:#3f3c34;--muted:#6a665b;--accent:#1877F2;--cm-serif:Newsreader,'Iowan Old Style',Georgia,serif;--cm-sans:Inter,system-ui,-apple-system,'Segoe UI',sans-serif}
+  [data-theme="dark"] #chatPanel.cm{--bg:#151412;--panel:#1f1e1b;--panel2:#272622;--hover:#2d2b27;--border:#34322c;--borderStrong:#3d3b34;--text:#f4f2ea;--text2:#cfcabd;--muted:#a09b8e}
   .cm-head,.cm-star,.cm-nav,#cmView{display:none}
-  #chatPanel.cm.page .cm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:min(780px,100%);margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 16px 4px;box-sizing:border-box}
-  #chatPanel.cm.page .ch-head{display:none}
-  .cm-rb{width:44px;height:44px;border-radius:99px;background:var(--panel);border:1px solid var(--border);box-shadow:0 2px 10px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;color:var(--text);padding:0}
+  /* full screen on phones and tablets, edge to edge */
+  #chatPanel.cm.page{font-family:var(--cm-sans);background:var(--bg);color:var(--text);overflow-x:hidden;max-width:100vw}
+  @media (max-width:1000px){
+    #chatPanel.cm.page{position:fixed;inset:0;left:0 !important;top:0 !important;right:0;bottom:0;width:100%;height:100vh;height:100dvh;max-width:none;z-index:1200}
+    body.assist-on .bottom-nav{display:none !important}
+    body.assist-on{overflow:hidden;max-width:100vw}
+  }
+  #chatPanel.cm.page,#chatPanel.cm.page.empty{padding:0 !important;overflow:hidden}
+  #chatPanel.cm.page .cm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin:0;padding:calc(10px + env(safe-area-inset-top)) 16px 6px;box-sizing:border-box}
+  #chatPanel.cm.page .ch-head,#chatPanel.cm.page .ch-suggs{display:none !important}
+  #chatPanel.cm.page .ch-acct{width:100%;margin:0;padding:0 16px 4px;box-sizing:border-box;font-size:12px;color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:transparent;border:0}
+  #chatPanel.cm.page.empty .ch-acct{display:none}
+  .cm-rb{width:44px;height:44px;border-radius:99px;background:var(--panel);border:1px solid var(--border);box-shadow:0 2px 10px rgba(20,19,15,.06);display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;color:var(--text);padding:0}
   .cm-rb svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   #cmTitle{flex:1;text-align:center;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  #chatPanel.cm.page.empty #cmTitle,#chatPanel.cm.page.empty #cmNew{visibility:hidden}
-  #chatPanel.cm.page{background:var(--bg)}
-  #chatPanel.cm.page.empty .ch-head{display:none}
-  #chatPanel.cm.page.empty .cm-star{display:block;margin:0 auto 14px}
-  #chatPanel.cm.page.empty .ch-hello{font-size:34px;line-height:1.15;letter-spacing:-.01em;margin-bottom:6px}
-  #chatPanel.cm.page.empty #chWelcomeMsg,#chatPanel.cm.page #chWelcomeMsg{display:none}
+  #chatPanel.cm.page.cm-tab #cmTitle{font-size:17px;font-weight:700}
+  #chatPanel.cm.page.empty:not(.cm-tab) #cmTitle,#chatPanel.cm.page.empty:not(.cm-tab) #cmNew{visibility:hidden}
+  /* new chat: lots of air, greeting in the middle, composer and bar at the bottom */
   #chatPanel.cm.page.empty{justify-content:flex-start}
-  #chatPanel.cm.page.empty .ch-msgs{flex:1;order:0;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow:hidden}
-  #chatPanel.cm.page.empty .ch-suggs{order:1;display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 16px 12px}
+  #chatPanel.cm.page.empty .ch-msgs{flex:1;order:0;width:100%;margin:0;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow:hidden;padding:0 24px 40px;box-sizing:border-box}
+  #chatPanel.cm.page.empty .cm-star{display:block;margin:0 auto 20px}
+  #chatPanel.cm.page.empty .ch-hello{display:block;font-family:var(--cm-serif);font-weight:400;font-size:clamp(26px,8vw,36px);line-height:1.2;letter-spacing:-.01em;text-align:center;margin:0;color:var(--text)}
+  #chatPanel.cm.page.empty #chWelcomeMsg,#chatPanel.cm.page #chWelcomeMsg{display:none}
   #chatPanel.cm.page.empty .ch-inp{order:2}
-  .cm-card{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;border:1px solid var(--borderStrong,var(--border));background:var(--panel);border-radius:16px;padding:12px 14px;font:inherit;font-size:14px;line-height:1.35;color:var(--text);text-align:left;min-height:44px;cursor:pointer}
-  .cm-card small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-  #chatPanel.cm.page .ch-msgs{padding:8px 16px 8px}
-  #chatPanel.cm.page .ch-msg.bot{font-family:'Fraunces',Georgia,serif;font-size:16.5px;line-height:1.5}
-  #chatPanel.cm.page .ch-msg.user{background:var(--hover,var(--panel2));color:var(--text);border-radius:20px 20px 6px 20px;font-size:15px;padding:11px 14px;box-shadow:none}
-  #chatPanel.cm.page .ch-inp{display:flex;align-items:center;gap:6px;width:auto;margin:0 16px;padding:7px;border:1px solid var(--border);border-radius:30px;background:var(--panel);box-shadow:0 4px 18px rgba(0,0,0,.07);position:relative}
-  #chatPanel.cm.page .ch-inp textarea{flex:1;min-width:0;min-height:40px;max-height:140px;padding:10px 4px;border:0;background:transparent;box-shadow:none;border-radius:0;font-size:16px}
+  /* ongoing chat */
+  #chatPanel.cm.page .ch-msgs{width:100%;margin:0;padding:8px 16px;box-sizing:border-box;gap:0}
+  #chatPanel.cm.page .ch-msg{max-width:100%;box-sizing:border-box}
+  #chatPanel.cm.page .ch-msg.bot{font-family:var(--cm-serif);font-size:17px;line-height:1.5;color:var(--text);font-weight:400;text-align:left;align-self:stretch;margin:0 0 16px;padding:0;background:transparent;box-shadow:none}
+  #chatPanel.cm.page .ch-msg.bot b{font-weight:600}
+  #chatPanel.cm.page .ch-msg.user{background:var(--hover);color:var(--text);border-radius:20px 20px 6px 20px;font-family:var(--cm-sans);font-size:15px;line-height:1.4;padding:11px 14px;box-shadow:none;max-width:84%;margin:0 0 16px}
+  #chatPanel.cm.page .cc,#chatPanel.cm.page .ch-pay-card,#chatPanel.cm.page .ch-act-card{max-width:100%;box-sizing:border-box;font-family:var(--cm-sans)}
+  /* composer pill */
+  #chatPanel.cm.page .ch-inp{display:flex;align-items:center;gap:6px;width:auto;margin:0 16px;padding:7px;border:1px solid var(--border);border-radius:30px;background:var(--panel);box-shadow:0 4px 18px rgba(20,19,15,.07);position:relative;box-sizing:border-box}
+  #chatPanel.cm.page .ch-inp textarea{flex:1;min-width:0;min-height:40px;max-height:140px;padding:10px 4px;border:0;background:transparent;box-shadow:none;border-radius:0;font-family:var(--cm-sans);font-size:16px;color:var(--text)}
   #chatPanel.cm.page .ch-inp textarea:focus{box-shadow:none;border:0}
+  #chatPanel.cm.page .ch-inp textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
   #chatPanel.cm.page .ch-inp button{position:static;width:44px;height:44px;border-radius:99px;flex:none;background:var(--text);color:var(--bg);font-size:20px;bottom:auto;right:auto}
   #chatPanel.cm.page .ch-inp button:disabled{background:var(--border)}
   #chatPanel.cm.page .ch-inp .cm-sm{width:40px;height:40px;background:var(--panel2);color:var(--text);display:flex;align-items:center;justify-content:center}
@@ -43,18 +65,19 @@
   #cmPlus{position:absolute;left:12px;bottom:64px;background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;display:none;z-index:5}
   #cmPlus button{display:block;width:100%;text-align:left;background:none;border:0;padding:12px 14px;border-radius:10px;font:inherit;font-size:14px;color:var(--text);cursor:pointer;min-height:44px}
   #cmPlus button:hover{background:var(--hover)}
-  #chatPanel.cm.page .cm-nav.on{display:flex;gap:4px;margin:10px 16px calc(14px + env(safe-area-inset-bottom));padding:6px;background:var(--panel);border:1px solid var(--border);border-radius:34px;box-shadow:0 4px 18px rgba(0,0,0,.07);width:auto;box-sizing:border-box;align-self:center;max-width:520px;width:calc(100% - 32px)}
-  #chatPanel.cm.page .cm-nav{order:9}
-  #chatPanel.cm.page .ch-inp textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}
-  .cm-nav button{flex:1;min-height:44px;border:0;background:none;border-radius:28px;font:inherit;font-size:12px;font-weight:600;color:var(--text2);padding:6px 0 5px;cursor:pointer}
+  /* pill bar */
+  #chatPanel.cm.page .cm-nav.on{display:flex;gap:4px;order:9;margin:10px 16px calc(14px + env(safe-area-inset-bottom));padding:6px;background:var(--panel);border:1px solid var(--border);border-radius:34px;box-shadow:0 4px 18px rgba(20,19,15,.07);box-sizing:border-box;align-self:stretch}
+  .cm-nav button{flex:1;min-height:44px;border:0;background:none;border-radius:28px;font:inherit;font-family:var(--cm-sans);font-size:12px;font-weight:600;color:var(--text2);padding:6px 0 5px;cursor:pointer}
   .cm-nav button svg{display:block;margin:0 auto 2px;width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-  .cm-nav button[aria-current=page]{background:var(--panel2);color:var(--text)}
-  #chatPanel.cm.page.cm-tab .ch-msgs,#chatPanel.cm.page.cm-tab .ch-inp,#chatPanel.cm.page.cm-tab .ch-suggs{display:none !important}
-  #chatPanel.cm.page.cm-tab #cmView{display:block;flex:1;overflow-y:auto;width:min(780px,100%);margin:0 auto;padding:0 0 8px;-webkit-overflow-scrolling:touch}
-  #chatPanel.cm.page.cm-tab #cmTitle,#chatPanel.cm.page.cm-tab #cmNew{visibility:visible}
-  @media (max-width:760px){
-    #chatPanel.cm.page{top:0;left:0;z-index:1200;height:100vh;height:100dvh}
-    body.assist-on .bottom-nav{display:none !important}
+  .cm-nav button[aria-current=page]{background:#eceae1;color:#14130f}
+  [data-theme="dark"] .cm-nav button[aria-current=page]{background:var(--hover);color:var(--text)}
+  #chatPanel.cm.page.cm-tab .ch-msgs,#chatPanel.cm.page.cm-tab .ch-inp,#chatPanel.cm.page.cm-tab .ch-acct{display:none !important}
+  #chatPanel.cm.page.cm-tab #cmView{display:block;flex:1;overflow-y:auto;width:100%;margin:0;padding:0 0 8px;-webkit-overflow-scrolling:touch}
+  /* big screens: keep a comfortable centred column */
+  @media (min-width:1001px){
+    #chatPanel.cm.page .cm-head,#chatPanel.cm.page .ch-msgs,#chatPanel.cm.page.cm-tab #cmView{width:min(780px,100%);margin-left:auto;margin-right:auto}
+    #chatPanel.cm.page .ch-inp{width:min(748px,calc(100% - 32px));margin:0 auto}
+    #chatPanel.cm.page .cm-nav.on{width:min(520px,calc(100% - 32px));align-self:center}
   }`;
   const st = document.createElement("style"); st.id = "cmCss"; st.textContent = css; document.head.appendChild(st);
 
@@ -69,49 +92,25 @@
     proj: '<svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></svg>',
   };
 
-  // ── header ───────────────────────────────────────────────────────────────────────────────────────────────────
+  // header: hamburger (to Overview) on the left, title in the middle, new chat (or "new" on a tab) on the right
   const head = document.createElement("div"); head.className = "cm-head";
   head.innerHTML = `<button type="button" class="cm-rb" id="cmHome" aria-label="Back to Overview">${I.menu}</button><div id="cmTitle">New chat</div><button type="button" class="cm-rb" id="cmNew" aria-label="New chat">${I.pen}</button>`;
   panel.insertBefore(head, panel.firstChild);
   document.getElementById("cmHome").onclick = () => { cmTab("chat"); document.querySelector('.tab-btn[data-tab="overview"]')?.click(); };
-  document.getElementById("cmNew").onclick = () => { cmTab("chat"); chNew(); };
+  const NEW = {
+    chat: ["New chat", I.pen, () => { chNew(); }],
+    plans: ["New plan by chat", I.plus, () => { cmTab("chat"); askChat("Plan a campaign for one of my products. Ask me what you need.", "Plan a campaign"); }],
+    code: ["New site by chat", I.plus, () => { cmTab("chat"); askChat("Build a sales page for one of my products. Ask me which product.", "Build a sales page"); }],
+    projects: ["Start something new", I.plus, () => { cmTab("chat"); }],
+  };
+  document.getElementById("cmNew").onclick = () => NEW[current][2]();
 
-  // star mark above the greeting
   const msgs = document.getElementById("chMsgs");
   const star = document.createElement("div"); star.className = "cm-star";
   star.innerHTML = '<svg width="54" height="54" viewBox="0 0 54 54" aria-hidden="true"><g stroke="#1877F2" stroke-width="4" stroke-linecap="round"><path d="M27 4v14M27 36v14M4 27h14M36 27h14M11 11l10 10M33 33l10 10M43 11L33 21M21 33L11 43"/></g></svg>';
   msgs.insertBefore(star, msgs.firstChild);
 
-  // ── suggestion cards ──────────────────────────────────────────────────────────────────────────────────────────
-  const CARDS = {
-    admin: [
-      ["Run autopilot for a product", "Research to a launch you approve", "Run autopilot for one of my products. Ask me which product and the budgets."],
-      ["Change a campaign plan", "Start time, budget, ad sets", "I want to change a campaign plan. Show me my drafts first."],
-      ["Make ad images", "From your product photo", "Make ad images for one of my products. Ask me which product and what look I want."],
-      ["Build a sales page", "Real HTML files", "Build a sales page for one of my products. Ask me which product."],
-    ],
-    buyer: [
-      ["Which ads should I kill?", "Against your own rules", "Which ads break my kill thresholds?"],
-      ["Change a campaign plan", "Start time, budget, ad sets", "I want to change a campaign plan. Show me my drafts first."],
-      ["Make ad images", "From your product photo", "Make ad images for one of my products. Ask me which product and what look I want."],
-      ["Build a sales page", "Real HTML files", "Build a sales page for one of my products. Ask me which product."],
-    ],
-  };
-  function cmCards(role) {
-    const box = document.getElementById("chSuggs");
-    const list = CARDS[role === "owner" ? "admin" : role] || null;
-    if (!box) return;
-    if (!list) return; // care / delivery keep their own suggestions
-    box.innerHTML = list.map((c, i) => `<button type="button" class="cm-card" data-i="${i}">${escH(c[0])}<small>${escH(c[1])}</small></button>`).join("");
-    box.querySelectorAll(".cm-card").forEach(b => b.onclick = () => { const c = list[+b.dataset.i]; askChat(c[2], c[0]); });
-  }
-  if (typeof renderChatForRole === "function") {
-    const orig = renderChatForRole;
-    window.renderChatForRole = function (role) { orig(role); cmCards(role); };
-  }
-  cmCards(window.myProfile?.role);
-
-  // ── composer: plus, hold-to-talk, send ────────────────────────────────────────────────────────────────────────
+  // composer: plus, hold-to-talk, send
   const inp = panel.querySelector(".ch-inp"), ta = document.getElementById("chInput"), send = document.getElementById("chSend");
   const plus = document.createElement("button"); plus.type = "button"; plus.className = "cm-sm"; plus.setAttribute("aria-label", "Add"); plus.innerHTML = I.plus;
   inp.insertBefore(plus, ta);
@@ -139,8 +138,7 @@
     ["pointerup", "pointerleave", "pointercancel"].forEach(ev => mic.addEventListener(ev, stop));
   }
 
-  // ── pill bar and tabs ─────────────────────────────────────────────────────────────────────────────────────────
-  // Plans, Code and Projects are added by 29-chat-tabs.js through window.cmTabs.
+  // pill bar and tabs (Plans, Code and Projects are added by 29-chat-tabs.js through window.cmTabs)
   window.cmTabs = window.cmTabs || {};
   const nav = document.createElement("div"); nav.className = "cm-nav"; nav.setAttribute("aria-label", "Sections");
   panel.appendChild(nav);
@@ -156,21 +154,23 @@
   function cmTab(t) {
     current = t;
     panel.classList.toggle("cm-tab", t !== "chat");
+    const n = document.getElementById("cmNew"); n.innerHTML = NEW[t][1]; n.setAttribute("aria-label", NEW[t][0]);
     document.getElementById("cmTitle").textContent = t === "chat" ? cmTitleText() : { plans: "Plans", code: "Code", projects: "Projects" }[t] || "";
     if (t !== "chat") { view.innerHTML = ""; try { window.cmTabs[t]?.(view); } catch (e) { view.textContent = "Could not open this: " + e.message; } }
     cmNavPaint();
   }
   window.cmTab = cmTab;
 
-  // ── keep the header in step with the chat ─────────────────────────────────────────────────────────────────────
   function cmTitleText() {
     const first = msgs.querySelector(".ch-msg.user");
     const t = (first?.textContent || "").trim().replace(/\s+/g, " ");
     return t ? (t.length > 34 ? t.slice(0, 33) + "…" : t) : "New chat";
   }
+  // "Empty" means nothing has been said at all (a message that arrived by itself also counts as a chat), so the greeting never sits on top of a message
   function cmSync() {
-    const empty = panel.classList.contains("empty");
-    ta.placeholder = empty ? "Type or hold to talk" : "Reply or hold to talk";
+    const has = !!msgs.querySelector(".ch-msg:not(#chWelcomeMsg), .cc");
+    panel.classList.toggle("empty", !has);
+    ta.placeholder = has ? "Reply or hold to talk" : "Type or hold to talk";
     if (current === "chat") document.getElementById("cmTitle").textContent = cmTitleText();
     cmNavPaint();
   }
@@ -178,6 +178,7 @@
     const orig = chSyncEmpty;
     window.chSyncEmpty = function () { orig(); cmSync(); };
   }
+  // the greeting is one calm line ("Good afternoon, Name"); it wraps by itself on a narrow screen
   window.addEventListener("hashchange", () => { if (current !== "chat") cmTab("chat"); });
   cmSync();
   window.cmRepaint = cmSync;

@@ -16,7 +16,7 @@
   .ct-act{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);flex-wrap:wrap}
   .ct-act button,.ct-btn{flex:1;min-height:44px;border-radius:12px;font:inherit;font-size:13px;font-weight:700;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;padding:0 10px}
   .ct-act .p,.ct-btn.p{background:var(--accent,#1877F2);border-color:var(--accent,#1877F2);color:#fff}
-  .ct-lbl{font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--text2);padding:12px 16px 8px}
+  .ct-lbl{font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--text2);padding:12px 16px 8px;text-transform:uppercase;text-align:left}
   .ct-row{display:flex;gap:12px;align-items:center;padding:10px 14px;min-height:44px;border-bottom:1px solid var(--border);width:100%;background:none;border-left:0;border-right:0;border-top:0;font:inherit;color:var(--text);text-align:left;cursor:pointer}
   .ct-row:last-child{border-bottom:0}.ct-row b{font-size:14px;display:block}.ct-row span.s{font-size:12px;color:var(--text2)}
   .ct-ic{width:38px;height:38px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--panel2);font-size:18px}
@@ -29,6 +29,15 @@
   .ct-sheet{padding:0 10px 10px}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
+  // coloured 38px tiles with simple line icons (no emoji)
+  const TILE = {
+    star: ["#e9f1fe", "#1877F2", '<path d="M12 3l3 7h7l-5.5 4.3L18.5 21 12 16.8 5.5 21l2-7.7L2 10h7z"/>'],
+    cog: ["#eceae1", "#3f3c34", '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>'],
+    box: ["#e1f4e8", "#14703b", '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/>'],
+    img: ["#f3e8fb", "#6a2c9e", '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.5"/><path d="M21 15l-5-5-9 11"/>'],
+    vid: ["#fde8e6", "#a1271b", '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/>'],
+  };
+  const tile = (k) => `<span class="ct-ic" style="background:${TILE[k][0]}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="${TILE[k][1]}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TILE[k][2]}</svg></span>`;
   const ask = (text, label) => { if (window.cmTab) cmTab("chat"); askChat(text, label || text); };
   const read = async (tool, args) => { const r = await sbFn("ai-chat", { action: "run_read", tool, args: args || {} }); return r; };
   const loading = (v) => { v.innerHTML = '<div class="ct-empty">Loading…</div>'; };
@@ -139,7 +148,7 @@
     v.innerHTML = "";
     const staff = ["owner", "admin"].includes(window.myProfile?.role);
     const sec = (label, rows) => { const l = document.createElement("div"); l.className = "ct-lbl"; l.textContent = label; v.appendChild(l); const c = document.createElement("div"); c.className = "ct-card"; rows.forEach(r => c.appendChild(r)); v.appendChild(c); return c; };
-    const row = (ic, title, sub, pill, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "ct-row"; b.innerHTML = `<span class="ct-ic">${ic}</span><span style="min-width:0;flex:1"><b>${escH(title)}</b><span class="s">${escH(sub)}</span></span>${pill ? `<span class="ct-pill ${pill[0]}">${escH(pill[1])}</span>` : ""}`; b.onclick = fn; return b; };
+    const row = (ic, title, sub, pill, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "ct-row"; b.innerHTML = `${tile(ic)}<span style="min-width:0;flex:1"><b>${escH(title)}</b><span class="s">${escH(sub)}</span></span>${pill ? `<span class="ct-pill ${pill[0]}">${escH(pill[1])}</span>` : ""}`; b.onclick = fn; return b; };
     if (staff) {
       const holder = document.createElement("div"); holder.className = "ct-card"; holder.innerHTML = '<div class="ct-empty">Loading Autopilot…</div>';
       const l = document.createElement("div"); l.className = "ct-lbl"; l.textContent = "AUTOPILOT"; v.appendChild(l); v.appendChild(holder);
@@ -151,17 +160,17 @@
         runs.forEach(run => {
           const need = run.waiting_for_approval, bad = run.status === "failed" || run.status === "cancelled";
           const step = (run.steps || []).find(s => s.state === "now" || s.state === "needs_you" || s.state === "failed");
-          const rw = row("★", `${run.product} run`, need ? "Waiting for your approval" : step ? step.label : run.status, need ? ["d", "Needs you"] : bad ? ["d", run.status] : ["s", run.status], () => { det.style.display = det.style.display === "none" ? "block" : "none"; });
+          const rw = row("star", `${run.product} run`, need ? "Waiting for your approval" : step ? step.label : run.status, need ? ["d", "Needs you"] : bad ? ["d", run.status] : ["s", run.status], () => { det.style.display = det.style.display === "none" ? "block" : "none"; });
           const det = document.createElement("div"); det.style.display = "none"; det.className = "ct-sheet"; det.appendChild(ccAutopilot({ runs: [run] }));
           holder.appendChild(rw); holder.appendChild(det);
         });
-        holder.appendChild(row("⚙", "Autopilot settings", "Budgets, hard stop, launch mode", null, () => { location.href = "/autopilot.html"; }));
+        holder.appendChild(row("cog", "Autopilot settings", "Budgets, hard stop, launch mode", null, () => { location.href = "/autopilot.html"; }));
       });
     }
     sec("WORKING ON", [
-      row("▣", "New product", "Add a product to your catalog", null, () => ask("I want to add a new product. Ask me what you need to know.", "New product")),
-      row("🖼", "Image generation", "Make ad pictures from your product photo", null, () => ask("Make ad images for one of my products. Ask me which product and what look I want.", "Make ad images")),
-      row("🎬", "Video script", "Write a short video ad script", null, () => ask("Write a short video ad script for one of my products. Ask me which product.", "Video script")),
+      row("box", "New product", "Add a product to your catalog", null, () => ask("I want to add a new product. Ask me what you need to know.", "New product")),
+      row("img", "Image generation", "Make ad pictures from your product photo", null, () => ask("Make ad images for one of my products. Ask me which product and what look I want.", "Make ad images")),
+      row("vid", "Video script", "Write a short video ad script", null, () => ask("Write a short video ad script for one of my products. Ask me which product.", "Video script")),
     ]);
     // KNOWLEDGE ("What the team learned") stays hidden until the knowledge search is wired into the chat (see KNOWLEDGE_TOOL_HOOK in ai-chat/bridge.ts).
   };
