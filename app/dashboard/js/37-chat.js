@@ -5,7 +5,7 @@
   if (typeof orig !== "function") return;
   const css = `
   #convTabRoot #convThread{background:var(--bg)}
-  .conv-thread-head.ch2{padding:6px 8px 6px 4px;gap:4px;background:var(--panel);justify-content:flex-start;align-items:center;min-height:64px}
+  .conv-thread-head.ch2{position:sticky;top:0;z-index:6;padding:6px 8px 6px 4px;gap:4px;background:var(--panel);justify-content:flex-start;align-items:center;min-height:64px}
   .ch2 .conv-back-btn{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;border:0;background:none;color:var(--text);flex:none}
   .ch2-av{position:relative;width:40px;height:40px;flex:none;margin-right:6px}
   .ch2-ini{width:40px;height:40px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);color:var(--text2);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center}
@@ -70,6 +70,7 @@
     }
     const at = inb && inb[0] && Date.parse(inb[0].created_at);
     const left = at ? 24 * 3600000 - (Date.now() - at) : 0;
+    window.__ixWin = { id, open: !!(at && left > 0) };
     let win;
     if (at && left > 0) { const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000); win = `<div class="ch2-win">${SVG.clock}<span>You can reply freely for ${h ? h + " h " : ""}${m} min. After that, use a template.</span></div>`; }
     else win = `<div class="ch2-win warn">${SVG.clock}<span>${at ? "More than 24 hours since they wrote." : "They have not written yet."} Only an approved template can be sent.</span><button type="button" onclick="bvTemplateModal()">Templates</button></div>`;
@@ -84,5 +85,31 @@
   window.bvSelectConversation = async function (id) {
     await orig.apply(this, arguments);
     try { await decorate(id); } catch (e) { /* the plain thread still works */ }
+    // Phones: the system back button / swipe goes back to the list instead of leaving the app.
+    try { if (window.innerWidth <= 820 && !(history.state && history.state.ixChat)) history.pushState({ ixChat: id }, ""); } catch (_) { /* history is optional */ }
   };
+  const origBack = window.bvBackToList;
+  if (typeof origBack === "function") {
+    window.bvBackToList = function () {
+      origBack.apply(this, arguments);
+      try { if (history.state && history.state.ixChat) history.back(); } catch (_) { /* nothing to pop */ }
+    };
+    window.addEventListener("popstate", () => {
+      const r = document.getElementById("convTabRoot");
+      if (r && r.classList.contains("thread-open")) origBack();
+    });
+  }
+  // Typing into a chat whose 24-hour window has closed cannot be delivered: keep the text and offer templates instead of a failed send.
+  const origSend = window.bvSendReply;
+  if (typeof origSend === "function") {
+    window.bvSendReply = async function () {
+      const w = window.__ixWin, box = document.getElementById("convReplyInput");
+      if (w && w.id === bvSelectedConvId && w.open === false && box && box.value.trim()) {
+        if (typeof bvToast === "function") bvToast("The 24-hour window has closed. Send an approved template instead. Your text stays in the box.");
+        if (typeof bvTemplateModal === "function") bvTemplateModal();
+        return;
+      }
+      return origSend.apply(this, arguments);
+    };
+  }
 })();
