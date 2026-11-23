@@ -41,7 +41,7 @@ SELECT cron.schedule(
     SELECT
       net.http_post(
         url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/ai-auto-launch-tests',
-        headers:='{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU"}'::jsonb,
+        headers:='{"Authorization": "Bearer <SERVICE_ROLE_KEY: read it from the Supabase dashboard, never paste it into a file>"}'::jsonb,
         body:='{"action": "launch_test"}'::jsonb
       ) as request_id;
   $$
@@ -55,7 +55,7 @@ SELECT cron.schedule(
     SELECT
       net.http_post(
         url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/pull-meta-metrics',
-        headers:='{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU"}'::jsonb
+        headers:='{"Authorization": "Bearer <SERVICE_ROLE_KEY: read it from the Supabase dashboard, never paste it into a file>"}'::jsonb
       ) as request_id;
   $$
 );
@@ -68,7 +68,7 @@ SELECT cron.schedule(
     SELECT
       net.http_post(
         url:='https://oicqtpjjwmgsiluvkmpu.supabase.co/functions/v1/sync-meta-audiences',
-        headers:='{"Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU"}'::jsonb
+        headers:='{"Authorization": "Bearer <SERVICE_ROLE_KEY: read it from the Supabase dashboard, never paste it into a file>"}'::jsonb
       ) as request_id;
   $$
 );
@@ -78,7 +78,7 @@ SELECT * FROM cron.job;
 ```
 
 **Replace these with YOUR actual Service Role Key:**
-- `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJya2hraGdkeGhtb2d4eHRidnl0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjA1Nzc4OCwiZXhwIjoyMTAxNjMzNzg4fQ.KXT2jmMGoqGhvMJe2at6sLJaLcjhYk0mrpq760kChiU` ← **YOUR Service Role Key here**
+- `<SERVICE_ROLE_KEY: read it from the Supabase dashboard, never paste it into a file>` ← **YOUR Service Role Key here**
 
 **Get your Service Role Key:**
 1. Supabase Dashboard
