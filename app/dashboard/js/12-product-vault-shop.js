@@ -482,10 +482,13 @@ async function bvPostToPage(aid, card) {
   const id = "bvPostSheet";
   const pre = await sbFn("page-tools", { action: "post_preview", creative_id: aid, ad_account_id: undefined });
   if (!pre || pre.error) return bvToast(pre?.error || "Couldn't check the Page for this creative.", "err");
+  const pl = await sbFn("page-tools", { action: "my_pages", ad_account_id: undefined }).catch(() => null);
+  const pages = (pl && pl.pages) || [];
   const typed = card?.querySelector('[data-k="primary_text"]')?.value?.trim();
   const media = pre.kind === "video" ? `<video src="${escH(pre.url)}#t=0.1" muted playsinline style="width:100%;max-height:240px;border-radius:10px;background:#000;object-fit:contain;"></video>` : `<img src="${escH(pre.url)}" alt="" style="width:100%;max-height:260px;border-radius:10px;object-fit:contain;background:var(--panel2);">`;
   const ov = bvOpenSheet(id, `<div style="font-weight:600;font-size:16px;margin-bottom:4px;">Post to your Page</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">This publishes a normal post on <b>${escH(pre.page_name || "your Page")}</b> right now. It is not an ad. Everyone who follows the Page can see it.</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">This publishes a normal post on the Page you pick, right now. It is not an ad. Everyone who follows the Page can see it.</div>
+    <div class="field" style="margin-bottom:10px;"><label style="font-size:11px;">Page</label>${pages.length > 1 ? `<select id="bvPostPage" style="width:100%;">${pages.map(x => `<option value="${escH(x.page_id)}" ${x.page_id === pre.page_id ? "selected" : ""}>${escH(x.name || x.page_id)}${x.ad_account ? " · " + escH(x.ad_account) : ""}</option>`).join("")}</select>` : `<div style="font-weight:600;font-size:14px;">${escH(pre.page_name || "Your Page")}</div>`}</div>
     ${media}
     <div class="field" style="margin-top:10px;"><label style="font-size:11px;">Caption</label><textarea id="bvPostCap" rows="6" style="width:100%;">${escH(typed || pre.caption || "")}</textarea></div>
     <div id="bvPostRes" style="font-size:12.5px;margin-top:8px;"></div>
@@ -496,7 +499,8 @@ async function bvPostToPage(aid, card) {
     const message = ov.querySelector("#bvPostCap").value.trim();
     if (!message) { res.style.color = "var(--danger,#d33)"; res.textContent = "Write a caption first."; return; }
     go.disabled = true; go.textContent = "Posting…"; res.textContent = "";
-    const r = await sbFn("page-tools", { action: "post_creative", creative_id: aid, confirmed: true, message });
+    const pick = ov.querySelector("#bvPostPage")?.value;
+    const r = await sbFn("page-tools", { action: "post_creative", creative_id: aid, confirmed: true, message, ...(pick ? { page_id: pick } : {}) });
     if (r?.ok) { res.style.color = "var(--green,#1a9a4a)"; res.innerHTML = `Posted ✓ ${r.link ? `<a href="${escH(r.link)}" target="_blank" rel="noopener">Open the post</a>` : ""}`; go.style.display = "none"; ov.querySelector("[data-sheet-close]").textContent = "Close"; }
     else { go.disabled = false; go.textContent = "Try again"; res.style.color = "var(--danger,#d33)"; res.textContent = r?.error || "Meta did not accept the post."; }
   };
