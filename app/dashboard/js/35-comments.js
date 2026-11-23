@@ -68,7 +68,7 @@
       <div class="cm2-chips">${chip("open", "Needs a reply")}${chip("replied", "Replied")}${chip("hidden", "Hidden")}${chip("all", "All")}<span class="cm2-chip soon">Messenger · Soon</span><span class="cm2-chip soon">Instagram · Soon</span></div>`;
     const rows = CM.rows.map((c) => {
       const unread = c.status === "new" && !c.read_at;
-      const tag = c.status === "replied" ? '<span class="cm2-tag ok">Replied</span>' : c.status === "hidden" ? '<span class="cm2-tag h">Hidden</span>' : c.status === "ignored" ? '<span class="cm2-tag g">Old</span>' : "";
+      const tag = c.private_thread_id ? '<span class="cm2-tag ok">Replied in Messenger</span>' : c.status === "replied" ? '<span class="cm2-tag ok">Replied</span>' : c.status === "hidden" ? '<span class="cm2-tag h">Hidden</span>' : c.status === "ignored" ? '<span class="cm2-tag g">Old</span>' : "";
       return `<div class="cm2-row" data-id="${c.id}"><div class="cm2-av">${escH(ini(c.from_name))}</div><div class="cm2-main"><div class="cm2-top"><b>${escH(c.from_name || "Someone")}</b><span>${ago(c.created_time)}</span></div>
         <div class="cm2-tags"><span class="cm2-tag">Facebook comment</span><span class="cm2-tag g">${escH(pageName(c.page_id))}</span>${tag}</div>
         <div class="cm2-msg">${escH(c.message || "(a picture, sticker or emoji)")}</div>${c.ad_name ? `<div class="cm2-sub">On ad: ${escH(c.ad_name)}</div>` : ""}</div>${unread ? '<div class="cm2-dot" aria-label="New"></div>' : ""}</div>`;
@@ -96,6 +96,7 @@
         <div class="cm2-bub">${escH(c.message || "(a picture, sticker or emoji)")}</div>${mine}
         <textarea id="cm2Text" aria-label="Your public reply" placeholder="Write your reply…"></textarea>
         <div class="cm2-act"><button type="button" class="cm2-btn p" id="cm2Send">Reply publicly</button>
+          ${c.private_thread_id ? `<button type="button" class="cm2-btn" id="cm2Open" style="width:100%">Open the Messenger chat</button>` : `<button type="button" class="cm2-btn" id="cm2Priv" style="width:100%">Reply privately in Messenger</button>`}
           <div class="cm2-two"><button type="button" class="cm2-btn" id="cm2Sug">Suggest a reply</button><button type="button" class="cm2-btn" id="cm2Hide">${c.status === "hidden" ? "Unhide" : "Hide"}</button></div></div>
         <div id="cm2Res" style="font-size:13px;line-height:1.4;margin-top:14px;color:var(--text2)">Your reply appears under the comment for everyone to see.</div></div>`;
     const res = box.querySelector("#cm2Res"), ta = box.querySelector("#cm2Text");
@@ -107,6 +108,20 @@
       if (r && r.suggestion) { ta.value = r.suggestion; res.style.color = "var(--text2)"; res.textContent = "Edit it if you like, then tap Reply publicly."; }
       else { res.style.color = "var(--danger,#d33)"; res.textContent = (r && r.error) || "No suggestion right now."; }
     };
+    const priv = box.querySelector("#cm2Priv");
+    if (priv) {
+      let armed = false;
+      priv.onclick = async () => {
+        const message = ta.value.trim(); if (!message) { res.style.color = "var(--danger,#d33)"; res.textContent = "Write the message first. It goes to the customer's Messenger, not in public."; return; }
+        if (!armed) { armed = true; priv.textContent = "Tap again to send it in Messenger"; priv.style.background = "#2447d6"; priv.style.color = "#fff"; priv.style.borderColor = "#2447d6"; res.style.color = "var(--text2)"; res.textContent = "This opens a Messenger chat with " + (c.from_name || "the customer") + ". Meta allows one private reply per comment, within 7 days."; return; }
+        priv.disabled = true; priv.textContent = "Sending…";
+        const r = await sbFn("page-tools", { action: "private_reply", id, message, confirmed: true, ad_account_id: undefined });
+        if (r && r.ok && r.thread_id) { bvToast("Sent in Messenger. The chat continues in Messages."); if (typeof window.bvGoMessenger === "function") window.bvGoMessenger(r.thread_id); }
+        else { armed = false; priv.disabled = false; priv.textContent = "Reply privately in Messenger"; priv.style.cssText = "width:100%"; res.style.color = "var(--danger,#d33)"; res.textContent = (r && r.error) || "Meta did not accept the private reply."; }
+      };
+    }
+    const openChat = box.querySelector("#cm2Open");
+    if (openChat) openChat.onclick = () => { if (typeof window.bvGoMessenger === "function") window.bvGoMessenger(c.private_thread_id); };
     box.querySelector("#cm2Hide").onclick = async () => {
       const r = await sbFn("page-tools", { action: "comments_hide", id, hidden: c.status !== "hidden", ad_account_id: undefined });
       if (r && r.ok) { bvToast(c.status === "hidden" ? "Comment unhidden." : "Comment hidden."); paint(box); } else { res.style.color = "var(--danger,#d33)"; res.textContent = (r && r.error) || "Meta did not accept that."; }
@@ -209,6 +224,7 @@
       const l = lastOf(c), t = stampOf(c), needs = needsOf(c);
       return { t, needs, html: ixRow({ ch: chOf(c), ini: ini(bvName(c)), name: bvName(c), un: c.unread_count > 0 || needs, wait: needs, time: needs ? waitTxt(now - t) : bvListTime((l && l.created_at) || c.last_message_at), text: bvPreviewText(l), ticks: l && l.direction === "outbound" ? `<span class="bubble-ticks">${bvTicks(l)}</span>` : "", tags: c.human_handling ? ["You're handling"] : [], cnt: c.unread_count, click: `bvSelectConversation('${c.id}')`, active: c.id === bvSelectedConvId }) };
     });
+    if (IX.tab !== "comments" && typeof window.ixExtraItems === "function") window.ixExtraItems(now).forEach((x) => items.push(x));
     if (IX.tab === "all") (IX.cmNew || []).forEach((k) => { const t = Date.parse(k.created_time) || 0; items.push({ t, needs: true, html: ixRow({ ch: "fb", ini: ini(k.from_name), name: k.from_name || "Someone", un: true, wait: true, time: waitTxt(now - t), text: k.message || "(a picture, sticker or emoji)", tags: [pageName(k.page_id)], click: `bvOpenComment('${k.id}')` }) }); });
     const needs = items.filter((x) => x.needs).sort((a, b) => a.t - b.t);
     const rest = items.filter((x) => !x.needs).sort((a, b) => b.t - a.t);
@@ -250,7 +266,7 @@
   let ixNumbers = [];
   function renderChrome(el) {
     const root = el.querySelector("#convTabRoot"); if (!root) return;
-    const needsN = bvConversations.filter(needsOf).length, cmN = (IX.cmNew || []).length;
+    const needsN = bvConversations.filter(needsOf).length + (typeof window.ixExtraNeeds === "function" ? window.ixExtraNeeds() : 0), cmN = (IX.cmNew || []).length;
     const filtered = bvListFilter !== "all" || !!bvSelectedNumberId;
     const sub = needsN + cmN ? `${needsN + cmN} need your reply` : "You're all caught up";
     const head = root.querySelector(".ix-head");
@@ -275,6 +291,16 @@
     renderChrome(el);
   }
 
+  // Pieces the Messenger file (38) builds on.
+  window.ixKit = { row: ixRow, wait: waitTxt, ini, pageName, badge, chrome: () => { const el = document.getElementById("convTabRoot") && document.getElementById("convTabRoot").parentElement; if (el) renderChrome(el); } };
+  window.bvGoMessenger = async function (threadId) {
+    const el = document.getElementById("convTabRoot") && document.getElementById("convTabRoot").parentElement; if (!el) return;
+    IX.tab = "messages"; const box = el.querySelector("#cm2Box"), wrap = el.querySelector(".conv-wrap");
+    if (box) box.style.display = "none"; if (wrap) wrap.style.display = "";
+    if (typeof window.ixLoadExtra === "function") await window.ixLoadExtra();
+    bvFilterList(); renderChrome(el);
+    if (typeof window.mxOpen === "function") window.mxOpen(threadId);
+  };
   window.bvOpenComment = async function (id) {
     const el = document.getElementById("convTabRoot")?.parentElement; if (!el) return;
     IX.tab = "comments";
@@ -299,6 +325,7 @@
     if (staff) {
       IX.cmNew = (await sbQuery("page_comments", "select=*&is_page_reply=eq.false&status=eq.new&order=created_time.asc&limit=30").catch(() => [])) || [];
       if (!CM.pages) { const r = await sbFn("page-tools", { action: "my_pages", ad_account_id: undefined }).catch(() => null); CM.pages = (r && r.pages) || []; }
+      if (typeof window.ixLoadExtra === "function") await window.ixLoadExtra();
     }
     if (!staff) tabs.style.display = "none";
     renderChrome(el);
