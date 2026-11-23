@@ -33,6 +33,45 @@ async function callerCompany(req, admin) {
   const { data: p } = await admin.from("profiles").select("company_id").eq("id", data.user.id).maybeSingle();
   return p?.company_id ?? null;
 }
+// Caller's company, role and media-buyer id (buyers only ever touch their own chats and numbers).
+async function callerProfile(req, admin) {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  const { data } = await admin.auth.getUser(token);
+  if (!data?.user) return null;
+  const { data: p } = await admin.from("profiles").select("company_id, role, media_buyer_id").eq("id", data.user.id).maybeSingle();
+  return p ?? null;
+}
+// "Open the chat for this phone number" (from an order, a lead or a booking): finds the customer's chat, or creates an empty one on the
+// caller's own WhatsApp number. Nothing is sent. Also says whether free-form messages can still be sent (customer wrote in the last 24h).
+async function startConversation(body, req, supabase) {
+  const prof = await callerProfile(req, supabase);
+  if (!prof?.company_id || !["owner", "admin", "buyer"].includes(String(prof.role))) return json({ error: "Not signed in" }, 401);
+  const digits = String(body?.phone ?? "").replace(/\D/g, "");
+  const phone = digits.length === 11 && digits[0] === "0" ? "234" + digits.slice(1) : digits;
+  if (phone.length < 8) return json({ error: "That phone number does not look right." }, 400);
+  const own = prof.role === "buyer";
+  let cq = supabase.from("conversations").select("id").eq("company_id", prof.company_id).eq("phone", phone).neq("current_state", "MERGED").order("last_message_at", { ascending: false }).limit(1);
+  if (own) cq = cq.eq("media_buyer_id", prof.media_buyer_id);
+  let { data: conv } = await cq.maybeSingle();
+  let created = false;
+  if (!conv) {
+    let nq = supabase.from("buyer_whatsapp_numbers").select("id, media_buyer_id").eq("company_id", prof.company_id).eq("status", "active").order("created_at", { ascending: true }).limit(1);
+    if (own) nq = nq.eq("media_buyer_id", prof.media_buyer_id);
+    const { data: num } = await nq.maybeSingle();
+    if (!num) return json({ error: "Connect a WhatsApp number first (Settings, WhatsApp numbers), then open the chat." }, 400);
+    const now = new Date().toISOString();
+    const ins = await supabase.from("conversations").insert({ phone, current_state: "NEW", source: "organic", started_at: now, last_message_at: now, whatsapp_name: String(body?.name ?? "").slice(0, 80) || null, unread_count: 0, company_id: prof.company_id, buyer_whatsapp_number_id: num.id, media_buyer_id: num.media_buyer_id }).select("id").single();
+    if (ins.error?.code === "23505") {
+      const again = await supabase.from("conversations").select("id").eq("company_id", prof.company_id).eq("phone", phone).eq("buyer_whatsapp_number_id", num.id).order("started_at", { ascending: false }).limit(1).maybeSingle();
+      conv = again.data;
+    } else if (ins.error || !ins.data) return json({ error: "Could not open the chat." }, 500);
+    else { conv = ins.data; created = true; }
+  }
+  const { data: last } = await supabase.from("messages").select("created_at").eq("conversation_id", conv.id).eq("direction", "inbound").order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const lastIn = last?.created_at ?? null;
+  return json({ success: true, conversation_id: conv.id, created, last_inbound_at: lastIn, window_open: !!lastIn && Date.now() - Date.parse(lastIn) < 24 * 3600 * 1000 });
+}
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -45,6 +84,7 @@ Deno.serve(async (req)=>{
   }
   try {
     const body = await req.json().catch(()=>({}));
+    if (body?.action === "start") return await startConversation(body, req, createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));
     const conversationId = body?.conversation_id;
     const text = body?.text?.trim();
     if (!conversationId || !text) {

@@ -311,7 +311,7 @@ function bvOpenOrderScreen(id) {
     <div class="ord-body">
       <div class="ord-hero"><h2>${escH(o.customer_name || "Customer")}</h2><span class="pill ${escH(cur)}">${escH(cur)}</span>${o.possible_duplicate ? ` <span class="pill returned">Possible duplicate</span>` : ""}
         <div class="ord-val">${fN(o.order_value_naira)}</div><div class="ord-sub">${escH(o.product_name || "")} · ordered ${ago(o.ordered_at)}</div></div>
-      ${phone ? `<div class="ord-act"><a class="call" href="tel:${escH(o.customer_phone)}">${icon("phone", 18)} Call</a><a class="wa" href="https://wa.me/${phone}" target="_blank" rel="noopener">${icon("chat", 18)} WhatsApp</a></div>` : ""}
+      ${phone ? `<div class="ord-act"><a class="call" href="tel:${escH(o.customer_phone)}">${icon("phone", 18)} Call</a><a class="wa" href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)">${icon("chat", 18)} Chat</a></div>` : ""}
       <div class="ord-lbl">Status</div>
       <div class="ord-seg">${opts.map(x => `<button type="button" data-st="${escH(x.v)}" class="${x.v === cur ? "on" : ""}" ${x.ok && !locked ? "" : "disabled"}>${escH(x.l)}</button>`).join("")}</div>
       <div id="ordMsg"></div>

@@ -575,7 +575,6 @@ async function bvSelectConversation(id) {
       </div>
       <div class="cth-actions" style="display:flex;align-items:center;gap:8px;">
         <span id="convHandoffBadge">${conv.human_handling ? bvHandoffBadgeHtml() : ""}</span>
-        <a href="https://wa.me/${(conv.phone || "").replace(/\D/g, "")}" target="_blank" class="btn btn-a cth-wa" title="Open in WhatsApp">${icon("phone",14)} <span class="cth-wa-label">Open in WhatsApp</span></a>
       </div>
     </div>
     <div class="conv-msgs" id="convMsgs">${!msgs?.length ? `<div class="empty">No messages yet.</div>` : bvThreadHtml(msgs)}</div>
@@ -684,3 +683,24 @@ async function bvSendReply() {
     input.focus();
   }
 }
+
+// Opens a customer's chat in the Inbox from anywhere (orders, leads, bookings, delivery desk). Nothing opens WhatsApp in a new tab: messages are sent from here.
+// It finds the customer's chat, or starts an empty one on the caller's own WhatsApp number (nothing is sent), then jumps to it.
+// An optional draft is placed in the reply box for the person to read and send.
+async function bvOpenChat(phone, name, draft) {
+  if (!String(phone || "").replace(/\D/g, "")) { bvToast("This customer has no phone number."); return; }
+  const r = await sbFn("send-whatsapp-message", { action: "start", phone, name }).catch(() => null);
+  if (!r || !r.success) { bvToast((r && r.error) || "Could not open the chat."); return; }
+  if (typeof bvCloseModal === "function") { try { bvCloseModal(); } catch (_) { /* no modal open */ } }
+  window.bvPendingConv = r.conversation_id;
+  if (typeof activeTab !== "undefined" && activeTab === "conversations") { if (typeof render === "function") render(); }
+  else document.querySelector('.tab-btn[data-tab="conversations"]')?.click();
+  if (draft) {
+    let n = 0;
+    const t = setInterval(() => {
+      const box = document.getElementById("convReplyInput");
+      if (box || ++n > 40) { clearInterval(t); if (box && !box.value) { box.value = draft; box.dispatchEvent(new Event("input", { bubbles: true })); } }
+    }, 150);
+  }
+}
+function bvOpenChatBtn(el) { bvOpenChat(el.dataset.chatPhone, el.dataset.chatName, el.dataset.chatDraft); return false; }

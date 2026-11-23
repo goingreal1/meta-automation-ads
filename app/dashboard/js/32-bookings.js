@@ -42,7 +42,7 @@ function bkDraw() {
   rows.forEach((r) => {
     const d = bkFmtDay(r.starts_at); if (d !== day) { day = d; html += `<div class="bk-day">${escH(d)}</div>`; }
     const st = BK_ST[r.status] || [r.status, "n"], ph = String(r.customer_phone || "").replace(/\D/g, ""), wa = ph ? "https://wa.me/" + (ph.length === 11 && ph[0] === "0" ? "234" + ph.slice(1) : ph) : "";
-    const acts = [wa ? `<a class="go" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : "", r.customer_phone ? `<a href="tel:${escH(r.customer_phone)}">Call</a>` : "",
+    const acts = [wa ? `<a class="go" href="#" data-chat-phone="${escH(r.customer_phone)}" data-chat-name="${escH(r.customer_name || "")}" onclick="return bvOpenChatBtn(this)">Chat</a>` : "", r.customer_phone ? `<a href="tel:${escH(r.customer_phone)}">Call</a>` : "",
       live(r) ? `<button data-s="completed" data-id="${r.id}">Mark done</button><button data-s="no_show" data-id="${r.id}">No-show</button><button data-s="cancelled" data-id="${r.id}">Cancel</button>` : r.status === "cancelled" ? `<button data-s="confirmed" data-id="${r.id}">Restore</button>` : ""].join("");
     html += `<div class="bk-card"><div class="bk-t">${bkTime(r.starts_at)}</div><div class="bk-mid"><b>${escH(r.service_name)} <span class="rv-pill ${st[1]}" style="margin-left:4px">${st[0]}</span></b>
       <small>${escH(r.customer_name || "Customer")} · ${escH(r.customer_phone || "")}${r.customer_email ? " · " + escH(r.customer_email) : ""}</small><small>${r.duration_min} min · ${fN(r.price_naira)}${r.notes ? " · “" + escH(r.notes) + "”" : ""}</small><div class="bk-acts">${acts}</div></div></div>`;
