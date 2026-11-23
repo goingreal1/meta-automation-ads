@@ -105,6 +105,23 @@ async function graphProbe(body, req) {
   const j = await r.json().catch(() => ({}));
   return json({ ok: true, status: r.status, result: JSON.parse(JSON.stringify(j).split(tok).join("***")) });
 }
+// Platform-only (secret): switch WhatsApp Calling on or off for ONE of our numbers, and report Meta's settings before and after.
+async function callingSettings(body, req) {
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const sec = (await admin.from("app_secrets").select("value").eq("key", "ads_cron_secret").maybeSingle()).data?.value ?? "";
+  if (!sec || req.headers.get("x-cron-secret") !== sec) return json({ error: "Not allowed" }, 403);
+  const { data: n } = await admin.from("buyer_whatsapp_numbers").select("id, phone_number_id, access_token, display_phone_number").eq("id", String(body?.number_id ?? "")).maybeSingle();
+  if (!n?.phone_number_id) return json({ error: "Number not found." }, 404);
+  const tok = n.access_token || WHATSAPP_TOKEN_FALLBACK;
+  const get = async () => (await fetch(`${META_GRAPH_BASE}/${n.phone_number_id}/settings`, { headers: { Authorization: `Bearer ${tok}` } })).json();
+  const before = await get();
+  if (body?.enable === undefined) return json({ ok: true, number: n.display_phone_number, calling: before?.calling ?? before });
+  const calling = body.enable ? { status: "ENABLED", call_icon_visibility: "DEFAULT", callback_permission_status: "ENABLED" } : { status: "DISABLED" };
+  const r = await fetch(`${META_GRAPH_BASE}/${n.phone_number_id}/settings`, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify({ calling }) });
+  const j = await r.json().catch(() => ({}));
+  const after = await get();
+  return json({ ok: r.ok && !j?.error, number: n.display_phone_number, before: before?.calling ?? before, response: j, after: after?.calling ?? after });
+}
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -117,6 +134,7 @@ Deno.serve(async (req)=>{
   }
   try {
     const body = await req.json().catch(()=>({}));
+    if (body?.action === "calling_settings") return await callingSettings(body, req);
     if (body?.action === "graph_probe") return await graphProbe(body, req);
     if (body?.action === "meta_perms") return await metaPerms(body, req);
     if (body?.action === "start") return await startConversation(body, req, createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY));

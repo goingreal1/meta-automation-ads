@@ -172,7 +172,7 @@ Deno.serve(async (req)=>{
     //   login_verify {email, password, code} -> checks the code, then leaves a one-time pass that the database sign-in gate needs
     //   check_password {password} (signed in) -> re-checks the person's own password for sensitive actions
     // The Supabase sign-in gate (rv_access_token_hook) refuses every password sign-in that has no pass, so knowing the password is not enough.
-    if (type === "login_start" || type === "login_verify" || type === "check_password") {
+    if (type === "login_start" || type === "login_verify" || type === "check_password" || type === "login_totp") {
       const email = String(reqBody.email ?? "").trim().toLowerCase();
       let ownerId = null;
       if (type === "check_password") {
@@ -190,6 +190,35 @@ Deno.serve(async (req)=>{
       if (chk?.status !== "ok") return json({ ok: false, error: "Wrong email or password." }, 401);
       const uid = chk.user_id;
       if (type === "check_password") return json({ ok: uid === ownerId });
+      // People who set up an authenticator app are never emailed a code: the password is checked, then ONLY the authenticator code is asked for.
+      // login_totp checks both on the server and hands the browser a session only after the authenticator code is right (the half-open session never leaves here).
+      const totpFactor = async () => { try { const { data } = await supabase.auth.admin.mfa.listFactors({ userId: uid }); return (data?.factors ?? []).find((f) => f.factor_type === "totp" && f.status === "verified") ?? null; } catch (_) { return null; } };
+      if (type === "login_totp") {
+        const code = String(reqBody.code ?? "").replace(/\D/g, "");
+        if (code.length !== 6) return json({ ok: false, error: "Enter the 6-digit code." }, 400);
+        const factor = await totpFactor();
+        if (!factor) return json({ ok: false, error: "No authenticator is set up on this account.", mode: "email" }, 400);
+        const { data: lim } = await supabase.from("login_codes").select("code_hash, attempts, expires_at").eq("user_id", uid).maybeSingle();
+        const limLive = !!lim && lim.code_hash === "totp" && new Date(lim.expires_at).getTime() > Date.now();
+        if (limLive && (lim!.attempts ?? 0) >= 5) return json({ ok: false, error: "Too many wrong codes. Wait 15 minutes, then try again." }, 429);
+        const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+        await supabase.from("login_grants").insert({ user_id: uid, expires_at: new Date(Date.now() + 60000).toISOString() });
+        const tr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, { method: "POST", headers: { apikey: ANON_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ email: em, password: pw }) });
+        const tj = await tr.json().catch(() => ({}));
+        if (!tr.ok || !tj?.access_token) { await supabase.from("login_grants").delete().eq("user_id", uid); return json({ ok: false, error: "Sign-in was refused. Please start again." }, 401); }
+        const H = { apikey: ANON_KEY, Authorization: `Bearer ${tj.access_token}`, "Content-Type": "application/json" };
+        const ch = await (await fetch(`${SUPABASE_URL}/auth/v1/factors/${factor.id}/challenge`, { method: "POST", headers: H, body: "{}" })).json().catch(() => ({}));
+        const vr = await fetch(`${SUPABASE_URL}/auth/v1/factors/${factor.id}/verify`, { method: "POST", headers: H, body: JSON.stringify({ challenge_id: ch?.id, code }) });
+        const vj = await vr.json().catch(() => ({}));
+        if (!vr.ok || !vj?.access_token) {
+          await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`, { method: "POST", headers: H }).catch(() => null);
+          await supabase.from("login_codes").upsert({ user_id: uid, code_hash: "totp", expires_at: new Date(Date.now() + 15 * 60000).toISOString(), attempts: (limLive ? (lim!.attempts ?? 0) : 0) + 1, created_at: new Date().toISOString() });
+          return json({ ok: false, error: "That code isn't right." }, 400);
+        }
+        if (limLive) await supabase.from("login_codes").delete().eq("user_id", uid);
+        return json({ ok: true, access_token: vj.access_token, refresh_token: vj.refresh_token, expires_in: vj.expires_in });
+      }
+      if (type === "login_start" && !reqBody.force_email && (await totpFactor())) return json({ ok: true, mode: "totp" });
       const pepper = SVC_KEY.slice(-12);
       const hashOf = (code)=>shaShort(`${code}|${uid}|${pepper}`);
       if (type === "login_verify") {
