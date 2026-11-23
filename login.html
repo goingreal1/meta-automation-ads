@@ -383,14 +383,16 @@ body.invite .hero{padding-top:34px;}
   function goOn() { window.location.href = (nextUrl || setupUrl); }
   function showCodeStep(mode, email) {
     codeMode = mode;
+    const isT = mode === 'totp' || mode === 'totp2';
+    statusMsg.textContent = ''; statusMsg.className = 'msg';
     form.style.display = 'none';
     document.getElementById('mainSwitch').style.display = 'none';
     document.getElementById('forgotWrap').style.display = 'none';
     codeForm.style.display = 'block';
-    document.getElementById('authTitle').textContent = mode === 'totp' ? 'Enter your authenticator code' : 'Check your email';
-    document.getElementById('authSub').textContent = mode === 'totp' ? 'Open your authenticator app and type the 6-digit code for Revora.' : 'We sent a 6-digit code' + (email ? ' to ' + email : '') + '. It expires in 10 minutes.';
-    document.getElementById('codeResend').style.display = mode === 'totp' ? 'none' : '';
-    document.getElementById('codeSms').style.display = mode === 'totp' ? 'none' : '';
+    document.getElementById('authTitle').textContent = isT ? 'Enter your authenticator code' : 'Check your email';
+    document.getElementById('authSub').textContent = isT ? 'Open your authenticator app and type the 6-digit code for Revora.' : 'We sent a 6-digit code' + (email ? ' to ' + email : '') + '. It expires in 10 minutes.';
+    document.getElementById('codeResend').style.display = isT ? 'none' : '';
+    document.getElementById('codeSms').style.display = isT ? 'none' : '';
     document.getElementById('f_code').value = '';
     document.getElementById('f_code').focus();
   }
@@ -410,6 +412,17 @@ body.invite .hero{padding-top:34px;}
     if (code.length !== 6) { statusMsg.textContent = 'Enter the 6-digit code.'; statusMsg.className = 'msg err'; return; }
     btn.disabled = true; btn.innerHTML = '<div class="spin"></div> Checking...'; statusMsg.className = 'msg';
     try {
+      if (codeMode === 'totp2') {
+        if (!pending) throw new Error('Please start the sign-in again.');
+        const r = await fnCall('login_totp', { ...pending, code });
+        if (!r.ok) throw new Error(r.error || "That code isn't right.");
+        const { error } = await supaClient.auth.setSession({ access_token: r.access_token, refresh_token: r.refresh_token });
+        if (error) throw new Error('Could not finish signing in. Please try again.');
+        pending = null;
+        statusMsg.textContent = 'Signed in. Redirecting...'; statusMsg.className = 'msg ok';
+        goOn();
+        return;
+      }
       if (codeMode === 'totp') {
         const f = await supaClient.auth.mfa.listFactors();
         const factor = (f.data && f.data.totp || []).find(x => x.status === 'verified');
@@ -507,7 +520,8 @@ body.invite .hero{padding-top:34px;}
         if (!r.ok) throw new Error(r.error || 'Could not sign in.');
         pending = { email, password };
         statusMsg.className = "msg";
-        showCodeStep('email', email);
+        // Authenticator app set up: ask for that code only (no email is sent).
+        showCodeStep(r.mode === 'totp' ? 'totp2' : 'email', email);
       } else {
         // SIGNUP FLOW
         const confirmPass = document.getElementById('f_pass2').value;
