@@ -178,6 +178,91 @@ Deno.serve(async (req)=>{
       }
       return json({ ok: true, pages: report });
     }
+    // ======== MESSENGER INBOX ========
+    // Platform (cron, every 2 minutes): read each Page's Messenger conversations with the Page's own token and keep them in channel_threads / channel_messages.
+    if (isPlatform && String(b.action ?? "") === "messenger_sync") {
+      const { data: accts } = await db.from("ad_accounts").select("id, company_id, fb_page_id, meta_connection_id, media_buyer_id, status").eq("status", "active").not("fb_page_id", "is", null);
+      const pages = new Map<string, any>();
+      for (const a of accts ?? []) { const pid = digits(a.fb_page_id); if (pid && (!b.company_id || a.company_id === b.company_id) && !pages.has(a.company_id + ":" + pid)) pages.set(a.company_id + ":" + pid, { company_id: a.company_id, pid, acct: a }); }
+      const report: any[] = [];
+      for (const { company_id, pid, acct } of pages.values()) {
+        const rep: any = { page: pid, threads: 0, new_inbound: 0 };
+        try {
+          const pt = await pageToken(pid, await tokenOf(acct));
+          const r = await g(`/${pid}/conversations?platform=messenger&limit=25&fields=id,updated_time,participants,messages.limit(10){id,message,created_time,from,attachments{mime_type,name}}`, pt);
+          for (const conv of r?.data ?? []) {
+            const cust = (conv.participants?.data ?? []).find((p: any)=>String(p.id) !== pid);
+            if (!cust?.id) continue;
+            const { data: th } = await db.from("channel_threads").upsert({ company_id, channel: "messenger", page_id: pid, ext_id: String(cust.id), name: cust.name ?? null, fb_thread_id: conv.id }, { onConflict: "page_id,ext_id,channel" }).select("id, unread_count").single();
+            if (!th) continue;
+            const msgs = (conv.messages?.data ?? []).map((m: any)=>({ thread_id: th.id, company_id, direction: String(m.from?.id ?? "") === pid ? "outbound" : "inbound", content: String(m.message ?? "").slice(0, 4000) || ((m.attachments?.data ?? []).length ? "[attachment]" : ""), ext_message_id: String(m.id), created_at: m.created_time, attachments: (m.attachments?.data ?? []).length ? m.attachments.data : null }));
+            if (!msgs.length) continue;
+            const { data: ins } = await db.from("channel_messages").upsert(msgs, { onConflict: "ext_message_id", ignoreDuplicates: true }).select("direction, created_at, content");
+            const fresh = (ins ?? []).filter((m: any)=>m.direction === "inbound" && Date.now() - Date.parse(m.created_at) < 48 * 3600 * 1000);
+            const latest = msgs.reduce((x: string, m: any)=>m.created_at > x ? m.created_at : x, "");
+            const lastIn = msgs.filter((m: any)=>m.direction === "inbound").reduce((x: string, m: any)=>m.created_at > x ? m.created_at : x, "");
+            const upd: any = { last_message_at: latest };
+            if (lastIn) upd.last_inbound_at = lastIn;
+            if (fresh.length) upd.unread_count = (th.unread_count ?? 0) + fresh.length;
+            await db.from("channel_threads").update(upd).eq("id", th.id);
+            rep.threads++; rep.new_inbound += fresh.length;
+            for (const m of fresh.filter((x: any)=>Date.now() - Date.parse(x.created_at) < 30 * 60 * 1000).slice(-3)) {
+              await db.rpc("rv_notify", { p_company: company_id, p_category: "messages", p_kind: "messenger_new", p_title: `New Messenger message · ${cust.name ?? "a customer"}`, p_body: String(m.content ?? "").slice(0, 140), p_url: `/dashboard_new.html?open=mx:${th.id}`, p_severity: "info", p_data: { thread_id: th.id }, p_dedupe: `mx:${th.id}:${m.created_at}`, p_buyer: acct.media_buyer_id ?? null, p_user: null, p_push: true }).then(()=>null, ()=>null);
+            }
+          }
+        } catch (e) { rep.error = String(e.message ?? e).slice(0, 160); }
+        report.push(rep);
+      }
+      return json({ ok: true, pages: report });
+    }
+    // Signed-in people: send in a Messenger chat, mark it read, or answer a comment privately in Messenger (always on their own Pages).
+    if (!isPlatform && ["messenger_send", "messenger_read", "private_reply"].includes(String(b.action ?? ""))) {
+      const { data: mine } = await db.from("ad_accounts").select("id, fb_page_id, meta_connection_id, media_buyer_id").eq("company_id", companyId).eq("status", "active").not("fb_page_id", "is", null);
+      const allowed = (mine ?? []).filter((a: any)=>role !== "buyer" || a.media_buyer_id === buyerId);
+      const act = String(b.action);
+      if (act === "private_reply") {
+        const { data: row } = await db.from("page_comments").select("*").eq("id", String(b.id ?? "")).maybeSingle();
+        const acct = row && row.company_id === companyId ? allowed.find((a: any)=>digits(a.fb_page_id) === row.page_id) : null;
+        if (!row || !acct) return json({ error: "Comment not found." }, 404);
+        if (b.confirmed !== true) return json({ error: "Confirm first: this sends a Messenger message to the customer." }, 400);
+        if (row.private_thread_id) return json({ error: "You already replied to this comment privately." }, 400);
+        const message = String(b.message ?? "").trim().slice(0, 2000);
+        if (!message) return json({ error: "Write the message first." }, 400);
+        try {
+          const pt = await pageToken(row.page_id, await tokenOf(acct));
+          const r = await g(`/${row.comment_id}/private_replies`, pt, "POST", { message });
+          const psid = String(r?.recipient_id ?? row.from_id ?? "");
+          if (!psid) return json({ ok: false, error: "Meta did not say who the message went to." });
+          const now = new Date().toISOString();
+          const { data: th } = await db.from("channel_threads").upsert({ company_id: companyId, channel: "messenger", page_id: row.page_id, ext_id: psid, name: row.from_name ?? null, source: "private_reply", last_message_at: now }, { onConflict: "page_id,ext_id,channel" }).select("id").single();
+          if (!th) return json({ ok: false, error: "Sent, but the chat could not be saved." });
+          await db.from("channel_messages").insert({ thread_id: th.id, company_id: companyId, direction: "outbound", content: message, ext_message_id: String(r?.message_id ?? r?.id ?? "pr:" + row.comment_id), created_at: now });
+          await db.from("page_comments").update({ status: "replied", reply_text: "Replied privately in Messenger: " + message.slice(0, 300), private_thread_id: th.id, replied_by: userId || null, replied_at: now, read_at: now }).eq("id", row.id);
+          return json({ ok: true, thread_id: th.id });
+        } catch (e) { return json({ ok: false, error: e.message.slice(0, 250) }); }
+      }
+      const { data: th } = await db.from("channel_threads").select("*").eq("id", String(b.thread_id ?? "")).maybeSingle();
+      const acct = th && th.company_id === companyId ? allowed.find((a: any)=>digits(a.fb_page_id) === th.page_id) : null;
+      if (!th || !acct) return json({ error: "Chat not found." }, 404);
+      if (act === "messenger_read") { await db.from("channel_threads").update({ unread_count: 0 }).eq("id", th.id); return json({ ok: true }); }
+      const text = String(b.text ?? "").trim().slice(0, 2000);
+      if (!text) return json({ error: "Write a message first." }, 400);
+      const ageH = th.last_inbound_at ? (Date.now() - Date.parse(th.last_inbound_at)) / 3600000 : 999;
+      if (ageH >= 168) return json({ ok: false, error: "This customer last wrote more than 7 days ago. Messenger only lets you reply after they message the Page again." });
+      try {
+        const pt = await pageToken(th.page_id, await tokenOf(acct));
+        const body: Record<string, string> = { recipient: JSON.stringify({ id: th.ext_id }), message: JSON.stringify({ text }) };
+        if (ageH < 24) body.messaging_type = "RESPONSE"; else { body.messaging_type = "MESSAGE_TAG"; body.tag = "HUMAN_AGENT"; }
+        const r = await g(`/${th.page_id}/messages`, pt, "POST", body);
+        const now = new Date().toISOString();
+        await db.from("channel_messages").insert({ thread_id: th.id, company_id: companyId, direction: "outbound", content: text, ext_message_id: String(r?.message_id ?? "o:" + Date.now()), created_at: now });
+        await db.from("channel_threads").update({ last_message_at: now }).eq("id", th.id);
+        return json({ ok: true });
+      } catch (e) {
+        const m = String(e.message ?? e);
+        return json({ ok: false, error: ageH >= 24 && /tag|permission|human/i.test(m) ? "The 24-hour Messenger window has closed, and Meta has not allowed late replies for this app yet. The customer needs to message the Page again." : m.slice(0, 250) });
+      }
+    }
     // Signed-in people: the Pages they can use, reading/answering a comment (always on their own Pages).
     if (!isPlatform && ["my_pages", "comments_reply", "comments_hide", "comments_suggest", "comments_read"].includes(String(b.action ?? ""))) {
       let aq = db.from("ad_accounts").select("id, nickname, fb_page_id, meta_connection_id, media_buyer_id").eq("company_id", companyId).eq("status", "active").not("fb_page_id", "is", null);
