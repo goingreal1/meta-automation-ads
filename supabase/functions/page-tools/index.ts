@@ -76,6 +76,35 @@ Deno.serve(async (req)=>{
         return json({ ok: true, post_id: postId, total: r?.summary?.total_count ?? null, sample: (r?.data ?? []).map((c)=>({ id: c.id, text: String(c.message ?? "").slice(0, 120), at: c.created_time, replies: c.comment_count ?? 0, can_reply: c.can_comment ?? null, can_hide: c.can_hide ?? null })) });
       } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }); }
     }
+    // Platform-only, read-only: scan many posts of one Page for recent comments (counts, plus the newest few).
+    if (isPlatform && String(b.action ?? "") === "comments_scan") {
+      const ids = (Array.isArray(b.post_ids) ? b.post_ids : []).map((x)=>String(x).replace(/[^0-9_]/g, "")).filter((x)=>x.includes("_")).slice(0, 320);
+      const pid = String(b.page_id ?? "").match(/\d+/)?.[0];
+      if (!pid || !ids.length) return json({ error: "page_id and post_ids are needed." }, 400);
+      const since = Date.now() - (Number(b.days) || 30) * 86400000;
+      let pt;
+      try { pt = await pageToken(pid, SHARED); } catch (e) { return json({ ok: false, error: e.message.slice(0, 200) }); }
+      const out = { scanned: 0, errors: 0, posts_with_recent: 0, recent_total: 0, all_time_total: 0, newest: [] as any[], first_error: "" };
+      let k = 0;
+      const worker = async ()=>{
+        while (k < ids.length) {
+          const id = ids[k++];
+          try {
+            const r = await g(`/${id}/comments?summary=total_count&filter=toplevel&order=reverse_chronological&limit=25&fields=id,message,created_time,comment_count`, pt);
+            out.scanned++;
+            out.all_time_total += Number(r?.summary?.total_count ?? 0);
+            const recent = (r?.data ?? []).filter((c)=>Date.parse(c.created_time) >= since);
+            if (recent.length) out.posts_with_recent++;
+            out.recent_total += recent.length;
+            for (const c of recent) out.newest.push({ post_id: id, at: c.created_time, text: String(c.message ?? "").slice(0, 100), replies: c.comment_count ?? 0 });
+          } catch (e) { out.errors++; if (!out.first_error) out.first_error = e.message.slice(0, 160); }
+        }
+      };
+      await Promise.all(Array.from({ length: 8 }, worker));
+      out.newest.sort((a, b)=>String(b.at).localeCompare(String(a.at)));
+      out.newest = out.newest.slice(0, 15);
+      return json({ ok: true, page_id: pid, days: Number(b.days) || 30, ...out });
+    }
     // Platform-only: publish one normal (organic) photo post on the Facebook Page of an ad account, with the Page's own token.
     if (isPlatform && String(b.action ?? "") === "post_photo") {
       const { data: ac } = await db.from("ad_accounts").select("id, fb_page_id").eq("id", String(b.ad_account_id ?? "")).maybeSingle();
