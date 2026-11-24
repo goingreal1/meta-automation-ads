@@ -151,13 +151,9 @@
       let key = m.k, label = SHORT[m.k] || m.label, val = m.v(r), fmt = m.f;
       if (key === "results") label = r.kind === "messaging" ? "Chats" : r.kind === "purchase" ? "Purchases" : (r.result_label || "Results");
       if (key === "cpp" && r.kind === "messaging") { const alt = CP_METRICS.find((x) => x.k === "cpmsg"); label = SHORT.cpmsg; val = alt.v(r); fmt = alt.f; }
-      // The big number already is the cost per purchase (website ads) / per chat (WhatsApp ads); do not show the same number twice.
-      if ((key === "cpp" || key === "cpmsg") && val != null && heroCost(r) != null && Math.abs(Number(val) - heroCost(r)) < 1) continue;
       const bad = val == null || Number.isNaN(Number(val));
-      if (bad && key !== "results") continue;
       const sig = label + "|" + (bad ? "-" : fmt(val)); if (seen.has(sig)) continue; seen.add(sig);
       out.push(`<span class="cx-pill">${esc(label)}<b>${bad ? "—" : esc(fmt(val))}</b></span>`);
-      if (limit && out.length >= limit) break;
     }
     return out.join("");
   }
