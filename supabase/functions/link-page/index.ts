@@ -108,33 +108,18 @@ Deno.serve(async (req)=>{
       }
       if (acBiz?.id && pgBiz?.id && String(acBiz.id) === String(pgBiz.id)) { usable = true; via = "the Business that owns both"; }
     }
-    // Everything sits in Revora's own Business: let Revora's access give itself the right on this Page (advertise, create content), then check again.
-    let assignNote = "", sysName = "";
-    if (!usable) {
-      try {
-        const meu = await get("me?fields=id,name");
-        sysName = String(meu?.name ?? "");
-        if (meu?.id) {
-          const rr = await fetch(`${G}/${pageId}/assigned_users`, { method: "POST", body: new URLSearchParams({ user: String(meu.id), tasks: JSON.stringify(["ADVERTISE", "CREATE_CONTENT", "MODERATE", "MESSAGING", "ANALYZE"]), access_token: TOKEN }) });
-          const jj = await rr.json().catch(()=>({}));
-          if (jj?.error) assignNote = String(jj.error.error_user_msg || jj.error.message || "").slice(0, 200);
-          else {
-            await new Promise((res)=>setTimeout(res, 1500));
-            if ((await allIds(`act_${act}/promote_pages`)).has(pageId)) { usable = true; via = "Revora's access (assigned just now)"; }
-          }
-        }
-      } catch (e) { assignNote = String((e as Error).message ?? e).slice(0, 200); }
-    }
+    let sysName = "";
+    if (!usable) { try { sysName = String((await get("me?fields=name"))?.name ?? ""); } catch (_) { /* optional */ } }
     if (!usable) {
       let canUse = "";
       try { const l = await get(`act_${act}/promote_pages?fields=id,name&limit=12`); canUse = (l?.data ?? []).map((x: any)=>x.name ?? x.id).join(", "); } catch (_) { /* optional */ }
-      const diag = ` Revora's access${sysName ? ` ("${sysName}")` : ""} can advertise on this ad account as: ${canUse || "no Page at all"}.${assignNote ? ` Meta said when Revora tried to give itself the right on this Page: ${assignNote}` : ""}`;
+      const diag = ` Revora's access${sysName ? ` ("${sysName}")` : ""} can advertise on this ad account as: ${canUse || "no Page at all"}.`;
       const shared = BM ? new Set([...(await allIds(`${BM}/client_pages`)), ...(await allIds(`${BM}/owned_pages`))]) : new Set();
       const who = acBiz?.id ? ` The ad account belongs to the Business "${acBiz.name ?? acBiz.id}" (ID ${acBiz.id})${pgBiz?.id ? ", the Page to \"" + (pgBiz.name ?? pgBiz.id) + "\" (ID " + pgBiz.id + ")" : ", and Meta did not say which Business owns the Page"}.` : "";
       if (shared.has(pageId) || pgBiz?.id) return json({
         status: "not_usable",
         business_id: BM || null,
-        error: `Meta does not let this ad account advertise as that Page yet.${diag}${who} In Meta Business Settings, open Users, System users, pick the one Revora uses, and under Add assets give it the Page with permission to create ads. Then try again.`
+        error: `Meta does not let this ad account advertise as that Page yet.${diag}${who} If the Page is owned by a different Business than the ad account, that owner must give the ad account's Business permission to create ads on the Page (Page, Partners). Then try again, or use Link anyway.`
       });
       return json({
         status: "not_shared",
