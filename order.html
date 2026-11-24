@@ -10,10 +10,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#ffffff; --bg2:#faf9f7;
-  --text:#14130f; --text2:#55524a; --muted:#8c887c;
-  --border:#e7e3da; --borderStrong:#d6d1c4;
-  --accent:#1a7a5e; --accentDk:#125c46; --accentBg:#eaf4f0; --accentBdr:#cfe6dd;
+  --bg:#f1f3f8; --bg2:#eef1f6;
+  --text:#0f1a30; --text2:#3d4659; --muted:#667086;
+  --border:#e3e6ea; --borderStrong:#cdd3dc;
+  --accent:#1f6fff; --accentDk:#1859d1; --accentBg:rgba(31,111,255,.1); --accentBdr:rgba(31,111,255,.3);
   --danger:#b4493c; --dangerBg:#fbeeec;
   --shadow:0 1px 2px rgba(20,19,15,.03), 0 16px 40px -20px rgba(20,19,15,.12);
 }
@@ -115,6 +115,37 @@ button[type=submit]:disabled{opacity:.6;cursor:default;}
 .pg-bar{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:#fff;box-shadow:0 -8px 24px rgba(20,19,15,.1);transition:transform .2s ease;}
 .pg-bar.off{transform:translateY(110%);}
 .pg-bar button{width:100%;height:56px;border:0;border-radius:16px;background:var(--accent);color:#fff;font:inherit;font-size:16px;font-weight:700;cursor:pointer;}
+
+/* Revora form look: same as the mock-up. */
+body{background:#f1f3f8;color:#0f1a30;}
+h1,.price,.qty-val,.tier-card .tc-price,.total-row span:last-child,#thankyou h1,.pg-hero h2,.pg-h{font-family:'Inter',system-ui,sans-serif;}
+.card{border:0;border-radius:24px;padding:20px;box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);}
+.brandbar{color:#667086;}
+label{color:#0f1a30;font-weight:650;}
+input,select,textarea{background:#eef1f6;border:2px solid transparent;border-radius:14px;min-height:50px;padding:0 14px;}
+textarea{padding:12px 14px;}
+input:focus,select:focus,textarea:focus{background:#fff;border-color:#1f6fff;box-shadow:0 0 0 4px rgba(31,111,255,.12);}
+.tier-card{background:#eef1f6;border:2px solid transparent;border-radius:18px;padding:14px;justify-content:flex-start;gap:12px;}
+.tier-card::before{content:"";flex:none;width:22px;height:22px;border-radius:50%;border:2px solid #9aa3b4;box-sizing:border-box;}
+.tier-card > div:first-child{flex:1;min-width:0;}
+.tier-card.selected{border-color:#1f6fff;background:rgba(31,111,255,.07);}
+.tier-card.selected::before{border-color:#1f6fff;background:radial-gradient(#1f6fff 0 45%,transparent 50%);}
+.tier-card .tc-badge{border-color:#1f6fff;color:#1859d1;}
+.qty-btn{background:#eef1f6;border:0;border-radius:14px;}
+.total-row{border-top:1px solid #e3e6ea;}
+button[type=submit]{height:56px;padding:0 16px;border-radius:16px;background:#1f6fff;font-weight:700;}
+button[type=submit]:hover{background:#1859d1;}
+.safety{background:#eef1f6;border:0;border-radius:14px;}
+.ref{border-radius:12px;}
+#thankyou .bank{background:#eef1f6;border:0;border-radius:20px;}
+#thankyou .bank button,#thankyou .waBtn{background:#1f6fff;border-radius:16px;}
+.pg-hero{background:linear-gradient(160deg,#2a6f97,#0f2a66);}
+.pg-trust div{border:0;border-radius:20px;padding:14px 6px;}
+.pg-trust i{width:36px;height:36px;border-radius:50%;background:rgba(31,111,255,.12);color:#1f6fff;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;}
+.pg-trust svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.pg-why li::before{background:#18a35a;}
+.pg-bar{background:#f1f3f8;}
+.pg-bar button{background:#1f6fff;}
 </style>
 </head>
 <body>
@@ -222,7 +253,7 @@ function decoratePage() {
   page.insertAdjacentHTML("afterbegin", `
     <div class="pg-hero">${product.product_image_url ? `<img src="${esc(product.product_image_url)}" alt="">` : ""}
       <div class="in"><h2>${esc(product.product_name)}</h2><div class="pr">${tiers.length ? "From " : ""}${fmt(low, product.currency)}</div></div></div>
-    <div class="pg-trust"><div><i>💳</i>Pay on delivery</div><div><i>🚚</i>Fast delivery</div><div><i>💬</i>WhatsApp support</div></div>
+    <div class="pg-trust"><div><i><svg viewBox="0 0 24 24"><path d="M3 7h18v10H3zM3 11h18"/></svg></i>Pay on delivery</div><div><i><svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg></i>Fast delivery</div><div><i><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-12 7l-5 1 1-4.5A8 8 0 1 1 21 12z"/></svg></i>WhatsApp support</div></div>
     ${about.length || safety ? `<div class="card pg-why">${about.length ? `<div class="lbl">WHY PEOPLE ORDER IT</div><ul>${about.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${safety ? safety.outerHTML : ""}</div>` : ""}
     <div class="pg-h" id="pgForm">Complete your order</div>`);
   const form = document.getElementById("orderForm"), bar = document.createElement("div");
