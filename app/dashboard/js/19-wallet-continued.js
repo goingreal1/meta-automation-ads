@@ -24,7 +24,7 @@ async function bvEventsPanel() {
   const keyEv = ["PageView", "ViewContent", "InitiateCheckout", "Lead", "Purchase"];
   let html = "";
   if (r.note) html += `<div style="font-size:11px;color:var(--warn);margin-bottom:8px;">${escH(r.note)}</div>`;
-  if (!r.pixels.length) html += `<div class="empty"><div class="empty-ico">📡</div>This ad account has no dataset yet.</div>${r.can_create ? `<button type="button" class="btn btn-a" id="evCreate" style="margin-top:8px;">Create a dataset</button>` : ""}`;
+  if (!r.pixels.length) html += `<div class="empty"><div class="empty-ico">📡</div>This ad account has no dataset yet.</div>`;
   for (const p of r.pixels) {
     const total = Object.values(p.events).reduce((t, n) => t + n, 0);
     const max = Math.max(1, ...p.daily.map(d => d.total));
@@ -45,6 +45,10 @@ async function bvEventsPanel() {
         <div class="evTestMsg" data-id="${p.id}" style="margin-top:6px;"></div></details>
     </div>`;
   }
+  if (r.can_create) html += `<div style="margin:6px 0 12px;"><button type="button" class="btn btn-a" id="evCreate">＋ Create a new dataset</button><span style="font-size:10.5px;color:var(--muted);margin-left:8px;">Meta allows one per ad account. If this one has one, it is linked instead.</span></div>`;
+  html += `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><b>Made in Meta already? Attach it</b>
+    <div style="font-size:10.5px;color:var(--muted);margin:4px 0 8px;">Meta only lists a dataset here once it is assigned to this ad account. These are datasets in your Meta business that are not on it yet.</div>
+    ${(r.available || []).length ? (r.available || []).map(px => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px;"><div><b>${escH(px.name || px.id)}</b> <span style="color:var(--muted);font-size:10.5px;">${escH(px.business_name || "")} · ${escH(px.id)}</span></div><button type="button" class="btn btn-a evAtt" data-id="${escH(px.id)}" data-biz="${escH(px.business_id)}" style="padding:3px 10px;font-size:10px;">Attach</button></div>`).join("") : `<div style="font-size:11px;color:var(--muted);">${r.available_error ? "Couldn't read your Meta business: " + escH(r.available_error) : (r.can_create ? "No other datasets found in your Meta business." : "This ad account is not connected with your own Meta login.")}</div>`}</div>`;
   html += `<div style="font-size:10.5px;color:var(--muted);">Server events (Conversions API): Revora sends a purchase event from your orders automatically for any ad account that has a dataset, so they appear above under "from server".</div>`;
   if (r.pixels.length) html += `<div id="evQuality" style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><b>Customer details sent with events</b><div style="font-size:10.5px;color:var(--muted);">Loading…</div></div>
     <div id="evConv" style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;"><b>Custom conversions</b><div style="font-size:10.5px;color:var(--muted);">Loading…</div></div>`;
@@ -56,6 +60,12 @@ async function bvEventsPanel() {
     if (c.error) { alert(c.error); e.target.disabled = false; e.target.textContent = "Create a dataset"; return; }
     bvToast(c.existing ? "Dataset linked" : "Dataset created"); await loadAccounts(); bvEventsPanel();
   });
+  body.querySelectorAll(".evAtt").forEach(b2 => b2.addEventListener("click", async () => {
+    b2.disabled = true; b2.textContent = "Attaching…";
+    const c = await sbFn("events-manager", { action: "attach_dataset", ad_account_id: bvEventsAcct, pixel_id: b2.dataset.id, business_id: b2.dataset.biz }).catch(err => ({ error: err.message }));
+    if (c.error) { alert(c.error); b2.disabled = false; b2.textContent = "Attach"; return; }
+    bvToast("Dataset attached to this ad account"); await loadAccounts(); bvEventsPanel();
+  }));
   body.querySelectorAll(".evUse").forEach(b2 => b2.addEventListener("click", async () => {
     b2.disabled = true;
     const c = await sbFn("events-manager", { action: "use_dataset", ad_account_id: bvEventsAcct, pixel_id: b2.dataset.id }).catch(err => ({ error: err.message }));
