@@ -38,6 +38,126 @@ async function pageToken(pageId, token) {
   if (hit?.access_token) return hit.access_token;
   throw new Error("Revora's Meta login cannot act for this Page yet. Share the Page with Revora's Business in Meta (Page access), then try again.");
 }
+// ======== AUTOMATIC REPLIES (comments and Page messages) ========
+// A seller sets a keyword (or "any message") and the text to send, or lets AI answer. Runs right after each comments / Messenger sync.
+const hasWord = (text: string, words: string[])=>{ const t = String(text ?? "").toLowerCase(); const ws = (words ?? []).map((w)=>String(w).toLowerCase().trim()).filter(Boolean); return !ws.length || ws.some((w)=>t.includes(w)); };
+const firstName = (n: any)=>String(n ?? "").trim().split(/\s+/)[0] || "there";
+async function tokenForAcct(acct: any) {
+  if (acct?.meta_connection_id) { const { data: c } = await db.from("meta_connections").select("access_token, status").eq("id", acct.meta_connection_id).maybeSingle(); if (c?.status === "active" && c.access_token) return c.access_token; }
+  return SHARED;
+}
+async function sellerFacts(companyId: string, productId?: string | null) {
+  let q = db.from("products").select("id, product_name, default_order_value_naira, currency, description").eq("company_id", companyId).eq("is_active", true).limit(10);
+  if (productId) q = q.eq("id", productId);
+  const { data: prods } = await q;
+  const ids = (prods ?? []).map((x: any)=>x.id);
+  const { data: tiers } = ids.length ? await db.from("product_tiers").select("product_id, label, price_naira").in("product_id", ids).order("sort_order", { ascending: true }) : { data: [] };
+  return (prods ?? []).map((x: any)=>({ name: x.product_name, currency: x.currency || "NGN", price: x.default_order_value_naira, about: String(x.description ?? "").slice(0, 280), packages: (tiers ?? []).filter((t: any)=>t.product_id === x.id).map((t: any)=>`${t.label}: ${t.price_naira}`), order_link: `https://dash.revoracrm.online/order.html?product=${x.id}&v=page` }));
+}
+// AI reply from the seller's own facts only. Returns handover=true when it should not answer (unsure, wants a person, complaint).
+async function aiAnswer(kind: "comment" | "message", facts: any[], convo: string) {
+  const key = Deno.env.get("OPENAI_API_KEY") ?? "";
+  if (!key) return { text: "", handover: true, why: "AI is not switched on" };
+  const sys = `You reply for a seller on Facebook. Use ONLY the facts in FACTS. ${kind === "comment" ? "Write ONE short, warm public reply (at most 2 sentences)." : "Write a short, warm reply (at most 3 short sentences)."} Same language and tone as the customer (English or Pidgin). Quote prices exactly as in FACTS with their currency; never invent prices, offers, stock, delivery times or results; never promise cures. If asked how to order, give the order_link of the product. If you cannot answer from FACTS, or the customer is upset, asks for a refund or asks for a person, answer exactly: HANDOVER`;
+  const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.3, max_tokens: 200, messages: [{ role: "system", content: sys }, { role: "user", content: `FACTS:\n${JSON.stringify(facts)}\n\nCONVERSATION:\n${convo.slice(0, 1800)}` }] }) });
+  const j = await r.json().catch(()=>({}));
+  const text = String(j?.choices?.[0]?.message?.content ?? "").trim();
+  if (!r.ok || !text) return { text: "", handover: true, why: String(j?.error?.message ?? "no answer").slice(0, 120) };
+  if (/^HANDOVER\b/i.test(text)) return { text: "", handover: true, why: "AI handed over" };
+  return { text: text.slice(0, 900), handover: false, why: "" };
+}
+async function claim(companyId: string, automationId: string, kind: string, extId: string) {
+  const { error } = await db.from("automation_log").insert({ company_id: companyId, automation_id: automationId, kind, ext_id: extId, status: "skipped", detail: "sending" });
+  return !error;   // false = already handled (unique)
+}
+const finish = (kind: string, extId: string, status: string, detail: string)=>db.from("automation_log").update({ status, detail: detail.slice(0, 200) }).eq("kind", kind).eq("ext_id", extId);
+async function pageAcct(companyId: string, pageId: string) {
+  const { data } = await db.from("ad_accounts").select("id, fb_page_id, meta_connection_id").eq("company_id", companyId).eq("status", "active").not("fb_page_id", "is", null);
+  return (data ?? []).find((a: any)=>String(a.fb_page_id).match(/\d+/)?.[0] === pageId) ?? null;
+}
+async function runCommentAutomations() {
+  const { data: rules } = await db.from("page_automations").select("*").eq("enabled", true).eq("trigger", "comment").eq("channel", "facebook");
+  const out = { sent: 0, failed: 0 };
+  if (!rules?.length) return out;
+  const groups = new Map<string, any[]>();
+  for (const r of rules) { const k = r.company_id + ":" + r.page_id; groups.set(k, [...(groups.get(k) ?? []), r]); }
+  for (const [k, rs] of groups) {
+    const [companyId, pageId] = k.split(":");
+    const acct = await pageAcct(companyId, pageId); if (!acct) continue;
+    const since = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: cms } = await db.from("page_comments").select("*").eq("company_id", companyId).eq("page_id", pageId).eq("channel", "facebook").eq("is_page_reply", false).eq("status", "new").gte("created_time", since).order("created_time", { ascending: true }).limit(40);
+    if (!cms?.length) continue;
+    const creativeIds = [...new Set(rs.map((r: any)=>r.creative_id).filter(Boolean))];
+    const { data: made } = creativeIds.length ? await db.from("creative_posts").select("creative_id, post_id").in("creative_id", creativeIds) : { data: [] };
+    const postCreative = new Map((made ?? []).map((m: any)=>[m.post_id, m.creative_id]));
+    let pt = ""; 
+    for (const c of cms) {
+      const cands = rs.filter((r: any)=>Date.parse(c.created_time) >= Date.parse(r.created_at) && (r.creative_id ? postCreative.get(c.post_id) === r.creative_id : true) && hasWord(c.message, r.keywords));
+      const rule = cands.find((r: any)=>r.creative_id) ?? cands[0];
+      if (!rule) continue;
+      try {
+        if (!pt) pt = await pageToken(pageId, await tokenForAcct(acct));
+        let text = "", dm = "";
+        if (rule.reply_mode === "ai") {
+          const facts = await sellerFacts(companyId, rule.creative_id ? (await db.from("creative_assets").select("product_id").eq("id", rule.creative_id).maybeSingle()).data?.product_id : null);
+          const a = await aiAnswer("comment", facts, `Comment from ${firstName(c.from_name)}: ${c.message}`);
+          if (a.handover) { if (await claim(companyId, rule.id, "comment_reply", c.comment_id)) await finish("comment_reply", c.comment_id, "skipped", a.why); continue; }
+          text = a.text; dm = a.text;
+        } else { text = String(rule.public_text ?? "").replaceAll("{name}", firstName(c.from_name)); dm = String(rule.dm_text ?? "").replaceAll("{name}", firstName(c.from_name)); }
+        let did = false;
+        if (rule.public_enabled && text.trim() && await claim(companyId, rule.id, "comment_reply", c.comment_id)) {
+          try { await g(`/${c.comment_id}/comments`, pt, "POST", { message: text.slice(0, 2000) }); await finish("comment_reply", c.comment_id, "sent", "public reply"); did = true; out.sent++; } catch (e) { await finish("comment_reply", c.comment_id, "failed", String(e.message ?? e)); out.failed++; }
+        }
+        if (rule.dm_enabled && dm.trim() && await claim(companyId, rule.id, "private_reply", c.comment_id)) {
+          try { await g(`/${c.comment_id}/private_replies`, pt, "POST", { message: dm.slice(0, 2000) }); await finish("private_reply", c.comment_id, "sent", "private message"); did = true; out.sent++; } catch (e) { await finish("private_reply", c.comment_id, "failed", String(e.message ?? e)); out.failed++; }
+        }
+        if (did) await db.from("page_comments").update({ status: "replied", reply_text: ("Automatic: " + (text || dm)).slice(0, 300), replied_at: new Date().toISOString() }).eq("id", c.id);
+      } catch (e) { out.failed++; }
+    }
+  }
+  return out;
+}
+async function runMessageAutomations() {
+  const { data: rules } = await db.from("page_automations").select("*").eq("enabled", true).eq("trigger", "message").eq("channel", "facebook");
+  const out = { sent: 0, failed: 0, handover: 0 };
+  if (!rules?.length) return out;
+  const groups = new Map<string, any[]>();
+  for (const r of rules) { const k = r.company_id + ":" + r.page_id; groups.set(k, [...(groups.get(k) ?? []), r]); }
+  for (const [k, rs] of groups) {
+    const [companyId, pageId] = k.split(":");
+    const acct = await pageAcct(companyId, pageId); if (!acct) continue;
+    const { data: threads } = await db.from("channel_threads").select("id, ext_id, name").eq("company_id", companyId).eq("page_id", pageId).eq("channel", "messenger").gte("last_inbound_at", new Date(Date.now() - 23 * 3600000).toISOString()).order("last_inbound_at", { ascending: false }).limit(40);
+    let pt = "";
+    for (const th of threads ?? []) {
+      const { data: msgs } = await db.from("channel_messages").select("direction, content, ext_message_id, created_at").eq("thread_id", th.id).order("created_at", { ascending: false }).limit(8);
+      const last = (msgs ?? [])[0];
+      if (!last || last.direction !== "inbound" || !last.content) continue;          // answered already (by a person or by us), or nothing to answer
+      const hasOut = (msgs ?? []).some((m: any)=>m.direction === "outbound");
+      const cands = rs.filter((r: any)=>Date.parse(last.created_at) >= Date.parse(r.created_at) && hasWord(last.content, r.keywords) && (r.when_mode === "always" || !hasOut));
+      const rule = cands.find((r: any)=>(r.keywords ?? []).length) ?? cands[0];
+      if (!rule) continue;
+      try {
+        if (!pt) pt = await pageToken(pageId, await tokenForAcct(acct));
+        let text = "";
+        if (rule.reply_mode === "ai") {
+          const facts = await sellerFacts(companyId, null);
+          const convo = [...(msgs ?? [])].reverse().map((m: any)=>`${m.direction === "inbound" ? firstName(th.name) : "Seller"}: ${m.content ?? ""}`).join("\n");
+          const a = await aiAnswer("message", facts, convo);
+          if (a.handover) { if (await claim(companyId, rule.id, "message_reply", last.ext_message_id)) { await finish("message_reply", last.ext_message_id, "skipped", a.why); await db.from("channel_threads").update({ unread_count: 1 }).eq("id", th.id).eq("unread_count", 0); out.handover++; } continue; }
+          text = a.text;
+        } else text = String(rule.message_text ?? "").replaceAll("{name}", firstName(th.name));
+        if (!text.trim()) continue;
+        if (!(await claim(companyId, rule.id, "message_reply", last.ext_message_id))) continue;
+        try {
+          const r2 = await g(`/${pageId}/messages`, pt, "POST", { recipient: JSON.stringify({ id: th.ext_id }), message: JSON.stringify({ text: text.slice(0, 1900) }), messaging_type: "RESPONSE" });
+          await db.from("channel_messages").upsert({ thread_id: th.id, company_id: companyId, direction: "outbound", content: text, ext_message_id: String(r2?.message_id ?? "auto:" + last.ext_message_id), created_at: new Date().toISOString() }, { onConflict: "ext_message_id", ignoreDuplicates: true });
+          await finish("message_reply", last.ext_message_id, "sent", rule.reply_mode); out.sent++;
+        } catch (e) { await finish("message_reply", last.ext_message_id, "failed", String(e.message ?? e)); out.failed++; }
+      } catch (e) { out.failed++; }
+    }
+  }
+  return out;
+}
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", {
     headers: CORS
@@ -176,7 +296,8 @@ Deno.serve(async (req)=>{
         } catch (e) { rep.error = String(e.message ?? e).slice(0, 160); }
         report.push(rep);
       }
-      return json({ ok: true, pages: report });
+      let automation: any = null; try { automation = await runCommentAutomations(); } catch (e) { automation = { error: String(e.message ?? e).slice(0, 120) }; }
+      return json({ ok: true, pages: report, automation });
     }
     // ======== MESSENGER INBOX ========
     // Platform (cron, every 2 minutes): read each Page's Messenger conversations with the Page's own token and keep them in channel_threads / channel_messages.
@@ -225,8 +346,11 @@ Deno.serve(async (req)=>{
         } catch (e) { rep.error = String(e.message ?? e).slice(0, 160); }
         report.push(rep);
       }
-      return json({ ok: true, pages: report });
+      let automation: any = null; try { automation = await runMessageAutomations(); } catch (e) { automation = { error: String(e.message ?? e).slice(0, 120) }; }
+      return json({ ok: true, pages: report, automation });
     }
+    // Platform (manual run): both kinds of automatic replies.
+    if (isPlatform && String(b.action ?? "") === "automation_run") return json({ ok: true, comments: await runCommentAutomations(), messages: await runMessageAutomations() });
     // Signed-in people: send in a Messenger chat, mark it read, or answer a comment privately in Messenger (always on their own Pages).
     if (!isPlatform && ["messenger_send", "messenger_read", "messenger_refresh", "private_reply"].includes(String(b.action ?? ""))) {
       const { data: mine } = await db.from("ad_accounts").select("id, fb_page_id, meta_connection_id, media_buyer_id").eq("company_id", companyId).eq("status", "active").not("fb_page_id", "is", null);
@@ -396,10 +520,29 @@ Deno.serve(async (req)=>{
           postId = String(r?.post_id ?? r?.id ?? "");
           try { const l = (await g(`/${postId}?fields=permalink_url`, pt))?.permalink_url ?? null; link = l && l.startsWith("/") ? "https://www.facebook.com" + l : l; } catch (_) { /* the post exists even if the link cannot be read */ }
         }
+        if (postId) {
+          const ids = [postId]; if (!postId.includes("_")) ids.push(`${pageId}_${postId}`);
+          for (const pid2 of ids) await db.from("creative_posts").upsert({ company_id: cr.company_id, creative_id: cr.id, page_id: pageId, post_id: pid2 }, { onConflict: "post_id", ignoreDuplicates: true });
+        }
         return json({ ok: true, page_id: pageId, page_name: pageName, post_id: postId, link });
       } catch (e) { return json({ ok: false, error: e.message.slice(0, 300) }); }
     }
     const action = String(b.action ?? "");
+    // Is Instagram (comments and messages) usable with this ad account's access? Lists what Meta says the token can do.
+    if (action === "ig_check") {
+      const out: any = { page_id: pageId, own_login: !!acct.meta_connection_id };
+      try {
+        const d = await g(`/debug_token?input_token=${encodeURIComponent(token)}`, token);
+        const sc: string[] = d?.data?.scopes ?? []; out.token_type = d?.data?.type ?? null; out.scopes = sc;
+        const need = ["instagram_basic", "instagram_manage_comments", "instagram_manage_messages", "pages_messaging", "pages_manage_engagement", "pages_read_engagement"];
+        out.missing = need.filter((x)=>!sc.includes(x));
+      } catch (e) { out.scopes_error = String(e.message ?? e).slice(0, 200); }
+      try {
+        const pg = await g(`/${pageId}?fields=name,instagram_business_account{id,username},connected_instagram_account{id,username}`, token);
+        out.page_name = pg?.name ?? null; out.instagram = pg?.instagram_business_account ?? pg?.connected_instagram_account ?? null;
+      } catch (e) { out.page_error = String(e.message ?? e).slice(0, 200); }
+      return json({ ok: true, ...out });
+    }
     if (action === "diag") {
       const out = {
         page_id: pageId,
