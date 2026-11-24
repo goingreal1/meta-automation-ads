@@ -51,10 +51,21 @@ Deno.serve(async (req)=>{
     if (pageId.length < 8) return json({
       error: "That doesn't look like a Page ID. It's a long number, found in the Page's About section."
     }, 400);
+    // Check only (the Add a Page screen): is the Page shared with Revora's Business? Nothing is saved until it is linked to an ad account.
+    if (body.check_only === true) {
+      const shared = BM ? await allIds(`${BM}/client_pages`) : new Set();
+      const page = await get(`${pageId}?fields=name`);
+      if (shared.has(pageId)) return json({ status: "shared", page_id: pageId, page_name: page?.name ?? null });
+      return json({ status: "not_shared", business_id: BM || null, error: `Share that Page with Revora first (Business Settings, Pages, Add partner${BM ? ", Business ID " + BM : ""}), then check again.` });
+    }
     const { data: acc } = await db.from("ad_accounts").select("id, company_id, meta_ad_account_id, fb_page_id").eq("id", String(body.ad_account_id ?? "")).maybeSingle();
     if (!acc || acc.company_id !== me.company_id) return json({
       error: "Unknown ad account."
     }, 404);
+    if (body.unlink === true) {
+      if (String(acc.fb_page_id ?? "") === pageId) await db.from("ad_accounts").update({ fb_page_id: null, fb_page_name: null }).eq("id", acc.id);
+      return json({ status: "unlinked" });
+    }
     const { data: taken } = await db.from("ad_accounts").select("id").eq("fb_page_id", pageId).neq("company_id", me.company_id).limit(1);
     if (taken?.length) return json({
       status: "taken",

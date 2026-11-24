@@ -443,8 +443,8 @@ function bvMsDestCards() {
 // ── PHONE AD SETUP: ad accounts, Pages and datasets, each on its own screen ─────────────────────
 // Reached from Settings > Ads setup. List -> one ad account -> its dataset / Page screens. The same backend
 // calls as the desktop Settings are used (events-manager, link-page, ad-account-pool, sync-partner-accounts).
-const BV_ADX_TITLES = { list: "Ad accounts", acct: "Ad account", buy: "Buy account", link: "Link account", pages: "Pages", page: "Link a Page", datasets: "Datasets", dataset: "Dataset" };
-const BV_ADX_BACK = { list: "Accounts", acct: "Account", buy: "Buy", link: "Link", pages: "Pages", page: "Page", datasets: "Datasets", dataset: "Dataset" };
+const BV_ADX_TITLES = { list: "Ad accounts", acct: "Ad account", buy: "Buy account", link: "Link account", pages: "Pages", page: "Link a Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New dataset", dslink: "Link dataset", pgadd: "Add a Page", pglink: "Link Page" };
+const BV_ADX_BACK = { list: "Accounts", acct: "Account", buy: "Buy", link: "Link", pages: "Pages", page: "Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New", dslink: "Dataset", pgadd: "Add", pglink: "Page" };
 let bvAdx = { screen: "list", id: null, stack: [] };
 function bvAdxOpen(screen, id) {
   document.getElementById("bvBuilderOverlay")?.remove();
@@ -483,7 +483,7 @@ async function renderAdx(c) {
   if (!["owner", "admin", "buyer"].includes(window.myProfile?.role)) { c.innerHTML = `<div class="empty">Ad setup is for owners, admins and media buyers.</div>`; return; }
   c.innerHTML = `<div class="adx" id="adxRoot"></div>`;
   const root = c.querySelector("#adxRoot");
-  if (["list", "pages", "datasets", "acct", "page", "dataset"].includes(sc) && !bvAdx.fresh) { try { await loadAccounts(); } catch {} bvAdx.fresh = true; }
+  if (["list", "pages", "datasets", "acct", "page", "dataset", "dslink", "pglink"].includes(sc) && !bvAdx.fresh) { try { await loadAccounts(); } catch {} bvAdx.fresh = true; }
   if (sc === "list") return adxList(root);
   if (sc === "acct") return adxAccount(root);
   if (sc === "buy") return adxBuy(root);
@@ -492,6 +492,10 @@ async function renderAdx(c) {
   if (sc === "page") return adxPage(root);
   if (sc === "datasets") return adxDatasets(root);
   if (sc === "dataset") return adxDataset(root);
+  if (sc === "dsnew") return adxDsNew(root);
+  if (sc === "dslink") return adxDsLink(root);
+  if (sc === "pgadd") return adxPgAdd(root);
+  if (sc === "pglink") return adxPgLink(root);
 }
 function adxCard(a, target) {
   const ok = a.status === "active";
@@ -605,8 +609,133 @@ function adxPickList(root, intro, target, sub) {
   root.innerHTML = `<div class="adx-intro"><p>${intro}</p></div>` + (all.length ? all.map(a => `<button type="button" class="adx-step" onclick="bvAdxGo('${target}','${a.id}')"><span class="adx-num ${sub(a).ok ? "done" : ""}">${sub(a).ok ? "✓" : "!"}</span><span class="adx-step-tx"><b>${escH(adxName(a))}</b><small>${escH(sub(a).text)}</small></span>${ADX_CHEV}</button>`).join("")
     : `<div class="adx-empty">You have no ad accounts yet.<button type="button" class="adx-btn" onclick="bvAdxGo('buy')">Buy an ad account</button><button type="button" class="adx-btn ghost" onclick="bvAdxGo('link')">Link my own</button></div>`);
 }
-function adxPages(root) { adxPickList(root, "Your ads run as a Facebook Page. Each ad account needs one linked. Pick an ad account.", "page", a => a.fb_page_id ? { ok: true, text: a.fb_page_name || a.fb_page_id } : { ok: false, text: "No Page linked yet" }); }
-function adxDatasets(root) { adxPickList(root, "A dataset (Meta calls it a pixel) lets Meta count the orders your ads bring. Tap an ad account to create a dataset for it, or to attach one you made in Meta.", "dataset", a => a.meta_pixel_id ? { ok: true, text: a.pixel_name || a.meta_pixel_id } : { ok: false, text: "No dataset yet" }); }
+// ── Datasets and Pages as their own lists: tap one to choose which ad accounts use it ──
+const adxCtx = { ds: null, dsData: null, pg: null };
+(function () { if (document.getElementById("adxLinkCss")) return; const st = document.createElement("style"); st.id = "adxLinkCss"; st.textContent = `.adx-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px 16px;margin-top:10px;border:0;border-radius:20px;background:var(--panel);color:var(--text);font:inherit;box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);cursor:pointer}
+.adx-row .tx{flex:1;min-width:0}.adx-row b{display:block;font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.adx-row small{display:block;font-size:12px;color:var(--muted);margin-top:2px}.adx-row small.w{color:#a15a00}
+.adx-row .ic{width:42px;height:42px;border-radius:14px;background:rgba(31,111,255,.12);color:#1f6fff;display:flex;align-items:center;justify-content:center;flex:none;font-weight:750}
+.adx-row .tick{width:26px;height:26px;border-radius:50%;border:2px solid #9aa3b4;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;flex:none}.adx-row .tick.on{border-color:#1f6fff;background:#1f6fff}
+.adx-n{width:26px;height:26px;border-radius:50%;background:#1f6fff;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+.adx-row.off{opacity:.55;cursor:default}.adx-top{margin-top:14px}.adx-cnt{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 4px 0}`; document.head.appendChild(st); })();
+function adxBackTo(screen) {
+  while (bvAdx.stack.length) { const p = bvAdx.stack.pop(); if (p.screen === screen) { bvAdx.screen = p.screen; bvAdx.id = p.id; bvAdx.fresh = false; render(); window.scrollTo(0, 0); return; } }
+  bvAdx.screen = screen; bvAdx.id = null; bvAdx.fresh = false; render(); window.scrollTo(0, 0);
+}
+const adxAccts = () => (adxCtx.dsData && adxCtx.dsData.accounts) || (accountsList || []).map(a => ({ id: a.id, name: adxName(a), own: !!a.meta_connection_id && a.billing_mode !== "managed", pixel_id: a.meta_pixel_id || null, pixel_name: a.pixel_name || null }));
+
+async function adxDatasets(root) {
+  root.innerHTML = `<div class="adx-intro"><p>So Meta can count the orders your ads bring. Tap a dataset to choose which ad accounts use it.</p></div>
+    <button type="button" class="adx-btn" onclick="bvAdxGo('dsnew')">＋ Create new dataset</button>
+    <div id="dsList"><div class="empty"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div></div></div>`;
+  const box = root.querySelector("#dsList");
+  const r = await sbFn("events-manager", { action: "list_datasets" }).catch(err => ({ error: err.message }));
+  if (r.error) { box.innerHTML = bvAdxErr(r.error); return; }
+  adxCtx.dsData = r;
+  const list = r.datasets || [], accts = r.accounts || [];
+  box.innerHTML = (list.length ? `<div class="adx-cnt">${list.length} DATASET${list.length === 1 ? "" : "S"}</div>` : "") + (list.length ? list.map(d => {
+    const users = accts.filter(a => a.pixel_id === d.id);
+    return `<button type="button" class="adx-row" data-id="${escH(d.id)}"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span><span class="tx"><b>${escH(d.name || d.id)}</b><small>${users.length ? "Used by " + escH(users.map(a => a.name).join(", ")) : "Not linked to an ad account yet"}</small></span>${ADX_CHEV}</button>`;
+  }).join("") : `<div class="adx-note">No datasets yet. Tap Create new dataset.</div>`) + (r.business_error ? `<div class="adx-note warn" style="margin-top:12px">Couldn't read your Meta business: ${escH(r.business_error)}</div>` : "");
+  box.querySelectorAll(".adx-row").forEach(b => b.addEventListener("click", () => { adxCtx.ds = list.find(d => d.id === b.dataset.id); bvAdxGo("dslink", b.dataset.id); }));
+}
+function adxDsNew(root) {
+  root.innerHTML = `<div class="adx-panel"><label class="adx-lbl" for="adxDsName">Name your dataset</label>
+      <input id="adxDsName" maxlength="60" placeholder="e.g. Brahmi Shakti dataset" autocomplete="off"><div style="color:var(--muted);font-size:12.5px;margin-top:8px">Use the product or brand name so you can find it later.</div><div id="adxMsg"></div></div>
+    <button type="button" class="adx-btn" id="adxGo" style="margin-top:14px">Create dataset</button><div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px">Next you pick the ad accounts that use it.</div>`;
+  root.querySelector("#adxGo").addEventListener("click", async e => {
+    const b = e.currentTarget, m = root.querySelector("#adxMsg"), name = root.querySelector("#adxDsName").value.trim();
+    if (!name) { m.innerHTML = `<div class="adx-note warn">Give it a name first.</div>`; return; }
+    b.disabled = true; b.textContent = "Creating…"; m.innerHTML = "";
+    const r = await sbFn("events-manager", { action: "create_dataset_biz", name }).catch(err => ({ error: err.message }));
+    if (r.error) { m.innerHTML = bvAdxErr(r.error, "You can also create it in Meta's Events Manager. It will show in the Datasets list."); b.disabled = false; b.textContent = "Create dataset"; return; }
+    adxCtx.ds = { id: r.pixel_id, name: r.name, business_id: r.business_id }; adxCtx.dsData = null;
+    bvToast("Dataset created"); bvAdxGo("dslink", r.pixel_id);
+  });
+}
+function adxDsLink(root) {
+  const d = adxCtx.ds; if (!d) { bvAdxBack(); return; }
+  const accts = adxAccts(), start = new Set(accts.filter(a => a.pixel_id === d.id).map(a => a.id)), pick = new Set(start);
+  const sub = a => !a.own ? "Revora manages this ad account" : start.has(a.id) ? "Uses this dataset" : a.pixel_id ? "Uses another dataset" + (a.pixel_name ? " (" + a.pixel_name + ")" : "") + ". Will switch to this one." : "No dataset yet";
+  root.innerHTML = `<div class="adx-hero"><div class="adx-sub">Link to ad accounts</div><h2>${escH(d.name || d.id)}</h2></div>
+    <div class="adx-intro"><p>Pick the ad accounts that should use this dataset.</p></div>
+    ${accts.length ? accts.map(a => `<button type="button" class="adx-row ${a.own ? "" : "off"}" data-id="${escH(a.id)}"><span class="tx"><b>${escH(a.name)}</b><small class="${a.own && !start.has(a.id) && a.pixel_id ? "w" : ""}">${escH(sub(a))}</small></span><span class="tick ${start.has(a.id) ? "on" : ""}">${start.has(a.id) ? "✓" : ""}</span></button>`).join("") : `<div class="adx-note">You have no ad accounts yet.</div>`}
+    <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo" style="margin-top:14px"></button>`;
+  const go = root.querySelector("#adxGo"), paint = () => { go.textContent = `Save · ${pick.size} ad account${pick.size === 1 ? "" : "s"}`; };
+  paint();
+  root.querySelectorAll(".adx-row:not(.off)").forEach(row => row.addEventListener("click", () => { const id = row.dataset.id, t = row.querySelector(".tick"); if (pick.has(id)) { pick.delete(id); t.classList.remove("on"); t.textContent = ""; } else { pick.add(id); t.classList.add("on"); t.textContent = "✓"; } paint(); }));
+  go.addEventListener("click", async () => {
+    const link = [...pick].filter(id => !start.has(id)), unlink = [...start].filter(id => !pick.has(id));
+    const m = root.querySelector("#adxMsg"); m.innerHTML = "";
+    if (!link.length && !unlink.length) { adxBackTo("datasets"); return; }
+    go.disabled = true; go.textContent = "Saving…";
+    const r = await sbFn("events-manager", { action: "link_dataset", pixel_id: d.id, name: d.name, business_id: d.business_id || "", link, unlink }).catch(err => ({ error: err.message }));
+    if (r.error) { m.innerHTML = bvAdxErr(r.error); go.disabled = false; paint(); return; }
+    const bad = (r.results || []).filter(x => !x.ok);
+    if (bad.length) { m.innerHTML = bad.map(x => { const a = accts.find(y => y.id === x.id); return `<div class="adx-note warn" style="margin-top:8px"><b>${escH(a ? a.name : "Ad account")}</b>: ${escH(x.error || "could not link")}</div>`; }).join(""); go.disabled = false; paint(); try { await loadAccounts(); } catch {} return; }
+    bvToast("Saved"); try { await loadAccounts(); } catch {} adxBackTo("datasets");
+  });
+}
+
+function adxPageList() {
+  const m = new Map();
+  for (const a of accountsList || []) if (a.fb_page_id) { const k = String(a.fb_page_id); const p = m.get(k) || { id: k, name: a.fb_page_name || k, accts: [] }; p.accts.push(a); m.set(k, p); }
+  return [...m.values()];
+}
+function adxPages(root) {
+  const list = adxPageList();
+  root.innerHTML = `<div class="adx-intro"><p>Your ads run as a Facebook Page. Tap a Page to choose which ad accounts use it.</p></div>
+    <button type="button" class="adx-btn" onclick="bvAdxGo('pgadd')">＋ Add a Page</button>
+    ${list.length ? `<div class="adx-cnt">${list.length} PAGE${list.length === 1 ? "" : "S"}</div>` + list.map(p => `<button type="button" class="adx-row" data-id="${escH(p.id)}"><span class="ic" style="background:#1877f2;color:#fff;border-radius:50%">${escH((p.name || "P").charAt(0).toUpperCase())}</span><span class="tx"><b>${escH(p.name)}</b><small>Used by ${escH(p.accts.map(adxName).join(", "))}</small></span>${ADX_CHEV}</button>`).join("") : `<div class="adx-note" style="margin-top:12px">No Pages yet. Tap Add a Page.</div>`}`;
+  root.querySelectorAll(".adx-row").forEach(b => b.addEventListener("click", () => { adxCtx.pg = list.find(p => p.id === b.dataset.id); bvAdxGo("pglink", b.dataset.id); }));
+}
+function adxPgAdd(root) {
+  root.innerHTML = `<div class="adx-panel"><div style="display:flex;gap:12px"><span class="adx-n">1</span><b style="font-size:15px;line-height:1.35">Add Revora as a partner on your Business</b></div>
+      <div style="color:var(--muted);font-size:13.5px;line-height:1.5;margin:8px 0 12px 38px">In Meta Business Settings, open Pages, pick your Page, tap Add partner, paste this ID and turn on Create ads.</div>
+      <div class="adx-copy" style="margin-left:38px"><code id="adxBizId">loading…</code><button type="button" class="adx-btn small ghost" id="adxCopyBiz">Copy</button></div></div>
+    <div class="adx-panel" style="margin-top:12px"><div style="display:flex;gap:12px"><span class="adx-n">2</span><b style="font-size:15px;line-height:1.35">Paste your Page ID</b></div>
+      <div style="color:var(--muted);font-size:13.5px;line-height:1.5;margin:8px 0 12px 38px">On your Page, open About, then Page transparency.</div>
+      <input id="adxPageId" inputmode="numeric" placeholder="e.g. 105123456789012" style="margin-left:38px;width:calc(100% - 38px)"></div>
+    <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo" style="margin-top:14px">Check and add Page</button><div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px">Next you pick the ad accounts that use it.</div>`;
+  sbFn("sync-partner-accounts", { access_token: sessionData.access_token, mode: "get_business_id" }).then(r => {
+    const id = r?.business_id || "", el = root.querySelector("#adxBizId"); if (el) el.textContent = id || "ask Revora support";
+    const cp = root.querySelector("#adxCopyBiz"); if (cp) cp.onclick = () => { if (id) { navigator.clipboard?.writeText(id); bvToast("Business ID copied"); } };
+  }).catch(() => { const el = root.querySelector("#adxBizId"); if (el) el.textContent = "ask Revora support"; });
+  root.querySelector("#adxGo").addEventListener("click", async e => {
+    const b = e.currentTarget, m = root.querySelector("#adxMsg"), pid = root.querySelector("#adxPageId").value.trim();
+    if (!pid) { m.innerHTML = `<div class="adx-note warn">Paste the Page ID first.</div>`; return; }
+    b.disabled = true; b.textContent = "Checking…"; m.innerHTML = "";
+    try {
+      const r = await sbFn("link-page", { page_id: pid, check_only: true });
+      if (r.status === "shared") { adxCtx.pg = { id: r.page_id, name: r.page_name || r.page_id, accts: [] }; bvToast("Page found: " + (r.page_name || r.page_id)); bvAdxGo("pglink", r.page_id); return; }
+      m.innerHTML = bvAdxErr(r.error || "Could not find that Page.", "Check that the Page was shared with Revora and the ID is right.");
+    } catch (err) { m.innerHTML = bvAdxErr(err.message); }
+    b.disabled = false; b.textContent = "Check and add Page";
+  });
+}
+function adxPgLink(root) {
+  const pg = adxCtx.pg; if (!pg) { bvAdxBack(); return; }
+  const accts = (accountsList || []).filter(a => a.status !== "deleted"), start = new Set(accts.filter(a => String(a.fb_page_id || "") === pg.id).map(a => a.id)), pick = new Set(start);
+  const sub = a => start.has(a.id) ? "Runs ads as this Page" : a.fb_page_id ? "Uses " + (a.fb_page_name || "another Page") + ". Will switch to this Page." : "No Page yet";
+  root.innerHTML = `<div class="adx-hero"><div class="adx-sub">Use this Page for</div><h2>${escH(pg.name || pg.id)}</h2></div>
+    <div class="adx-intro"><p>Pick the ad accounts that run ads as this Page. An ad account uses one Page at a time.</p></div>
+    ${accts.length ? accts.map(a => `<button type="button" class="adx-row" data-id="${escH(a.id)}"><span class="tx"><b>${escH(adxName(a))}</b><small class="${!start.has(a.id) && a.fb_page_id ? "w" : ""}">${escH(sub(a))}</small></span><span class="tick ${start.has(a.id) ? "on" : ""}">${start.has(a.id) ? "✓" : ""}</span></button>`).join("") : `<div class="adx-note">You have no ad accounts yet.</div>`}
+    <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo" style="margin-top:14px"></button><div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px">Ads already running keep their Page. New ads use this one.</div>`;
+  const go = root.querySelector("#adxGo"), paint = () => { go.textContent = `Save · ${pick.size} ad account${pick.size === 1 ? "" : "s"}`; };
+  paint();
+  root.querySelectorAll(".adx-row").forEach(row => row.addEventListener("click", () => { const id = row.dataset.id, t = row.querySelector(".tick"); if (pick.has(id)) { pick.delete(id); t.classList.remove("on"); t.textContent = ""; } else { pick.add(id); t.classList.add("on"); t.textContent = "✓"; } paint(); }));
+  go.addEventListener("click", async () => {
+    const link = [...pick].filter(id => !start.has(id)), unlink = [...start].filter(id => !pick.has(id));
+    const m = root.querySelector("#adxMsg"); m.innerHTML = "";
+    if (!link.length && !unlink.length) { adxBackTo("pages"); return; }
+    go.disabled = true; go.textContent = "Saving…"; const bad = [];
+    for (const id of link) { const r = await sbFn("link-page", { ad_account_id: id, page_id: pg.id }).catch(err => ({ error: err.message })); if (r.status !== "linked") bad.push({ id, error: r.error || "Could not link that Page." }); }
+    for (const id of unlink) { await sbFn("link-page", { ad_account_id: id, page_id: pg.id, unlink: true }).catch(() => null); }
+    try { await loadAccounts(); } catch {}
+    if (bad.length) { m.innerHTML = bad.map(x => { const a = adxAcct(x.id); return `<div class="adx-note warn" style="margin-top:8px"><b>${escH(a ? adxName(a) : "Ad account")}</b>: ${escH(x.error)}</div>`; }).join(""); go.disabled = false; paint(); return; }
+    bvToast("Saved"); adxBackTo("pages");
+  });
+}
+
 function adxPage(root) {
   const a = adxAcct(bvAdx.id); if (!a) { bvAdxBack(); return; }
   root.innerHTML = `

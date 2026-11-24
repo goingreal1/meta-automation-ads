@@ -101,6 +101,71 @@ Deno.serve(async (req)=>{
   ].includes(me.role)) return json({
     error: "Not allowed."
   }, 403);
+  // Datasets as their own list: every dataset on the person's ad accounts or in their Meta business, create one, and choose which ad accounts use it.
+  const act0 = String(b?.action ?? "");
+  if (["list_datasets", "create_dataset_biz", "link_dataset"].includes(act0)) {
+    const { data: all } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, name, meta_pixel_id, pixel_name, meta_connection_id, media_buyer_id").eq("company_id", me.company_id);
+    const mine = (all ?? []).filter((a: any)=>me.role !== "buyer" || a.media_buyer_id === me.media_buyer_id);
+    const conns = new Map<string, string>();
+    for (const a of mine) if (a.meta_connection_id && !conns.has(a.meta_connection_id)) {
+      const { data: c } = await admin.from("meta_connections").select("access_token, status").eq("id", a.meta_connection_id).maybeSingle();
+      if (c?.status === "active" && c.access_token) conns.set(a.meta_connection_id, c.access_token);
+    }
+    const tokOf = (a: any)=>a?.meta_connection_id ? conns.get(a.meta_connection_id) ?? null : null;
+    const actId = (a: any)=>String(a.meta_ad_account_id).replace(/^act_/, "");
+    try {
+      if (act0 === "list_datasets") {
+        const ds = new Map<string, any>();
+        const put = (id: any, name: any, extra?: any)=>{ const k = String(id); const d = ds.get(k) ?? { id: k, name: null, business_id: null, business_name: null, account_ids: [] }; if (name && !d.name) d.name = name; if (extra) Object.assign(d, extra); ds.set(k, d); return d; };
+        for (const a of mine) {
+          const t = tokOf(a);
+          if (t) { try { const l = await g(`/act_${actId(a)}/adspixels?fields=id,name&limit=25`, t); for (const p of l?.data ?? []) { const d = put(p.id, p.name); if (!d.account_ids.includes(a.id)) d.account_ids.push(a.id); } } catch (_) { /* this account's list is skipped */ } }
+          if (a.meta_pixel_id) { const d = put(a.meta_pixel_id, a.pixel_name); if (!d.account_ids.includes(a.id)) d.account_ids.push(a.id); }
+        }
+        let business_error: string | undefined;
+        for (const t of conns.values()) { try { for (const p of await businessDatasets(t, new Set())) put(p.id, p.name, { business_id: p.business_id, business_name: p.business_name }); } catch (e) { business_error = String(e.message ?? e).slice(0, 160); } }
+        return json({ ok: true, datasets: [...ds.values()], accounts: mine.map((a: any)=>({ id: a.id, name: a.nickname ?? a.name ?? a.meta_ad_account_id, own: !!tokOf(a), pixel_id: a.meta_pixel_id ?? null, pixel_name: a.pixel_name ?? null })), can_create: conns.size > 0, business_error });
+      }
+      if (act0 === "create_dataset_biz") {
+        const name = String(b?.name ?? "").trim().slice(0, 60);
+        if (!name) return json({ error: "Give the dataset a name." }, 400);
+        const t = [...conns.values()][0];
+        if (!t) return json({ error: "Connect your own Meta login first (Settings, Ad accounts, Link my own), then create a dataset." }, 400);
+        let biz = String(b?.business_id ?? "").replace(/\D/g, "");
+        if (!biz) { const bz = await g(`/me/businesses?fields=id,name&limit=5`, t); biz = String(bz?.data?.[0]?.id ?? ""); }
+        if (!biz) return json({ error: "No Meta business was found on your login. Create the dataset in Meta's Events Manager, then it will show here." }, 400);
+        const c = await g(`/${biz}/adspixels`, t, "POST", { name });
+        return json({ ok: true, pixel_id: String(c?.id ?? ""), name, business_id: biz });
+      }
+      // link_dataset: give the picked ad accounts this dataset, stop it for the unpicked ones that used it
+      const pid = String(b?.pixel_id ?? "").replace(/\D/g, ""), biz = String(b?.business_id ?? "").replace(/\D/g, ""), nm = String(b?.name ?? "").slice(0, 80) || null;
+      if (!pid) return json({ error: "Pick a dataset first." }, 400);
+      const results: any[] = [];
+      for (const id of Array.isArray(b?.link) ? b.link.map(String) : []) {
+        const a = mine.find((x: any)=>x.id === id);
+        if (!a) { results.push({ id, ok: false, error: "Ad account not found." }); continue; }
+        const t = tokOf(a);
+        if (!t) { results.push({ id, ok: false, error: "Revora manages this ad account, so its dataset is set by Revora." }); continue; }
+        try {
+          const have = await g(`/act_${actId(a)}/adspixels?fields=id,name&limit=50`, t);
+          const hit = (have?.data ?? []).find((p: any)=>String(p.id) === pid);
+          if (!hit) {
+            if (!biz) throw new Error("This dataset is not on the ad account yet and its Meta business is unknown.");
+            const found = (await businessDatasets(t, new Set())).find((x: any)=>x.id === pid && x.business_id === biz);
+            if (!found) throw new Error("That dataset is not in your Meta business.");
+            await g(`/${pid}/shared_accounts`, t, "POST", { account_id: `act_${actId(a)}`, business: biz });
+          }
+          await admin.from("ad_accounts").update({ meta_pixel_id: pid, pixel_name: hit?.name ?? nm }).eq("id", a.id);
+          results.push({ id, ok: true });
+        } catch (e) { results.push({ id, ok: false, error: String(e.message ?? e).slice(0, 200) }); }
+      }
+      for (const id of Array.isArray(b?.unlink) ? b.unlink.map(String) : []) {
+        const a = mine.find((x: any)=>x.id === id);
+        if (a && String(a.meta_pixel_id ?? "") === pid) { await admin.from("ad_accounts").update({ meta_pixel_id: null, pixel_name: null }).eq("id", a.id); results.push({ id, ok: true, unlinked: true }); }
+      }
+      return json({ ok: results.every((r)=>r.ok), results });
+    } catch (e) { return json({ error: String(e.message ?? e).slice(0, 240) }, 502); }
+  }
   const { data: acct } = await admin.from("ad_accounts").select("id, meta_ad_account_id, nickname, name, meta_pixel_id, meta_connection_id, media_buyer_id, billing_mode, company_id").eq("id", String(b?.ad_account_id ?? "")).eq("company_id", me.company_id).maybeSingle();
   if (!acct) return json({
     error: "Ad account not found."
