@@ -164,22 +164,27 @@ Deno.serve(async (req)=>{
         error: "No WhatsApp number is connected for this conversation (Settings -> WhatsApp Numbers)."
       }, 500);
     }
-    const waRes = await fetch(`${META_GRAPH_BASE}/${phoneId}/messages`, {
+    // Optional tap-to-open button (WhatsApp "call to action" message): the words go in the message, the link sits behind a button.
+    const ctaIn = body?.cta && typeof body.cta === "object" ? { label: String(body.cta.label ?? "").trim().slice(0, 20), url: String(body.cta.url ?? "").trim() } : null;
+    const cta = ctaIn && ctaIn.label && /^https:\/\/\S+$/i.test(ctaIn.url) && ctaIn.url.length <= 2000 ? ctaIn : null;
+    if (ctaIn && !cta) return json({ error: "The button needs a short label and a full https link." }, 400);
+    const send = (payload) => fetch(`${META_GRAPH_BASE}/${phoneId}/messages`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: conv.phone,
-        type: "text",
-        text: {
-          body: text
-        }
-      })
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: conv.phone, ...payload })
     });
-    const waData = await waRes.json();
+    let asButton = false;
+    let waRes = cta
+      ? await send({ type: "interactive", interactive: { type: "cta_url", body: { text: text.slice(0, 1024) }, action: { name: "cta_url", parameters: { display_text: cta.label, url: cta.url } } } })
+      : await send({ type: "text", text: { body: text } });
+    let waData = await waRes.json();
+    if (cta && waRes.ok) asButton = true;
+    else if (cta) {
+      // Meta refused the button: send the same words with the link in the text instead, and say so.
+      console.error("cta_url send failed:", waData);
+      waRes = await send({ type: "text", text: { body: `${text}\n${cta.url}`, preview_url: true } });
+      waData = await waRes.json();
+    }
     if (!waRes.ok) {
       console.error("WhatsApp send failed:", waData);
       return json({
@@ -193,8 +198,9 @@ Deno.serve(async (req)=>{
     await supabase.from("messages").insert({
       conversation_id: conv.id,
       direction: "outbound",
-      message_type: "agent_text",
-      content: text,
+      message_type: asButton ? "url_button" : "agent_text",
+      content: asButton ? cta.url : (cta ? `${text}\n${cta.url}` : text),
+      ...(asButton ? { metadata: { agent: true, body: text, label: cta.label } } : {}),
       wa_message_id: waData?.messages?.[0]?.id ?? null,
       status: "sent",
       company_id: conv.company_id
@@ -205,7 +211,8 @@ Deno.serve(async (req)=>{
     }).eq("id", conv.id);
     return json({
       success: true,
-      to: conv.phone
+      to: conv.phone,
+      ...(cta ? { as_button: asButton } : {})
     });
   } catch (err) {
     console.error("send-whatsapp-message error:", err);

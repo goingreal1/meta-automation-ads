@@ -17,6 +17,10 @@
   .ca-act.p{background:#1f6fff;color:#fff}
   .ca-pk{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:15px}.ca-pk:last-child{border-bottom:0}.ca-pk b{font-weight:750}
   .ca-empty{padding:28px 8px;text-align:center;color:var(--text2);font-size:15px;line-height:1.5}
+  .ca-bar{display:flex;align-items:center;gap:10px;margin:0 12px 8px;padding:8px 8px 8px 12px;border-radius:14px;background:var(--panel2);border:1px solid var(--border)}
+  .ca-bar .b{flex:1;min-width:0}.ca-bar .b b{display:inline-flex;align-items:center;min-height:30px;padding:0 14px;border-radius:9px;background:#e4e6eb;color:#1c1e21;font-size:13px;font-weight:700}
+  .ca-bar .b small{display:block;font-size:11px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ca-bar button{width:44px;height:44px;border:0;border-radius:50%;background:none;color:var(--muted);font-size:18px;cursor:pointer}
   .ca-back{border:0;background:none;color:#1f6fff;font:inherit;font-weight:700;font-size:15px;padding:0 0 10px;min-height:44px;cursor:pointer}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
   const esc = (s) => escH(String(s == null ? "" : s));
@@ -31,11 +35,21 @@
   }
   window.caClose = close;
 
-  // The words go into the reply box, ready to edit and send.
-  function draft(text) {
+  // The words go into the reply box, ready to edit and send. A link goes behind a tap-to-open button, not into the text.
+  window._caCta = null;
+  function drawBar() {
+    const old = document.getElementById("caCtaBar"); if (old) old.remove();
+    const c = window._caCta, comp = document.querySelector(".conv-compose"); if (!c || !comp) return;
+    const bar = document.createElement("div"); bar.id = "caCtaBar"; bar.className = "ca-bar";
+    bar.innerHTML = `<div class="b"><b>${esc(c.label)}</b><small>Opens ${esc(c.url.replace(/^https?:\/\//, ""))}</small></div><button type="button" aria-label="Remove the button" onclick="caCtaClear()">✕</button>`;
+    comp.parentNode.insertBefore(bar, comp);
+  }
+  window.caCtaClear = function () { window._caCta = null; drawBar(); };
+  function draft(text, cta) {
     close();
     const el = document.getElementById("convReplyInput"); if (!el) return;
     el.value = el.value ? el.value.replace(/\s+$/, "") + "\n\n" + text : text;
+    if (cta) { window._caCta = { label: String(cta.label).slice(0, 20), url: cta.url, conv: typeof bvSelectedConvId !== "undefined" ? bvSelectedConvId : null }; drawBar(); }
     try { bvAutoGrow(el); bvSyncComposeBtns(); } catch (e) {}
     el.focus();
   }
@@ -85,7 +99,7 @@
     if (what === "prices") {
       const lines = c.tiers.length ? c.tiers.map((t) => `• ${t.label || (t.quantity ? t.quantity + " pcs" : "Package")} — ${money(t.price_naira)}`) : (from(c.p) ? [`• ${money(from(c.p))}`] : []);
       draft(`${c.p.product_name}\n${lines.join("\n")}\n\nWhich one would you like?`);
-    } else if (what === "link") draft(`Order ${c.p.product_name} here 👇\n${c.link}`);
+    } else if (what === "link") draft(`Order ${c.p.product_name} here 👇`, { label: "Order now", url: c.link });
     else if (what === "photo") {
       close();
       try { const b = await (await fetch(c.p.product_image_url)).blob(); bvOpenMediaPreview(new File([b], (c.p.product_name || "product") + ".jpg", { type: b.type || "image/jpeg" })); }
@@ -107,8 +121,31 @@
     items.sort((a, b) => (b.live ? 1 : 0) - (a.live ? 1 : 0));
     window._caSites = items;
     if (!items.length) { shell(`<h3>My website</h3><div class="ca-empty">You have no website yet.<br>Build one in Websites and its link shows up here.</div>`); return; }
-    shell(`<h3>My website</h3><p>Pick a page to send its link.</p><div style="margin-top:8px">${items.map((i, n) => `<button type="button" class="ca-row" onclick="caDraft('Here it is 👇\\n'+_caSites[${n}].url)"><span class="ca-tx"><b>${esc(i.name)}</b><small>${esc(i.url.replace(/^https?:\/\//, ""))}${i.live ? "" : " · draft, not live yet"}</small></span>${CH}</button>`).join("")}</div>`);
+    shell(`<h3>My website</h3><p>Pick a page to send its link.</p><div style="margin-top:8px">${items.map((i, n) => `<button type="button" class="ca-row" onclick="caDraft('Here it is 👇',{label:'Open website',url:_caSites[${n}].url})"><span class="ca-tx"><b>${esc(i.name)}</b><small>${esc(i.url.replace(/^https?:\/\//, ""))}${i.live ? "" : " · draft, not live yet"}</small></span>${CH}</button>`).join("")}</div>`);
   };
+
+  // Sending with a button: the same sender as a plain reply, plus the button. A closed 24-hour window still goes through the template sheet.
+  const prevSend = window.bvSendReply;
+  window.bvSendReply = async function () {
+    const c = window._caCta, box = document.getElementById("convReplyInput");
+    if (!c || (typeof bvSelectedConvId !== "undefined" && c.conv !== bvSelectedConvId)) { window._caCta = null; drawBar(); return prevSend.apply(this, arguments); }
+    const text = (box && box.value || "").trim();
+    if (!text) { try { bvToast("Write a short message to go with the button.", "err"); } catch (e) { alert("Write a short message to go with the button."); } return; }
+    const w = window.__ixWin;
+    if (w && w.id === bvSelectedConvId && w.open === false) { if (typeof bvClosedWindowSheet === "function") bvClosedWindowSheet(text); return; }
+    const btn = document.getElementById("convSendBtn"); if (box) box.disabled = true; if (btn) btn.disabled = true;
+    try {
+      const res = await sbFn("send-whatsapp-message", { conversation_id: bvSelectedConvId, text, cta: { label: c.label, url: c.url } });
+      if (res && res.error) { alert("Failed to send: " + res.error); return; }
+      box.value = ""; try { bvAutoGrow(box); bvSyncComposeBtns(); } catch (e) {}
+      window._caCta = null; drawBar();
+      if (res && res.as_button === false) { try { bvToast("WhatsApp would not show the button, so the link went in the text.", "err"); } catch (e) {} }
+      bvAfterAgentSend();
+    } catch (e) { alert("Failed to send: " + e.message); }
+    finally { if (box) { box.disabled = false; box.focus(); } if (btn) btn.disabled = false; }
+  };
+  const prevSel = window.bvSelectConversation;
+  if (typeof prevSel === "function") window.bvSelectConversation = function () { window._caCta = null; return prevSel.apply(this, arguments); };
 
   // The menu itself
   const prevAction = window.bvAttachMenuAction;
