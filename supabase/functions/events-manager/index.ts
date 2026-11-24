@@ -5,6 +5,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //   POST { action: "overview", ad_account_id, days? }
 //   POST { action: "create_dataset", ad_account_id, name? }
 //   POST { action: "use_dataset", ad_account_id, pixel_id }
+//   POST { action: "attach_dataset", ad_account_id, pixel_id, business_id }   give this ad account access to a dataset that lives in the person's Meta business, then use it
 //   POST { action: "quality", ad_account_id, pixel_id?, days? }
 //   POST { action: "conversions", ad_account_id }
 //   POST { action: "conversion_create", ad_account_id, name, contains, type?, value?, pixel_id? }
@@ -53,6 +54,18 @@ async function g(path, token, method = "GET", body) {
   const j = await r.json().catch(()=>({}));
   if (j?.error) throw new Error(j.error.error_user_msg || j.error.message || "Meta refused the request");
   return j;
+}
+// Datasets in the person's Meta businesses (Meta only lists a dataset on an ad account once it is assigned to it).
+async function businessDatasets(token: string, skip: Set<string>) {
+  const out: any[] = [];
+  const bizs = await g(`/me/businesses?fields=id,name&limit=10`, token);
+  for (const bz of (bizs?.data ?? []).slice(0, 5)) {
+    try {
+      const l = await g(`/${bz.id}/adspixels?fields=id,name&limit=25`, token);
+      for (const p of l?.data ?? []) if (!skip.has(String(p.id))) out.push({ id: String(p.id), name: p.name ?? null, business_id: String(bz.id), business_name: bz.name ?? null });
+    } catch (_) { /* a business without dataset access is skipped */ }
+  }
+  return out;
 }
 async function sha(v) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v.trim().toLowerCase())))).map((b)=>b.toString(16).padStart(2, "0")).join("");
@@ -150,8 +163,12 @@ Deno.serve(async (req)=>{
         } catch  {}
         pixels.push(row);
       }
+      let available: any[] = [], available_error: string | undefined;
+      if (own) try { available = await businessDatasets(token, new Set(pixels.map((p)=>String(p.id)))); } catch (e) { available_error = String(e.message ?? e).slice(0, 200); }
       return json({
         ok: true,
+        available,
+        available_error,
         ad_account: acct.nickname ?? acct.name,
         managed: acct.billing_mode === "managed",
         can_create: acct.billing_mode === "managed" || own,
@@ -204,6 +221,19 @@ Deno.serve(async (req)=>{
       return json({
         ok: true
       });
+    }
+    if (action === "attach_dataset") {
+      if (!own) return json({ error: "This ad account is not connected with your own Meta login, so datasets in your business cannot be attached here." }, 400);
+      const pid = String(b?.pixel_id ?? "").replace(/\D/g, ""), biz = String(b?.business_id ?? "").replace(/\D/g, "");
+      if (!pid || !biz) return json({ error: "Pick a dataset first." }, 400);
+      let found: any = null;
+      try { found = (await businessDatasets(token, new Set())).find((x)=>x.id === pid && x.business_id === biz); } catch (e) { return json({ error: "Couldn't read your Meta business: " + String(e.message ?? e).slice(0, 160) }, 400); }
+      if (!found) return json({ error: "That dataset is not in your Meta business." }, 400);
+      try { await g(`/${pid}/shared_accounts`, token, "POST", { account_id: `act_${act}`, business: biz }); } catch (e) {
+        return json({ error: "Meta would not share the dataset with this ad account: " + String(e.message ?? e).slice(0, 200) }, 400);
+      }
+      await admin.from("ad_accounts").update({ meta_pixel_id: pid, pixel_name: found.name }).eq("id", acct.id);
+      return json({ ok: true, pixel_id: pid, name: found.name });
     }
     if (action === "quality") {
       const pid = String(b?.pixel_id ?? acct.meta_pixel_id ?? "");

@@ -606,7 +606,7 @@ function adxPickList(root, intro, target, sub) {
     : `<div class="adx-empty">You have no ad accounts yet.<button type="button" class="adx-btn" onclick="bvAdxGo('buy')">Buy an ad account</button><button type="button" class="adx-btn ghost" onclick="bvAdxGo('link')">Link my own</button></div>`);
 }
 function adxPages(root) { adxPickList(root, "Your ads run as a Facebook Page. Each ad account needs one linked. Pick an ad account.", "page", a => a.fb_page_id ? { ok: true, text: a.fb_page_name || a.fb_page_id } : { ok: false, text: "No Page linked yet" }); }
-function adxDatasets(root) { adxPickList(root, "A dataset (Meta calls it a pixel) lets Meta count the orders your ads bring. Pick an ad account.", "dataset", a => a.meta_pixel_id ? { ok: true, text: a.pixel_name || a.meta_pixel_id } : { ok: false, text: "No dataset yet" }); }
+function adxDatasets(root) { adxPickList(root, "A dataset (Meta calls it a pixel) lets Meta count the orders your ads bring. Tap an ad account to create a dataset for it, or to attach one you made in Meta.", "dataset", a => a.meta_pixel_id ? { ok: true, text: a.pixel_name || a.meta_pixel_id } : { ok: false, text: "No dataset yet" }); }
 function adxPage(root) {
   const a = adxAcct(bvAdx.id); if (!a) { bvAdxBack(); return; }
   root.innerHTML = `
@@ -641,30 +641,43 @@ async function adxDataset(root) {
   const a = adxAcct(bvAdx.id); if (!a) { bvAdxBack(); return; }
   root.innerHTML = `<div class="adx-hero"><div class="adx-sub">Ad account</div><h2>${escH(adxName(a))}</h2>
       <div class="adx-chips">${a.meta_pixel_id ? adxChip(true, "Linked: " + (a.pixel_name || a.meta_pixel_id), "") : adxChip(false, "", "No dataset yet")}</div></div>
-    <div class="adx-intro"><p>A dataset (Meta calls it a pixel) lets Meta count the orders your ads bring. Each ad account can have one.</p></div>
-    <div class="adx-h">${a.meta_pixel_id ? "Create a new one" : "Create a dataset"}</div>
-    <div class="adx-panel"><label class="adx-lbl" for="adxDsName">Name it</label>
+    <div class="adx-intro"><p>A dataset (Meta calls it a pixel) lets Meta count the orders your ads bring. This ad account uses one at a time.</p></div>
+    <button type="button" class="adx-btn" id="adxNew">＋ Create a new dataset</button>
+    <div class="adx-panel" id="adxNewBox" style="display:none;margin-top:12px"><label class="adx-lbl" for="adxDsName">Name it</label>
       <input id="adxDsName" maxlength="60" value="${escH(adxName(a))} dataset" autocomplete="off">
-      <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo">Create dataset</button></div>
-    <div class="adx-h">Or use one already on this ad account</div>
-    <div id="adxExisting"><div class="empty"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div></div></div>`;
+      <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo">Create and link to this ad account</button></div>
+    <div class="adx-h">On this ad account</div>
+    <div id="adxExisting"><div class="empty"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div></div></div>
+    <div class="adx-h">Made in Meta already? Attach it</div>
+    <div id="adxAvail"><div class="adx-note">Looking in your Meta business…</div></div>`;
+  const nb = root.querySelector("#adxNewBox"); root.querySelector("#adxNew").addEventListener("click", () => { nb.style.display = nb.style.display === "none" ? "" : "none"; });
   root.querySelector("#adxGo").addEventListener("click", async e => {
     const b = e.currentTarget, m = root.querySelector("#adxMsg"); b.disabled = true; b.textContent = "Creating…"; m.innerHTML = "";
     const r = await sbFn("events-manager", { action: "create_dataset", ad_account_id: a.id, name: root.querySelector("#adxDsName").value.trim() }).catch(err => ({ error: err.message }));
-    if (r.error) { m.innerHTML = bvAdxErr(r.error, "You can also create the dataset in Meta's Events Manager, then pick it from the list below."); b.disabled = false; b.textContent = "Create dataset"; return; }
-    bvToast(r.existing ? "Linked the dataset this ad account already had" : "Dataset created"); await loadAccounts(); bvAdx.fresh = false; bvAdxBack();
+    if (r.error) { m.innerHTML = bvAdxErr(r.error, "You can also create the dataset in Meta's Events Manager, then attach it below."); b.disabled = false; b.textContent = "Create and link to this ad account"; return; }
+    bvToast(r.existing ? "Linked the dataset this ad account already had" : "Dataset created and linked"); await loadAccounts(); bvAdx.fresh = false; bvAdxBack();
   });
-  const box = root.querySelector("#adxExisting");
+  const box = root.querySelector("#adxExisting"), av = root.querySelector("#adxAvail");
   const ov = await sbFn("events-manager", { action: "overview", ad_account_id: a.id }).catch(err => ({ error: err.message }));
-  if (ov.error) { box.innerHTML = `<div class="adx-note">Couldn't read this ad account's datasets from Meta.</div>`; return; }
+  if (ov.error) { box.innerHTML = `<div class="adx-note">Couldn't read this ad account's datasets from Meta.</div>`; av.innerHTML = ""; return; }
   const list = ov.pixels || [];
-  box.innerHTML = list.length ? list.map(px => `<div class="adx-found"><div><b>${escH(px.name || px.id)}</b><small>${px.id === a.meta_pixel_id ? "Currently linked" : escH(px.id)}</small></div>${px.id === a.meta_pixel_id ? "" : `<button type="button" class="adx-btn small useDs" data-id="${escH(px.id)}">Use this</button>`}</div>`).join("")
-    : `<div class="adx-note">No datasets found on this ad account yet.</div>`;
+  box.innerHTML = list.length ? list.map(px => `<div class="adx-found"><div><b>${escH(px.name || px.id)}</b><small>${px.id === a.meta_pixel_id ? "Used by this ad account" : escH(px.id)}</small></div>${px.id === a.meta_pixel_id ? "" : `<button type="button" class="adx-btn small useDs" data-id="${escH(px.id)}">Use this</button>`}</div>`).join("")
+    : `<div class="adx-note">No datasets on this ad account yet. Meta only lists a dataset here once it is assigned to the ad account.</div>`;
+  const avail = ov.available || [];
+  av.innerHTML = avail.length ? avail.map(px => `<div class="adx-found"><div><b>${escH(px.name || px.id)}</b><small>${escH(px.business_name || "Your Meta business")} · not on this ad account yet</small></div><button type="button" class="adx-btn small attDs" data-id="${escH(px.id)}" data-biz="${escH(px.business_id)}">Attach</button></div>`).join("")
+    : `<div class="adx-note">${ov.available_error ? "Couldn't read your Meta business: " + escH(ov.available_error) : (ov.can_create === false ? "This ad account isn't connected with your own Meta login, so datasets from your business can't be attached here." : "No other datasets found in your Meta business.")}</div>`;
+  const done = async (msg) => { bvToast(msg); await loadAccounts(); bvAdx.fresh = false; bvAdxBack(); };
   box.querySelectorAll(".useDs").forEach(btn => btn.addEventListener("click", async () => {
     btn.disabled = true; btn.textContent = "Linking…";
     const r = await sbFn("events-manager", { action: "use_dataset", ad_account_id: a.id, pixel_id: btn.dataset.id }).catch(err => ({ error: err.message }));
     if (r.error) { btn.disabled = false; btn.textContent = "Use this"; root.querySelector("#adxMsg").innerHTML = bvAdxErr(r.error); return; }
-    bvToast("Dataset linked"); await loadAccounts(); bvAdx.fresh = false; bvAdxBack();
+    done("Dataset linked");
+  }));
+  av.querySelectorAll(".attDs").forEach(btn => btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.textContent = "Attaching…";
+    const r = await sbFn("events-manager", { action: "attach_dataset", ad_account_id: a.id, pixel_id: btn.dataset.id, business_id: btn.dataset.biz }).catch(err => ({ error: err.message }));
+    if (r.error) { btn.disabled = false; btn.textContent = "Attach"; av.insertAdjacentHTML("afterbegin", bvAdxErr(r.error)); return; }
+    done("Dataset attached to this ad account");
   }));
 }
 
