@@ -131,8 +131,20 @@ Deno.serve(async (req)=>{
       if (act0 === "create_dataset_biz") {
         const name = String(b?.name ?? "").trim().slice(0, 60);
         if (!name) return json({ error: "Give the dataset a name." }, 400);
+        // For a chosen ad account (including one shared with Revora as a partner) the dataset is created on that ad account with Revora's or the person's own access, and linked to it.
+        const acc = mine.find((x: any)=>x.id === String(b?.ad_account_id ?? ""));
+        if (acc) {
+          const ta = tokOf(acc);
+          if (!ta) return json({ error: "Meta is not connected for this ad account." }, 400);
+          const ex = await g(`/act_${actId(acc)}/adspixels?fields=id,name`, ta);
+          const p0 = (ex?.data ?? [])[0];
+          if (p0) { await admin.from("ad_accounts").update({ meta_pixel_id: String(p0.id), pixel_name: p0.name ?? null }).eq("id", acc.id); return json({ ok: true, pixel_id: String(p0.id), name: p0.name ?? name, existing: true, ad_account_id: acc.id }); }
+          const cc = await g(`/act_${actId(acc)}/adspixels`, ta, "POST", { name });
+          await admin.from("ad_accounts").update({ meta_pixel_id: String(cc?.id ?? ""), pixel_name: name }).eq("id", acc.id);
+          return json({ ok: true, pixel_id: String(cc?.id ?? ""), name, ad_account_id: acc.id });
+        }
         const t = [...conns.values()][0];
-        if (!t) return json({ error: "Connect your own Meta login first (Settings, Ad accounts, Link my own), then create a dataset." }, 400);
+        if (!t) return json({ error: "Pick the ad account this dataset is for." }, 400);
         let biz = String(b?.business_id ?? "").replace(/\D/g, "");
         if (!biz) { const bz = await g(`/me/businesses?fields=id,name&limit=5`, t); biz = String(bz?.data?.[0]?.id ?? ""); }
         if (!biz) return json({ error: "No Meta business was found on your login. Create the dataset in Meta's Events Manager, then it will show here." }, 400);

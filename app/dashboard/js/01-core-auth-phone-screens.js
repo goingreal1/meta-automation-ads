@@ -639,17 +639,23 @@ async function adxDatasets(root) {
   box.querySelectorAll(".adx-row").forEach(b => b.addEventListener("click", () => { adxCtx.ds = list.find(d => d.id === b.dataset.id); bvAdxGo("dslink", b.dataset.id); }));
 }
 function adxDsNew(root) {
+  const accts = adxAccts(), canBiz = !!(adxCtx.dsData && adxCtx.dsData.can_create);
+  const first = accts.find(a => !a.pixel_id) || accts[0];
   root.innerHTML = `<div class="adx-panel"><label class="adx-lbl" for="adxDsName">Name your dataset</label>
-      <input id="adxDsName" maxlength="60" placeholder="e.g. Brahmi Shakti dataset" autocomplete="off"><div style="color:var(--muted);font-size:12.5px;margin-top:8px">Use the product or brand name so you can find it later.</div><div id="adxMsg"></div></div>
-    <button type="button" class="adx-btn" id="adxGo" style="margin-top:14px">Create dataset</button><div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px">Next you pick the ad accounts that use it.</div>`;
+      <input id="adxDsName" maxlength="60" placeholder="e.g. Brahmi Shakti dataset" autocomplete="off"><div style="color:var(--muted);font-size:12.5px;margin-top:8px">Use the product or brand name so you can find it later.</div>
+      <label class="adx-lbl" for="adxDsAcct" style="margin-top:14px">Create it for</label>
+      <select id="adxDsAcct">${accts.map(a => `<option value="${escH(a.id)}"${first && a.id === first.id ? " selected" : ""}>${escH(a.name)}${a.pixel_id ? " (already has a dataset)" : ""}</option>`).join("")}${canBiz ? `<option value="">My Meta business (link it to ad accounts next)</option>` : ""}</select>
+      <div id="adxMsg"></div></div>
+    <button type="button" class="adx-btn" id="adxGo" style="margin-top:14px">Create dataset</button><div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px">An ad account that already has a dataset keeps it: Meta allows one per ad account.</div>`;
   root.querySelector("#adxGo").addEventListener("click", async e => {
-    const b = e.currentTarget, m = root.querySelector("#adxMsg"), name = root.querySelector("#adxDsName").value.trim();
+    const b = e.currentTarget, m = root.querySelector("#adxMsg"), name = root.querySelector("#adxDsName").value.trim(), acct = root.querySelector("#adxDsAcct").value;
     if (!name) { m.innerHTML = `<div class="adx-note warn">Give it a name first.</div>`; return; }
     b.disabled = true; b.textContent = "Creating…"; m.innerHTML = "";
-    const r = await sbFn("events-manager", { action: "create_dataset_biz", name }).catch(err => ({ error: err.message }));
+    const r = await sbFn("events-manager", { action: "create_dataset_biz", name, ...(acct ? { ad_account_id: acct } : {}) }).catch(err => ({ error: err.message }));
     if (r.error) { m.innerHTML = bvAdxErr(r.error, "You can also create it in Meta's Events Manager. It will show in the Datasets list."); b.disabled = false; b.textContent = "Create dataset"; return; }
-    adxCtx.ds = { id: r.pixel_id, name: r.name, business_id: r.business_id }; adxCtx.dsData = null;
-    bvToast("Dataset created"); bvAdxGo("dslink", r.pixel_id);
+    adxCtx.ds = { id: r.pixel_id, name: r.name, business_id: r.business_id || null, account_ids: r.ad_account_id ? [r.ad_account_id] : [] }; adxCtx.dsData = null;
+    try { await loadAccounts(); } catch {} bvAdx.fresh = true;
+    bvToast(r.existing ? "That ad account already had a dataset, so it now uses it" : "Dataset created"); bvAdxGo("dslink", r.pixel_id);
   });
 }
 function adxDsLink(root) {
