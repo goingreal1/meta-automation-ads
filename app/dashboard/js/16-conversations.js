@@ -458,7 +458,8 @@ function bvAttachMenuAction(kind) {
   document.getElementById("composeAttachMenu")?.classList.remove("open");
   if (kind === "file") document.getElementById("convFileInput")?.click();
   else if (kind === "template") bvTemplateModal();
-  else bvComposeModal(kind);
+  else if (kind === "catalog" || kind === "packages" || kind === "form") { if (window.caCatalog) window.caCatalog(); }
+  else if (kind === "website") { if (window.caWebsite) window.caWebsite(); }
 }
 
 // Sends an APPROVED WhatsApp template -- the only way to reach a customer
@@ -478,7 +479,7 @@ function bvTemplateModal() {
     <div style="font-weight:600;font-size:14px;margin-bottom:4px;">Send Template</div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Only works if it's been more than 24h since their last message AND the template below is already approved in Meta's WhatsApp Manager.</div>
     <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Template name (exact)</label>
-    <input id="bvTplName" value="beoliv_followup_v1" style="width:100%;font-size:13px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:10px;">
+    <input id="bvTplName" value="" style="width:100%;font-size:13px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);margin-bottom:10px;">
     <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">Customer's first name (fills the {{1}} in the template)</label>
     <input id="bvTplName1" value="${bvEscape(firstName)}" style="width:100%;font-size:13px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--text);">
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
@@ -584,9 +585,9 @@ async function bvSelectConversation(id) {
         <button class="compose-icon-btn" onclick="bvToggleAttachMenu(event)" title="Attach">${icon("plus",18)}</button>
         <div id="composeAttachMenu" class="compose-attach-menu">
           <button onclick="bvAttachMenuAction('file')">${icon("clip",14)} Photo, video or voice note</button>
-          <button onclick="bvAttachMenuAction('form')">${icon("form",14)} Order form</button>
-          <button onclick="bvAttachMenuAction('packages')">${icon("list",14)} Package info</button>
-          <button onclick="bvAttachMenuAction('website')">${icon("link",14)} Website link</button>
+          <button onclick="bvAttachMenuAction('catalog')">${icon("list",14)} My products and prices</button>
+          <button onclick="bvAttachMenuAction('website')">${icon("link",14)} My website link</button>
+          <button onclick="bvAttachMenuAction('saved')">${icon("form",14)} Saved replies</button>
           <button onclick="bvAttachMenuAction('template')">${icon("chat",14)} WhatsApp-approved template (after 24h)</button>
         </div>
       </div>
