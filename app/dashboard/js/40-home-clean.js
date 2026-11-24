@@ -58,6 +58,11 @@
   .hx-bt{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}.hx-bt td{padding:10px 0;border-bottom:1px solid var(--border)}.hx-bt tr:last-child td{border:0}.hx-bt td:not(:first-child){text-align:right;font-weight:650}
   .hx-empty{padding:18px 4px;color:var(--text2);font-size:14px}
   .hx-ex{padding:8px 0 0}.hx-ex p{margin:0 0 14px;font-size:14px;color:var(--text2);line-height:1.45}.hx-ex b{color:var(--text)}
+  [data-theme="light"] body:has(.hx), body[data-theme="light"]:has(.hx){background:#f1f3f8}
+  .hx-sk{background:rgba(130,145,160,.2);border-radius:14px;animation:hxsh 1.25s ease-in-out infinite}
+  .hx-sk.hero{background:#0f2a66;opacity:.6}.hx-sk.card{border-radius:24px;margin-top:12px;background:rgba(130,145,160,.16)}
+  @keyframes hxsh{0%,100%{opacity:.55}50%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.hx-sk{animation:none}}
   `;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -72,10 +77,25 @@
   };
   const esc = (s) => escH(String(s == null ? "" : s));
 
-  async function hx(el) {
+  const HX = (window.HX = window.HX || { cache: {} });
+  const hkey = () => [window.activeAccountId, OV.range, window.myProfile && window.myProfile.role].join("|");
+  const skel = () => `<div class="rv-ui"><div class="hx" aria-busy="true" aria-label="Loading"><div class="hx-greet"><div class="hx-sk" style="width:190px;height:26px"></div></div>
+    <div class="hx-sk hero" style="height:262px;border-radius:26px"></div>
+    <div class="hx-tiles">${[1, 2, 3].map(() => '<div class="hx-sk card" style="height:112px;margin:0"></div>').join("")}</div>
+    <div class="hx-sk card" style="height:300px"></div><div class="hx-sk card" style="height:190px"></div></div></div>`;
+  // The screen shell asks bvSkel() for a placeholder before it draws Home: give it the last Home we drew (instant, no flash) or a placeholder shaped like the new Home.
+  const prevSkel = window.bvSkel;
+  window.bvSkel = function (kind) {
+    if (kind === undefined && typeof activeTab !== "undefined" && activeTab === "overview") { const c = HX.cache[hkey()]; return c && Date.now() - c.at < 300000 ? c.html : skel(); }
+    return prevSkel ? prevSkel.apply(this, arguments) : "";
+  };
+  window.hxRefresh = function () { HX.cache = {}; if (typeof liveDaily !== "undefined") liveDaily.at = 0; render(); };
+
+  async function hx(el, quiet) {
     const role = window.myProfile?.role, isAdmin = bvIsAdminRole(), canAds = ["owner", "admin", "buyer"].includes(role);
     const n = OV.range, until = watDate(0), since = watDate(-(n - 1)), pUntil = watDate(-n), pSince = watDate(-(2 * n - 1));
-    el.innerHTML = `<div class="rv-ui">${typeof bvSkel === "function" ? bvSkel() : '<div class="rv-note">Loading your overview…</div>'}</div>`;
+    const tabAtStart = typeof activeTab !== "undefined" ? activeTab : null, ckey = hkey();
+    if (!quiet) el.innerHTML = skel();
     const [orders, buyers, , , live, bals, aiReady, , rcCur] = await Promise.all([
       sbQuery("orders", `select=order_status,order_value_naira,media_buyer_id,ordered_at,delivery_stage&ordered_at=gte.${pSince}T00:00:00%2B01:00&order=ordered_at.desc&limit=5000`).catch(() => []),
       isAdmin ? sbQuery("media_buyers", "select=id,code,name&order=code.asc").catch(() => []) : Promise.resolve([]),
@@ -138,10 +158,10 @@
 
     // campaigns as bars
     const byC = new Map();
-    curRows.forEach((r) => { const k = r.campaign_name || "Campaign"; const x = byC.get(k) || { name: k, spend: 0, res: 0 }; x.spend += r.spend; x.res += (r.kind === "purchase" ? r.purchases : r.conversations) || 0; byC.set(k, x); });
+    curRows.forEach((r) => { const k = r.campaign_id || r.campaign_name || "Campaign"; const x = byC.get(k) || { name: r.campaign_name || "Campaign", id: r.campaign_id || "", spend: 0, res: 0 }; x.spend += r.spend; x.res += (r.kind === "purchase" ? r.purchases : r.conversations) || 0; byC.set(k, x); });
     const camps = [...byC.values()].filter((x) => x.spend > 0).sort((a, b) => b.spend - a.spend).slice(0, 3), topSpend = camps.length ? camps[0].spend : 1;
-    const campHtml = hasAds ? `<section class="hx-card"><div class="hx-ch"><h3>Campaigns</h3><button type="button" class="hx-link" onclick="bvGoToTab('campaigns')">See all</button></div>
-      ${camps.length ? `<div class="hx-camp">${camps.map((x) => `<div onclick="bvGoToTab('campaigns')"><div class="hx-cn"><b>${esc(x.name)}</b><span>${fN(x.spend)}</span></div><div class="hx-cb"><i style="width:${Math.max(4, x.spend / topSpend * 100)}%"></i></div><div class="hx-dots">${Array.from({ length: Math.min(8, x.res) }, () => "<i></i>").join("")}<span style="margin-left:${x.res ? 4 : 0}px">${x.res} result${x.res === 1 ? "" : "s"}</span></div></div>`).join("")}</div>` : `<div class="hx-empty">No campaign spent money in this period.</div>`}</section>` : "";
+    const campHtml = hasAds ? `<section class="hx-card"><div class="hx-ch"><h3>Campaigns</h3><button type="button" class="hx-link" onclick="hxCampaign()">See all</button></div>
+      ${camps.length ? `<div class="hx-camp">${camps.map((x) => `<div data-id="${esc(x.id || "")}" data-name="${esc(x.name)}" onclick="hxCampaign(this)"><div class="hx-cn"><b>${esc(x.name)}</b><span>${fN(x.spend)}</span></div><div class="hx-cb"><i style="width:${Math.max(4, x.spend / topSpend * 100)}%"></i></div><div class="hx-dots">${Array.from({ length: Math.min(8, x.res) }, () => "<i></i>").join("")}<span style="margin-left:${x.res ? 4 : 0}px">${x.res} result${x.res === 1 ? "" : "s"}</span></div></div>`).join("")}</div>` : `<div class="hx-empty">No campaign spent money in this period.</div>`}</section>` : "";
 
     // ad accounts
     const accs = (bals && bals.ok && bals.accounts) || [];
@@ -153,12 +173,14 @@
     const buyerHtml = isAdmin && byBuyer.size ? `<section class="hx-card"><div class="hx-ch"><h3>Media buyers</h3><button type="button" class="hx-link" onclick="bvGoToTab('leaderboard')">Leaderboard</button></div><table class="hx-bt">${[...byBuyer.entries()].sort((a, b) => b[1].n - a[1].n).map(([id, r]) => `<tr><td>${esc(id === "none" ? "Unassigned" : nameOf(id))}</td><td>${r.n}</td><td>${fN(r.rev)}</td></tr>`).join("")}</table></section>` : "";
 
     const failed = canAds && live.ok ? (live.accounts || []).filter((a) => a.error) : [];
-    const notes = (canAds && !live.ok ? `<div class="hx-note"><span>Live numbers from Meta could not be loaded just now.</span><button type="button" onclick="liveDaily.at=0;render()">Try again</button></div>` : "")
-      + (failed.length ? `<div class="hx-note"><span>${failed.map((a) => esc(a.name || "An ad account")).join(", ")} could not be read from Meta, so ${failed.length === 1 ? "its" : "their"} numbers are missing.</span><button type="button" onclick="liveDaily.at=0;render()">Retry</button></div>` : "");
+    const notes = (canAds && !live.ok ? `<div class="hx-note"><span>Live numbers from Meta could not be loaded just now.</span><button type="button" onclick="hxRefresh()">Try again</button></div>` : "")
+      + (failed.length ? `<div class="hx-note"><span>${failed.map((a) => esc(a.name || "An ad account")).join(", ")} could not be read from Meta, so ${failed.length === 1 ? "its" : "their"} numbers are missing.</span><button type="button" onclick="hxRefresh()">Retry</button></div>` : "");
 
     const hour = new Date(Date.now() + 3600000).getUTCHours(), first = String(window.myProfile?.display_name || "").split(" ")[0];
     const greet = (hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening") + (first ? ", " + esc(first) : "");
     const spendLabel = hasAds ? "Spent" : "Orders";
+    if (tabAtStart !== null && typeof activeTab !== "undefined" && activeTab !== tabAtStart) return; // the person already moved to another screen
+    if (quiet && !el.querySelector(".hx")) return;
     el.innerHTML = `<div class="rv-ui"><div class="hx">
       <div class="hx-greet"><div><b>${greet}</b></div></div>
       <div class="hx-hero"><div class="hx-row"><small>${spendLabel}</small><div class="hx-seg">${[[1, "Today"], [7, "7d"], [30, "30d"]].map((r) => `<button type="button" class="${OV.range === r[0] ? "on" : ""}" onclick="OV.range=${r[0]};render()">${r[1]}</button>`).join("")}</div></div>
@@ -166,6 +188,7 @@
         ${hasAds ? `<svg class="hx-spark" viewBox="0 0 330 90" preserveAspectRatio="none" aria-hidden="true"><path d="${area}" fill="rgba(120,170,255,.22)"/><path d="${line}" fill="none" stroke="#7fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>` : '<div style="height:14px"></div>'}
         <div class="hx-three">${three.map((t) => `<div><b>${esc(t[0])}</b><span>${esc(t[1])}</span></div>`).join("")}</div></div>
       ${notes}${tilesHtml}${funnel}${campHtml}${accHtml}${buyerHtml}</div></div>`;
+    HX.cache[ckey] = { at: Date.now(), html: el.innerHTML };
   }
 
   window.hxExplain = function () {
@@ -180,9 +203,25 @@
     w.querySelector(".cx-scrim").onclick = () => w.remove();
     document.body.appendChild(w);
   };
+  // Home -> Campaigns. A campaign card opens that campaign; "See all" opens the list with every campaign. The date range follows the one Home was showing.
+  window.hxCampaign = function (node) {
+    const id = node && node.dataset ? node.dataset.id : "", name = node && node.dataset ? node.dataset.name : "";
+    const r = OV.range === 1 ? "today" : OV.range === 30 ? "last30" : "last7";
+    if (typeof am !== "undefined") { am.range = r; am.filter = "all"; am.level = "campaigns"; }
+    if (typeof CP !== "undefined") { CP.mlevel = "campaigns"; CP.mDetail = false; CP.sel = null; CP.cxTrail = []; CP.cxPending = id || name ? { id: id || "", name: name || "" } : null; }
+    bvGoToTab("campaigns");
+  };
   window.hxJourney = function () { if (typeof window.jnOpen === "function") window.jnOpen(); else bvGoToTab("journeys"); };
 
   window.renderOverview = async function (el) {
-    try { await hx(el); } catch (e) { console.error("home", e); await oldRender(el); }
+    const c = HX.cache[hkey()];
+    try {
+      if (c && Date.now() - c.at < 300000) {
+        if (!el.querySelector(".hx")) el.innerHTML = c.html;
+        if (Date.now() - c.at > 45000) await hx(el, true); // refresh quietly in the background; no placeholder, no flash
+        return;
+      }
+      await hx(el, false);
+    } catch (e) { console.error("home", e); await oldRender(el); }
   };
 })();
