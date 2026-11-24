@@ -763,6 +763,7 @@ async function adxIgDetect(list, root) {
 }
 function adxPages(root) {
   const list = adxPageList();
+  if (list.some(p => p.name === p.id) && window.rvFillPageNames) window.rvFillPageNames().then(ch => { if (ch && bvAdx.screen === "pages") adxPages(root); });
   root.innerHTML = `<div class="adx-intro"><p>Your ads run as a Facebook Page. Tap a Page to choose which ad accounts use it.</p></div>
     <button type="button" class="adx-btn" onclick="bvAdxGo('pgadd')">＋ Add a Page</button>
     ${list.length ? `<div class="adx-cnt">${list.length} PAGE${list.length === 1 ? "" : "S"}</div>` + list.map(p => `<button type="button" class="adx-row" data-id="${escH(p.id)}"><span class="ic" style="background:#1877f2;color:#fff;border-radius:50%">${escH((p.name || "P").charAt(0).toUpperCase())}</span><span class="tx"><b>${escH(p.name)}</b><small>Used by ${escH(p.accts.map(adxName).join(", "))}</small><small class="adx-ig" data-p="${escH(p.id)}">${p.ig ? "Instagram @" + escH(p.ig.username || p.ig.id) : "Looking for Instagram…"}</small></span>${ADX_CHEV}</button>`).join("") : `<div class="adx-note" style="margin-top:12px">No Pages yet. Tap Add a Page.</div>`}`;

@@ -199,4 +199,17 @@
       out.className = "pa-msg"; out.innerHTML = lines.join("<br>");
     };
   };
+  // A Page added by ID has no name saved yet: look the names up once so the Pages list and the tables show "Revora", not a number.
+  window.rvFillPageNames = async function () {
+    try {
+      const accts = (typeof accountsList !== "undefined" ? accountsList : []) || [], need = accts.filter((a) => a.fb_page_id && !a.fb_page_name);
+      if (!need.length) return false;
+      const r = await sbFn("page-tools", { action: "my_pages", ad_account_id: undefined });
+      const by = new Map(((r && r.pages) || []).map((p) => [String(p.page_id), p.name]));
+      let n = 0;
+      for (const a of need) { const nm = by.get(String(a.fb_page_id)); if (nm) { a.fb_page_name = nm; n++; await supabaseClient.from("ad_accounts").update({ fb_page_name: nm }).eq("id", a.id); } }
+      return n > 0;
+    } catch (e) { return false; }
+  };
+  let tries = 0; const iv = setInterval(() => { if (window.myProfile && typeof accountsList !== "undefined" && (accountsList || []).length) { clearInterval(iv); window.rvFillPageNames(); } else if (++tries > 60) clearInterval(iv); }, 1000);
 })();
