@@ -398,7 +398,7 @@ function bvFmtMsg(m) {
     if (c === "order_flow") return "📝 Sent: order form";
     return `📋 Sent: ${bvEscape(c)}`;
   }
-  if (t === "url_button") return `🔗 Sent link: <a href="${bvEscape(c)}" target="_blank" style="color:var(--accent);">${bvEscape(c)}</a>`;
+  if (t === "url_button") return `${m.metadata?.body ? bvEscape(m.metadata.body) + "<br>" : ""}<a href="${bvEscape(c)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;padding:8px 14px;border-radius:10px;background:rgba(127,127,127,.2);font-weight:700;color:inherit;text-decoration:none;">🔗 ${bvEscape(m.metadata?.label || "Open link")}</a>`;
   if (t === "flow_reply") {
     try {
       const d = JSON.parse(c);
