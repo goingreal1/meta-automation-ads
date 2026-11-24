@@ -78,6 +78,18 @@ Deno.serve(async (req)=>{
       error: "That Page is already linked to another Revora company. If it's yours, contact support."
     }, 409);
     const act = String(acc.meta_ad_account_id).replace(/\D/g, "");
+    // "Link anyway": the person knows the Page is already in their Business, so save it without Meta's advertise check (ads will report it if Meta still refuses).
+    if (body.force === true) {
+      let fp: any = null;
+      const { data: fc } = await db.from("ad_accounts").select("meta_connection_id").eq("company_id", me.company_id).not("meta_connection_id", "is", null);
+      const ftoks: string[] = [];
+      for (const cid of [...new Set([acc.meta_connection_id, ...(fc ?? []).map((x)=>x.meta_connection_id)].filter(Boolean))].slice(0, 4)) { const { data: c } = await db.from("meta_connections").select("access_token, status").eq("id", cid).maybeSingle(); if (c?.status === "active" && c.access_token) ftoks.push(c.access_token); }
+      ftoks.push(TOKEN);
+      for (const t of ftoks) { fp = await get(`${pageId}?fields=name,whatsapp_number`, t); if (fp?.name) break; }
+      const { error: fe } = await db.from("ad_accounts").update({ fb_page_id: pageId, fb_page_name: fp?.name ?? (String(body.page_name ?? "").slice(0, 120) || null), whatsapp_number: fp?.whatsapp_number ?? null, connection_verified_at: new Date().toISOString() }).eq("id", acc.id);
+      if (fe) return json({ error: fe.message }, 500);
+      return json({ status: "linked", page_id: pageId, page_name: fp?.name ?? null, forced: true });
+    }
     // The person's own Meta login (the one their ad accounts and Pages live under) sees what Revora's shared access may not.
     const { data: conAccts } = await db.from("ad_accounts").select("meta_connection_id").eq("company_id", me.company_id).not("meta_connection_id", "is", null);
     const conIds = [...new Set([acc.meta_connection_id, ...(conAccts ?? []).map((x)=>x.meta_connection_id)].filter(Boolean))].slice(0, 4);
