@@ -71,5 +71,24 @@
   #amRoot .am-c-spend b,#amRoot .am-c-name .am-name{font-weight:750}
   #amRoot .switch input:checked + .sw-track,#amRoot .switch input:checked ~ .sw-track{background:#1f6fff}
   #amRoot .am-c-chk input{width:18px;height:18px;border-radius:6px}
-}
 
+  /* Orders, Wallet, Journeys, Bookings, Catalog and Delivery (laptop): the same soft look as the rest. */
+  body:has(#ordRoot),body:has(#wlRoot),body:has(.rv-ui.jy),body:has(.rv-ui.bk),body:has(.cg),body:has(.sd){background:#f1f3f8}
+  [data-theme="dark"] body:has(#ordRoot),[data-theme="dark"] body:has(#wlRoot),[data-theme="dark"] body:has(.rv-ui.jy),[data-theme="dark"] body:has(.rv-ui.bk),[data-theme="dark"] body:has(.cg),[data-theme="dark"] body:has(.sd){background:var(--bg)}
+  #ordRoot .rv-head h1,#wlRoot .rv-head h1,.rv-ui.jy .rv-head h1,.rv-ui.bk .rv-head h1{font-size:28px;font-weight:800;letter-spacing:-.02em}
+  #ordRoot .rv-btn,#wlRoot .rv-btn,.rv-ui.jy .rv-btn,.rv-ui.bk .rv-btn{height:42px;padding:0 18px;border:0;border-radius:14px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 4px 14px rgba(15,30,70,.06);font-weight:700}
+  #ordRoot .rv-btn.p,#wlRoot .rv-btn.p,.rv-ui.jy .rv-btn.p,.rv-ui.bk .rv-btn.p{background:#1f6fff;color:#fff}
+  #ordRoot .rv-btn.s,#wlRoot .rv-btn.s,.rv-ui.jy .rv-btn.s,.rv-ui.bk .rv-btn.s{height:34px;border-radius:11px}
+  #ordRoot .rv-seg,#wlRoot .rv-seg,.rv-ui.jy .rv-seg,.rv-ui.bk .rv-seg{background:rgba(120,130,150,.16);border-radius:14px;padding:3px}
+  #ordRoot .rv-seg button,#wlRoot .rv-seg button,.rv-ui.jy .rv-seg button,.rv-ui.bk .rv-seg button{height:36px;padding:0 16px;border-radius:11px;font-weight:650}
+  #ordRoot .rv-seg button.on,#wlRoot .rv-seg button.on,.rv-ui.jy .rv-seg button.on,.rv-ui.bk .rv-seg button.on{background:var(--panel);color:var(--text);font-weight:750;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  #ordRoot .rv-card,#wlRoot .rv-card,.rv-ui.jy .rv-card,.rv-ui.bk .rv-card{border:0;border-radius:24px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06)}
+  #ordRoot .rv-note,#wlRoot .rv-note,.rv-ui.jy .rv-note,.rv-ui.bk .rv-note{border:0;border-radius:18px}
+  #ordRoot select,#wlRoot select,.rv-ui.jy select,.rv-ui.bk select{height:42px;border:0;border-radius:14px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 4px 14px rgba(15,30,70,.06);padding:0 14px;font-weight:650}
+  #ordRoot input[type="search"],#wlRoot input[type="search"],.rv-ui.jy input[type="search"],.rv-ui.bk input[type="search"],#ordRoot input[type="text"],#wlRoot input[type="text"],.rv-ui.jy input[type="text"],.rv-ui.bk input[type="text"]{height:44px;border:0;border-radius:14px;background:var(--panel2);padding:0 16px}
+  .sd{max-width:1200px}
+  /* Catalog: wide grids instead of a narrow column */
+  .cg{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px}
+  .cg-m{height:200px}
+  .pr{max-width:920px}
+}
