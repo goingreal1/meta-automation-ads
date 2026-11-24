@@ -31,6 +31,9 @@
   .pr-link span{flex:1;min-width:0}.pr-link b{display:block;font-weight:700}.pr-link small{display:block;font-size:12px;color:var(--muted)}
   .pr-link button{height:38px;padding:0 14px;border:0;border-radius:12px;background:var(--panel);color:var(--text);font:inherit;font-weight:700;font-size:12px;cursor:pointer}
   .pr-more{margin-top:22px}.pr-more>summary{cursor:pointer;font-weight:700;font-size:15px;padding:12px 4px;min-height:44px}
+  .pr-where{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+  .pr-where label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 2px}
+  .pr-where select{width:100%;height:50px;border:0;border-radius:14px;background:var(--panel);color:var(--text);font:inherit;font-weight:650;padding:0 12px;box-shadow:0 1px 2px rgba(15,30,70,.06)}
   /* package sheet */
   .pks .fl{font-size:12px;color:var(--muted);margin:16px 0 6px}
   .pks input[type=text],.pks input[type=number]{width:100%;height:50px;border:0;border-radius:14px;background:var(--panel2);color:var(--text);padding:0 14px;font:inherit;font-weight:650;box-sizing:border-box}
@@ -82,8 +85,9 @@
   .pp .nt{text-align:center;font-size:12px;color:var(--muted);margin-top:10px}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
   const esc = (s) => escH(String(s == null ? "" : s));
-  const money = (n) => "₦" + Number(n || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 });
-  const CC = (window.CC = { tiers: {} });
+  const CC = (window.CC = { tiers: {}, cur: "NGN" });
+  // Amounts show in the product's own currency (₦ for naira, otherwise the code, e.g. KES 7,500).
+  const money = (n) => { const c = CC.cur || "NGN", v = Number(n || 0); if (c === "NGN") return "₦" + v.toLocaleString("en-NG", { maximumFractionDigits: 0 }); try { return new Intl.NumberFormat("en-NG", { style: "currency", currency: c, maximumFractionDigits: 0 }).format(v); } catch (e) { return c + " " + v.toLocaleString(); } };
   const CHEV = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>';
 
   // ---------- the link customers use for a product ----------
@@ -108,6 +112,7 @@
   async function loadTiers(pid) { return (await sbQuery("product_tiers", `select=*&product_id=eq.${pid}&order=sort_order.asc`).catch(() => [])) || []; }
   async function renderPk(p) {
     const box = document.getElementById("prPk"); if (!box) return;
+    CC.cur = p.currency || "NGN";
     const t = await loadTiers(p.id); CC.tiers[p.id] = t;
     const dflt = t.find((x) => x.is_default) || t[0];
     const cur = Number(p.default_order_value_naira) || Number((document.getElementById("cd_price") || {}).value) || 0;
@@ -184,6 +189,7 @@
     if (!photo || !nameIn || !priceIn || !dest) return;
     const pr = document.createElement("div"); pr.className = "pr";
     pr.innerHTML = `<div class="pr-hd"><div id="prPhoto"></div><div class="pr-nm"><small>Product name</small><div id="prName"></div><div id="prPriceWrap" style="margin-top:10px"><small>Price</small><div id="prPrice"></div></div></div></div>
+      <div class="pr-sec"><b>Where you sell</b><span>Sets the money your prices use</span></div><div class="pr-where"><div><label for="prCountry">Country</label><select id="prCountry"></select></div><div><label for="prCur">Currency</label><select id="prCur"></select></div></div>
       <div class="pr-sec"><b>Packages and prices</b><span>What customers pick</span></div><div id="prPk"><div class="pk-hint">Loading…</div></div>
       <div class="pr-sec"><b>Customers order on</b></div><div class="pr-seg" id="prSeg"><button type="button" data-d="website">Website</button><button type="button" data-d="whatsapp">WhatsApp</button></div><div class="pr-dest" id="prDest"></div><div class="pr-link" id="prLink"></div>`;
     body.insertBefore(pr, two);
@@ -200,6 +206,20 @@
     seg.onclick = (e) => { const b = e.target.closest("button"); if (!b) return; dest.value = b.dataset.d; paintDest(); };
     paintDest();
     const det = document.createElement("details"); det.className = "pr-more"; det.innerHTML = "<summary>More details</summary>"; body.insertBefore(det, two); det.appendChild(two);
+    // Country and currency: choosing a country fills in its currency (you can still change it). Saves straight away.
+    const ctry = pr.querySelector("#prCountry"), cur = pr.querySelector("#prCur"), legacy = $("cd_cur");
+    const guess = (p.target_countries && p.target_countries[0] && BV_CUR[p.target_countries[0]] === (p.currency || "NGN") ? p.target_countries[0] : "") || (Object.keys(BV_CUR).find((k) => BV_CUR[k] === (p.currency || "NGN")) || "NG");
+    ctry.innerHTML = BV_COUNTRIES.map(([c, n]) => `<option value="${c}"${c === guess ? " selected" : ""}>${esc(n)}</option>`).join(""); cur.innerHTML = bvCurOpts(p.currency || "NGN");
+    const saveWhere = async (code) => {
+      p.currency = cur.value; if (legacy) legacy.value = cur.value;
+      document.querySelectorAll(".cd_cc").forEach((b) => { if (b.value === code) b.checked = true; });
+      const set = [...document.querySelectorAll(".cd_cc")].filter((b) => b.checked).map((b) => b.value);
+      const r = await supabaseClient.from("products").update({ currency: cur.value, target_countries: set }).eq("id", p.id);
+      if (r && r.error) { bvToast("Could not save: " + r.error.message, "err"); return; }
+      p.target_countries = set; await renderPk(p); bvToast("Saved: " + (BV_COUNTRIES.find((x) => x[0] === code) || [0, code])[1] + ", " + cur.value + ".");
+    };
+    ctry.onchange = () => { cur.value = bvCurOf(ctry.value); saveWhere(ctry.value); };
+    cur.onchange = () => saveWhere(ctry.value);
     await renderPk(p); await renderLink(p);
   }
 
