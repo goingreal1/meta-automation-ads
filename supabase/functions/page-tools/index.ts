@@ -329,7 +329,7 @@ Deno.serve(async (req)=>{
     }
     // A creative's own Page: "Post to my page" starts from the creative (its ad account, or its product's), never from a client-chosen account.
     if (["post_preview", "post_creative"].includes(String(b.action ?? ""))) {
-      const { data: cr } = await db.from("creative_assets").select("id, company_id, public_url, asset_type, primary_text, headline, ad_account_id, product_id").eq("id", String(b.creative_id ?? "")).maybeSingle();
+      const { data: cr } = await db.from("creative_assets").select("id, company_id, public_url, asset_type, primary_text, headline, ad_account_id, product_id, carousel_cards").eq("id", String(b.creative_id ?? "")).maybeSingle();
       if (!cr || (companyId && cr.company_id !== companyId)) return json({ error: "Creative not found." }, 404);
       let aid = cr.ad_account_id as string | null;
       if (!aid && cr.product_id) aid = (await db.from("products").select("ad_account_id").eq("id", cr.product_id).maybeSingle()).data?.ad_account_id ?? null;
@@ -343,7 +343,8 @@ Deno.serve(async (req)=>{
         aid = hit.id;
       }
       if (!aid) return json({ error: "This creative has no ad account yet, so no Page. Assign it to a product that has an ad account first." }, 400);
-      if (!["image", "video"].includes(String(cr.asset_type))) return json({ error: "Only a single picture or video can be posted." }, 400);
+      const cCards = Array.isArray(cr.carousel_cards) ? cr.carousel_cards.filter((x: any)=>x?.image_url).slice(0, 10) : [];
+      if (cr.asset_type === "carousel" ? cCards.length < 2 : !["image", "video"].includes(String(cr.asset_type))) return json({ error: "Only a single picture, a video, or a carousel with at least two pictures can be posted." }, 400);
       b.ad_account_id = aid; b._creative = cr;
     }
     let q = db.from("ad_accounts").select("id, company_id, fb_page_id, ig_user_id, meta_connection_id, media_buyer_id").eq("id", String(b.ad_account_id ?? ""));
@@ -368,14 +369,26 @@ Deno.serve(async (req)=>{
       const cr = b._creative;
       let pageName = null;
       try { pageName = (await g(`/${pageId}?fields=name`, token))?.name ?? null; } catch (_) { /* the name is only for the preview */ }
-      if (b.action === "post_preview") return json({ ok: true, page_id: pageId, page_name: pageName, kind: cr.asset_type, caption: cr.primary_text ?? "", url: cr.public_url });
+      const cardsP = Array.isArray(cr.carousel_cards) ? cr.carousel_cards.filter((x: any)=>x?.image_url).slice(0, 10) : [];
+      if (b.action === "post_preview") return json({ ok: true, page_id: pageId, page_name: pageName, kind: cr.asset_type, caption: cr.primary_text ?? "", url: cr.asset_type === "carousel" ? (cardsP[0]?.image_url ?? cr.public_url) : cr.public_url, ...(cr.asset_type === "carousel" ? { count: cardsP.length } : {}) });
       if (b.confirmed !== true) return json({ error: "Confirm first: this publishes on the Page." }, 400);
       const msg = String(b.message ?? cr.primary_text ?? "").slice(0, 5000);
       if (!msg.trim()) return json({ error: "Write a caption first." }, 400);
       try {
         const pt = await pageToken(pageId, token);
         let postId = "", link = null;
-        if (cr.asset_type === "video") {
+        if (cr.asset_type === "carousel") {
+          // A Page cannot publish a swipe carousel as an ordinary post; the closest real thing is one post with all the pictures, shown as a photo grid.
+          const cards = (Array.isArray(cr.carousel_cards) ? cr.carousel_cards : []).filter((x: any)=>x?.image_url).slice(0, 10);
+          const ids: string[] = [];
+          for (const c of cards) { const r = await g(`/${pageId}/photos`, pt, "POST", { url: c.image_url, published: "false" }); if (r?.id) ids.push(String(r.id)); }
+          if (ids.length < 2) throw new Error("Meta did not accept the pictures.");
+          const fb: Record<string, string> = { message: msg };
+          ids.forEach((id, i)=>{ fb[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id }); });
+          const r = await g(`/${pageId}/feed`, pt, "POST", fb);
+          postId = String(r?.id ?? "");
+          try { const l = (await g(`/${postId}?fields=permalink_url`, pt))?.permalink_url ?? null; link = l && l.startsWith("/") ? "https://www.facebook.com" + l : l; } catch (_) { /* the post exists even if the link cannot be read */ }
+        } else if (cr.asset_type === "video") {
           const r = await g(`/${pageId}/videos`, pt, "POST", { file_url: cr.public_url, description: msg, published: "true" });
           postId = String(r?.id ?? ""); link = postId ? `https://www.facebook.com/${pageId}/videos/${postId}` : null;
         } else {
