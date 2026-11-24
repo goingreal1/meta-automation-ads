@@ -176,7 +176,8 @@
   const last7 = () => Array.from({ length: 7 }, (_, i) => watDate(-(6 - i)));
   let askedDaily = false;
   function dailyRows() {
-    const d = typeof liveDaily !== "undefined" && liveDaily.data && liveDaily.data.ok ? liveDaily.data.rows : null;
+    let d = typeof liveDaily !== "undefined" && liveDaily.data && liveDaily.data.ok ? liveDaily.data.rows : null;
+    if (d && d.length && d.reduce((m, x) => (x.date < m ? x.date : m), "9999") > watDate(-6)) d = null; // only part of the week is loaded; ask for the whole week
     if (!d && !askedDaily && typeof fetchLiveDaily === "function") { askedDaily = true; fetchLiveDaily(watDate(-6), watDate(0)).then(() => { askedDaily = false; if (document.querySelector(".cx-list")) amDraw(); }).catch(() => { askedDaily = false; }); }
     return d;
   }
