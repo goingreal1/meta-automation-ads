@@ -36,7 +36,7 @@
   // The Pages this person can set rules for (one per Page, with an ad account that carries it).
   function pages() {
     const seen = new Map();
-    for (const a of (typeof accountsList !== "undefined" ? accountsList : []) || []) if (a.fb_page_id && !seen.has(String(a.fb_page_id))) seen.set(String(a.fb_page_id), { id: String(a.fb_page_id), name: a.fb_page_name || String(a.fb_page_id), ad_account_id: a.id });
+    for (const a of (typeof accountsList !== "undefined" ? accountsList : []) || []) if (a.fb_page_id) { const k = String(a.fb_page_id), cur = seen.get(k); if (!cur) seen.set(k, { id: k, name: a.fb_page_name || k, ad_account_id: a.id, ig: a.ig_user_id ? { id: a.ig_user_id, username: a.ig_username || "" } : null }); else if (!cur.ig && a.ig_user_id) { cur.ig = { id: a.ig_user_id, username: a.ig_username || "" }; cur.ad_account_id = a.id; } }
     return [...seen.values()];
   }
   const tbl = () => supabaseClient.from("page_automations");
@@ -62,8 +62,8 @@
     const ov = document.createElement("div"); ov.className = "pa-ov rv-ui"; ov.id = "paEdit";
     const isC = trig === "comment";
     ov.innerHTML = `<div class="pa-in"><div class="pa-top"><button type="button" class="bk" aria-label="Back" id="paBack">${BACK}</button><div class="t"><small>${esc(o.sub || "")}</small><h2>${esc(o.title)}</h2></div></div>
-      <div class="pa-card"><div class="pa-line"><span class="tx"><b>${o.creative_id ? "Turn on for this post" : "Turn on"}</b></span>${sw("paOn", r0.enabled !== false)}</div></div>
-      ${ps.length > 1 ? `<div class="pa-lbl">PAGE</div><div class="pa-card" style="padding:6px 10px"><select id="paPage" style="width:100%;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;min-height:44px">${ps.map((p) => `<option value="${esc(p.id)}"${p.id === pg.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>` : ""}
+      <div class="pa-card"><div class="pa-line"><span class="tx"><b>${o.creative_id ? "Turn on for this post" : "Turn on"}</b><small id="paOnT"></small></span>${sw("paOn", r0.enabled !== false)}</div></div>
+      <div id="paPageBox"></div>
       ${o.newKw || (!rule && !o.creative_id && !o.channel) ? `<div class="pa-lbl">WHERE</div><div class="pa-card"><div class="pa-chips"><button type="button" class="pa-chip off" data-c="facebook">Facebook / Messenger</button><button type="button" class="pa-chip off" data-c="instagram">Instagram</button></div></div>` : ""}
       <div class="pa-lbl">${isC ? "WHEN SOMEONE COMMENTS" : "WHEN A CUSTOMER WRITES"}</div>
       <div class="pa-card" id="paKw"><div class="pa-chips"></div><div class="pa-add" style="margin-top:10px"><input type="text" placeholder="Add a word, e.g. price" autocomplete="off"><button type="button" class="pa-addbtn">Add</button></div><div class="pa-note" style="text-align:left;margin-top:8px">${isC ? "Any comment with one of these words. Leave empty to answer every comment." : "A message with one of these words. Leave empty to answer every message."}</div></div>
@@ -85,19 +85,28 @@
     try { history.pushState({ paEdit: 1 }, "", location.href); } catch (e) {}
     const close = () => { ov.remove(); };
     ov.querySelector("#paBack").onclick = () => { close(); try { history.back(); } catch (e) {} };
-    const getOn = wireSw(ov, "paOn", r0.enabled !== false);
+    const onT = ov.querySelector("#paOnT"), showOn = (v) => { onT.textContent = v ? "On: replies are being sent" : "Off: nothing is sent"; onT.style.color = v ? "#127a43" : "var(--muted)"; };
+    showOn(r0.enabled !== false);
+    const getOn = wireSw(ov, "paOn", r0.enabled !== false, showOn);
     const getKw = chipsEditor(ov, ov.querySelector("#paKw"), r0.keywords);
     let mode = r0.reply_mode || "text", when = r0.when_mode || "always";
     const paintMode = () => { ov.querySelectorAll("#paMode button").forEach((b) => b.classList.toggle("on", b.dataset.m === mode)); ov.querySelector("#paText").style.display = mode === "text" ? "" : "none"; ov.querySelector("#paAi").style.display = mode === "ai" ? "" : "none"; };
     ov.querySelector("#paMode").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; mode = b.dataset.m; paintMode(); }; paintMode();
-    const paintChan = () => ov.querySelectorAll("[data-c]").forEach((b) => b.classList.toggle("off", b.dataset.c !== chan));
+    const paintPages = () => {
+      const list = chan === "instagram" ? ps.filter((p) => p.ig) : ps, box = ov.querySelector("#paPageBox");
+      if (!list.length) { box.innerHTML = `<div class="pa-lbl">PAGE</div><div class="pa-card"><div class="pa-note" style="text-align:left;margin:0">${chan === "instagram" ? "None of your Pages has an Instagram account linked yet. Open Settings, Facebook Pages, and tap a Page. Revora looks for the linked Instagram account there." : "No Page yet."}</div></div>`; return; }
+      const sel = list.find((p) => p.id === (ov.querySelector("#paPage") ? ov.querySelector("#paPage").value : pg.id)) || list[0];
+      box.innerHTML = list.length > 1 || chan === "instagram" ? `<div class="pa-lbl">${chan === "instagram" ? "INSTAGRAM ACCOUNT" : "PAGE"}</div><div class="pa-card" style="padding:6px 10px"><select id="paPage" style="width:100%;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;min-height:44px">${list.map((p) => `<option value="${esc(p.id)}"${p.id === sel.id ? " selected" : ""}>${esc(chan === "instagram" ? "@" + (p.ig.username || p.ig.id) + " · " + p.name : p.name)}</option>`).join("")}</select></div>` : "";
+    };
+    const paintChan = () => { ov.querySelectorAll("[data-c]").forEach((b) => b.classList.toggle("off", b.dataset.c !== chan)); paintPages(); };
     ov.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => { chan = b.dataset.c; paintChan(); })); paintChan();
     const paintWhen = () => ov.querySelectorAll("[data-w]").forEach((b) => b.classList.toggle("off", b.dataset.w !== when));
     ov.querySelectorAll("[data-w]").forEach((b) => (b.onclick = () => { when = b.dataset.w; paintWhen(); })); paintWhen();
     const g = isC ? { pub: wireSw(ov, "paPub", r0.public_enabled), dm: wireSw(ov, "paDm", r0.dm_enabled), pubA: wireSw(ov, "paPubA", r0.public_enabled), dmA: wireSw(ov, "paDmA", r0.dm_enabled) } : null;
     ov.querySelector("#paSave").onclick = async (e) => {
       const btn = e.currentTarget, m = ov.querySelector("#paMsg"); m.className = "pa-msg"; m.textContent = "";
-      const pid = ov.querySelector("#paPage") ? ov.querySelector("#paPage").value : pg.id, page = ps.find((p) => p.id === pid) || pg, kws = getKw();
+      const pid = ov.querySelector("#paPage") ? ov.querySelector("#paPage").value : (chan === "instagram" ? "" : pg.id), page = ps.find((p) => p.id === pid) || (chan === "instagram" ? null : pg), kws = getKw();
+      if (!page) { m.className = "pa-msg err"; m.textContent = "Pick an Instagram account first."; return; }
       const row = { company_id: cid(), page_id: page.id, ad_account_id: page.ad_account_id, channel: chan, trigger: trig, creative_id: o.creative_id || null, keywords: kws, reply_mode: mode, enabled: getOn(), updated_at: new Date().toISOString(), created_by: sessionData && sessionData.user && sessionData.user.id };
       if (isC) {
         const pubOn = mode === "ai" ? g.pubA() : g.pub(), dmOn = mode === "ai" ? g.dmA() : g.dm(), pt = ov.querySelector("#paPubT").value.trim(), dt = ov.querySelector("#paDmT").value.trim();
@@ -111,7 +120,14 @@
         Object.assign(row, { message_text: mt || null, when_mode: when });
       }
       btn.disabled = true; btn.textContent = "Saving…";
-      const res = rule ? await tbl().update(row).eq("id", rule.id) : await tbl().insert(row);
+      let target = rule;
+      if (!target && !kws.length) {   // one "answer everything" rule per place: update it instead of adding a second
+        let q = tbl().select("id").eq("company_id", cid()).eq("page_id", page.id).eq("trigger", trig).eq("channel", chan).eq("keywords", "{}").order("created_at", { ascending: true });
+        q = o.creative_id ? q.eq("creative_id", o.creative_id) : q.is("creative_id", null);
+        const ex = await q;
+        if (ex.data && ex.data.length) { target = ex.data[0]; for (const d of ex.data.slice(1)) await tbl().delete().eq("id", d.id); }
+      }
+      const res = target ? await tbl().update(row).eq("id", target.id) : await tbl().insert(row);
       btn.disabled = false; btn.textContent = "Save";
       if (res.error) { m.className = "pa-msg err"; m.textContent = "Could not save: " + res.error.message; return; }
       bvToast("Saved."); close(); try { history.back(); } catch (e2) {} if (o.onDone) o.onDone();
@@ -146,7 +162,7 @@
     const ch = (r) => r.channel === "instagram" ? "instagram" : "facebook", CH = { facebook: "Facebook", instagram: "Instagram" };
     const msgRules = rules.filter((r) => r.trigger === "message"), cmRules = rules.filter((r) => r.trigger === "comment");
     const def = (c) => msgRules.find((r) => ch(r) === c && !(r.keywords || []).length), kwRules = msgRules.filter((r) => (r.keywords || []).length), allC = (c) => cmRules.find((r) => ch(r) === c);
-    const state = (r) => (r ? (r.enabled ? (r.reply_mode === "ai" ? "On · AI answers" : "On · your message") : "Off") : "Off");
+    const state = (r) => (r ? (r.enabled ? (r.reply_mode === "ai" ? "On · AI answers" : "On · your message") : "Off") : "Not set up");
     const row = (k, t, sub, pill, ok) => `<button type="button" class="pa-row" data-k="${k}"><span class="ic">${CHAT}</span><span class="tx"><b>${esc(t)}</b><small>${esc(sub)}</small><span class="pa-pill ${ok ? "ok" : ""}">${esc(pill)}</span></span>${CHEV}</button>`;
     root.innerHTML = `<div class="adx-intro"><p>Replies that go out on their own. Settings for one post are on that creative.</p></div>
       <div class="pa-lbl" style="margin-top:6px">MESSAGES</div>

@@ -741,15 +741,33 @@ function adxDsLink(root) {
 
 function adxPageList() {
   const m = new Map();
-  for (const a of accountsList || []) if (a.fb_page_id) { const k = String(a.fb_page_id); const p = m.get(k) || { id: k, name: a.fb_page_name || k, accts: [] }; p.accts.push(a); m.set(k, p); }
+  for (const a of accountsList || []) if (a.fb_page_id) { const k = String(a.fb_page_id); const p = m.get(k) || { id: k, name: a.fb_page_name || k, accts: [], ig: null }; p.accts.push(a); if (!p.ig && a.ig_user_id) p.ig = { id: a.ig_user_id, username: a.ig_username || "" }; m.set(k, p); }
   return [...m.values()];
+}
+// Finds the Instagram account linked to each Page (once a day per Page) and shows it, so a seller sees what is connected.
+async function adxIgDetect(list, root) {
+  const paint = (p) => { const el = root && root.querySelector(`.adx-ig[data-p="${p.id}"]`); if (el) el.innerHTML = p.ig ? "Instagram @" + escH(p.ig.username || p.ig.id) : "No Instagram linked"; };
+  for (const p of list) {
+    if (p.ig) { paint(p); continue; }
+    let last = 0; try { last = Number(localStorage.getItem("rv_ig_none:" + p.id) || 0); } catch (e) {}
+    if (Date.now() - last < 12 * 3600000) { paint(p); continue; }
+    const a = p.accts[0];
+    const r = await sbFn("page-tools", { action: "detect_ig", ad_account_id: a.id }).catch(() => null);
+    if (r && r.ok && r.ig_user_id) {
+      p.ig = { id: r.ig_user_id, username: r.username || "" };
+      for (const x of p.accts) { x.ig_user_id = r.ig_user_id; x.ig_username = r.username || null; }
+      try { await supabaseClient.from("ad_accounts").update({ ig_user_id: r.ig_user_id, ig_username: r.username || null }).in("id", p.accts.map(x => x.id)); } catch (e) {}
+    } else { try { localStorage.setItem("rv_ig_none:" + p.id, String(Date.now())); } catch (e) {} }
+    paint(p);
+  }
 }
 function adxPages(root) {
   const list = adxPageList();
   root.innerHTML = `<div class="adx-intro"><p>Your ads run as a Facebook Page. Tap a Page to choose which ad accounts use it.</p></div>
     <button type="button" class="adx-btn" onclick="bvAdxGo('pgadd')">＋ Add a Page</button>
-    ${list.length ? `<div class="adx-cnt">${list.length} PAGE${list.length === 1 ? "" : "S"}</div>` + list.map(p => `<button type="button" class="adx-row" data-id="${escH(p.id)}"><span class="ic" style="background:#1877f2;color:#fff;border-radius:50%">${escH((p.name || "P").charAt(0).toUpperCase())}</span><span class="tx"><b>${escH(p.name)}</b><small>Used by ${escH(p.accts.map(adxName).join(", "))}</small></span>${ADX_CHEV}</button>`).join("") : `<div class="adx-note" style="margin-top:12px">No Pages yet. Tap Add a Page.</div>`}`;
+    ${list.length ? `<div class="adx-cnt">${list.length} PAGE${list.length === 1 ? "" : "S"}</div>` + list.map(p => `<button type="button" class="adx-row" data-id="${escH(p.id)}"><span class="ic" style="background:#1877f2;color:#fff;border-radius:50%">${escH((p.name || "P").charAt(0).toUpperCase())}</span><span class="tx"><b>${escH(p.name)}</b><small>Used by ${escH(p.accts.map(adxName).join(", "))}</small><small class="adx-ig" data-p="${escH(p.id)}">${p.ig ? "Instagram @" + escH(p.ig.username || p.ig.id) : "Looking for Instagram…"}</small></span>${ADX_CHEV}</button>`).join("") : `<div class="adx-note" style="margin-top:12px">No Pages yet. Tap Add a Page.</div>`}`;
   root.querySelectorAll(".adx-row").forEach(b => b.addEventListener("click", () => { adxCtx.pg = list.find(p => p.id === b.dataset.id); bvAdxGo("pglink", b.dataset.id); }));
+  adxIgDetect(list, root);
 }
 function adxPgAdd(root) {
   root.innerHTML = `<div class="adx-panel"><div style="display:flex;gap:12px"><span class="adx-n">1</span><b style="font-size:15px;line-height:1.35">Add Revora as a partner on your Business</b></div>
@@ -779,12 +797,14 @@ function adxPgLink(root) {
   const pg = adxCtx.pg; if (!pg) { bvAdxBack(); return; }
   const accts = (accountsList || []).filter(a => a.status !== "deleted"), start = new Set(accts.filter(a => String(a.fb_page_id || "") === pg.id).map(a => a.id)), pick = new Set(start);
   const sub = a => start.has(a.id) ? "Runs ads as this Page" : a.fb_page_id ? "Uses " + (a.fb_page_name || "another Page") + ". Will switch to this Page." : "No Page yet";
-  root.innerHTML = `<div class="adx-hero"><div class="adx-sub">Use this Page for</div><h2>${escH(pg.name || pg.id)}</h2></div>
+  root.innerHTML = `<div class="adx-hero"><div class="adx-sub">Use this Page for</div><h2>${escH(pg.name || pg.id)}</h2><div class="adx-sub adx-ig" data-p="${escH(pg.id)}">${pg.ig ? "Instagram @" + escH(pg.ig.username || pg.ig.id) : "Looking for Instagram…"}</div></div>
     <div class="adx-intro"><p>Pick the ad accounts that run ads as this Page. An ad account uses one Page at a time.</p></div>
     ${accts.length ? accts.map(a => `<button type="button" class="adx-row" data-id="${escH(a.id)}"><span class="tx"><b>${escH(adxName(a))}</b><small class="${!start.has(a.id) && a.fb_page_id ? "w" : ""}">${escH(sub(a))}</small></span><span class="tick ${start.has(a.id) ? "on" : ""}">${start.has(a.id) ? "✓" : ""}</span></button>`).join("") : `<div class="adx-note">You have no ad accounts yet.</div>`}
     <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo" style="margin-top:14px"></button><div style="text-align:center;font-size:12px;color:var(--muted);margin-top:10px">Ads already running keep their Page. New ads use this one.</div>`;
   const go = root.querySelector("#adxGo"), paint = () => { go.textContent = `Save · ${pick.size} ad account${pick.size === 1 ? "" : "s"}`; };
   paint();
+  if (!pg.accts) pg.accts = accts.filter(a => start.has(a.id));
+  if (pg.accts.length) adxIgDetect([pg], root);
   root.querySelectorAll(".adx-row").forEach(row => row.addEventListener("click", () => { const id = row.dataset.id, t = row.querySelector(".tick"); if (pick.has(id)) { pick.delete(id); t.classList.remove("on"); t.textContent = ""; } else { pick.add(id); t.classList.add("on"); t.textContent = "✓"; } paint(); }));
   go.addEventListener("click", async () => {
     const link = [...pick].filter(id => !start.has(id)), unlink = [...start].filter(id => !pick.has(id));
