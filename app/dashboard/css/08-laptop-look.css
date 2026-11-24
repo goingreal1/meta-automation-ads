@@ -40,4 +40,36 @@
   .set-body[data-active="pages"]>.panel,.set-body[data-active="automation"]>.panel{margin:0}
   .set-body[data-active="pages"]>:not(.panel):not([data-sec]),.set-body[data-active="automation"]>:not(.panel):not([data-sec]){grid-column:1/-1}
   @media (max-width:1100px){.set-body[data-active="pages"],.set-body[data-active="automation"]{grid-template-columns:minmax(0,1fr)}}
+
+  /* Campaigns (laptop): the same screen, polished. Same tabs, rows and numbers; softer cards, rounder controls, blue accent. */
+  body:has(#amRoot){background:#f1f3f8}
+  [data-theme="dark"] body:has(#amRoot){background:var(--bg)}
+  #amRoot{max-width:1500px}
+  #amRoot .rv-head h1{font-size:28px;font-weight:800;letter-spacing:-.02em}
+  #amRoot .rv-btn{height:42px;padding:0 18px;border:0;border-radius:14px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 4px 14px rgba(15,30,70,.06);font-weight:700}
+  #amRoot .rv-btn.p{background:#1f6fff;color:#fff}
+  #amRoot .rv-btn.s{height:34px;border-radius:11px}
+  #amRoot .rv-seg{background:rgba(120,130,150,.16);border-radius:14px;padding:3px}
+  #amRoot .rv-seg button{height:36px;padding:0 16px;border-radius:11px;font-weight:650}
+  #amRoot .rv-seg button.on{background:var(--panel);color:var(--text);font-weight:750;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  #amRoot .rv-sel,#amRoot select{height:42px;border:0;border-radius:14px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 4px 14px rgba(15,30,70,.06);padding:0 14px;font-weight:650}
+  #amRoot input[type="search"],#amRoot input[type="text"],#amRoot input:not([type]){height:44px;border:0;border-radius:14px;background:var(--panel2);padding:0 16px}
+  #amRoot .rv-card{border:0;border-radius:24px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06)}
+  #amRoot .rv-sum .v{font-size:28px;font-weight:800;letter-spacing:-.02em}
+  #amRoot .rv-sum .l{font-size:12.5px;font-weight:650;color:var(--muted)}
+  #amRoot .rv-note{border:0;border-radius:18px}
+  #amRoot .am-tabs{background:rgba(120,130,150,.16);border-radius:14px;padding:3px;display:inline-flex;gap:0;margin-bottom:16px}
+  #amRoot .am-tabs .am-tab{height:38px;padding:0 18px;border-radius:11px;font-weight:650;color:var(--muted)}
+  #amRoot .am-tabs .am-tab.active{background:var(--panel);color:var(--text);font-weight:750;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  #amRoot .am-tab.active .am-tab-n{background:#1f6fff}
+  #amRoot .am-table{border:0;border-radius:18px;box-shadow:none;background:transparent}
+  #amRoot .am-head .am-c{background:var(--panel2);font-size:12px;font-weight:700;color:var(--muted);padding-top:12px;padding-bottom:12px}
+  #amRoot .am-head .am-c:first-child{border-radius:14px 0 0 14px}
+  #amRoot .am-row{border-bottom:1px solid var(--border)}
+  #amRoot .am-row:not(.am-head):not(.am-foot):hover{background:rgba(31,111,255,.05)}
+  #amRoot .am-foot .am-c{background:var(--panel2)}
+  #amRoot .am-c-spend b,#amRoot .am-c-name .am-name{font-weight:750}
+  #amRoot .switch input:checked + .sw-track,#amRoot .switch input:checked ~ .sw-track{background:#1f6fff}
+  #amRoot .am-c-chk input{width:18px;height:18px;border-radius:6px}
 }
+
