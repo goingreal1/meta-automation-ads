@@ -12,6 +12,10 @@
   .pr-nm .cat-in{height:48px;border:0;border-radius:14px;background:var(--panel2);font-weight:650}
   .pr-sec{display:flex;align-items:baseline;justify-content:space-between;margin:22px 4px 10px}.pr-sec b{font-size:16px;font-weight:700}.pr-sec span{font-size:12px;color:var(--muted)}
   .pk{display:flex;align-items:center;gap:12px;width:100%;padding:14px 16px;margin-bottom:10px;border:2px solid transparent;border-radius:20px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);text-align:left;color:var(--text);font:inherit;cursor:pointer}
+  .pk{padding:6px 10px 6px 6px;gap:4px}.pk .pk-r{width:44px;height:44px;border:0;background:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none;padding:0}
+  .pk .pk-r i{width:22px;height:22px;border-radius:50%;border:2px solid var(--border);display:block;box-sizing:border-box}.pk.on .pk-r i{border:7px solid #1f6fff}
+  .pk .pk-m{flex:1;min-width:0;display:flex;align-items:center;gap:12px;border:0;background:none;color:var(--text);font:inherit;text-align:left;padding:10px 4px;cursor:pointer}
+  .pk .df{display:inline-flex;height:20px;padding:0 8px;border-radius:10px;background:rgba(24,163,90,.14);color:#127a43;font-size:11px;font-weight:750;align-items:center;margin-left:8px}
   .pk.on{border-color:#1f6fff}.pk .t{flex:1;min-width:0}.pk b{font-weight:700}.pk small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
   .pk .bd{display:inline-flex;height:20px;padding:0 8px;border-radius:10px;background:rgba(31,111,255,.12);color:#1f6fff;font-size:11px;font-weight:750;align-items:center;margin-left:8px}
   .pk .pc{font-size:18px;font-weight:750}.pk svg{width:18px;height:18px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -106,21 +110,24 @@
     const box = document.getElementById("prPk"); if (!box) return;
     const t = await loadTiers(p.id); CC.tiers[p.id] = t;
     const dflt = t.find((x) => x.is_default) || t[0];
-    box.innerHTML = t.map((x) => `<button type="button" class="pk${dflt && dflt.id === x.id ? " on" : ""}" onclick="ccPk('${p.id}','${x.id}')"><span class="t"><b>${esc(x.label)}</b>${x.badge ? `<span class="bd">${esc(x.badge)}</span>` : ""}<small>${x.quantity > 1 ? x.quantity + " pieces" : "1 piece"}</small></span><span class="pc">${money(x.price_naira)}</span>${CHEV}</button>`).join("")
+    const cur = Number(p.default_order_value_naira) || Number((document.getElementById("cd_price") || {}).value) || 0;
+    box.innerHTML = (t.length ? t.map((x) => { const on = dflt && dflt.id === x.id; return `<div class="pk${on ? " on" : ""}"><button type="button" class="pk-r" aria-label="Make this the default price" onclick="ccDefault('${p.id}','${x.id}')"><i></i></button><button type="button" class="pk-m" onclick="ccPk('${p.id}','${x.id}')"><span class="t"><b>${esc(x.label)}</b>${on ? `<span class="df">Default price</span>` : ""}${x.badge ? `<span class="bd">${esc(x.badge)}</span>` : ""}<small>${x.quantity > 1 ? x.quantity + " pieces" : "1 piece"}</small></span><span class="pc">${money(x.price_naira)}</span>${CHEV}</button></div>`; }).join("")
+      : (cur > 0 ? `<div class="pk on"><span class="pk-r" style="pointer-events:none"><i></i></span><span class="pk-m" style="cursor:default"><span class="t"><b>Your current price</b><span class="df">Default price</span><small>Becomes a package when you add another</small></span><span class="pc">${money(cur)}</span></span></div>` : ""))
       + `<button type="button" class="pk-add" onclick="ccPk('${p.id}')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add a package</button>`
-      + `<div class="pk-hint">${t.length ? "The outlined one is shown first. " : "Customers see these on your order page. "}Saves the moment you add it.</div>`;
+      + `<div class="pk-hint">${t.length ? "The ticked one is the default price, shown first. " : "Customers see these on your order page. "}Saves the moment you add it.</div>`;
     const pw = document.getElementById("prPriceWrap"); if (pw) pw.style.display = t.length ? "none" : "";
     if (dflt) { const pi = document.getElementById("cd_price"); if (pi) pi.value = dflt.price_naira; p.default_order_value_naira = dflt.price_naira; }
   }
   window.ccPk = function (pid, tid) {
     const t = CC.tiers[pid] || [], cur = tid ? t.find((x) => x.id === tid) : null;
-    let qty = cur ? Number(cur.quantity) || 1 : 1, best = !!(cur && cur.badge), first = cur ? !!cur.is_default : !t.length;
+    const pr0 = (window.bvCatData && window.bvCatData.prods.find((x) => x.id === pid)) || {}, price0 = Number(pr0.default_order_value_naira) || Number((document.getElementById("cd_price") || {}).value) || 0, seedNeeded = !cur && !t.length && price0 > 0;
+    let qty = cur ? Number(cur.quantity) || 1 : 1, best = !!(cur && cur.badge), first = cur ? !!cur.is_default : (!t.length && !seedNeeded);
     const w = sheet(`<h3 style="margin:0;font-size:19px;font-weight:750">${cur ? "Edit package" : "New package"}</h3>
       <div class="fl">Name</div><input type="text" id="pkName" value="${esc(cur ? cur.label : "")}" placeholder="e.g. 3 bottles">
       <div class="two"><div><div class="fl">Pieces</div><div class="st"><button type="button" id="pkMin" aria-label="Fewer">−</button><b id="pkQty">${qty}</b><button type="button" id="pkPlus" aria-label="More">+</button></div></div>
         <div><div class="fl">Price</div><input type="number" id="pkPrice" min="0" inputmode="numeric" value="${cur ? esc(cur.price_naira) : ""}" placeholder="65000"></div></div>
       <label class="sw" id="pkBest"><span>Show a "Best value" tag</span><i class="tg${best ? " on" : ""}"><i></i></i></label>
-      <label class="sw" id="pkFirst"><span>Make this the first one shown</span><i class="tg${first ? " on" : ""}"><i></i></i></label>
+      <label class="sw" id="pkFirst"><span>Make this the default price</span><i class="tg${first ? " on" : ""}"><i></i></i></label>
       <div id="pkMsg" style="color:#b3262c;font-size:13px;margin-top:10px;min-height:16px"></div>
       <button type="button" class="ca-act p" id="pkSave">Save package</button>${cur ? `<button type="button" class="rm" id="pkDel">Remove this package</button>` : ""}`, "pks");
     const q = (s) => w.querySelector(s);
@@ -136,8 +143,13 @@
       const row = { label, quantity: qty, price_naira: price, badge: best ? "Best value" : null };
       try {
         if (first) await supabaseClient.from("product_tiers").update({ is_default: false }).eq("product_id", pid).eq("is_default", true);
+        // The price the product already had must not disappear: the first package added also keeps it as a package of its own.
+        if (!cur && !t.length) {
+          const pr = (window.bvCatData && window.bvCatData.prods.find((x) => x.id === pid)) || {}, now = Number(pr.default_order_value_naira) || Number((document.getElementById("cd_price") || {}).value) || 0;
+          if (now > 0 && now !== price) { const sd = await supabaseClient.from("product_tiers").insert({ label: "1 piece", quantity: 1, price_naira: now, badge: null, product_id: pid, company_id: window.myProfile.company_id, is_default: !first, sort_order: 0 }); if (sd.error) throw sd.error; t.push({}); }
+        }
         const r = cur ? await supabaseClient.from("product_tiers").update({ ...row, is_default: first || (cur.is_default && !first && t.length === 1) }).eq("id", cur.id)
-          : await supabaseClient.from("product_tiers").insert({ ...row, product_id: pid, company_id: window.myProfile.company_id, is_default: first || !t.length, sort_order: t.length });
+          : await supabaseClient.from("product_tiers").insert({ ...row, product_id: pid, company_id: window.myProfile.company_id, is_default: first, sort_order: t.length });
         if (r.error) throw r.error;
         bvToast("Saved."); await done();
       } catch (e) { b.disabled = false; b.textContent = "Save package"; msg.textContent = "Could not save: " + (e.message || e); }
@@ -149,6 +161,13 @@
       if (was) { const next = t.find((x) => x.id !== cur.id); if (next) await supabaseClient.from("product_tiers").update({ is_default: true }).eq("id", next.id); }
       bvToast("Removed."); await done();
     };
+  };
+
+  window.ccDefault = async function (pid, tid) {
+    await supabaseClient.from("product_tiers").update({ is_default: false }).eq("product_id", pid).eq("is_default", true);
+    const r = await supabaseClient.from("product_tiers").update({ is_default: true }).eq("id", tid);
+    if (r && r.error) { bvToast("Could not set it: " + r.error.message, "err"); return; }
+    await bvSyncDefaultPrice(pid).catch(() => {}); const p = (window.bvCatData && window.bvCatData.prods.find((x) => x.id === pid)) || { id: pid }; await renderPk(p); bvToast("Default price set.");
   };
 
   async function renderLink(p) {
