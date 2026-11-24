@@ -209,7 +209,7 @@ async function bvOrderLinkModal(productId, productName) {
   const overlay = document.createElement("div");
   overlay.className = "bv-overlay";
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-  const baseUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "order.html";
+  const baseUrl = (window.RV_APP_ORIGIN || location.origin) + "/order.html";
 
   let buyers = [];
   try { buyers = await sbQuery("media_buyers", "select=id,code,name&order=code.asc") || []; } catch {}
