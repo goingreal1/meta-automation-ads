@@ -7,7 +7,8 @@
   const lite = () => { try { const c = navigator.connection; return !!(c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))); } catch (e) { return false; } };
   const canAds = () => ["owner", "admin", "buyer"].includes(window.myProfile && window.myProfile.role);
   const ready = () => typeof activeAccountId !== "undefined" && activeAccountId && window.myProfile && typeof sbFn === "function" && typeof am !== "undefined";
-  let running = false, last = 0, lastAcct = null;
+  let running = false, last = 0, lastAcct = null, pausedUntil = 0;
+  const limited = (e) => /limit|too many|rate/i.test(String(e || ""));
 
   // One Campaigns list for one range + status: first the database copy (fast, only if this device has nothing saved), then live from Meta.
   async function warmList(range, status) {
@@ -18,6 +19,7 @@
       if (c && c.ok && !c.none) amLocalSet(key, c);
     }
     const r = await sbFn("ads-manager", { action: "list", range, status }).catch(() => null);
+    if (r && (limited(r.error) || limited(r.stale_reason))) { pausedUntil = Date.now() + 10 * 60000; return; } // Meta asked us to slow down: stop warming for 10 minutes
     if (acct !== activeAccountId || !r || r.ok === false || r.error || r.stale) return;
     amLocalSet(key, r);
     // If this is the list the Campaigns screen will open on, hand it over already loaded.
@@ -26,7 +28,8 @@
 
   async function warm(force) {
     if (running || !ready()) return;
-    if (!force && Date.now() - last < 90000 && lastAcct === activeAccountId) return;
+    if (Date.now() < pausedUntil) return;
+    if (!force && Date.now() - last < 5 * 60000 && lastAcct === activeAccountId) return;
     running = true; last = Date.now(); lastAcct = activeAccountId;
     try {
       const homeRange = typeof OV !== "undefined" ? OV.range : 7;
@@ -36,10 +39,6 @@
         const home = homeRange === 1 ? "today" : homeRange === 30 ? "last30" : "last7";
         if (home !== am.range || am.filter !== "all") await warmList(home, "all");        // what tapping a campaign on Home needs
       }
-      if (lite()) return;                                                                  // slow or data-saver connection: stop at the essentials
-      await sleep(2500);
-      if (typeof hxWarm === "function") for (const r of [1, 7, 30]) { if (r !== homeRange) { await hxWarm(r); await sleep(1500); } }
-      if (canAds()) for (const [r, s] of [["last7", "live"], ["last30", "live"]]) { if (r !== am.range || s !== am.filter) { await warmList(r, s); await sleep(2500); } }
     } catch (e) { console.warn("warm-up", e); } finally { running = false; }
   }
   window.rvWarm = warm;

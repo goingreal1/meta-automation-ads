@@ -217,7 +217,7 @@
   window.hxCampaign = function (node) {
     const id = node && node.dataset ? node.dataset.id : "", name = node && node.dataset ? node.dataset.name : "";
     const r = OV.range === 1 ? "today" : OV.range === 30 ? "last30" : "last7";
-    if (typeof am !== "undefined") { am.range = r; am.filter = "all"; am.level = "campaigns"; }
+    if (typeof am !== "undefined") { if (typeof CP !== "undefined" && !CP.cxPrev) CP.cxPrev = { range: am.range, filter: am.filter }; am.range = r; am.filter = "all"; am.level = "campaigns"; }
     if (typeof CP !== "undefined") { CP.mlevel = "campaigns"; CP.mDetail = false; CP.sel = null; CP.cxTrail = []; CP.cxPending = id || name ? { id: id || "", name: name || "" } : null; }
     bvGoToTab("campaigns");
   };
