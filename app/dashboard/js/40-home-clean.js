@@ -78,7 +78,15 @@
   const esc = (s) => escH(String(s == null ? "" : s));
 
   const HX = (window.HX = window.HX || { cache: {} });
-  const hkey = () => [window.activeAccountId, OV.range, window.myProfile && window.myProfile.role].join("|");
+  const hkey = () => [typeof activeAccountId !== "undefined" ? activeAccountId : "", OV.range, window.myProfile && window.myProfile.role].join("|");
+  // Home is also kept on this device, so the next time the app opens it paints at once and refreshes in the background.
+  const LS = "rv_hx:", TTL = 12 * 3600 * 1000;
+  const getC = (k) => {
+    const m = HX.cache[k]; if (m) return Date.now() - m.at < TTL ? m : null;
+    try { const v = JSON.parse(localStorage.getItem(LS + k) || "null"); if (v && v.html && Date.now() - v.at < TTL) { HX.cache[k] = v; return v; } } catch (e) {}
+    return null;
+  };
+  const putC = (k, html) => { const v = { at: Date.now(), html }; HX.cache[k] = v; try { localStorage.setItem(LS + k, JSON.stringify(v)); } catch (e) { try { Object.keys(localStorage).filter((x) => x.startsWith(LS)).forEach((x) => localStorage.removeItem(x)); localStorage.setItem(LS + k, JSON.stringify(v)); } catch (z) {} } };
   const skel = () => `<div class="rv-ui"><div class="hx" aria-busy="true" aria-label="Loading"><div class="hx-greet"><div class="hx-sk" style="width:190px;height:26px"></div></div>
     <div class="hx-sk hero" style="height:262px;border-radius:26px"></div>
     <div class="hx-tiles">${[1, 2, 3].map(() => '<div class="hx-sk card" style="height:112px;margin:0"></div>').join("")}</div>
@@ -86,12 +94,14 @@
   // The screen shell asks bvSkel() for a placeholder before it draws Home: give it the last Home we drew (instant, no flash) or a placeholder shaped like the new Home.
   const prevSkel = window.bvSkel;
   window.bvSkel = function (kind) {
-    if (kind === undefined && typeof activeTab !== "undefined" && activeTab === "overview") { const c = HX.cache[hkey()]; return c && Date.now() - c.at < 300000 ? c.html : skel(); }
+    if (kind === undefined && typeof activeTab !== "undefined" && activeTab === "overview") { const c = getC(hkey()); return c ? c.html : skel(); }
     return prevSkel ? prevSkel.apply(this, arguments) : "";
   };
-  window.hxRefresh = function () { HX.cache = {}; if (typeof liveDaily !== "undefined") liveDaily.at = 0; render(); };
+  // Builds Home (and keeps it) without showing it; used by the start-up warm-up. Other ranges can be warmed by passing 1, 7 or 30.
+  window.hxWarm = async function (range) { const keep = OV.range; try { if (range) OV.range = range; const p = hx(document.createElement("div"), true, true); OV.range = keep; await p; } catch (e) { OV.range = keep; } };
+  window.hxRefresh = function () { HX.cache = {}; try { Object.keys(localStorage).filter((x) => x.startsWith(LS)).forEach((x) => localStorage.removeItem(x)); } catch (e) {} if (typeof liveDaily !== "undefined") liveDaily.at = 0; render(); };
 
-  async function hx(el, quiet) {
+  async function hx(el, quiet, warm) {
     const role = window.myProfile?.role, isAdmin = bvIsAdminRole(), canAds = ["owner", "admin", "buyer"].includes(role);
     const n = OV.range, until = watDate(0), since = watDate(-(n - 1)), pUntil = watDate(-n), pSince = watDate(-(2 * n - 1));
     const tabAtStart = typeof activeTab !== "undefined" ? activeTab : null, ckey = hkey();
@@ -179,16 +189,16 @@
     const hour = new Date(Date.now() + 3600000).getUTCHours(), first = String(window.myProfile?.display_name || "").split(" ")[0];
     const greet = (hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening") + (first ? ", " + esc(first) : "");
     const spendLabel = hasAds ? "Spent" : "Orders";
-    if (tabAtStart !== null && typeof activeTab !== "undefined" && activeTab !== tabAtStart) return; // the person already moved to another screen
-    if (quiet && !el.querySelector(".hx")) return;
+    if (!warm && tabAtStart !== null && typeof activeTab !== "undefined" && activeTab !== tabAtStart) return; // the person already moved to another screen
+    if (quiet && !warm && !el.querySelector(".hx")) return;
     el.innerHTML = `<div class="rv-ui"><div class="hx">
       <div class="hx-greet"><div><b>${greet}</b></div></div>
-      <div class="hx-hero"><div class="hx-row"><small>${spendLabel}</small><div class="hx-seg">${[[1, "Today"], [7, "7d"], [30, "30d"]].map((r) => `<button type="button" class="${OV.range === r[0] ? "on" : ""}" onclick="OV.range=${r[0]};render()">${r[1]}</button>`).join("")}</div></div>
+      <div class="hx-hero"><div class="hx-row"><small>${spendLabel}</small><div class="hx-seg">${[[1, "Today"], [7, "7d"], [30, "30d"]].map((r) => `<button type="button" class="${n === r[0] ? "on" : ""}" onclick="OV.range=${r[0]};render()">${r[1]}</button>`).join("")}</div></div>
         <div class="hx-spend">${hasAds ? fN(C.spend) : ovNum(cur.length)}${dl && dl.t ? `<span class="hx-delta">${esc(dl.t)}</span>` : ""}</div>
         ${hasAds ? `<svg class="hx-spark" viewBox="0 0 330 90" preserveAspectRatio="none" aria-hidden="true"><path d="${area}" fill="rgba(120,170,255,.22)"/><path d="${line}" fill="none" stroke="#7fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>` : '<div style="height:14px"></div>'}
         <div class="hx-three">${three.map((t) => `<div><b>${esc(t[0])}</b><span>${esc(t[1])}</span></div>`).join("")}</div></div>
       ${notes}${tilesHtml}${funnel}${campHtml}${accHtml}${buyerHtml}</div></div>`;
-    HX.cache[ckey] = { at: Date.now(), html: el.innerHTML };
+    putC(ckey, el.innerHTML);
   }
 
   window.hxExplain = function () {
@@ -214,9 +224,9 @@
   window.hxJourney = function () { if (typeof window.jnOpen === "function") window.jnOpen(); else bvGoToTab("journeys"); };
 
   window.renderOverview = async function (el) {
-    const c = HX.cache[hkey()];
+    const c = getC(hkey());
     try {
-      if (c && Date.now() - c.at < 300000) {
+      if (c) {
         if (!el.querySelector(".hx")) el.innerHTML = c.html;
         if (Date.now() - c.at > 45000) await hx(el, true); // refresh quietly in the background; no placeholder, no flash
         return;
