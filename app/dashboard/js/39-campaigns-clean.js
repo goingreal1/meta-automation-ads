@@ -83,6 +83,10 @@
   .cx-foot{display:flex;gap:10px;margin-top:20px;position:sticky;bottom:0;background:var(--panel);padding-top:6px}
   .cx-foot button{height:50px;border:0;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer}
   .cx-foot .g{padding:0 20px;background:var(--panel2);color:var(--text)}.cx-foot .p{flex:1;background:#1f6fff;color:#fff}
+  .cx-sk{background:rgba(130,145,160,.2);border-radius:14px;animation:cxsh 1.25s ease-in-out infinite}
+  .cx-skc{padding:16px;border-radius:24px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);margin:0 0 12px}
+  @keyframes cxsh{0%,100%{opacity:.55}50%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.cx-sk{animation:none}}
   /* page grey behind white cards, and no card-inside-a-card */
   [data-theme="light"] body:has(.cx), body[data-theme="light"]:has(.cx){background:#f1f3f8}
   .rv-ui .cp-old:has(.cx){background:transparent}
@@ -216,7 +220,7 @@
       <div class="cx-pillrow"><button type="button" class="cx-num" onclick="cxPick()">${ic.tune}Numbers on cards \u00b7 Change</button>
         <button type="button" class="cx-num" onclick="bvOpenDraftsModal()">Drafts</button>
 </div></div>
-      ${rows.length ? rows.map((r) => card(lvl, r)).join("") + `<div class="cx-tot">${rows.length} ${word}${rows.length === 1 ? "" : "s"} · ${fN(tot.spend)} spent${tot.label ? ` · ${tot.results.toLocaleString("en-NG")} ${tot.label.toLowerCase()}` : ""}</div>` : `<div class="cx-empty">${am.q ? "Nothing matches your search." : "Nothing here for this filter."}</div>`}</div>`;
+      ${!rows.length && (am.loading || CP.cxPending) ? skCard() + skCard() : rows.length ? rows.map((r) => card(lvl, r)).join("") + `<div class="cx-tot">${rows.length} ${word}${rows.length === 1 ? "" : "s"} · ${fN(tot.spend)} spent${tot.label ? ` · ${tot.results.toLocaleString("en-NG")} ${tot.label.toLowerCase()}` : ""}</div>` : `<div class="cx-empty">${am.q ? "Nothing matches your search." : "Nothing here for this filter."}</div>`}</div>`;
   }
   // the old search handler redraws the list part only on the tree; on the phone list it must redraw the whole screen
   window.cxSearch = function () { CP.cxSearch = !CP.cxSearch; amDraw(); const n = document.querySelector('.cx-search2'); if (n) n.focus(); };
@@ -272,6 +276,36 @@
         <div class="cx-kbar"><i style="width:${Math.max(4, Math.min(100, (Number(k.spend) || 0) / (top || 1) * 100))}%;background:${col}"></i></div>
         <small>${fN(k.spend)} spent \u00b7 ${res} ${res === 1 ? "result" : "results"}</small></div></div>`;
   }
+
+  // ---------- loading placeholder shaped like the new cards ----------
+  const skCard = () => `<div class="cx-skc"><div style="display:flex;gap:10px;align-items:center"><div class="cx-sk" style="width:10px;height:10px;border-radius:5px"></div><div style="flex:1"><div class="cx-sk" style="width:55%;height:15px"></div><div class="cx-sk" style="width:30%;height:11px;margin-top:6px"></div></div><div class="cx-sk" style="width:46px;height:28px;border-radius:14px"></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px"><div><div class="cx-sk" style="width:90px;height:11px"></div><div class="cx-sk" style="width:130px;height:28px;margin-top:8px"></div></div><div class="cx-sk" style="width:80px;height:34px"></div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:16px;padding-top:12px">${[96, 88, 110, 92, 78].map((w) => `<div class="cx-sk" style="width:${w}px;height:30px;border-radius:15px"></div>`).join("")}</div></div>`;
+  const skScreen = () => `<div class="cx cx-list" aria-busy="true" aria-label="Loading"><div class="cx-head"><h1>Campaigns</h1></div><div class="cx-bar"><div class="cx-sk" style="height:46px;border-radius:14px"></div><div class="cx-sk" style="height:46px;border-radius:14px"></div></div>${skCard()}${skCard()}${skCard()}</div>`;
+  window.cxSkeleton = skScreen;
+  const prevSkel = window.bvSkel;
+  window.bvSkel = function (kind) {
+    const onCamp = typeof activeTab !== "undefined" && activeTab === "campaigns";
+    if (onCamp && (kind === undefined || kind === "table")) return `<div class="rv-ui">${skScreen()}</div>`;
+    return prevSkel ? prevSkel.apply(this, arguments) : "";
+  };
+
+  // ---------- opening a campaign from Home (waits until the live list has arrived) ----------
+  function resolvePending() {
+    const p = CP.cxPending; if (!p || !am.data) return;
+    const c = (am.data.campaigns || []).find((x) => (p.id && x.id === p.id) || (!p.id && p.name && x.name === p.name) || (p.id && p.name && x.name === p.name));
+    if (c) {
+      CP.cxPending = null; CP.cxTrail = [null]; CP.sel = { l: "campaigns", id: c.id }; CP.open.add(c.id); CP.tab = "overview"; CP.mDetail = true;
+      try { if (typeof bvNavPush === "function") bvNavPush(); } catch (e) {}
+    } else if (!am.loading) CP.cxPending = null;
+  }
+  const prevDraw = window.amDraw;
+  window.amDraw = function () {
+    try { resolvePending(); } catch (e) { console.error("campaign open", e); }
+    const root = typeof amEl === "function" ? amEl() : null;
+    if (root && !am.data && !am.error && window.matchMedia("(max-width: 860px)").matches) { root.classList.add("rv-ui"); root.innerHTML = skScreen(); return; }
+    return prevDraw.apply(this, arguments);
+  };
 
   // ---------- navigation (the phone's Back button goes up one level, then to the list) ----------
   CP.cxTrail = [];
