@@ -190,9 +190,7 @@
   function card(level, r) {
     const d = am.data, on = r.status === "ACTIVE", busy = am.busy.has(r.id), v = verdict(r);
     let sub = "";
-    if (level === "adsets") sub = (d.campaigns.find((c) => c.id === r.campaign_id) || {}).name || "";
-    if (level === "ads") sub = (d.adsets.find((x) => x.id === r.adset_id) || {}).name || "";
-    if (level !== "ads" && r.daily_budget) sub += (sub ? " · " : "") + fN(r.daily_budget) + " a day";
+    if (level !== "ads" && r.daily_budget) sub = fN(r.daily_budget) + " a day";
     const thumb = level === "ads" ? `<img class="cx-th" src="${esc(r.thumbnail_url || "")}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="cx-dot ${v[2]}"></span>`;
     const hv = heroCost(r);
     return `<div class="cx-card${on ? "" : " off"}" onclick="cxOpen('${level}','${r.id}')">
@@ -257,7 +255,6 @@
       <div class="cx-top"><button type="button" class="cx-back" onclick="cxBackBtn()" aria-label="Back">${ic.back}</button>
         <div style="flex:1;min-width:0"><span class="cx-tag">${LEVEL[l][1]}</span><div class="cx-title">${esc(r.name)}</div><div class="cx-st"><i class="${on ? "ok" : ""}"></i>${esc(v[0] === "Scheduled" ? "Scheduled" : on ? "Live" : amStatusWord(r.effective_status || r.status)[0])}</div></div>
         ${real ? `<label class="switch" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${lvl}','${r.id}',this)"><span class="sw-track"></span></label>` : ""}</div>
-      ${crumb ? `<div class="cx-crumb">${crumb}</div>` : ""}
       ${pic}
       <div class="cx-hero"><small>${esc(heroLabel(r))}</small><span class="cx-hv">${hv != null ? fN(hv) : "—"}</span><span class="cx-v ${v[1]}">${esc(v[0])}</span>
         <div class="cx-pills">${pillsFor(r, 0)}</div></div>
