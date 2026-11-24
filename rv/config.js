@@ -3,3 +3,5 @@
    e.g. "https://sites.yourbrand.com", so customer sites cannot touch dashboard logins. */
 window.RV_SITE_ORIGIN = "https://revora-sites.vercel.app";
 window.RV_siteUrl = function (slug, page) { return (window.RV_SITE_ORIGIN || location.origin) + "/s/" + slug + (page ? "/" + page : ""); };
+/* Revora's own dashboard domain: the standalone order page (order.html) is served from here, never from the free Vercel address. */
+window.RV_APP_ORIGIN = "https://dash.revoracrm.online";
