@@ -247,15 +247,9 @@ async function renderProducts(el) {
           <div class="field"><label>Low-stock alert at</label><input id="p_stock_threshold" type="number" min="0" step="1" value="10"></div>
         </div>
         <div class="fg" style="margin-top:11px;">
+          <div class="field"><label>Country you sell in <span style="font-weight:400;color:var(--muted);">(fills in the currency)</span></label><select id="p_country" onchange="document.getElementById('p_currency').value=bvCurOf(this.value)">${BV_COUNTRIES.map(([c, n]) => `<option value="${c}">${escH(n)}</option>`).join("")}</select></div>
           <div class="field"><label>Currency</label>
-            <select id="p_currency">
-              <option value="NGN">NGN — Naira</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="CNY">CNY — Yuan</option>
-              <option value="INR">INR — Rupee</option>
-              <option value="GBP">GBP — Pound</option>
-              <option value="EUR">EUR — Euro</option>
-            </select>
+            <select id="p_currency">${bvCurOpts("NGN")}<option value="CNY">CNY</option><option value="INR">INR</option></select>
           </div>
           <div class="field">
             <label>Product photo <span style="font-weight:400;color:var(--muted);">(shown on the order form)</span></label>
@@ -461,6 +455,7 @@ function bvEditProduct(id) {
   document.getElementById("p_stock").value = p.stock_on_hand ?? "";
   document.getElementById("p_stock_threshold").value = p.low_stock_threshold ?? 10;
   document.getElementById("p_currency").value = p.currency || "NGN";
+  { const pc = document.getElementById("p_country"); if (pc) pc.value = (p.target_countries && p.target_countries[0] && BV_CUR[p.target_countries[0]] === (p.currency || "NGN") ? p.target_countries[0] : "") || Object.keys(BV_CUR).find((k) => BV_CUR[k] === (p.currency || "NGN")) || "NG"; }
   document.getElementById("p_val").value = p.default_order_value_naira || 19000;
   document.getElementById("p_url").value = p.landing_page_url || "";
   document.getElementById("p_destination").value = p.destination_type || "website";
