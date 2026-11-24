@@ -53,6 +53,14 @@
   .cx-hero .cx-pill{background:rgba(255,255,255,.12);color:#b8c8ee}.cx-hero .cx-pill b{color:#fff}
   .cx-pic{margin-top:14px;border-radius:26px;overflow:hidden;background:rgba(130,145,160,.16);position:relative;height:300px}
   .cx-pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+  .cx-cp{margin-top:12px;padding:18px;border-radius:24px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06)}
+  .cx-cp small{display:block;font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin:0 0 6px}
+  .cx-cp .t{font-size:15px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden}
+  .cx-cp .t.open{-webkit-line-clamp:unset;display:block}
+  .cx-cp .h{font-size:17px;font-weight:750;line-height:1.3;overflow-wrap:anywhere}
+  .cx-cp .more{border:0;background:none;color:#1f6fff;font-weight:700;font-size:13px;padding:8px 0 0;min-height:44px;cursor:pointer}
+  .cx-cp hr{border:0;border-top:1px solid var(--border);margin:16px 0}
+  .cx-btnp{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:12px;background:#e4e6eb;color:#1c1e21;font-weight:700;font-size:14px}
   .cx-acts{display:flex;justify-content:space-around;gap:8px;margin-top:16px}
   .cx-act{border:0;background:transparent;color:var(--text);padding:0;display:flex;flex-direction:column;align-items:center;gap:6px;min-height:44px;cursor:pointer;font-size:12px;font-weight:650;text-decoration:none}
   .cx-act i{width:52px;height:52px;border-radius:18px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);color:#1f6fff;display:flex;align-items:center;justify-content:center}
@@ -255,13 +263,13 @@
       <div class="cx-top"><button type="button" class="cx-back" onclick="cxBackBtn()" aria-label="Back">${ic.back}</button>
         <div style="flex:1;min-width:0"><span class="cx-tag">${LEVEL[l][1]}</span><div class="cx-title">${esc(r.name)}</div><div class="cx-st"><i class="${on ? "ok" : ""}"></i>${esc(v[0] === "Scheduled" ? "Scheduled" : on ? "Live" : amStatusWord(r.effective_status || r.status)[0])}</div></div>
         ${real ? `<label class="switch" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${lvl}','${r.id}',this)"><span class="sw-track"></span></label>` : ""}</div>
-      ${pic}
       <div class="cx-hero"><small>${esc(heroLabel(r))}</small><span class="cx-hv">${hv != null ? fN(hv) : "—"}</span><span class="cx-v ${v[1]}">${esc(v[0])}</span>
         <div class="cx-pills">${pillsFor(r, 0)}</div></div>
       ${flag ? `<div class="cx-warn"><span>${esc(r.suggestion.reason)}</span><button type="button" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause</button></div>` : ""}
       <button type="button" class="cx-num" style="margin-top:12px" onclick="cxPick()">${ic.tune}Change numbers</button>
       ${acts ? `<div class="cx-acts">${acts}</div>` : ""}
       ${jy ? `<button type="button" class="cx-link" onclick="${l === 'ads' ? `jyAdPanel('${r.id}')` : 'jnOpen()'}"><i>${ic.eye}</i><span><b>${jy.n} ${jy.n === 1 ? "person" : "people"} visited${l === "ads" ? " from this ad" : ""}</b><small>${jy.o ? jy.o + " ordered · " : ""}See what they did</small></span>${ic.chev}</button>` : ""}
+      ${l === "ads" ? `${pic}${copyBlock(r)}` : ""}
       ${kidsLevel ? `<div class="cx-sec">${LEVEL[kidsLevel][1]}s</div>${kids.length ? kids.map((k) => kidRow(kidsLevel, k, Math.max(...kids.map((x) => Number(x.spend) || 0)))).join("") : `<div class="cx-empty">Nothing here yet.</div>`}` : ""}</div>`;
   }
   function kidRow(level, k, top) {
@@ -318,6 +326,25 @@
   const tb = document.getElementById("tabsBar");
   if (tb) tb.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".tab-btn"); if (b && b.dataset.tab === "campaigns" && CP.cxPrev) { am.range = CP.cxPrev.range; am.filter = CP.cxPrev.filter; CP.cxPrev = null; } }, true);
   ["amSetRange", "amSetFilter"].forEach((n) => { const f = window[n]; if (typeof f === "function") window[n] = function () { CP.cxPrev = null; return f.apply(this, arguments); }; });
+
+  // ---------- the ad's own words: primary text, headline and the button it uses ----------
+  const CX = (window.CX = window.CX || { copy: {} });
+  const ctaWord = (c) => { const k = String(c || "").toUpperCase(); const m = { WHATSAPP_MESSAGE: "Send WhatsApp message", MESSAGE_PAGE: "Send message", SEND_MESSAGE: "Send message", SHOP_NOW: "Shop now", LEARN_MORE: "Learn more", ORDER_NOW: "Order now", BUY_NOW: "Buy now", SIGN_UP: "Sign up", CONTACT_US: "Contact us", CALL_NOW: "Call now", GET_OFFER: "Get offer", BOOK_TRAVEL: "Book now", NO_BUTTON: "" }; if (k in m) return m[k]; const w = k.replace(/_/g, " ").toLowerCase(); return w.charAt(0).toUpperCase() + w.slice(1); };
+  function loadCopy(id) {
+    if (CX.copy[id] !== undefined || CX.copyBusy === id) return; CX.copyBusy = id;
+    sbRpc("rv_ad_copy", { p_ad: id }).then((r) => { CX.copy[id] = r && typeof r === "object" && !Array.isArray(r) ? r : null; }).catch(() => { CX.copy[id] = null; })
+      .finally(() => { CX.copyBusy = null; if (document.querySelector(".cx-detail") && CP.sel && CP.sel.id === id) amDraw(); });
+  }
+  function copyBlock(r) {
+    const c = CX.copy[r.id];
+    if (c === undefined) { loadCopy(r.id); return `<div class="cx-cp" aria-busy="true"><div class="cx-sk" style="width:40%;height:12px"></div><div class="cx-sk" style="height:14px;margin-top:12px"></div><div class="cx-sk" style="width:85%;height:14px;margin-top:8px"></div><div class="cx-sk" style="width:60%;height:14px;margin-top:8px"></div></div>`; }
+    if (!c || !(c.primary_text || c.headline || c.cta)) return "";
+    const btn = ctaWord(c.cta), long = String(c.primary_text || "").length > 220;
+    return `<div class="cx-cp">${c.primary_text ? `<small>Ad copy</small><div class="t" id="cxT">${esc(c.primary_text)}</div>${long ? `<button type="button" class="more" onclick="const t=document.getElementById('cxT');t.classList.toggle('open');this.textContent=t.classList.contains('open')?'Show less':'Show more'">Show more</button>` : ""}` : ""}
+      ${c.headline ? `${c.primary_text ? "<hr>" : ""}<small>Headline</small><div class="h">${esc(c.headline)}</div>` : ""}
+      ${c.description ? `<div style="margin-top:6px;color:var(--text2);font-size:14px">${esc(c.description)}</div>` : ""}
+      ${btn ? `<hr><small>Button</small><span class="cx-btnp">${esc(btn)}</span>` : ""}</div>`;
+  }
 
   // ---------- navigation (the phone's Back button goes up one level, then to the list) ----------
   CP.cxTrail = [];
