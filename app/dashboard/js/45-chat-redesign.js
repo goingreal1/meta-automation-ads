@@ -24,6 +24,11 @@
   [data-theme="dark"] #convTabRoot .ix-r .ix-l1 time.wt{background:#3a2d12;color:#f0b04a}
   #convTabRoot .ix-tg{border:0;border-radius:11px;background:var(--panel2);color:var(--text);font-weight:650;padding:3px 10px}
   #convTabRoot .ix-tg:not(:first-child){background:rgba(31,111,255,.12);color:#1f6fff}
+  /* ---- the list fills the screen and scrolls with the page, like WhatsApp (it used to be a short box with its own scrollbar) ---- */
+  @media (max-width:820px){
+    #convTabRoot:not(.thread-open) .conv-list-items,#convTabRoot .conv-list-items{height:auto!important;max-height:none!important;overflow:visible!important}
+    #convTabRoot:not(.thread-open) #convListPanel{overflow:visible!important}
+  }
   /* ---- conversation ---- */
   #convTabRoot #convThread{background:var(--bg)}
   #convTabRoot .conv-thread-head.ch2{background:var(--panel);box-shadow:0 1px 0 var(--border);padding:8px 10px;min-height:64px}
@@ -61,6 +66,7 @@
   .fc-box>p{margin:4px 0 0;font-size:13px;color:var(--muted)}
   .fc-go{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;margin-top:10px;border:0;border-radius:14px;background:#1f6fff;color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
   .fc-or{font-size:12px;color:var(--muted);margin:12px 2px 6px}
+  .fc-sel{width:100%;height:50px;border:0;border-radius:14px;background:var(--panel);color:var(--text);font:inherit;font-size:15px;font-weight:650;padding:0 14px;appearance:auto}
   .fc-ch{display:flex;gap:8px;flex-wrap:wrap}.fc-ch button{height:36px;padding:0 14px;border:0;border-radius:18px;background:var(--panel);color:var(--text);font:inherit;font-size:13px;font-weight:650;cursor:pointer}
   .fc-ch button.on{background:#1f6fff;color:#fff}`;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);

@@ -94,7 +94,7 @@
     window._caOpts = sg.opts;
     el.innerHTML = `<div class="fc-box"><small>FOR THIS CUSTOMER</small><p>${esc(sg.note)}</p>
       ${sg.primary ? `<button type="button" class="fc-go" onclick="caUse('${esc(sg.primary.label)}')">Send the ${esc(sg.primary.label.toLowerCase())}</button>` : ""}
-      ${sg.askProduct ? `<div class="fc-or">Pick the product</div><div class="fc-ch">${sg.askProduct.map((p) => `<button type="button" onclick="caRemember('${p.id}')">${esc(p.product_name)}</button>`).join("")}</div>` : ""}
+      ${sg.askProduct ? `<div class="fc-or">Pick the product</div><select class="fc-sel" aria-label="Pick the product" onchange="if(this.value)caRemember(this.value)"><option value="">Choose a product…</option>${sg.askProduct.map((p) => `<option value="${esc(p.id)}">${esc(p.product_name)}</option>`).join("")}</select>` : ""}
       ${sg.opts.length ? `<div class="fc-or">${sg.primary ? "Or choose another" : "Choose what to send"}</div><div class="fc-ch">${sg.opts.map((o) => `<button type="button" class="${sg.primary && sg.primary.label === o.label ? "on" : ""}" onclick="caUse('${esc(o.label)}')">${esc(o.label)}</button>`).join("")}</div>` : ""}</div>`;
   };
   window.caUse = function (label) { const o = (window._caOpts || []).find((x) => x.label === label); if (o) draft(o.text, { label: o.btn, url: o.url }); };
