@@ -247,7 +247,7 @@
     const a = (window.bvCatData.assets || []).find((x) => x.id === id); if (!a) return;
     const rows = await sbQuery("creative_assets", `select=id,primary_text,headline,description,cta_type&id=eq.${id}`).catch(() => []), t = (rows && rows[0]) || {};
     const media = a.asset_type === "video" ? `<video src="${esc(a.public_url)}" controls playsinline preload="metadata"></video>` : a.asset_type === "carousel" ? `<img src="${esc(((a.carousel_cards || [])[0] || {}).image_url || a.public_url)}" alt="">` : a.public_url && !/facebook\.com/.test(a.public_url) ? `<img src="${esc(a.public_url)}" alt="">` : "";
-    const canPost = ["image", "video"].includes(a.asset_type), pname = (window.bvCatData.prods.find((p) => p.id === a.product_id) || {}).product_name || "";
+    const canPost = ["image", "video"].includes(a.asset_type) || (a.asset_type === "carousel" && (a.carousel_cards || []).filter((c) => c && c.image_url).length >= 2), pname = (window.bvCatData.prods.find((p) => p.id === a.product_id) || {}).product_name || "";
     const cta = String(t.cta_type || "").replace(/_/g, " ").toLowerCase(), ctaTxt = cta ? cta.charAt(0).toUpperCase() + cta.slice(1) : "";
     const ov = document.createElement("div"); ov.className = "cd-ov rv-ui"; ov.id = "ccDetail";
     ov.innerHTML = `<div class="cd-in"><div class="cd-top"><button type="button" class="cd-back" aria-label="Back" onclick="ccClose()"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button><div style="flex:1;min-width:0"><span class="cd-tag">Creative</span><h2>${esc(a.display_name || a.file_name || "Untitled")}</h2></div></div>
@@ -276,7 +276,7 @@
       <div class="pg"><i>${esc((pre.page_name || "P").charAt(0).toUpperCase())}</i>${sel}</div>
       <div class="bx"><div class="th">${media}</div><textarea id="ppCap" aria-label="Caption">${esc(pre.caption || "")}</textarea></div>
       <div id="ppRes" style="font-size:13px;margin-top:10px;min-height:16px"></div>
-      <button type="button" class="go" id="ppGo">Post to ${esc(pre.page_name || "your Page")}</button><div class="nt">Shows on your Page straight away. It is a normal post, not an ad.</div>`;
+      <button type="button" class="go" id="ppGo">Post to ${esc(pre.page_name || "your Page")}</button><div class="nt">${pre.kind === "carousel" ? `All ${pre.count || ""} pictures go in one post, shown as a photo grid (a Page post cannot swipe like an ad carousel).` : "Shows on your Page straight away. It is a normal post, not an ad."}</div>`;
     const go = w.querySelector("#ppGo"), res = w.querySelector("#ppRes");
     go.onclick = async () => {
       const message = w.querySelector("#ppCap").value.trim(); if (!message) { res.style.color = "#b3262c"; res.textContent = "Write a caption first."; return; }
