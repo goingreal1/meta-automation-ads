@@ -75,11 +75,20 @@ Deno.serve(async (req)=>{
     const usable = await allIds(`act_${act}/promote_pages`);
     if (!usable.has(pageId)) {
       const shared = BM ? await allIds(`${BM}/client_pages`) : new Set();
-      if (shared.has(pageId)) return json({
-        status: "not_usable",
-        business_id: BM || null,
-        error: "We can see that Page, but this ad account can't advertise as it yet. Make sure you gave Revora permission to create ads on the Page, then try again."
-      });
+      if (shared.has(pageId)) {
+        // Revora can see the Page, but Meta says this ad account itself cannot advertise as it: say whose ad account it is, so the right Business gets the access.
+        let who = "";
+        try {
+          const ab = await get(`act_${act}?fields=business{id,name},owner`);
+          const bz = ab?.business ?? null;
+          who = bz?.id ? ` This ad account belongs to the Business "${bz.name ?? bz.id}" (ID ${bz.id}).` : "";
+        } catch (_) { /* the plain message still helps */ }
+        return json({
+          status: "not_usable",
+          business_id: BM || null,
+          error: `Revora can see that Page, but Meta does not let this ad account advertise as it.${who} In Meta Business Settings, open Pages, pick the Page, tap Add partner and add the Business that owns this ad account with permission to create ads. Then try again.`
+        });
+      }
       return json({
         status: "not_shared",
         business_id: BM || null,
