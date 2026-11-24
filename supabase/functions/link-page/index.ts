@@ -11,10 +11,10 @@ const json = (o, status = 200)=>new Response(JSON.stringify(o), {
       "Access-Control-Allow-Origin": "*"
     }
   });
-const get = async (path)=>(await fetch(`${G}/${path}${path.includes("?") ? "&" : "?"}access_token=${TOKEN}`)).json().catch(()=>({}));
-async function allIds(path) {
+const get = async (path, tok = TOKEN)=>(await fetch(`${G}/${path}${path.includes("?") ? "&" : "?"}access_token=${tok}`)).json().catch(()=>({}));
+async function allIds(path, tok = TOKEN) {
   const ids = new Set();
-  let next = `${G}/${path}${path.includes("?") ? "&" : "?"}fields=id&limit=200&access_token=${TOKEN}`;
+  let next = `${G}/${path}${path.includes("?") ? "&" : "?"}fields=id&limit=200&access_token=${tok}`;
   for(let i = 0; next && i < 10; i++){
     const j = await fetch(next).then((r)=>r.json()).catch(()=>({}));
     for (const x of j?.data ?? [])ids.add(String(x.id));
@@ -56,9 +56,15 @@ Deno.serve(async (req)=>{
       const shared = BM ? await allIds(`${BM}/client_pages`) : new Set();
       const page = await get(`${pageId}?fields=name`);
       if (shared.has(pageId)) return json({ status: "shared", page_id: pageId, page_name: page?.name ?? null });
+      // Or the person's own Meta login can already see the Page (their Business owns it).
+      const { data: cAccts } = await db.from("ad_accounts").select("meta_connection_id").eq("company_id", me.company_id).not("meta_connection_id", "is", null);
+      for (const cid of [...new Set((cAccts ?? []).map((x)=>x.meta_connection_id).filter(Boolean))].slice(0, 4)) {
+        const { data: c } = await db.from("meta_connections").select("access_token, status").eq("id", cid).maybeSingle();
+        if (c?.status === "active" && c.access_token) { const pg = await get(`${pageId}?fields=name`, c.access_token); if (pg?.name) return json({ status: "shared", page_id: pageId, page_name: pg.name }); }
+      }
       return json({ status: "not_shared", business_id: BM || null, error: `Share that Page with Revora first (Business Settings, Pages, Add partner${BM ? ", Business ID " + BM : ""}), then check again.` });
     }
-    const { data: acc } = await db.from("ad_accounts").select("id, company_id, meta_ad_account_id, fb_page_id").eq("id", String(body.ad_account_id ?? "")).maybeSingle();
+    const { data: acc } = await db.from("ad_accounts").select("id, company_id, meta_ad_account_id, fb_page_id, meta_connection_id").eq("id", String(body.ad_account_id ?? "")).maybeSingle();
     if (!acc || acc.company_id !== me.company_id) return json({
       error: "Unknown ad account."
     }, 404);
@@ -72,30 +78,40 @@ Deno.serve(async (req)=>{
       error: "That Page is already linked to another Revora company. If it's yours, contact support."
     }, 409);
     const act = String(acc.meta_ad_account_id).replace(/\D/g, "");
-    const usable = await allIds(`act_${act}/promote_pages`);
-    if (!usable.has(pageId)) {
-      const shared = BM ? await allIds(`${BM}/client_pages`) : new Set();
-      if (shared.has(pageId)) {
-        // Revora can see the Page, but Meta says this ad account itself cannot advertise as it: say whose ad account it is, so the right Business gets the access.
-        let who = "";
-        try {
-          const ab = await get(`act_${act}?fields=business{id,name},owner`);
-          const bz = ab?.business ?? null;
-          who = bz?.id ? ` This ad account belongs to the Business "${bz.name ?? bz.id}" (ID ${bz.id}).` : "";
-        } catch (_) { /* the plain message still helps */ }
-        return json({
-          status: "not_usable",
-          business_id: BM || null,
-          error: `Revora can see that Page, but Meta does not let this ad account advertise as it.${who} In Meta Business Settings, open Pages, pick the Page, tap Add partner and add the Business that owns this ad account with permission to create ads. Then try again.`
-        });
+    // The person's own Meta login (the one their ad accounts and Pages live under) sees what Revora's shared access may not.
+    const { data: conAccts } = await db.from("ad_accounts").select("meta_connection_id").eq("company_id", me.company_id).not("meta_connection_id", "is", null);
+    const conIds = [...new Set([acc.meta_connection_id, ...(conAccts ?? []).map((x)=>x.meta_connection_id)].filter(Boolean))].slice(0, 4);
+    const toks: string[] = [];
+    for (const cid of conIds) { const { data: c } = await db.from("meta_connections").select("access_token, status").eq("id", cid).maybeSingle(); if (c?.status === "active" && c.access_token) toks.push(c.access_token); }
+    toks.push(TOKEN);
+    let usable = false, via = "";
+    for (const t of toks) { if ((await allIds(`act_${act}/promote_pages`, t)).has(pageId)) { usable = true; via = t === TOKEN ? "Revora" : "your Meta login"; break; } }
+    // Same Business owns the ad account and the Page: Meta lets that ad account advertise as the Page.
+    let acBiz: any = null, pgBiz: any = null;
+    if (!usable) {
+      for (const t of toks) {
+        if (!acBiz) { const ab = await get(`act_${act}?fields=business{id,name}`, t); acBiz = ab?.business ?? null; }
+        if (!pgBiz) { const pb = await get(`${pageId}?fields=business{id,name}`, t); pgBiz = pb?.business ?? null; }
+        if (acBiz && pgBiz) break;
       }
+      if (acBiz?.id && pgBiz?.id && String(acBiz.id) === String(pgBiz.id)) { usable = true; via = "the Business that owns both"; }
+    }
+    if (!usable) {
+      const shared = BM ? await allIds(`${BM}/client_pages`) : new Set();
+      const who = acBiz?.id ? ` The ad account belongs to the Business "${acBiz.name ?? acBiz.id}" (ID ${acBiz.id})${pgBiz?.id ? ", the Page to \"" + (pgBiz.name ?? pgBiz.id) + "\" (ID " + pgBiz.id + ")" : ", and Meta did not say which Business owns the Page"}.` : "";
+      if (shared.has(pageId) || pgBiz?.id) return json({
+        status: "not_usable",
+        business_id: BM || null,
+        error: `Meta does not let this ad account advertise as that Page yet.${who} In Meta Business Settings, open Pages, pick the Page and make sure this ad account's Business has permission to create ads on it. Then try again.`
+      });
       return json({
         status: "not_shared",
         business_id: BM || null,
-        error: `Share that Page with Revora first (Business Settings → Pages → Add partner${BM ? ", Business ID " + BM : ""}), then try again.`
+        error: `Share that Page with Revora first (Business Settings \u2192 Pages \u2192 Add partner${BM ? ", Business ID " + BM : ""}), then try again.`
       });
     }
-    const page = await get(`${pageId}?fields=name,whatsapp_number`);
+    let page: any = null;
+    for (const t of toks) { page = await get(`${pageId}?fields=name,whatsapp_number`, t); if (page?.name) break; }
     const { error } = await db.from("ad_accounts").update({
       fb_page_id: pageId,
       fb_page_name: page?.name ?? null,
