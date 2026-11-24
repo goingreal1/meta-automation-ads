@@ -328,7 +328,7 @@ async function bvHqSocial(body) {
     const nice = { instagram_basic: "read the Instagram account", instagram_content_publish: "post to Instagram", instagram_manage_comments: "read and answer Instagram comments", instagram_manage_messages: "read and answer Instagram messages", pages_messaging: "read and answer Messenger messages", pages_manage_engagement: "reply to Facebook comments", pages_read_engagement: "read Facebook comments", pages_manage_posts: "post to the Facebook Page" };
     const L = [];
     if (r.pages_error) L.push("✗ Could not list the Pages: " + escH(r.pages_error));
-    for (const p of r.pages || []) L.push(`${p.instagram ? "✓" : "•"} Page “${escH(p.name)}”${p.instagram ? " + Instagram @" + escH(p.instagram.username || p.instagram.id) : " (no Instagram linked)"}`);
+    for (const p of r.pages || []) L.push(`${p.instagram ? "✓" : "•"} Page “${escH(p.name)}” (ID ${escH(p.id)})${p.instagram ? " + Instagram @" + escH(p.instagram.username || p.instagram.id) : " (no Instagram linked)"}`);
     if (r.scopes_error) L.push("Could not read the permissions: " + escH(r.scopes_error));
     else { for (const k of r.have || []) L.push("✓ Allowed to " + escH(nice[k] || k)); for (const k of r.missing || []) L.push("✗ Not allowed to " + escH(nice[k] || k)); }
     out.innerHTML = L.join("<br>");
