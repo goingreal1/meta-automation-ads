@@ -43,6 +43,15 @@ function bvLinkPage(accountId) {
       const r = await sbFn("link-page", { ad_account_id: accountId, page_id: document.getElementById("lpId").value });
       if (r.status === "linked") { bvCloseModal(); bvToast(`Linked ${r.page_name || "Page"}`); await loadAccounts(); if (activeTab === "settings") render(); return; }
       m.textContent = r.error || "Could not link that Page."; m.style.display = "block";
+      if (!document.getElementById("lpForce") && (r.status === "not_usable" || r.status === "not_shared")) {
+        m.insertAdjacentHTML("afterend", `<div style="margin:8px 0 10px;font-size:12px;color:var(--muted);">Already sure this Page is yours in Meta? Save it without Meta's check.</div><button type="button" class="btn btn-g" id="lpForce">Link anyway</button> `);
+        document.getElementById("lpForce").onclick = async (e) => {
+          const fb = e.currentTarget; fb.disabled = true; fb.textContent = "Linking…";
+          const r2 = await sbFn("link-page", { ad_account_id: accountId, page_id: document.getElementById("lpId").value, force: true }).catch(err => ({ error: err.message }));
+          if (r2.status === "linked") { bvCloseModal(); bvToast(`Linked ${r2.page_name || "Page"}`); await loadAccounts(); if (activeTab === "settings") render(); return; }
+          fb.disabled = false; fb.textContent = "Link anyway"; m.textContent = r2.error || "Could not link that Page."; m.style.display = "block";
+        };
+      }
     } finally { b.disabled = false; b.textContent = "Check & link"; }
   };
 }
