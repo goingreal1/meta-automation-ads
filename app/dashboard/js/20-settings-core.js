@@ -283,21 +283,21 @@ async function renderSettings(el) {
       <div class="tbl-wrap"><table>
         <tr><th>Account</th>${isAdmin ? "<th>Buyer</th>" : ""}<th>Facebook Page</th><th>WhatsApp number</th><th>Pixel / Dataset</th><th>Balance</th><th></th></tr>
         ${accountsList.map(a => `<tr id="connRow-${a.id}">
-          <td class="s n">${escH(a.nickname || a.name || "")}<div style="font-size:10.5px;color:var(--muted);font-weight:400;">${escH(a.meta_ad_account_id || "")} · <span class="pill ${a.status === "active" ? "active" : "paused"}">${escH(a.status || "")}</span></div></td>
-          ${isAdmin ? `<td>${escH((buyers || []).find(b => b.id === a.media_buyer_id)?.name || "—")}</td>` : ""}
-          <td id="pageCell-${a.id}">${a.fb_page_id
+          <td class="s n" data-l="Account">${escH(a.nickname || a.name || "")}<div style="font-size:10.5px;color:var(--muted);font-weight:400;">${escH(a.meta_ad_account_id || "")} · <span class="pill ${a.status === "active" ? "active" : "paused"}">${escH(a.status || "")}</span></div></td>
+          ${isAdmin ? `<td data-l="Buyer">${escH((buyers || []).find(b => b.id === a.media_buyer_id)?.name || "—")}</td>` : ""}
+          <td id="pageCell-${a.id}" data-l="Facebook Page">${a.fb_page_id
             ? (a.fb_page_name
                 ? `✓ ${escH(a.fb_page_name)} <span style="color:var(--muted);font-size:10.5px;">(${escH(a.fb_page_id)})</span>`
                 : `<span style="font-family:monospace;font-size:11.5px;">${escH(a.fb_page_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>`)
             : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
-          <td id="waCell-${a.id}">${a.whatsapp_number ? `✓ ${escH(a.whatsapp_number)}` : `<span style="color:var(--muted);font-size:11.5px;">none saved</span>`}</td>
-          <td id="pixelCell-${a.id}">${a.meta_pixel_id
+          <td id="waCell-${a.id}" data-l="WhatsApp number">${a.whatsapp_number ? `✓ ${escH(a.whatsapp_number)}` : `<span style="color:var(--muted);font-size:11.5px;">none saved</span>`}</td>
+          <td id="pixelCell-${a.id}" data-l="Pixel / dataset">${a.meta_pixel_id
             ? (a.pixel_name
                 ? `✓ ${escH(a.pixel_name)} <span style="color:var(--muted);font-size:10.5px;">(${escH(a.meta_pixel_id)})</span>`
                 : `<span style="font-family:monospace;font-size:11.5px;">${escH(a.meta_pixel_id)}</span> <span style="color:var(--muted);font-size:10.5px;">(unverified)</span>`)
             : `<span style="color:var(--muted);font-size:11.5px;">not set</span>`}</td>
-          <td id="bal-${a.id}"><div style="font-size:12px;">${fN(a.balance_naira)}</div><div style="font-size:9px;color:var(--muted);">${a.balance_updated_at ? "synced " + ago(a.balance_updated_at) : "not synced"}</div></td>
-          <td style="white-space:nowrap;"><button type="button" class="btn btn-g connVerifyBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">🔄 Verify</button> <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button></td>
+          <td id="bal-${a.id}" data-l="Balance"><div style="font-size:12px;">${fN(a.balance_naira)}</div><div style="font-size:9px;color:var(--muted);">${a.balance_updated_at ? "synced " + ago(a.balance_updated_at) : "not synced"}</div></td>
+          <td style="white-space:nowrap;" data-l="" class="conn-act"><button type="button" class="btn btn-g connVerifyBtn" data-aid="${a.id}" style="padding:4px 8px;font-size:10px;">🔄 Verify</button> <button class="btn btn-g" style="padding:4px 8px;font-size:10px;" onclick="deleteAccount('${a.id}')">Remove</button></td>
         </tr>`).join("")}
       </table></div>`}
     </div>` : ""}

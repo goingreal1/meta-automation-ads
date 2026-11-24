@@ -61,6 +61,25 @@
   [data-theme="light"] body:has(.hx), body[data-theme="light"]:has(.hx){background:#f1f3f8}
   .hx-sk{background:rgba(130,145,160,.2);border-radius:14px;animation:hxsh 1.25s ease-in-out infinite}
   .hx-sk.hero{background:#0f2a66;opacity:.6}.hx-sk.card{border-radius:24px;margin-top:12px;background:rgba(130,145,160,.16)}
+  /* Laptop: the same Home, laid out wide. Hero and "needs you" side by side, then drop-off and campaigns, then accounts and buyers. */
+  @media (min-width:761px){
+    .hx{max-width:1280px;display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);column-gap:18px;row-gap:18px;align-items:stretch;padding:6px 0 32px}
+    .hx>.hx-greet{grid-column:1/-1;padding:0 2px 2px}.hx-greet b{font-size:26px;font-weight:800}.hx-greet small{font-size:14px}
+    .hx>.hx-hero{grid-column:1;grid-row:2;padding:26px 28px 14px;align-self:stretch}
+    .hx>.hx-tiles,.hx>.hx-ok{grid-column:2;grid-row:2;margin:0;align-self:stretch;grid-template-columns:minmax(0,1fr);align-content:start;gap:10px}
+    .hx>.hx-ok{align-self:start}
+    .hx>.hx-note{grid-column:1/-1;grid-row:3;margin:0}
+    .hx>.hx-card{margin:0;padding:22px 24px;border-radius:22px;grid-column:1/-1}
+    .hx>.hx-card:nth-of-type(odd){grid-column:1}.hx>.hx-card:nth-of-type(even){grid-column:2}
+    .hx-spend{font-size:48px;font-weight:800}.hx-spark{height:110px}
+    .hx-three{padding:18px 0 8px;gap:18px;margin-top:6px}.hx-three b{font-size:26px}.hx-three span{font-size:13px}
+    .hx-tile{display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-rows:auto auto;column-gap:14px;align-items:center;padding:16px 18px;border-radius:20px}
+    .hx-tile i{grid-row:1/3;width:40px;height:40px}.hx-tile b{margin:0;font-size:20px}.hx-tile span{font-size:13px}
+    .hx-tile:hover,.hx-camp>div:hover{filter:brightness(.98)}
+    .hx-ok{padding:16px 18px}
+    .hx-pills{margin-top:14px}
+    .hx-sk.hero{grid-column:1}
+  }
   @keyframes hxsh{0%,100%{opacity:.55}50%{opacity:1}}
   @media (prefers-reduced-motion:reduce){.hx-sk{animation:none}}
   `;

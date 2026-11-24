@@ -29,6 +29,16 @@
     #convTabRoot:not(.thread-open) .conv-list-items,#convTabRoot .conv-list-items{height:auto!important;max-height:none!important;overflow:visible!important}
     #convTabRoot:not(.thread-open) #convListPanel{overflow:visible!important}
   }
+  /* ---- laptop: a proper two-pane chat, the list on the left and the open conversation filling the rest, both as tall as the screen ---- */
+  @media (min-width:821px){
+    #convTabRoot .conv-wrap{grid-template-columns:minmax(320px,380px) minmax(0,1fr);gap:16px;align-items:stretch;height:calc(100vh - 250px);height:calc(100dvh - 250px);min-height:480px}
+    #convTabRoot #convListPanel{display:flex!important;flex-direction:column;min-height:0;height:100%}
+    #convTabRoot .conv-list-items{flex:1;min-height:0;max-height:none!important;height:auto!important;overflow-y:auto}
+    #convTabRoot .conv-thread{height:100%!important;min-height:0;border:0;border-radius:24px;overflow:hidden;box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06)}
+    #convTabRoot .conv-thread .conv-back-btn{display:none!important}
+    #convTabRoot .conv-thread:has(.empty){background:var(--panel)}
+    #convTabRoot .conv-msgs{padding:16px 22px 8px}
+  }
   /* ---- conversation ---- */
   #convTabRoot #convThread{background:var(--bg)}
   #convTabRoot .conv-thread-head.ch2{background:var(--panel);box-shadow:0 1px 0 var(--border);padding:8px 10px;min-height:64px}
