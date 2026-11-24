@@ -108,6 +108,11 @@ Deno.serve(async (req)=>{
       }
       if (acBiz?.id && pgBiz?.id && String(acBiz.id) === String(pgBiz.id)) { usable = true; via = "the Business that owns both"; }
     }
+    // The Page is in Revora's Business (owned by it or shared with it): Meta's Ads Manager lets that Business's ad accounts advertise as it, so link it.
+    if (!usable && BM) {
+      const inBm = new Set([...(await allIds(`${BM}/client_pages`)), ...(await allIds(`${BM}/owned_pages`))]);
+      if (inBm.has(pageId)) { usable = true; via = "the Page is in Revora's Business"; }
+    }
     let sysName = "";
     if (!usable) { try { sysName = String((await get("me?fields=name"))?.name ?? ""); } catch (_) { /* optional */ } }
     if (!usable) {
