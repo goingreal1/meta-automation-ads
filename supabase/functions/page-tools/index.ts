@@ -75,8 +75,57 @@ async function pageAcct(companyId: string, pageId: string) {
   const { data } = await db.from("ad_accounts").select("id, fb_page_id, meta_connection_id").eq("company_id", companyId).eq("status", "active").not("fb_page_id", "is", null);
   return (data ?? []).find((a: any)=>String(a.fb_page_id).match(/\d+/)?.[0] === pageId) ?? null;
 }
+// ---- Instagram (same Page token; comments and direct messages) ----
+async function igOf(pageId: string, pt: string) {
+  const p = await g(`/${pageId}?fields=instagram_business_account{id,username},connected_instagram_account{id,username}`, pt);
+  const ig = p?.instagram_business_account ?? p?.connected_instagram_account ?? null;
+  return ig?.id ? { id: String(ig.id), username: String(ig.username ?? "") } : null;
+}
+async function syncIgComments(companyId: string, pageId: string, ig: { id: string; username: string }, pt: string) {
+  const rep = { scanned: 0, new_comments: 0, errors: 0 };
+  const media = (await g(`/${ig.id}/media?fields=id,timestamp&limit=12`, pt))?.data ?? [];
+  let k = 0;
+  const worker = async ()=>{
+    while (k < media.length) {
+      const m = media[k++];
+      try {
+        const r = await g(`/${m.id}/comments?fields=id,text,timestamp,username,from,parent_id,replies{id,username}&limit=30`, pt);
+        const rows = (r?.data ?? []).map((c: any)=>{ const own = String(c.username ?? "") === ig.username; return { company_id: companyId, page_id: pageId, post_id: String(m.id), comment_id: String(c.id), parent_comment_id: c.parent_id ? String(c.parent_id) : null, channel: "instagram", from_id: c.from?.id ? String(c.from.id) : null, from_name: c.username ?? null, message: String(c.text ?? "").slice(0, 4000), created_time: c.timestamp, is_page_reply: own, status: own ? "replied" : (Date.now() - Date.parse(c.timestamp) > 14 * 86400000 ? "ignored" : "new") }; });
+        if (rows.length) {
+          const { data: ins } = await db.from("page_comments").upsert(rows, { onConflict: "comment_id", ignoreDuplicates: true }).select("id");
+          rep.new_comments += (ins ?? []).length;
+          const answered = (r?.data ?? []).filter((c: any)=>(c.replies?.data ?? []).some((x: any)=>String(x.username ?? "") === ig.username)).map((c: any)=>String(c.id));
+          if (answered.length) await db.from("page_comments").update({ status: "replied" }).in("comment_id", answered).eq("status", "new");
+        }
+        rep.scanned++;
+      } catch (_) { rep.errors++; }
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+  return rep;
+}
+async function syncIgMessages(companyId: string, pageId: string, ig: { id: string; username: string }, pt: string) {
+  const rep = { threads: 0, new_inbound: 0 };
+  const r = await g(`/${pageId}/conversations?platform=instagram&limit=25&fields=id,updated_time,participants,messages.limit(25){id,message,created_time,from,attachments{id,mime_type,name,size,image_data,video_data,file_url}}`, pt);
+  for (const conv of r?.data ?? []) {
+    const cust = (conv.participants?.data ?? []).find((p: any)=>String(p.id) !== ig.id);
+    if (!cust?.id) continue;
+    const { data: th } = await db.from("channel_threads").upsert({ company_id: companyId, channel: "instagram", page_id: pageId, ext_id: String(cust.id), name: cust.username ?? cust.name ?? null, fb_thread_id: conv.id }, { onConflict: "page_id,ext_id,channel" }).select("id, unread_count").single();
+    if (!th) continue;
+    const msgs = (conv.messages?.data ?? []).map((m: any)=>({ thread_id: th.id, company_id: companyId, direction: String(m.from?.id ?? "") === ig.id ? "outbound" : "inbound", content: String(m.message ?? "").slice(0, 4000) || ((m.attachments?.data ?? []).length ? "Sent an attachment" : ""), ext_message_id: String(m.id), created_at: m.created_time, attachments: (m.attachments?.data ?? []).length ? m.attachments.data : null }));
+    if (!msgs.length) continue;
+    const { data: ins } = await db.from("channel_messages").upsert(msgs, { onConflict: "ext_message_id", ignoreDuplicates: true }).select("direction, created_at");
+    const fresh = (ins ?? []).filter((m: any)=>m.direction === "inbound" && Date.now() - Date.parse(m.created_at) < 48 * 3600 * 1000);
+    const latest = msgs.reduce((x: string, m: any)=>m.created_at > x ? m.created_at : x, "");
+    const lastIn = msgs.filter((m: any)=>m.direction === "inbound").reduce((x: string, m: any)=>m.created_at > x ? m.created_at : x, "");
+    const upd: any = { last_message_at: latest }; if (lastIn) upd.last_inbound_at = lastIn; if (fresh.length) upd.unread_count = (th.unread_count ?? 0) + fresh.length;
+    await db.from("channel_threads").update(upd).eq("id", th.id);
+    rep.threads++; rep.new_inbound += fresh.length;
+  }
+  return rep;
+}
 async function runCommentAutomations() {
-  const { data: rules } = await db.from("page_automations").select("*").eq("enabled", true).eq("trigger", "comment").eq("channel", "facebook");
+  const { data: rules } = await db.from("page_automations").select("*").eq("enabled", true).eq("trigger", "comment");
   const out = { sent: 0, failed: 0 };
   if (!rules?.length) return out;
   const groups = new Map<string, any[]>();
@@ -85,18 +134,21 @@ async function runCommentAutomations() {
     const [companyId, pageId] = k.split(":");
     const acct = await pageAcct(companyId, pageId); if (!acct) continue;
     const since = new Date(Date.now() - 7 * 86400000).toISOString();
-    const { data: cms } = await db.from("page_comments").select("*").eq("company_id", companyId).eq("page_id", pageId).eq("channel", "facebook").eq("is_page_reply", false).eq("status", "new").gte("created_time", since).order("created_time", { ascending: true }).limit(40);
+    const { data: cms } = await db.from("page_comments").select("*").eq("company_id", companyId).eq("page_id", pageId).eq("is_page_reply", false).eq("status", "new").gte("created_time", since).order("created_time", { ascending: true }).limit(40);
     if (!cms?.length) continue;
     const creativeIds = [...new Set(rs.map((r: any)=>r.creative_id).filter(Boolean))];
     const { data: made } = creativeIds.length ? await db.from("creative_posts").select("creative_id, post_id").in("creative_id", creativeIds) : { data: [] };
     const postCreative = new Map((made ?? []).map((m: any)=>[m.post_id, m.creative_id]));
     let pt = ""; 
     for (const c of cms) {
-      const cands = rs.filter((r: any)=>Date.parse(c.created_time) >= Date.parse(r.created_at) && (r.creative_id ? postCreative.get(c.post_id) === r.creative_id : true) && hasWord(c.message, r.keywords));
+      const cands = rs.filter((r: any)=>r.channel === (c.channel ?? "facebook") && Date.parse(c.created_time) >= Date.parse(r.created_at) && (r.creative_id ? postCreative.get(c.post_id) === r.creative_id : true) && hasWord(c.message, r.keywords));
       const rule = cands.find((r: any)=>r.creative_id) ?? cands[0];
       if (!rule) continue;
       try {
         if (!pt) pt = await pageToken(pageId, await tokenForAcct(acct));
+        const isIg = (c.channel ?? "facebook") === "instagram";
+        const igId = isIg ? ((await igOf(pageId, pt))?.id ?? "") : "";
+        if (isIg && !igId) continue;
         let text = "", dm = "";
         if (rule.reply_mode === "ai") {
           const facts = await sellerFacts(companyId, rule.creative_id ? (await db.from("creative_assets").select("product_id").eq("id", rule.creative_id).maybeSingle()).data?.product_id : null);
@@ -106,10 +158,10 @@ async function runCommentAutomations() {
         } else { text = String(rule.public_text ?? "").replaceAll("{name}", firstName(c.from_name)); dm = String(rule.dm_text ?? "").replaceAll("{name}", firstName(c.from_name)); }
         let did = false;
         if (rule.public_enabled && text.trim() && await claim(companyId, rule.id, "comment_reply", c.comment_id)) {
-          try { await g(`/${c.comment_id}/comments`, pt, "POST", { message: text.slice(0, 2000) }); await finish("comment_reply", c.comment_id, "sent", "public reply"); did = true; out.sent++; } catch (e) { await finish("comment_reply", c.comment_id, "failed", String(e.message ?? e)); out.failed++; }
+          try { await g(isIg ? `/${c.comment_id}/replies` : `/${c.comment_id}/comments`, pt, "POST", { message: text.slice(0, 2000) }); await finish("comment_reply", c.comment_id, "sent", "public reply"); did = true; out.sent++; } catch (e) { await finish("comment_reply", c.comment_id, "failed", String(e.message ?? e)); out.failed++; }
         }
         if (rule.dm_enabled && dm.trim() && await claim(companyId, rule.id, "private_reply", c.comment_id)) {
-          try { await g(`/${c.comment_id}/private_replies`, pt, "POST", { message: dm.slice(0, 2000) }); await finish("private_reply", c.comment_id, "sent", "private message"); did = true; out.sent++; } catch (e) { await finish("private_reply", c.comment_id, "failed", String(e.message ?? e)); out.failed++; }
+          try { if (isIg) await g(`/${igId}/messages`, pt, "POST", { recipient: JSON.stringify({ comment_id: c.comment_id }), message: JSON.stringify({ text: dm.slice(0, 1000) }) }); else await g(`/${c.comment_id}/private_replies`, pt, "POST", { message: dm.slice(0, 2000) }); await finish("private_reply", c.comment_id, "sent", "private message"); did = true; out.sent++; } catch (e) { await finish("private_reply", c.comment_id, "failed", String(e.message ?? e)); out.failed++; }
         }
         if (did) await db.from("page_comments").update({ status: "replied", reply_text: ("Automatic: " + (text || dm)).slice(0, 300), replied_at: new Date().toISOString() }).eq("id", c.id);
       } catch (e) { out.failed++; }
@@ -118,7 +170,7 @@ async function runCommentAutomations() {
   return out;
 }
 async function runMessageAutomations() {
-  const { data: rules } = await db.from("page_automations").select("*").eq("enabled", true).eq("trigger", "message").eq("channel", "facebook");
+  const { data: rules } = await db.from("page_automations").select("*").eq("enabled", true).eq("trigger", "message");
   const out = { sent: 0, failed: 0, handover: 0 };
   if (!rules?.length) return out;
   const groups = new Map<string, any[]>();
@@ -126,14 +178,15 @@ async function runMessageAutomations() {
   for (const [k, rs] of groups) {
     const [companyId, pageId] = k.split(":");
     const acct = await pageAcct(companyId, pageId); if (!acct) continue;
-    const { data: threads } = await db.from("channel_threads").select("id, ext_id, name").eq("company_id", companyId).eq("page_id", pageId).eq("channel", "messenger").gte("last_inbound_at", new Date(Date.now() - 23 * 3600000).toISOString()).order("last_inbound_at", { ascending: false }).limit(40);
+    const { data: threads } = await db.from("channel_threads").select("id, ext_id, name, channel").eq("company_id", companyId).eq("page_id", pageId).in("channel", ["messenger", "instagram"]).gte("last_inbound_at", new Date(Date.now() - 23 * 3600000).toISOString()).order("last_inbound_at", { ascending: false }).limit(40);
     let pt = "";
     for (const th of threads ?? []) {
       const { data: msgs } = await db.from("channel_messages").select("direction, content, ext_message_id, created_at").eq("thread_id", th.id).order("created_at", { ascending: false }).limit(8);
       const last = (msgs ?? [])[0];
       if (!last || last.direction !== "inbound" || !last.content) continue;          // answered already (by a person or by us), or nothing to answer
       const hasOut = (msgs ?? []).some((m: any)=>m.direction === "outbound");
-      const cands = rs.filter((r: any)=>Date.parse(last.created_at) >= Date.parse(r.created_at) && hasWord(last.content, r.keywords) && (r.when_mode === "always" || !hasOut));
+      const thChan = th.channel === "instagram" ? "instagram" : "facebook";
+      const cands = rs.filter((r: any)=>r.channel === thChan && Date.parse(last.created_at) >= Date.parse(r.created_at) && hasWord(last.content, r.keywords) && (r.when_mode === "always" || !hasOut));
       const rule = cands.find((r: any)=>(r.keywords ?? []).length) ?? cands[0];
       if (!rule) continue;
       try {
@@ -149,7 +202,9 @@ async function runMessageAutomations() {
         if (!text.trim()) continue;
         if (!(await claim(companyId, rule.id, "message_reply", last.ext_message_id))) continue;
         try {
-          const r2 = await g(`/${pageId}/messages`, pt, "POST", { recipient: JSON.stringify({ id: th.ext_id }), message: JSON.stringify({ text: text.slice(0, 1900) }), messaging_type: "RESPONSE" });
+          let r2: any;
+          if (thChan === "instagram") { const igId = (await igOf(pageId, pt))?.id; if (!igId) throw new Error("No Instagram account on this Page."); r2 = await g(`/${igId}/messages`, pt, "POST", { recipient: JSON.stringify({ id: th.ext_id }), message: JSON.stringify({ text: text.slice(0, 950) }) }); }
+          else r2 = await g(`/${pageId}/messages`, pt, "POST", { recipient: JSON.stringify({ id: th.ext_id }), message: JSON.stringify({ text: text.slice(0, 1900) }), messaging_type: "RESPONSE" });
           await db.from("channel_messages").upsert({ thread_id: th.id, company_id: companyId, direction: "outbound", content: text, ext_message_id: String(r2?.message_id ?? "auto:" + last.ext_message_id), created_at: new Date().toISOString() }, { onConflict: "ext_message_id", ignoreDuplicates: true });
           await finish("message_reply", last.ext_message_id, "sent", rule.reply_mode); out.sent++;
         } catch (e) { await finish("message_reply", last.ext_message_id, "failed", String(e.message ?? e)); out.failed++; }
@@ -293,6 +348,7 @@ Deno.serve(async (req)=>{
             }
           };
           await Promise.all(Array.from({ length: 6 }, worker));
+          try { const ig = await igOf(pid, pt); if (ig) rep.instagram = await syncIgComments(company_id, pid, ig, pt); } catch (e) { rep.ig_error = String(e.message ?? e).slice(0, 140); }
         } catch (e) { rep.error = String(e.message ?? e).slice(0, 160); }
         report.push(rep);
       }
@@ -343,6 +399,7 @@ Deno.serve(async (req)=>{
               await db.rpc("rv_notify", { p_company: company_id, p_category: "messages", p_kind: "messenger_new", p_title: `New Messenger message · ${cust.name ?? "a customer"}`, p_body: String(m.content ?? "").slice(0, 140), p_url: `/dashboard_new.html?open=mx:${th.id}`, p_severity: "info", p_data: { thread_id: th.id }, p_dedupe: `mx:${th.id}:${m.created_at}`, p_buyer: acct.media_buyer_id ?? null, p_user: null, p_push: true }).then(()=>null, ()=>null);
             }
           }
+          try { const ig = await igOf(pid, pt); if (ig) rep.instagram = await syncIgMessages(company_id, pid, ig, pt); } catch (e) { rep.ig_error = String(e.message ?? e).slice(0, 140); }
         } catch (e) { rep.error = String(e.message ?? e).slice(0, 160); }
         report.push(rep);
       }
@@ -366,11 +423,13 @@ Deno.serve(async (req)=>{
         if (!message) return json({ error: "Write the message first." }, 400);
         try {
           const pt = await pageToken(row.page_id, await tokenOf(acct));
-          const r = await g(`/${row.comment_id}/private_replies`, pt, "POST", { message });
+          let r: any;
+          if (row.channel === "instagram") { const igId = (await igOf(row.page_id, pt))?.id; if (!igId) return json({ ok: false, error: "No Instagram account on this Page." }); r = await g(`/${igId}/messages`, pt, "POST", { recipient: JSON.stringify({ comment_id: row.comment_id }), message: JSON.stringify({ text: message.slice(0, 1000) }) }); }
+          else r = await g(`/${row.comment_id}/private_replies`, pt, "POST", { message });
           const psid = String(r?.recipient_id ?? row.from_id ?? "");
           if (!psid) return json({ ok: false, error: "Meta did not say who the message went to." });
           const now = new Date().toISOString();
-          const { data: th } = await db.from("channel_threads").upsert({ company_id: companyId, channel: "messenger", page_id: row.page_id, ext_id: psid, name: row.from_name ?? null, source: "private_reply", last_message_at: now }, { onConflict: "page_id,ext_id,channel" }).select("id").single();
+          const { data: th } = await db.from("channel_threads").upsert({ company_id: companyId, channel: row.channel === "instagram" ? "instagram" : "messenger", page_id: row.page_id, ext_id: psid, name: row.from_name ?? null, source: "private_reply", last_message_at: now }, { onConflict: "page_id,ext_id,channel" }).select("id").single();
           if (!th) return json({ ok: false, error: "Sent, but the chat could not be saved." });
           await db.from("channel_messages").insert({ thread_id: th.id, company_id: companyId, direction: "outbound", content: message, ext_message_id: String(r?.message_id ?? r?.id ?? "pr:" + row.comment_id), created_at: now });
           await db.from("page_comments").update({ status: "replied", reply_text: "Replied privately in Messenger: " + message.slice(0, 300), private_thread_id: th.id, replied_by: userId || null, replied_at: now, read_at: now }).eq("id", row.id);
@@ -402,7 +461,9 @@ Deno.serve(async (req)=>{
         const pt = await pageToken(th.page_id, await tokenOf(acct));
         const body: Record<string, string> = { recipient: JSON.stringify({ id: th.ext_id }), message: JSON.stringify({ text }) };
         if (ageH < 24) body.messaging_type = "RESPONSE"; else { body.messaging_type = "MESSAGE_TAG"; body.tag = "HUMAN_AGENT"; }
-        const r = await g(`/${th.page_id}/messages`, pt, "POST", body);
+        let r: any;
+        if (th.channel === "instagram") { const igId = (await igOf(th.page_id, pt))?.id; if (!igId) return json({ ok: false, error: "No Instagram account on this Page." }); r = await g(`/${igId}/messages`, pt, "POST", { recipient: body.recipient, message: JSON.stringify({ text: text.slice(0, 950) }) }); }
+        else r = await g(`/${th.page_id}/messages`, pt, "POST", body);
         const now = new Date().toISOString();
         await db.from("channel_messages").insert({ thread_id: th.id, company_id: companyId, direction: "outbound", content: text, ext_message_id: String(r?.message_id ?? "o:" + Date.now()), created_at: now });
         await db.from("channel_threads").update({ last_message_at: now }).eq("id", th.id);
@@ -439,14 +500,14 @@ Deno.serve(async (req)=>{
       let pt;
       try { pt = await pageToken(row.page_id, await tokenOf(acct)); } catch (e) { return json({ ok: false, error: e.message.slice(0, 200) }); }
       if (b.action === "comments_hide") {
-        try { await g(`/${row.comment_id}`, pt, "POST", { is_hidden: b.hidden === false ? "false" : "true" }); await db.from("page_comments").update({ status: b.hidden === false ? "new" : "hidden" }).eq("id", row.id); return json({ ok: true }); } catch (e) { return json({ ok: false, error: e.message.slice(0, 200) }); }
+        try { await g(`/${row.comment_id}`, pt, "POST", row.channel === "instagram" ? { hide: b.hidden === false ? "false" : "true" } : { is_hidden: b.hidden === false ? "false" : "true" }); await db.from("page_comments").update({ status: b.hidden === false ? "new" : "hidden" }).eq("id", row.id); return json({ ok: true }); } catch (e) { return json({ ok: false, error: e.message.slice(0, 200) }); }
       }
       // reply: public, so the person must have confirmed it
       if (b.confirmed !== true) return json({ error: "Confirm first: this replies in public." }, 400);
       const message = String(b.message ?? "").trim().slice(0, 2000);
       if (!message) return json({ error: "Write the reply first." }, 400);
       try {
-        const r = await g(`/${row.comment_id}/comments`, pt, "POST", { message });
+        const r = await g(row.channel === "instagram" ? `/${row.comment_id}/replies` : `/${row.comment_id}/comments`, pt, "POST", { message });
         await db.from("page_comments").update({ status: "replied", reply_text: message, reply_comment_id: String(r?.id ?? ""), replied_by: userId || null, replied_at: new Date().toISOString(), read_at: new Date().toISOString() }).eq("id", row.id);
         return json({ ok: true, reply_comment_id: r?.id ?? null });
       } catch (e) { return json({ ok: false, error: e.message.slice(0, 250) }); }

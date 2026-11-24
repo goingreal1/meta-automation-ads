@@ -55,7 +55,8 @@
     const trig = o.trigger, ps = pages(); if (!ps.length) { bvToast("Link a Facebook Page first (Settings, Facebook Pages).", "err"); return; }
     let rule = o.rule || null;
     if (!rule && o.creative_id) { const r = await sbQuery("page_automations", `select=*&creative_id=eq.${o.creative_id}&trigger=eq.comment&order=created_at.asc&limit=1`).catch(() => []); rule = r && r[0] || null; }
-    if (!rule && trig === "comment" && !o.creative_id) { const r = await sbQuery("page_automations", `select=*&creative_id=is.null&trigger=eq.comment&order=created_at.asc&limit=1`).catch(() => []); rule = r && r[0] || null; }
+    if (!rule && trig === "comment" && !o.creative_id) { const r = await sbQuery("page_automations", `select=*&creative_id=is.null&trigger=eq.comment&channel=eq.${o.channel || "facebook"}&order=created_at.asc&limit=1`).catch(() => []); rule = r && r[0] || null; }
+    let chan = (rule && rule.channel) || o.channel || "facebook";
     const r0 = rule || { keywords: [], reply_mode: "text", public_enabled: true, public_text: "", dm_enabled: false, dm_text: "", message_text: "", when_mode: "always", enabled: true };
     const pg = ps.find((p) => p.id === (rule && rule.page_id)) || ps.find((p) => p.ad_account_id === window.activeAccountId) || ps[0];
     const ov = document.createElement("div"); ov.className = "pa-ov rv-ui"; ov.id = "paEdit";
@@ -63,6 +64,7 @@
     ov.innerHTML = `<div class="pa-in"><div class="pa-top"><button type="button" class="bk" aria-label="Back" id="paBack">${BACK}</button><div class="t"><small>${esc(o.sub || "")}</small><h2>${esc(o.title)}</h2></div></div>
       <div class="pa-card"><div class="pa-line"><span class="tx"><b>${o.creative_id ? "Turn on for this post" : "Turn on"}</b></span>${sw("paOn", r0.enabled !== false)}</div></div>
       ${ps.length > 1 ? `<div class="pa-lbl">PAGE</div><div class="pa-card" style="padding:6px 10px"><select id="paPage" style="width:100%;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;min-height:44px">${ps.map((p) => `<option value="${esc(p.id)}"${p.id === pg.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>` : ""}
+      ${o.newKw || (!rule && !o.creative_id && !o.channel) ? `<div class="pa-lbl">WHERE</div><div class="pa-card"><div class="pa-chips"><button type="button" class="pa-chip off" data-c="facebook">Facebook / Messenger</button><button type="button" class="pa-chip off" data-c="instagram">Instagram</button></div></div>` : ""}
       <div class="pa-lbl">${isC ? "WHEN SOMEONE COMMENTS" : "WHEN A CUSTOMER WRITES"}</div>
       <div class="pa-card" id="paKw"><div class="pa-chips"></div><div class="pa-add" style="margin-top:10px"><input type="text" placeholder="Add a word, e.g. price" autocomplete="off"><button type="button" class="pa-addbtn">Add</button></div><div class="pa-note" style="text-align:left;margin-top:8px">${isC ? "Any comment with one of these words. Leave empty to answer every comment." : "A message with one of these words. Leave empty to answer every message."}</div></div>
       <div class="pa-lbl">WRITE IT</div>
@@ -88,13 +90,15 @@
     let mode = r0.reply_mode || "text", when = r0.when_mode || "always";
     const paintMode = () => { ov.querySelectorAll("#paMode button").forEach((b) => b.classList.toggle("on", b.dataset.m === mode)); ov.querySelector("#paText").style.display = mode === "text" ? "" : "none"; ov.querySelector("#paAi").style.display = mode === "ai" ? "" : "none"; };
     ov.querySelector("#paMode").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; mode = b.dataset.m; paintMode(); }; paintMode();
+    const paintChan = () => ov.querySelectorAll("[data-c]").forEach((b) => b.classList.toggle("off", b.dataset.c !== chan));
+    ov.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => { chan = b.dataset.c; paintChan(); })); paintChan();
     const paintWhen = () => ov.querySelectorAll("[data-w]").forEach((b) => b.classList.toggle("off", b.dataset.w !== when));
     ov.querySelectorAll("[data-w]").forEach((b) => (b.onclick = () => { when = b.dataset.w; paintWhen(); })); paintWhen();
     const g = isC ? { pub: wireSw(ov, "paPub", r0.public_enabled), dm: wireSw(ov, "paDm", r0.dm_enabled), pubA: wireSw(ov, "paPubA", r0.public_enabled), dmA: wireSw(ov, "paDmA", r0.dm_enabled) } : null;
     ov.querySelector("#paSave").onclick = async (e) => {
       const btn = e.currentTarget, m = ov.querySelector("#paMsg"); m.className = "pa-msg"; m.textContent = "";
       const pid = ov.querySelector("#paPage") ? ov.querySelector("#paPage").value : pg.id, page = ps.find((p) => p.id === pid) || pg, kws = getKw();
-      const row = { company_id: cid(), page_id: page.id, ad_account_id: page.ad_account_id, channel: "facebook", trigger: trig, creative_id: o.creative_id || null, keywords: kws, reply_mode: mode, enabled: getOn(), updated_at: new Date().toISOString(), created_by: sessionData && sessionData.user && sessionData.user.id };
+      const row = { company_id: cid(), page_id: page.id, ad_account_id: page.ad_account_id, channel: chan, trigger: trig, creative_id: o.creative_id || null, keywords: kws, reply_mode: mode, enabled: getOn(), updated_at: new Date().toISOString(), created_by: sessionData && sessionData.user && sessionData.user.id };
       if (isC) {
         const pubOn = mode === "ai" ? g.pubA() : g.pub(), dmOn = mode === "ai" ? g.dmA() : g.dm(), pt = ov.querySelector("#paPubT").value.trim(), dt = ov.querySelector("#paDmT").value.trim();
         if (!pubOn && !dmOn) { m.className = "pa-msg err"; m.textContent = "Turn on a reply under the comment, a private message, or both."; return; }
@@ -139,25 +143,30 @@
     if (!ps.length) { root.innerHTML = `<div class="adx-note warn">Link a Facebook Page first (Settings, Facebook Pages).</div>`; return; }
     root.innerHTML = `<div class="empty"><div class="spin" style="width:16px;height:16px;border-width:2px;"></div></div>`;
     const rules = (await sbQuery("page_automations", `select=*&creative_id=is.null&order=created_at.asc`).catch(() => [])) || [];
-    const msgRules = rules.filter((r) => r.trigger === "message"), def = msgRules.find((r) => !(r.keywords || []).length), kwRules = msgRules.filter((r) => (r.keywords || []).length), allC = rules.find((r) => r.trigger === "comment");
+    const ch = (r) => r.channel === "instagram" ? "instagram" : "facebook", CH = { facebook: "Facebook", instagram: "Instagram" };
+    const msgRules = rules.filter((r) => r.trigger === "message"), cmRules = rules.filter((r) => r.trigger === "comment");
+    const def = (c) => msgRules.find((r) => ch(r) === c && !(r.keywords || []).length), kwRules = msgRules.filter((r) => (r.keywords || []).length), allC = (c) => cmRules.find((r) => ch(r) === c);
+    const state = (r) => (r ? (r.enabled ? (r.reply_mode === "ai" ? "On · AI answers" : "On · your message") : "Off") : "Off");
     const row = (k, t, sub, pill, ok) => `<button type="button" class="pa-row" data-k="${k}"><span class="ic">${CHAT}</span><span class="tx"><b>${esc(t)}</b><small>${esc(sub)}</small><span class="pa-pill ${ok ? "ok" : ""}">${esc(pill)}</span></span>${CHEV}</button>`;
     root.innerHTML = `<div class="adx-intro"><p>Replies that go out on their own. Settings for one post are on that creative.</p></div>
-      <div class="pa-lbl" style="margin-top:6px">MESSENGER</div>
-      ${row("def", "Reply to Messenger messages", "When a customer writes to your Page", def ? (def.enabled ? (def.reply_mode === "ai" ? "On · AI answers" : "On · your message") : "Off") : "Off", def && def.enabled)}
+      <div class="pa-lbl" style="margin-top:6px">MESSAGES</div>
+      ${row("def:facebook", "Messenger messages", "When a customer writes to your Page", state(def("facebook")), def("facebook") && def("facebook").enabled)}
+      ${row("def:instagram", "Instagram messages", "When someone writes to your Instagram", state(def("instagram")), def("instagram") && def("instagram").enabled)}
       <div class="pa-lbl">KEYWORD REPLIES</div>
-      ${kwRules.map((r) => row("kw:" + r.id, (r.keywords || []).join(", "), r.reply_mode === "ai" ? "AI answers" : (r.message_text || "").slice(0, 60), r.enabled ? "On" : "Off", r.enabled)).join("")}
+      ${kwRules.map((r) => row("kw:" + r.id, (r.keywords || []).join(", "), CH[ch(r)] + " · " + (r.reply_mode === "ai" ? "AI answers" : (r.message_text || "").slice(0, 50)), r.enabled ? "On" : "Off", r.enabled)).join("")}
       <button type="button" class="pa-row" data-k="addkw"><span class="ic" style="background:#1f6fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="tx"><b>Add a keyword reply</b></span></button>
-      <div class="pa-lbl">COMMENTS</div>
-      ${row("allc", "Comments on every post and ad", "Reply to comments anywhere on your Page", allC ? (allC.enabled ? (allC.reply_mode === "ai" ? "On · AI answers" : "On · your message") : "Off") : "Off", allC && allC.enabled)}
-      <div class="pa-lbl">INSTAGRAM</div>
+      <div class="pa-lbl">COMMENTS ON EVERY POST AND AD</div>
+      ${row("allc:facebook", "Facebook comments", "Reply to comments anywhere on your Page", state(allC("facebook")), allC("facebook") && allC("facebook").enabled)}
+      ${row("allc:instagram", "Instagram comments", "Reply to comments on your Instagram posts", state(allC("instagram")), allC("instagram") && allC("instagram").enabled)}
+      <div class="pa-lbl">CONNECTION</div>
       <div class="pa-card"><div class="pa-line"><span class="tx"><b>Check Instagram</b><small>Shows whether Instagram comments and messages can be answered automatically</small></span></div><button type="button" class="adx-btn" id="paIg" style="margin-top:12px">Check Instagram connection</button><div id="paIgOut" class="pa-msg"></div></div>`;
     const done = () => window.adxAutoPage(root);
     root.querySelectorAll(".pa-row").forEach((b) => b.addEventListener("click", () => {
       const k = b.dataset.k;
-      if (k === "def") window.rvRuleEdit({ trigger: "message", rule: def || null, title: "Reply to Messenger messages", sub: "Page messages", onDone: done });
-      else if (k === "addkw") window.rvRuleEdit({ trigger: "message", rule: null, title: "New keyword reply", sub: "Page messages", onDone: done, newKw: true });
-      else if (k === "allc") window.rvRuleEdit({ trigger: "comment", rule: allC || null, title: "Comments on every post", sub: "Page comments", onDone: done });
-      else if (k.startsWith("kw:")) window.rvRuleEdit({ trigger: "message", rule: kwRules.find((r) => r.id === k.slice(3)), title: "Keyword reply", sub: "Page messages", onDone: done });
+      if (k.startsWith("def:")) { const c = k.slice(4); window.rvRuleEdit({ trigger: "message", channel: c, rule: def(c) || null, title: c === "instagram" ? "Instagram messages" : "Messenger messages", sub: "Replies to messages", onDone: done }); }
+      else if (k === "addkw") window.rvRuleEdit({ trigger: "message", rule: null, title: "New keyword reply", sub: "Replies to messages", onDone: done, newKw: true });
+      else if (k.startsWith("allc:")) { const c = k.slice(5); window.rvRuleEdit({ trigger: "comment", channel: c, rule: allC(c) || null, title: c === "instagram" ? "Instagram comments" : "Facebook comments", sub: "Every post and ad", onDone: done }); }
+      else if (k.startsWith("kw:")) window.rvRuleEdit({ trigger: "message", rule: kwRules.find((r) => r.id === k.slice(3)), title: "Keyword reply", sub: "Replies to messages", onDone: done });
     }));
     root.querySelector("#paIg").onclick = async (e) => {
       const btn = e.currentTarget, out = root.querySelector("#paIgOut"); btn.disabled = true; btn.textContent = "Checking…"; out.className = "pa-msg"; out.textContent = "";
