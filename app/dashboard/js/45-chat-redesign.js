@@ -135,7 +135,7 @@
     let prod = ps.find((p) => p.id === j.pid) || ps.find((p) => p.id === remembered(CTX.conv.id)) || (ps.length === 1 ? ps[0] : null);
     const code = typeof window.caBuyerCode === "function" ? await window.caBuyerCode() : "";
     const links = {};
-    const orderLink = (p) => (p.order_form_url && /^https:/i.test(p.order_form_url)) ? p.order_form_url : `${window.RV_APP_ORIGIN || location.origin}/order.html?product=${p.id}${code ? "&buyer=" + encodeURIComponent(code) : ""}`;
+    const orderLink = (p) => (p.order_form_url && /^https:/i.test(p.order_form_url)) ? p.order_form_url : `${window.RV_APP_ORIGIN || location.origin}/order.html?product=${p.id}${code ? "&buyer=" + encodeURIComponent(code) : ""}&v=page`;
     const prop = (CTX.ctx.apps[0] && CTX.ctx.apps[0].properties) || null;
     const slugQ = prop && prop.slug ? `?property=${encodeURIComponent(prop.slug)}` : "";
     const mk = async (type, p) => {

@@ -118,7 +118,8 @@
   window.caProduct = async function (id) {
     const p = (D.products || []).find((x) => x.id === id); if (!p) return;
     const tiers = D.tiers[id] || [], code = await buyerCode();
-    const link = typeof window.rvProductLink === "function" ? await window.rvProductLink(p) : `${window.RV_APP_ORIGIN || location.origin}/order.html?product=${p.id}${code ? "&buyer=" + encodeURIComponent(code) : ""}`;
+    const pgLink = (u) => (/\/order\.html\?/.test(u) && !/[?&]v=page/.test(u) ? u + "&v=page" : u);
+    const link = pgLink(typeof window.rvProductLink === "function" ? await window.rvProductLink(p) : `${window.RV_APP_ORIGIN || location.origin}/order.html?product=${p.id}${code ? "&buyer=" + encodeURIComponent(code) : ""}`);
     window._caCur = { p, tiers, link };
     shell(`<button type="button" class="ca-back" onclick="caCatalog()">‹ All products</button><h3>${esc(p.product_name)}</h3>
       ${tiers.length ? `<div style="margin-top:10px">${tiers.map((t) => `<div class="ca-pk"><span>${esc(t.label || (t.quantity ? t.quantity + " pcs" : "Package"))}</span><b>${money(t.price_naira)}</b></div>`).join("")}</div>` : `<p>${from(p) ? "Price: " + money(from(p)) : "No packages or price set for this product yet."}</p>`}
