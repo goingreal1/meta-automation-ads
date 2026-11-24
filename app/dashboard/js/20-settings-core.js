@@ -57,6 +57,7 @@ function bvSettingsWire() {
   if (!nav || !body) return;
   nav.querySelectorAll(".set-nav-btn").forEach(btn => btn.onclick = () => {
     if (btn.dataset.link) { location.href = btn.dataset.link; return; }
+    if (mobileMq.matches && btn.dataset.sec === "automation") { bvAdxOpen("auto"); return; }
     bvSettingsSec = btn.dataset.sec;
     body.dataset.active = bvSettingsSec;
     if (body.parentElement.dataset.m) { bvSetOpen = true; body.parentElement.dataset.m = "detail"; bvUpdateAppBar(); window.scrollTo(0, 0); }

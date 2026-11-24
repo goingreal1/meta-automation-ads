@@ -225,10 +225,12 @@ function renderMore(c) {
       ${adsRow("pages", "#34c759", '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>', "Facebook Pages", "Which Page each ad account runs ads as", 0)}
       ${adsRow("datasets", "#8e8e93", '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>', "Datasets (pixels)", "So Meta can count orders from your ads", 0)}
     </div>` : "";
+  const autoGroup = `<div class="more-lbl">Automation</div><div class="more-list"><button type="button" class="more-row" data-more="adx:auto"><span class="more-ic" style="background:#e5484d">${ic('<path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/>')}</span><span class="more-tx"><b>Automation &amp; alerts</b><small>Notifications, ad kill rules, AI agent</small></span></button></div>`;
   c.innerHTML = `<div class="more-screen">
     <h1 class="more-h1">Settings</h1>
     <div class="more-me"><div class="more-av">${escH(String(name).trim().charAt(0).toUpperCase())}</div><div style="min-width:0"><b>${escH(name)}</b><span>${escH([role, co].filter(Boolean).join(" · "))}</span></div></div>
     ${adsGroup}
+    ${autoGroup}
     ${html}
     <div class="more-lbl">App</div><div class="more-list">
       ${accountsList.length ? `<button type="button" class="more-row" data-more="__acct"><span class="more-ic" style="background:#1877f2">${ic('<path d="M3 11v2a1 1 0 001 1h1l5 4V6l-5 4H4a1 1 0 00-1 1z"/><path d="M15.5 8.5a4 4 0 010 7"/>')}</span><span class="more-tx"><b>Ad account</b><small>${escH(acct?.name || "Choose one")}</small></span>${MORE_CHEV}</button>` : ""}
@@ -443,8 +445,8 @@ function bvMsDestCards() {
 // ── PHONE AD SETUP: ad accounts, Pages and datasets, each on its own screen ─────────────────────
 // Reached from Settings > Ads setup. List -> one ad account -> its dataset / Page screens. The same backend
 // calls as the desktop Settings are used (events-manager, link-page, ad-account-pool, sync-partner-accounts).
-const BV_ADX_TITLES = { list: "Ad accounts", acct: "Ad account", buy: "Buy account", link: "Link account", pages: "Pages", page: "Link a Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New dataset", dslink: "Link dataset", pgadd: "Add a Page", pglink: "Link Page" };
-const BV_ADX_BACK = { list: "Accounts", acct: "Account", buy: "Buy", link: "Link", pages: "Pages", page: "Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New", dslink: "Dataset", pgadd: "Add", pglink: "Page" };
+const BV_ADX_TITLES = { list: "Ad accounts", acct: "Ad account", buy: "Buy account", link: "Link account", pages: "Pages", page: "Link a Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New dataset", dslink: "Link dataset", pgadd: "Add a Page", pglink: "Link Page", auto: "Automation & alerts", autonotif: "Notifications", autowa: "WhatsApp alerts", autoemail: "Email", autokill: "Ad kill rules", autoai: "AI sales agent", autosec: "Sign-in security" };
+const BV_ADX_BACK = { list: "Accounts", acct: "Account", buy: "Buy", link: "Link", pages: "Pages", page: "Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New", dslink: "Dataset", pgadd: "Add", pglink: "Page", auto: "Automation", autonotif: "Alerts", autowa: "Alerts", autoemail: "Alerts", autokill: "Rules", autoai: "AI agent", autosec: "Security" };
 let bvAdx = { screen: "list", id: null, stack: [] };
 function bvAdxOpen(screen, id) {
   document.getElementById("bvBuilderOverlay")?.remove();
@@ -480,7 +482,7 @@ const ADX_CHEV = '<svg class="adx-chev" viewBox="0 0 24 24" fill="none" stroke="
 
 async function renderAdx(c) {
   const sc = bvAdx.screen;
-  if (!["owner", "admin", "buyer"].includes(window.myProfile?.role)) { c.innerHTML = `<div class="empty">Ad setup is for owners, admins and media buyers.</div>`; return; }
+  if (!["owner", "admin", "buyer"].includes(window.myProfile?.role) && !bvAdx.screen.startsWith("auto")) { c.innerHTML = `<div class="empty">Ad setup is for owners, admins and media buyers.</div>`; return; }
   c.innerHTML = `<div class="adx" id="adxRoot"></div>`;
   const root = c.querySelector("#adxRoot");
   if (["list", "pages", "datasets", "acct", "page", "dataset", "dslink", "pglink"].includes(sc) && !bvAdx.fresh) { try { await loadAccounts(); } catch {} bvAdx.fresh = true; }
@@ -496,6 +498,8 @@ async function renderAdx(c) {
   if (sc === "dslink") return adxDsLink(root);
   if (sc === "pgadd") return adxPgAdd(root);
   if (sc === "pglink") return adxPgLink(root);
+  if (sc === "auto") return adxAuto(root);
+  if (sc.startsWith("auto")) return adxAutoPanel(root, sc);
 }
 function adxCard(a, target) {
   const ok = a.status === "active";
@@ -609,6 +613,54 @@ function adxPickList(root, intro, target, sub) {
   root.innerHTML = `<div class="adx-intro"><p>${intro}</p></div>` + (all.length ? all.map(a => `<button type="button" class="adx-step" onclick="bvAdxGo('${target}','${a.id}')"><span class="adx-num ${sub(a).ok ? "done" : ""}">${sub(a).ok ? "✓" : "!"}</span><span class="adx-step-tx"><b>${escH(adxName(a))}</b><small>${escH(sub(a).text)}</small></span>${ADX_CHEV}</button>`).join("")
     : `<div class="adx-empty">You have no ad accounts yet.<button type="button" class="adx-btn" onclick="bvAdxGo('buy')">Buy an ad account</button><button type="button" class="adx-btn ghost" onclick="bvAdxGo('link')">Link my own</button></div>`);
 }
+// ── Automation & alerts: one list, each item opens its own full screen ──
+function adxAuto(root) {
+  const row = (k, color, d, t, sub) => `<button type="button" class="adx-row" data-k="${k}"><span class="ic" style="background:${color};color:#fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg></span><span class="tx"><b>${t}</b><small>${sub}</small><span class="adx-st" id="st_${k}"></span></span>${ADX_CHEV}</button>`;
+  const pro = ["owner", "admin", "buyer"].includes(window.myProfile?.role);
+  root.innerHTML = `<div class="adx-intro"><p>Tap one to open it.</p></div>
+    <div class="adx-cnt" style="margin-top:6px">ALERTS</div>
+    ${row("autonotif", "#1f6fff", "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0", "Notifications", "Alerts on this phone")}
+    ${row("autowa", "#18a35a", "M21 12a8 8 0 0 1-12 7l-5 1 1-4.5A8 8 0 1 1 21 12z", "WhatsApp alerts", "Low balance, payments, transfers")}
+    ${row("autoemail", "#7a5cff", "M4 6h16v12H4zM4 7l8 6 8-6", "Email", "Reports and sign-in alerts")}
+    ${pro ? `<div class="adx-cnt">AUTOMATION</div>
+    ${row("autokill", "#e5484d", "M12 3v9m0 0 4-4m-4 4-4-4M5 21h14", "Ad kill rules", "Pause ads that spend with no results")}
+    ${row("autoai", "#0f2a66", "M12 8a4 4 0 1 0 0 8 4 4 0 0 1 0-8zM3 12h2M19 12h2M12 3v2M12 19v2", "AI sales agent", "Answers customers on WhatsApp")}` : ""}
+    <div class="adx-cnt">ACCOUNT</div>
+    ${row("autosec", "#667086", "M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z", "Sign-in security", "Two-step sign-in")}`;
+  root.querySelectorAll(".adx-row").forEach(b => b.addEventListener("click", () => bvAdxGo(b.dataset.k)));
+  const chip = (k, text, ok) => { const el = root.querySelector("#st_" + k); if (el) el.innerHTML = `<span class="adx-pill ${ok ? "ok" : "off"}">${escH(text)}</span>`; };
+  const p = window.myProfile || {};
+  try { chip("autonotif", ("Notification" in window && Notification.permission === "granted") ? "On" : "Off", "Notification" in window && Notification.permission === "granted"); } catch (e) {}
+  chip("autowa", p.whatsapp_number ? "+" + String(p.whatsapp_number).replace(/\D/g, "").slice(0, 6) + "…" : "Not set", !!p.whatsapp_number);
+  const em = [p.email_reports, p.login_alerts].filter(Boolean).length; chip("autoemail", em ? em + " on" : "Off", !!em);
+  if (pro) {
+    sbQuery("kill_rules", `select=enabled,lpv_enabled&profile_id=eq.${sessionData?.user?.id}`).then(rows => { const n = (rows || []).filter(x => x.enabled || x.lpv_enabled).length; chip("autokill", n ? n + " rule" + (n === 1 ? "" : "s") + " on" : "Off", !!n); }).catch(() => {});
+    sbQuery("ai_sales_agents", "select=enabled").then(rows => { const n = (rows || []).filter(x => x.enabled).length; chip("autoai", n ? n + " number" + (n === 1 ? "" : "s") + " on" : "Off", !!n); }).catch(() => {});
+  }
+  try { supabaseClient.auth.mfa.listFactors().then(r => { const on = ((r.data && r.data.all) || []).some(f => f.factor_type === "totp" && f.status === "verified"); chip("autosec", on ? "On" : "Off", on); }).catch(() => {}); } catch (e) {}
+}
+// Each item's own screen reuses what that panel already does (same switches, same saving), full screen.
+function adxAutoPanel(root, sc) {
+  const map = { autonotif: ["notifPanel", () => bvRenderNotifPanel()], autoemail: ["emailPanel", () => bvRenderEmailPanel()], autosec: ["securityPanel", () => bvRenderSecurityPanel()], autokill: ["killRulesPanel", () => bvRenderKillRules()], autoai: ["aiAgentPanel", () => bvRenderAiAgents()] };
+  if (sc === "autowa") {
+    root.innerHTML = `<div class="panel"><div style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.5">Your number for time-sensitive alerts: low ad balance, payment confirmed, funding request updates and transfer results.</div>
+      <label class="adx-lbl" for="myWhatsappNumber">WhatsApp number</label><input type="text" id="myWhatsappNumber" inputmode="tel" value="${escH(window.myProfile?.whatsapp_number || "")}" placeholder="e.g. 2348012345678">
+      <button type="button" class="adx-btn" id="saveWhatsappBtn" style="margin-top:12px">Save</button><div id="whatsappMsg" style="margin-top:8px"></div></div>`;
+    root.querySelector("#saveWhatsappBtn").addEventListener("click", async e => {
+      const btn = e.currentTarget, msg = root.querySelector("#whatsappMsg"), number = root.querySelector("#myWhatsappNumber").value.trim();
+      btn.disabled = true; btn.textContent = "Saving…";
+      const { error } = await supabaseClient.from("profiles").update({ whatsapp_number: number || null }).eq("id", sessionData.user.id);
+      btn.disabled = false; btn.textContent = "Save";
+      if (error) { msg.innerHTML = `<div class="adx-note warn">${escH(error.message)}</div>`; return; }
+      window.myProfile.whatsapp_number = number || null; msg.innerHTML = `<div class="adx-note ok">Saved.</div>`;
+    });
+    return;
+  }
+  const m = map[sc]; if (!m) { bvAdxBack(); return; }
+  root.innerHTML = `<div class="panel adx-hostpanel" id="${m[0]}"></div>`;
+  try { m[1](); } catch (e) { root.innerHTML = `<div class="adx-note warn">Couldn't open this: ${escH(e.message)}</div>`; }
+}
+
 // ── Datasets and Pages as their own lists: tap one to choose which ad accounts use it ──
 const adxCtx = { ds: null, dsData: null, pg: null };
 (function () { if (document.getElementById("adxLinkCss")) return; const st = document.createElement("style"); st.id = "adxLinkCss"; st.textContent = `.adx-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px 16px;margin-top:10px;border:0;border-radius:20px;background:var(--panel);color:var(--text);font:inherit;box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);cursor:pointer}
@@ -616,7 +668,9 @@ const adxCtx = { ds: null, dsData: null, pg: null };
 .adx-row .ic{width:42px;height:42px;border-radius:14px;background:rgba(31,111,255,.12);color:#1f6fff;display:flex;align-items:center;justify-content:center;flex:none;font-weight:750}
 .adx-row .tick{width:26px;height:26px;border-radius:50%;border:2px solid #9aa3b4;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;flex:none}.adx-row .tick.on{border-color:#1f6fff;background:#1f6fff}
 .adx-n{width:26px;height:26px;border-radius:50%;background:#1f6fff;color:#fff;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
-.adx-row.off{opacity:.55;cursor:default}.adx-top{margin-top:14px}.adx-cnt{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 4px 0}`; document.head.appendChild(st); })();
+.adx-row.off{opacity:.55;cursor:default}
+.adx-st{display:block;margin-top:6px}.adx-pill{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:11px;font-size:11.5px;font-weight:700;background:rgba(120,130,150,.18);color:var(--muted)}.adx-pill.ok{background:rgba(24,163,90,.14);color:#127a43}
+.adx-hostpanel{padding:16px}.adx-hostpanel .ph{display:none}.adx-top{margin-top:14px}.adx-cnt{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin:18px 4px 0}`; document.head.appendChild(st); })();
 function adxBackTo(screen) {
   while (bvAdx.stack.length) { const p = bvAdx.stack.pop(); if (p.screen === screen) { bvAdx.screen = p.screen; bvAdx.id = p.id; bvAdx.fresh = false; render(); window.scrollTo(0, 0); return; } }
   bvAdx.screen = screen; bvAdx.id = null; bvAdx.fresh = false; render(); window.scrollTo(0, 0);
