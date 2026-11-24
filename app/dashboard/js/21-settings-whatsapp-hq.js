@@ -302,7 +302,10 @@ async function bvHqSocial(body) {
       load();
     });
   }
-  body.innerHTML = `<div class="set-lbl">New post · Instagram @revora.ads + Facebook Page “Revora”</div>
+  body.innerHTML = `<div class="set-lbl">Connection</div>
+    <div class="set-card" style="padding:14px 16px;"><div style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:10px;">Checks that Revora's Meta connection reaches the Facebook Page and Instagram, and what it is allowed to do (posting, comments, messages).</div>
+      <button type="button" class="btn btn-g" id="soCheck">Check connection</button><div id="soCheckOut" style="margin-top:10px;font-size:13px;line-height:1.55;"></div></div>
+    <div class="set-lbl" style="margin-top:16px;">New post · Instagram @revora.ads + Facebook Page “Revora”</div>
     <div class="set-card" style="padding:14px 16px;">
       <div class="field"><label>Pictures or one video (the first picture is the cover)</label>
         <input type="file" id="soFiles" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime">
@@ -317,6 +320,19 @@ async function bvHqSocial(body) {
     </div>
     <div class="set-lbl" style="margin-top:16px;">Posts</div><div class="set-card" id="soList"><div class="empty"><div class="spin" style="width:18px;height:18px;border-width:2px;"></div></div></div>`;
   const $ = id => document.getElementById(id);
+  $("soCheck").onclick = async () => {
+    const btn = $("soCheck"), out = $("soCheckOut"); btn.disabled = true; btn.textContent = "Checking…"; out.textContent = "";
+    const r = await sbFn("social-admin", { action: "check" }).catch(err => ({ error: err.message }));
+    btn.disabled = false; btn.textContent = "Check connection";
+    if (r.error) { out.innerHTML = `<span style="color:var(--danger)">${escH(r.error)}</span>`; return; }
+    const nice = { instagram_basic: "read the Instagram account", instagram_content_publish: "post to Instagram", instagram_manage_comments: "read and answer Instagram comments", instagram_manage_messages: "read and answer Instagram messages", pages_messaging: "read and answer Messenger messages", pages_manage_engagement: "reply to Facebook comments", pages_read_engagement: "read Facebook comments", pages_manage_posts: "post to the Facebook Page" };
+    const L = [];
+    if (r.pages_error) L.push("✗ Could not list the Pages: " + escH(r.pages_error));
+    for (const p of r.pages || []) L.push(`${p.instagram ? "✓" : "•"} Page “${escH(p.name)}”${p.instagram ? " + Instagram @" + escH(p.instagram.username || p.instagram.id) : " (no Instagram linked)"}`);
+    if (r.scopes_error) L.push("Could not read the permissions: " + escH(r.scopes_error));
+    else { for (const k of r.have || []) L.push("✓ Allowed to " + escH(nice[k] || k)); for (const k of r.missing || []) L.push("✗ Not allowed to " + escH(nice[k] || k)); }
+    out.innerHTML = L.join("<br>");
+  };
   const drawThumbs = () => {
     $("soThumbs").innerHTML = files.map((f, i) => `<div style="position:relative;width:84px;">${f.file.type.startsWith("video") ? `<div style="width:84px;height:84px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;font-size:26px;">🎬</div>` : `<img src="${f.url}" alt="" style="width:84px;height:84px;border-radius:10px;object-fit:cover;">`}
       <div style="font-size:11px;text-align:center;margin-top:3px;"><b>${i + 1}</b> <a data-m="${i}:-1" style="cursor:pointer;">◀</a> <a data-m="${i}:1" style="cursor:pointer;">▶</a> <a data-m="${i}:0" style="cursor:pointer;color:var(--danger);">✕</a></div></div>`).join("");

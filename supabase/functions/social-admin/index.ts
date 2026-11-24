@@ -9,12 +9,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 //     { action: "post_now", id }
 //     { action: "update", id, caption_ig?, caption_fb?, scheduled_for? }
 //     { action: "delete", id }                                              -> only for posts that have not gone out
+//     { action: "check" }                                                  -> read-only: which Pages and Instagram accounts Revora's Meta connection reaches, and what it is allowed to do
 // Captions are always written by a person (or by the assistant in the person's own chat); nothing here writes captions on its own.
 // When a draft is created, the HQ admins get a WhatsApp message with Approve / Skip / Edit buttons (replies are handled in handle-whatsapp-reply).
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const WA_TOKEN = Deno.env.get("BEOLIV_WHATSAPP_ACCESS_TOKEN") ?? "";
 const WA_PHONE_ID = Deno.env.get("BEOLIV_WHATSAPP_PHONE_NUMBER_ID") ?? "";
+const META_TOKEN = Deno.env.get("META_ACCESS_TOKEN") ?? "";
 const TPL_APPROVAL = Deno.env.get("WHATSAPP_TPL_POST_APPROVAL") ?? "revora_post_approval_v1";
 const TPL_APPROVAL_BTN = Deno.env.get("WHATSAPP_TPL_POST_APPROVAL_BTN") ?? "revora_post_approval_v2";
 const HQ_URL = "https://hq.revoracrm.online";
@@ -242,6 +244,24 @@ Deno.serve(async (req)=>{
     }, 403);
     const b = await req.json().catch(()=>({}));
     const action = b?.action;
+    if (action === "check") {
+      // Read-only: what Revora's own Meta connection can reach and do.
+      const out: any = { ok: true };
+      if (!META_TOKEN) return json({ error: "Revora's Meta connection is not set." }, 500);
+      const mg = async (path: string)=>{ const r = await fetch(`https://graph.facebook.com/v22.0${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(META_TOKEN)}`); const j = await r.json().catch(()=>({})); if (j?.error) throw new Error(j.error.error_user_msg || j.error.message || "Meta refused the request"); return j; };
+      try {
+        const d = await mg(`/debug_token?input_token=${encodeURIComponent(META_TOKEN)}`);
+        const sc: string[] = d?.data?.scopes ?? [];
+        out.token_type = d?.data?.type ?? null; out.scopes = sc;
+        const need = ["instagram_basic", "instagram_content_publish", "instagram_manage_comments", "instagram_manage_messages", "pages_messaging", "pages_manage_engagement", "pages_read_engagement", "pages_manage_posts"];
+        out.have = need.filter((x)=>sc.includes(x)); out.missing = need.filter((x)=>!sc.includes(x));
+      } catch (e) { out.scopes_error = String(e.message ?? e).slice(0, 200); }
+      try {
+        const a = await mg(`/me/accounts?fields=id,name,instagram_business_account{id,username}&limit=50`);
+        out.pages = (a?.data ?? []).map((p: any)=>({ id: p.id, name: p.name, instagram: p.instagram_business_account ? { id: p.instagram_business_account.id, username: p.instagram_business_account.username ?? null } : null }));
+      } catch (e) { out.pages_error = String(e.message ?? e).slice(0, 200); }
+      return json(out);
+    }
     if (action === "list") {
       let q = db.from("social_posts").select("*").order("scheduled_for", {
         ascending: false,
