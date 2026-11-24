@@ -814,7 +814,16 @@ function adxPgLink(root) {
     for (const id of link) { const r = await sbFn("link-page", { ad_account_id: id, page_id: pg.id }).catch(err => ({ error: err.message })); if (r.status !== "linked") bad.push({ id, error: r.error || "Could not link that Page." }); }
     for (const id of unlink) { await sbFn("link-page", { ad_account_id: id, page_id: pg.id, unlink: true }).catch(() => null); }
     try { await loadAccounts(); } catch {}
-    if (bad.length) { m.innerHTML = bad.map(x => { const a = adxAcct(x.id); return `<div class="adx-note warn" style="margin-top:8px"><b>${escH(a ? adxName(a) : "Ad account")}</b>: ${escH(x.error)}</div>`; }).join(""); go.disabled = false; paint(); return; }
+    if (bad.length) {
+      m.innerHTML = bad.map(x => { const a = adxAcct(x.id); return `<div class="adx-note warn" style="margin-top:8px"><b>${escH(a ? adxName(a) : "Ad account")}</b>: ${escH(x.error)}<button type="button" class="adx-btn small ghost forceLink" data-id="${escH(x.id)}" style="margin-top:10px">Link anyway</button><div style="font-size:12px;margin-top:6px;color:var(--muted)">Use this if the Page is already in your Business. Saves it without Meta's check.</div></div>`; }).join("");
+      m.querySelectorAll(".forceLink").forEach(fb => fb.addEventListener("click", async () => {
+        fb.disabled = true; fb.textContent = "Linking…";
+        const r2 = await sbFn("link-page", { ad_account_id: fb.dataset.id, page_id: pg.id, page_name: pg.name, force: true }).catch(err => ({ error: err.message }));
+        if (r2.status === "linked") { fb.closest(".adx-note").remove(); bvToast("Linked."); try { await loadAccounts(); } catch {} if (!m.querySelector(".forceLink")) adxBackTo("pages"); }
+        else { fb.disabled = false; fb.textContent = "Link anyway"; bvToast(r2.error || "Could not link it.", "err"); }
+      }));
+      go.disabled = false; paint(); return;
+    }
     bvToast("Saved"); adxBackTo("pages");
   });
 }
