@@ -268,7 +268,7 @@ async function renderShipDelivery(el) {
     const canBook = ["failed", "waiting"].includes(st) && o.order_status === "valid";
     const needsFix = ex && ["name", "phone", "address"].includes(ex.kind);
     const acts = `<div class="sd-act">
-      ${canBook ? (needsFix ? `<button class="sd-btn pri" onclick="bvShipFix('${o.id}')">Fix details</button><button class="sd-btn" onclick="bvShipAct('${o.id}','retry',this)">Book again</button>` : `<button class="sd-btn pri" onclick="bvShipAct('${o.id}','retry',this)">Book delivery</button>`) : ""}
+      ${canBook ? (needsFix ? `<button class="sd-btn pri" onclick="bvShipFix('${o.id}')">Fix details</button>${bvShipStaff() ? `<button class="sd-btn" onclick="bvShipAct('${o.id}','retry',this)">Book again</button>` : ""}` : (bvShipStaff() ? `<button class="sd-btn pri" onclick="bvShipAct('${o.id}','retry',this)">Book delivery</button>` : "")) : ""}
       ${o.shipbubble_tracking_url ? `<a class="sd-btn" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
       ${wa ? `<a class="sd-btn" href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)">Chat</a>` : ""}
       ${canBook ? `<button class="sd-link" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}</div>`;
@@ -289,6 +289,8 @@ async function renderShipDelivery(el) {
   const inp = document.getElementById("sdQ");
   if (inp) { let t; inp.oninput = () => { window.bvShipQ = inp.value; clearTimeout(t); t = setTimeout(() => { renderShipDelivery(el).then(() => { const i2 = document.getElementById("sdQ"); if (i2) { i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); } }); }, 250); }; }
 }
+// Booking spends the Shipbubble wallet, so only the owner, an admin or customer care can do it. Everyone who sees the screen can check prices.
+function bvShipStaff() { return ["owner", "admin", "customer_care"].includes(window.myProfile?.role); }
 async function bvShipAct(orderId, action, btn) {
   if (btn) { btn.disabled = true; btn.dataset.t = btn.textContent; btn.textContent = action === "rates" ? "Checking…" : "Booking…"; }
   try {
@@ -320,16 +322,16 @@ function bvShipFix(orderId) {
     <label>Phone number</label><input class="cat-in" id="sfP" value="${escH(o.customer_phone || "")}" inputmode="tel" autocomplete="off">
     <label>Street address</label><input class="cat-in" id="sfA" value="${escH(o.customer_address || "")}" placeholder="House number, street, area" autocomplete="off">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label>City</label><input class="cat-in" id="sfC" value="${escH(o.customer_city || "")}" autocomplete="off"></div><div><label>State</label><input class="cat-in" id="sfS" value="${escH(o.customer_state || "")}" autocomplete="off"></div></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button class="sd-btn" onclick="bvCloseSheet('sdFix')">Cancel</button><button class="sd-btn pri" id="sfGo">Save and book</button></div></div>`, 460);
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px"><button class="sd-btn" onclick="bvCloseSheet('sdFix')">Cancel</button><button class="sd-btn pri" id="sfGo">${bvShipStaff() ? "Save and book" : "Save"}</button></div></div>`, 460);
   ov.querySelector("#sfGo").onclick = async () => {
     const v = id => ov.querySelector(id).value.trim();
     const name = v("#sfN");
     if (!/^[A-Za-z][A-Za-z'.\-]*(\s+[A-Za-z][A-Za-z'.\-]*)+$/.test(name)) return bvToast("Enter a first and last name using letters only, for example John Doe.", "err");
     const b = ov.querySelector("#sfGo"); b.disabled = true; b.textContent = "Saving…";
     const { error } = await supabaseClient.from("orders").update({ customer_name: name, customer_phone: v("#sfP"), customer_address: v("#sfA"), customer_city: v("#sfC"), customer_state: v("#sfS") }).eq("id", orderId);
-    if (error) { b.disabled = false; b.textContent = "Save and book"; return bvToast("Couldn't save: " + error.message, "err"); }
+    if (error) { b.disabled = false; b.textContent = bvShipStaff() ? "Save and book" : "Save"; return bvToast("Couldn't save: " + error.message, "err"); }
     bvCloseSheet("sdFix");
-    await bvShipAct(orderId, "retry", null);
+    if (bvShipStaff()) await bvShipAct(orderId, "retry", null); else { bvToast("Saved. The owner or customer care can book it now."); renderShipDelivery(document.getElementById("mainContent")); }
   };
 }
 
