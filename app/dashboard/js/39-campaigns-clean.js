@@ -61,6 +61,8 @@
   .cx-cp .more{border:0;background:none;color:#1f6fff;font-weight:700;font-size:13px;padding:8px 0 0;min-height:44px;cursor:pointer}
   .cx-cp hr{border:0;border-top:1px solid var(--border);margin:16px 0}
   .cx-btnp{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:12px;background:#e4e6eb;color:#1c1e21;font-weight:700;font-size:14px}
+  .cx-pload{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .cx-frameslot{margin-top:14px}
   .cx-acts{display:flex;justify-content:space-around;gap:8px;margin-top:16px}
   .cx-act{border:0;background:transparent;color:var(--text);padding:0;display:flex;flex-direction:column;align-items:center;gap:6px;min-height:44px;cursor:pointer;font-size:12px;font-weight:650;text-decoration:none}
   .cx-act i{width:52px;height:52px;border-radius:18px;background:var(--panel);box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);color:#1f6fff;display:flex;align-items:center;justify-content:center}
@@ -102,6 +104,9 @@
   .cx-head{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:2px 2px 12px}
   .cx-head h1{flex:1;margin:0;font-size:28px;font-weight:750;letter-spacing:-.02em}
   .cx-ib{width:44px;height:44px;border:0;border-radius:50%;background:var(--panel);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 2px rgba(15,30,70,.08),0 4px 14px rgba(15,30,70,.06);flex:none}
+  .cx-ib.spin svg{animation:cxr .8s linear infinite}
+  @keyframes cxr{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.cx-ib.spin svg{animation:none}}
   .cx-ib svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
   .cx-new{height:44px;padding:0 18px;border:0;border-radius:22px;background:#1f6fff;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;flex:none}
   .cx-new svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round}
@@ -137,6 +142,7 @@
     ext: '<svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>',
   };
   const esc = (s) => escH(String(s == null ? "" : s));
+  const CX = (window.CX = window.CX || { copy: {} });
   const LEVEL = { campaigns: ["CAMPAIGN", "Campaign"], adsets: ["AD SET", "Ad set"], ads: ["AD", "Ad"] };
 
   // ---------- numbers ----------
@@ -214,7 +220,7 @@
     const rngShort = ({ today: "Today", yesterday: "Yesterday", last3: "3d", last7: "7d", last30: "30d", lifetime: "Lifetime" })[am.range] || "Today";
     return `<div class="cx cx-list"><div class="cx-head">
         <button type="button" class="cx-ib" onclick="cxSearch()" aria-label="Search">${ic.search}</button>
-        <button type="button" class="cx-ib" onclick="amFetch()" aria-label="Refresh">${ic.refresh}</button>
+        <button type="button" class="cx-ib${am.loading ? " spin" : ""}" onclick="amFetch()" aria-label="Refresh" ${am.loading ? "aria-busy=\"true\"" : ""}>${ic.refresh}</button>
         <button type="button" class="cx-new" onclick="bvOpenObjectiveGateModal()">${ic.plus}New</button></div>
       <div class="cx-bar">
       <div class="cx-seg">${[["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]].map(([k, l]) => `<button type="button" class="${lvl === k ? "on" : ""}" onclick="cpMLevel('${k}')">${l}<em>${counts[k]}</em></button>`).join("")}</div>
@@ -269,7 +275,7 @@
       <button type="button" class="cx-num" style="margin-top:12px" onclick="cxPick()">${ic.tune}Change numbers</button>
       ${acts ? `<div class="cx-acts">${acts}</div>` : ""}
       ${jy ? `<button type="button" class="cx-link" onclick="${l === 'ads' ? `jyAdPanel('${r.id}')` : 'jnOpen()'}"><i>${ic.eye}</i><span><b>${jy.n} ${jy.n === 1 ? "person" : "people"} visited${l === "ads" ? " from this ad" : ""}</b><small>${jy.o ? jy.o + " ordered · " : ""}See what they did</small></span>${ic.chev}</button>` : ""}
-      ${l === "ads" ? `${pic}${copyBlock(r)}` : ""}
+      ${l === "ads" ? `${creativeBlock(r)}${copyBlock(r)}` : ""}
       ${kidsLevel ? `<div class="cx-sec">${LEVEL[kidsLevel][1]}s</div>${kids.length ? kids.map((k) => kidRow(kidsLevel, k, Math.max(...kids.map((x) => Number(x.spend) || 0)))).join("") : `<div class="cx-empty">Nothing here yet.</div>`}` : ""}</div>`;
   }
   function kidRow(level, k, top) {
@@ -319,6 +325,7 @@
     // Keep the same place on the page when the screen redraws itself (picking numbers, a switch, live numbers arriving).
     const was = { d: !!document.querySelector(".cx-detail"), id: CP.sel && CP.sel.id }, y = window.scrollY;
     const r = prevDraw.apply(this, arguments);
+    try { placeFrames(); } catch (e) { console.error("creative", e); }
     if (was.d && was.d === !!CP.mDetail && was.id === (CP.sel && CP.sel.id)) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); }
     return r;
   };
@@ -327,8 +334,38 @@
   if (tb) tb.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest(".tab-btn"); if (b && b.dataset.tab === "campaigns" && CP.cxPrev) { am.range = CP.cxPrev.range; am.filter = CP.cxPrev.filter; CP.cxPrev = null; } }, true);
   ["amSetRange", "amSetFilter"].forEach((n) => { const f = window[n]; if (typeof f === "function") window[n] = function () { CP.cxPrev = null; return f.apply(this, arguments); }; });
 
+  // ---------- the creative: Meta's own mobile-feed preview of the ad (plays video, shows the real picture), loaded once per ad ----------
+  CX.prev = CX.prev || {}; CX.frame = CX.frame || {};
+  function loadPreview(id) {
+    if (CX.prev[id] !== undefined || CX.prevBusy === id) return; CX.prevBusy = id;
+    amCall({ action: "ad_preview", ad_account_id: activeAccountId, ad_id: id }).then((r) => {
+      const list = r && r.ok ? (r.previews || []).filter((x) => x.src) : [];
+      CX.prev[id] = list.find((x) => x.format === "MOBILE_FEED_STANDARD") || list[0] || null;
+    }).catch(() => { CX.prev[id] = null; }).finally(() => { CX.prevBusy = null; if (document.querySelector(".cx-detail") && CP.sel && CP.sel.id === id) amDraw(); });
+  }
+  function creativeBlock(r) {
+    const poster = r.picture_url || r.thumbnail_url, p = CX.prev[r.id];
+    const still = poster ? `<div class="cx-pic"><img src="${esc(poster)}" alt="" loading="lazy" onerror="this.parentNode.remove()"></div>` : "";
+    if (p === undefined) { loadPreview(r.id); return `<div class="cx-pic" aria-busy="true">${poster ? `<img src="${esc(poster)}" alt="" style="opacity:.5" onerror="this.remove()">` : ""}<div class="cx-pload"><span class="spin"></span></div></div>`; }
+    if (!p) return still;
+    return `<div class="cx-frameslot" data-id="${esc(r.id)}" style="min-height:${Math.round(p.height * Math.min(1, Math.min(608, window.innerWidth - 32) / p.width))}px"></div>`;
+  }
+  // The frame is built once and put back after every redraw, so the video does not restart when the screen refreshes.
+  function placeFrames() {
+    document.querySelectorAll(".cx-frameslot").forEach((slot) => {
+      const id = slot.dataset.id, p = CX.prev[id]; if (!p) return;
+      let el = CX.frame[id];
+      if (!el) {
+        const avail = Math.min(608, window.innerWidth - 32), sc = Math.min(1, avail / p.width);
+        el = document.createElement("div"); el.className = "cx-fw"; el.style.cssText = `width:${Math.round(p.width * sc)}px;height:${Math.round(p.height * sc)}px;margin:0 auto;overflow:hidden;border-radius:18px;background:#fff`;
+        const f = document.createElement("iframe"); f.src = p.src; f.width = p.width; f.height = p.height; f.setAttribute("scrolling", "no"); f.setAttribute("frameborder", "0"); f.setAttribute("referrerpolicy", "no-referrer");
+        f.style.cssText = `border:0;transform:scale(${sc});transform-origin:0 0`; el.appendChild(f); CX.frame[id] = el;
+      }
+      slot.appendChild(el);
+    });
+  }
+
   // ---------- the ad's own words: primary text, headline and the button it uses ----------
-  const CX = (window.CX = window.CX || { copy: {} });
   const ctaWord = (c) => { const k = String(c || "").toUpperCase(); const m = { WHATSAPP_MESSAGE: "Send WhatsApp message", MESSAGE_PAGE: "Send message", SEND_MESSAGE: "Send message", SHOP_NOW: "Shop now", LEARN_MORE: "Learn more", ORDER_NOW: "Order now", BUY_NOW: "Buy now", SIGN_UP: "Sign up", CONTACT_US: "Contact us", CALL_NOW: "Call now", GET_OFFER: "Get offer", BOOK_TRAVEL: "Book now", NO_BUTTON: "" }; if (k in m) return m[k]; const w = k.replace(/_/g, " ").toLowerCase(); return w.charAt(0).toUpperCase() + w.slice(1); };
   function loadCopy(id) {
     if (CX.copy[id] !== undefined || CX.copyBusy === id) return; CX.copyBusy = id;
