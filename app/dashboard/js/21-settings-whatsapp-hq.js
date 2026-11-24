@@ -40,7 +40,7 @@ function bvLinkPage(accountId) {
     const b = document.getElementById("lpGo"), m = document.getElementById("lpMsg");
     b.disabled = true; b.textContent = "Checking…"; m.style.display = "none";
     try {
-      const r = await sbFn("link-page", { ad_account_id: accountId, page_id: document.getElementById("lpId").value });
+      const r = await sbFn("link-page", { ad_account_id: accountId, page_id: document.getElementById("lpId").value, force: true });
       if (r.status === "linked") { bvCloseModal(); bvToast(`Linked ${r.page_name || "Page"}`); await loadAccounts(); if (activeTab === "settings") render(); return; }
       m.textContent = r.error || "Could not link that Page."; m.style.display = "block";
       if (!document.getElementById("lpForce") && (r.status === "not_usable" || r.status === "not_shared")) {

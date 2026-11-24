@@ -789,7 +789,8 @@ function adxPgAdd(root) {
     try {
       const r = await sbFn("link-page", { page_id: pid, check_only: true });
       if (r.status === "shared") { adxCtx.pg = { id: r.page_id, name: r.page_name || r.page_id, accts: [] }; bvToast("Page found: " + (r.page_name || r.page_id)); bvAdxGo("pglink", r.page_id); return; }
-      m.innerHTML = bvAdxErr(r.error || "Could not find that Page.", "Check that the Page was shared with Revora and the ID is right.");
+      m.innerHTML = `<div class="adx-note warn">${escH(r.error || "Revora could not see that Page.")}</div><button type="button" class="adx-btn ghost" id="adxCont" style="margin-top:8px">Continue anyway</button><div style="font-size:12px;color:var(--muted);margin-top:6px">Use this if you know the ID is right. It is saved the same way as "Add an ad account by ID".</div>`;
+      m.querySelector("#adxCont").onclick = () => { adxCtx.pg = { id: String(pid).replace(/\D/g, ""), name: String(pid).replace(/\D/g, ""), accts: [] }; bvAdxGo("pglink", adxCtx.pg.id); };
     } catch (err) { m.innerHTML = bvAdxErr(err.message); }
     b.disabled = false; b.textContent = "Check and add Page";
   });
@@ -812,14 +813,14 @@ function adxPgLink(root) {
     const m = root.querySelector("#adxMsg"); m.innerHTML = "";
     if (!link.length && !unlink.length) { adxBackTo("pages"); return; }
     go.disabled = true; go.textContent = "Saving…"; const bad = [];
-    for (const id of link) { const r = await sbFn("link-page", { ad_account_id: id, page_id: pg.id }).catch(err => ({ error: err.message })); if (r.status !== "linked") bad.push({ id, error: r.error || "Could not link that Page." }); }
+    for (const id of link) { const r = await sbFn("link-page", { ad_account_id: id, page_id: pg.id, page_name: pg.name === pg.id ? "" : pg.name, force: true }).catch(err => ({ error: err.message })); if (r.status !== "linked") bad.push({ id, error: r.error || "Could not link that Page." }); }
     for (const id of unlink) { await sbFn("link-page", { ad_account_id: id, page_id: pg.id, unlink: true }).catch(() => null); }
     try { await loadAccounts(); } catch {}
     if (bad.length) {
       m.innerHTML = bad.map(x => { const a = adxAcct(x.id); return `<div class="adx-note warn" style="margin-top:8px"><b>${escH(a ? adxName(a) : "Ad account")}</b>: ${escH(x.error)}<button type="button" class="adx-btn small ghost forceLink" data-id="${escH(x.id)}" style="margin-top:10px">Link anyway</button><div style="font-size:12px;margin-top:6px;color:var(--muted)">Use this if the Page is already in your Business. Saves it without Meta's check.</div></div>`; }).join("");
       m.querySelectorAll(".forceLink").forEach(fb => fb.addEventListener("click", async () => {
         fb.disabled = true; fb.textContent = "Linking…";
-        const r2 = await sbFn("link-page", { ad_account_id: fb.dataset.id, page_id: pg.id, page_name: pg.name, force: true }).catch(err => ({ error: err.message }));
+        const r2 = await sbFn("link-page", { ad_account_id: fb.dataset.id, page_id: pg.id, page_name: pg.name === pg.id ? "" : pg.name, force: true }).catch(err => ({ error: err.message }));
         if (r2.status === "linked") { fb.closest(".adx-note").remove(); bvToast("Linked."); try { await loadAccounts(); } catch {} if (!m.querySelector(".forceLink")) adxBackTo("pages"); }
         else { fb.disabled = false; fb.textContent = "Link anyway"; bvToast(r2.error || "Could not link it.", "err"); }
       }));
