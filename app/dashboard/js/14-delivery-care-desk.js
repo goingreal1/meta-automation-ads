@@ -223,6 +223,9 @@ function bvShipCss() {
 .sd-btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
 .sd-btn.pri:hover{background:var(--accentDk)}
 .sd-btn:disabled{opacity:.55;cursor:default}
+.sd-chip{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 14px;border-radius:14px;background:rgba(31,111,255,.1);color:var(--text)}
+.sd-chip b{font-size:17px;font-weight:800;color:#1f6fff}.sd-chip span{flex:1;min-width:0;font-size:13px;line-height:1.3}.sd-chip small{display:block;color:var(--muted);font-size:12px}
+.sd-chip.off{background:rgba(120,130,150,.14)}.sd-chip.off span{color:var(--text2)}
 .sd-link{background:none;border:0;color:var(--text2);font:inherit;font-size:12.5px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px}
 .sd-empty{background:var(--panel);border:1px dashed var(--borderStrong);border-radius:16px;padding:34px 20px;text-align:center;color:var(--text2)}
 .sd-empty b{display:block;font-size:15px;color:var(--text);margin-bottom:4px}
@@ -265,14 +268,14 @@ async function renderShipDelivery(el) {
     const codLine = (cod || o.cod_amount_naira) && st === "delivered" ? `<div class="sd-meta"><span>${o.cod_remitted_at ? `✓ Shipbubble paid out ${fN(codAmt)}` : `⏳ Courier collected ${fN(codAmt)}${o.cod_collected_at ? " on " + escH(new Date(o.cod_collected_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })) : ""}. Awaiting payout from Shipbubble.`}</span></div>` : "";
     const riskBox = risk ? `<div class="sd-issue warnx"><b>Customer already paid by transfer</b><p>Shipbubble is still set to collect ${fN(Number(o.cod_amount_naira || 0))} in cash on delivery.</p><small>Tell the courier not to collect, or cancel the shipment in Shipbubble.</small></div>` : "";
     const wa = o.customer_phone ? `https://wa.me/${escH(String(o.customer_phone).replace(/\D/g, "").replace(/^0/, "234"))}` : "";
-    const canBook = ["failed", "waiting"].includes(st) && o.order_status === "valid";
+    const canBook = ["failed", "waiting"].includes(st) && o.order_status === "valid" && bvShipNg(o);
     const needsFix = ex && ["name", "phone", "address"].includes(ex.kind);
     const acts = `<div class="sd-act">
       ${canBook ? (needsFix ? `<button class="sd-btn pri" onclick="bvShipFix('${o.id}')">Fix details</button>${bvShipStaff() ? `<button class="sd-btn" onclick="bvShipAct('${o.id}','retry',this)">Book again</button>` : ""}` : (bvShipStaff() ? `<button class="sd-btn pri" onclick="bvShipAct('${o.id}','retry',this)">Book delivery</button>` : "")) : ""}
       ${o.shipbubble_tracking_url ? `<a class="sd-btn" href="${escH(o.shipbubble_tracking_url)}" target="_blank" rel="noopener">Track parcel</a>` : ""}
       ${wa ? `<a class="sd-btn" href="#" data-chat-phone="${escH(o.customer_phone)}" data-chat-name="${escH(o.customer_name || "")}" onclick="return bvOpenChatBtn(this)">Chat</a>` : ""}
       ${canBook ? `<button class="sd-link" onclick="bvShipAct('${o.id}','rates',this)">Check prices</button>` : ""}</div>`;
-    return `<div class="sd-card"><div class="sd-hd"><div class="sd-av">${escH(initials(o.customer_name))}</div><div class="sd-who"><b>${escH(o.customer_name || "Customer")}</b><span>${escH(loc)}<br><span class="sd-amt">${fN(o.order_value_naira)}</span>${cod ? '<span class="sd-cod">Pay on delivery</span>' : ""}${o.ordered_at ? ` <span style="white-space:nowrap">· ${escH(ago(o.ordered_at))}</span>` : ""}</span></div><span class="sd-pill ${pc}">${pl}</span></div>${riskBox}${issue || steps}${issue ? "" : meta}${codLine}${acts}</div>`;
+    return `<div class="sd-card"><div class="sd-hd"><div class="sd-av">${escH(initials(o.customer_name))}</div><div class="sd-who"><b>${escH(o.customer_name || "Customer")}</b><span>${escH(loc)}<br><span class="sd-amt">${fN(o.order_value_naira)}</span>${cod ? '<span class="sd-cod">Pay on delivery</span>' : ""}${o.ordered_at ? ` <span style="white-space:nowrap">· ${escH(ago(o.ordered_at))}</span>` : ""}</span></div><span class="sd-pill ${pc}">${pl}</span></div>${riskBox}${issue || steps}${issue ? "" : meta}${codLine}${["failed", "waiting"].includes(st) && o.order_status === "valid" ? bvShipChip(o) : ""}${acts}</div>`;
   };
   const chip = (id, label, count) => `<button class="sd-chip ${tab === id ? "on" : ""}" onclick="window.bvShipFilter='${id}';renderShipDelivery(document.getElementById('mainContent'))">${label}<em>${count}</em></button>`;
   const kpi = (label, val, color, cls = "") => `<div class="sd-kpi ${cls}" style="--kc:${color}"><span>${label}</span><b>${val}</b></div>`;
@@ -290,6 +293,21 @@ async function renderShipDelivery(el) {
   if (inp) { let t; inp.oninput = () => { window.bvShipQ = inp.value; clearTimeout(t); t = setTimeout(() => { renderShipDelivery(el).then(() => { const i2 = document.getElementById("sdQ"); if (i2) { i2.focus(); i2.setSelectionRange(i2.value.length, i2.value.length); } }); }, 250); }; }
 }
 // Booking spends the Shipbubble wallet, so only the owner, an admin or customer care can do it. Everyone who sees the screen can check prices.
+window.bvShipRates = window.bvShipRates || {};
+// Revora books Nigerian deliveries only (the courier lookup needs a Nigerian phone number and address).
+function bvShipNg(o) {
+  const c = String(o.customer_country || "").trim().toUpperCase();
+  if (c && c !== "NG" && c !== "NIGERIA") return false;
+  const ph = String(o.customer_phone || "").replace(/[\s\-()]/g, "");
+  if (!ph) return true;
+  return /^(\+?234|0)\d{9,10}$/.test(ph);
+}
+function bvShipChip(o) {
+  if (!bvShipNg(o)) return `<div class="sd-chip off"><span>Outside Nigeria<small>Revora books Nigerian deliveries only. Arrange this one yourself.</small></span></div>`;
+  const r = window.bvShipRates[o.id]; if (!r) return "";
+  const eta = r.delivery_eta ? String(r.delivery_eta) : "", type = r.service_type === "pickup" ? "pickup" : r.service_type === "dropoff" ? "drop-off" : "";
+  return `<div class="sd-chip"><b>${fN(r.total)}</b><span>${escH(r.courier_name || "Courier")}<small>${escH([type, eta].filter(Boolean).join(" · ") || "Cheapest courier for this address")}</small></span></div>`;
+}
 function bvShipStaff() { return ["owner", "admin", "customer_care"].includes(window.myProfile?.role); }
 async function bvShipAct(orderId, action, btn) {
   if (btn) { btn.disabled = true; btn.dataset.t = btn.textContent; btn.textContent = action === "rates" ? "Checking…" : "Booking…"; }
@@ -297,8 +315,8 @@ async function bvShipAct(orderId, action, btn) {
     const out = await sbFn("delivery-admin", { action, order_id: orderId });
     if (out?.error) throw new Error(out.error);
     if (action === "rates") {
-      const r = out?.rates || out?.couriers || out?.quotes || out;
-      alert("Courier prices:\n\n" + (Array.isArray(r) ? r.map(x => `${x.courier_name || x.name || "Courier"}: ₦${Number(x.total || x.amount || x.fee || 0).toLocaleString()}`).join("\n") : JSON.stringify(r, null, 2).slice(0, 700)));
+      if (out && out.chosen && out.chosen.total != null) { window.bvShipRates[orderId] = out.chosen; bvToast("Price found."); }
+      else bvToast("No courier price came back for this address.", "err");
     } else bvToast(out?.skipped || "Delivery booked.");
   } catch (e) { bvToast(String(e.message || "That didn't work.").replace(/^Shipbubble\s+[A-Z]+\s+\S+\s+\d{3}:\s*/i, ""), "err"); }
   if (btn) { btn.disabled = false; btn.textContent = btn.dataset.t || btn.textContent; }
