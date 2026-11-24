@@ -40,7 +40,7 @@
   .cx-top{display:flex;align-items:center;gap:10px}
   .cx-back{width:44px;height:44px;border:0;border-radius:50%;background:var(--panel);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 2px rgba(15,30,70,.08),0 4px 14px rgba(15,30,70,.06);flex:none}
   .cx-back svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .cx-tag{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:12px;background:rgba(31,111,255,.14);color:#1f6fff;font-size:11px;font-weight:800;letter-spacing:.07em}
+  .cx-tag{display:inline-flex;align-items:center;height:24px;padding:0 11px;border-radius:12px;background:rgba(31,111,255,.14);color:#1f6fff;font-size:12px;font-weight:750}
   .cx-title{font-size:20px;font-weight:750;line-height:1.2;overflow-wrap:anywhere;margin:2px 0 0}
   .cx-crumb{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12px;color:var(--muted);margin:10px 4px 0}
   .cx-crumb a{color:#1f6fff;font-weight:650;cursor:pointer;text-decoration:none;min-height:24px;display:inline-flex;align-items:center}
@@ -83,12 +83,39 @@
   .cx-foot{display:flex;gap:10px;margin-top:20px;position:sticky;bottom:0;background:var(--panel);padding-top:6px}
   .cx-foot button{height:50px;border:0;border-radius:16px;font-size:15px;font-weight:700;cursor:pointer}
   .cx-foot .g{padding:0 20px;background:var(--panel2);color:var(--text)}.cx-foot .p{flex:1;background:#1f6fff;color:#fff}
-  @media (max-width:860px){.rv-ui:has(.cx-list) .awc.hero,.rv-ui:has(.cx-list) .rv-sum{display:none}}
+  /* page grey behind white cards, and no card-inside-a-card */
+  [data-theme="light"] body:has(.cx), body[data-theme="light"]:has(.cx){background:#f1f3f8}
+  .rv-ui .cp-old:has(.cx){background:transparent}
+  .rv-ui .cp-old:has(.cx) > .rv-mlist, .rv-ui .cp-old:has(.cx) > .rv-dt{background:transparent;border:0;box-shadow:none;padding:0;border-radius:0}
+  .cx-head{display:flex;align-items:center;gap:10px;padding:14px 2px 12px}
+  .cx-head h1{flex:1;margin:0;font-size:28px;font-weight:750;letter-spacing:-.02em}
+  .cx-ib{width:44px;height:44px;border:0;border-radius:50%;background:var(--panel);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 2px rgba(15,30,70,.08),0 4px 14px rgba(15,30,70,.06);flex:none}
+  .cx-ib svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .cx-new{height:44px;padding:0 18px;border:0;border-radius:22px;background:#1f6fff;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer;flex:none}
+  .cx-new svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.6;stroke-linecap:round}
+  .cx-rowseg{display:flex;align-items:center;gap:10px}.cx-rowseg .cx-seg{flex:1}
+  .cx-rng{height:44px;padding:0 14px;border:0;border-radius:22px;background:var(--panel);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(15,30,70,.08),0 4px 14px rgba(15,30,70,.06)}
+  .cx-seg{background:var(--cxseg,rgba(120,130,150,.16))}
+  .cx-tl{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+  .cx-spk{display:flex;align-items:flex-end;gap:4px;height:36px}.cx-spk i{width:8px;border-radius:3px;background:#1f6fff;display:block}.cx-spk.bad i{background:#e5484d}
+  .cx-kbar{height:8px;border-radius:4px;background:var(--panel2);margin-top:10px;overflow:hidden}.cx-kbar i{display:block;height:100%;border-radius:4px}
+  .cx-kd{flex:1;min-width:0}
+  .cx-kd .top{display:flex;align-items:center;gap:10px}
+  .cx-kd .top b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}.cx-kd .top span{font-weight:750}
+  .cx-kd small{display:block;font-size:12px;color:var(--muted);margin-top:8px}
+  .cx-st{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}.cx-st i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .cx-st i.ok{background:#18a35a}.cx-st i.warn{background:#d98200}.cx-st i.bad{background:#e5484d}
+  .cx-pillrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .cx-search2{width:100%;height:44px;border:1px solid var(--border);border-radius:22px;background:var(--panel);color:var(--text);padding:0 16px;font:inherit;font-size:14px;margin-top:10px}
+  @media (max-width:860px){.rv-ui:has(.cx-list) .awc.hero,.rv-ui:has(.cx-list) .rv-sum,.rv-ui:has(.cx-list) .rv-head,.rv-ui:has(.cx-list) .cp-tools{display:none}}
   `;
   const st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
   const ic = {
     back: '<svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
+    search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+    plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
     tune: '<svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>',
     eye: '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>',
     chev: '<svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="m9 6 6 6-6 6"/></svg>',
@@ -141,6 +168,22 @@
     return ["Just started", "", ""];
   }
 
+  // ---------- little 7-day spend bars (from the live daily numbers Home already loads) ----------
+  const last7 = () => Array.from({ length: 7 }, (_, i) => watDate(-(6 - i)));
+  let askedDaily = false;
+  function dailyRows() {
+    const d = typeof liveDaily !== "undefined" && liveDaily.data && liveDaily.data.ok ? liveDaily.data.rows : null;
+    if (!d && !askedDaily && typeof fetchLiveDaily === "function") { askedDaily = true; fetchLiveDaily(watDate(-6), watDate(0)).then(() => { askedDaily = false; if (document.querySelector(".cx-list")) amDraw(); }).catch(() => { askedDaily = false; }); }
+    return d;
+  }
+  function bars(level, r) {
+    const rows = dailyRows(); if (!rows || level === "ads") return "";
+    const days = last7(), by = new Map();
+    rows.forEach((x) => { const hit = level === "adsets" ? x.adset_id === r.id : (x.campaign_id ? x.campaign_id === r.id : x.campaign_name === r.name); if (hit) by.set(x.date, (by.get(x.date) || 0) + (Number(x.spend) || 0)); });
+    const vals = days.map((dd) => by.get(dd) || 0), mx = Math.max(...vals); if (mx <= 0) return "";
+    return `<div class="cx-spk${verdict(r)[1] === "bad" || (Number(r.spend) > 0 && !Number(r.results)) ? " bad" : ""}" aria-hidden="true">${vals.map((v) => `<i style="height:${Math.max(3, Math.round(v / mx * 36))}px"></i>`).join("")}</div>`;
+  }
+
   // ---------- list ----------
   function card(level, r) {
     const d = am.data, on = r.status === "ACTIVE", busy = am.busy.has(r.id), v = verdict(r);
@@ -153,22 +196,39 @@
     return `<div class="cx-card${on ? "" : " off"}" onclick="cxOpen('${level}','${r.id}')">
       <div class="cx-hd">${thumb}<div class="cx-nm"><b>${esc(r.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</div>
         <label class="switch" onclick="event.stopPropagation()"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${AM_SINGULAR[level]}','${r.id}',this)" aria-label="${on ? "Pause" : "Turn on"}"><span class="sw-track"></span></label></div>
-      <div class="cx-big"><small>${esc(heroLabel(r))}</small><b>${hv != null ? fN(hv) : "—"}</b></div>
+      <div class="cx-tl"><div class="cx-big"><small>${esc(heroLabel(r))}</small><b>${hv != null ? fN(hv) : "—"}</b></div>${bars(level, r)}</div>
       <div class="cx-pills">${pillsFor(r, 6)}</div>
       <span class="cx-v ${v[1]}">${esc(v[0])}</span></div>`;
   }
   function listHtml() {
     const lvl = CP.mlevel, counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
     const rows = amRows(lvl), tot = amTotals(rows), word = lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad";
-    return `<div class="cx cx-list"><div class="cx-bar">
+    const rng = (AM_RANGES.find((x) => x[0] === am.range) || [])[1] || "7 days", rngShort = rng.replace(/\s*days?/i, "d");
+    return `<div class="cx cx-list"><div class="cx-head"><h1>Campaigns</h1>
+        <button type="button" class="cx-ib" onclick="cxSearch()" aria-label="Search">${ic.search}</button>
+        <button type="button" class="cx-ib" onclick="amFetch()" aria-label="Refresh">${ic.refresh}</button>
+        <button type="button" class="cx-new" onclick="bvOpenObjectiveGateModal()">${ic.plus}New</button></div>
+      <div class="cx-bar">
       <div class="cx-seg">${[["campaigns", "Campaigns"], ["adsets", "Ad sets"], ["ads", "Ads"]].map(([k, l]) => `<button type="button" class="${lvl === k ? "on" : ""}" onclick="cpMLevel('${k}')">${l}<em>${counts[k]}</em></button>`).join("")}</div>
-      <div class="cx-seg">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}</button>`).join("")}</div>
-      <div class="cx-tools"><input class="cx-search" type="search" placeholder="Search ${word}s" value="${esc(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search">
-        <button type="button" class="cx-num" onclick="cxPick()">${ic.tune.replace("<svg", "<svg")}Numbers</button></div></div>
+      <div class="cx-rowseg"><div class="cx-seg">${[["live", "Live"], ["paused", "Paused"], ["all", "All"]].map(([k, l]) => `<button type="button" class="${am.filter === k ? "on" : ""}" onclick="amSetFilter('${k}')">${l}</button>`).join("")}</div>
+        <button type="button" class="cx-rng" onclick="cxRange()">${esc(rngShort)}</button></div>
+      ${CP.cxSearch || am.q ? `<input class="cx-search2" type="search" placeholder="Search ${word}s" value="${esc(am.q || "")}" oninput="cpQuery(this.value)" aria-label="Search">` : ""}
+      <div class="cx-pillrow"><button type="button" class="cx-num" onclick="cxPick()">${ic.tune}Numbers on cards \u00b7 Change</button>
+        <button type="button" class="cx-num" onclick="bvOpenDraftsModal()">Drafts</button>
+</div></div>
       ${rows.length ? rows.map((r) => card(lvl, r)).join("") + `<div class="cx-tot">${rows.length} ${word}${rows.length === 1 ? "" : "s"} · ${fN(tot.spend)} spent${tot.label ? ` · ${tot.results.toLocaleString("en-NG")} ${tot.label.toLowerCase()}` : ""}</div>` : `<div class="cx-empty">${am.q ? "Nothing matches your search." : "Nothing here for this filter."}</div>`}</div>`;
   }
   // the old search handler redraws the list part only on the tree; on the phone list it must redraw the whole screen
-  window.cpQuery = function (v) { am.q = v; const el = document.querySelector(".cx-search"); amDraw(); const n = document.querySelector(".cx-search"); if (n) { n.focus(); n.setSelectionRange(v.length, v.length); } };
+  window.cxSearch = function () { CP.cxSearch = !CP.cxSearch; amDraw(); const n = document.querySelector('.cx-search2'); if (n) n.focus(); };
+  window.cxRange = function () {
+    const old = document.getElementById('cxRng'); if (old) old.remove();
+    const w = document.createElement('div'); w.id = 'cxRng';
+    w.innerHTML = `<div class="cx-scrim"></div><div class="cx-sheet" role="dialog" aria-label="Date range"><div class="cx-grab"></div><h3>Date range</h3><div class="cx-chips" style="margin-top:14px">${AM_RANGES.map(([k, l]) => `<button type="button" class="cx-chip${am.range === k ? ' on' : ''}" data-k="${k}">${esc(l)}</button>`).join('')}</div></div>`;
+    w.querySelector('.cx-scrim').onclick = () => w.remove();
+    w.querySelectorAll('.cx-chip').forEach((b) => { b.onclick = () => { w.remove(); amSetRange(b.dataset.k); }; });
+    document.body.appendChild(w);
+  };
+  window.cpQuery = function (v) { am.q = v; amDraw(); const n = document.querySelector(".cx-search2"); if (n) { n.focus(); n.setSelectionRange(v.length, v.length); } };
 
   // ---------- detail ----------
   function detailHtml() {
@@ -178,7 +238,8 @@
     const camp = l === "campaigns" ? null : d.campaigns.find((c) => c.id === r.campaign_id), set = l === "ads" ? d.adsets.find((s) => s.id === r.adset_id) : null;
     const crumb = [camp ? `<a onclick="cxJump('campaigns','${camp.id}')">Campaign: ${esc(camp.name)}</a>` : "", set ? `<a onclick="cxJump('adsets','${set.id}')">Ad set: ${esc(set.name)}</a>` : ""].filter(Boolean).join(" › ");
     const hv = heroCost(r), flag = l === "ads" && on && r.suggestion && r.suggestion.kill;
-    const jy = l === "ads" && typeof JYC !== "undefined" && JYC.map[r.id] ? JYC.map[r.id] : null;
+    const jy = (() => { if (typeof JYC === "undefined" || !JYC.map) return null; if (l === "ads") return JYC.map[r.id] || null;
+      const ids = (f.ads || []).map((x) => x.id), t = ids.reduce((a, id) => { const c = JYC.map[id]; return c ? { n: a.n + c.n, o: a.o + (c.o || 0) } : a; }, { n: 0, o: 0 }); return t.n ? t : null; })();
     const kids = f.kids || [], kidsLevel = l === "campaigns" ? "adsets" : l === "adsets" ? "ads" : null;
     const started = r.start_time ? new Date(r.start_time) : (r.created_time ? new Date(r.created_time) : null);
     const goal = r.kind === "purchase" ? "Website purchases" : r.kind === "messaging" ? "WhatsApp messages" : "Other";
@@ -192,7 +253,7 @@
     const pic = l === "ads" && (r.picture_url || r.thumbnail_url) ? `<div class="cx-pic"><img src="${esc(r.picture_url || r.thumbnail_url)}" alt="" loading="lazy"></div>` : "";
     return `<div class="cx cx-detail">
       <div class="cx-top"><button type="button" class="cx-back" onclick="cxBackBtn()" aria-label="Back">${ic.back}</button>
-        <div style="flex:1;min-width:0"><span class="cx-tag">${LEVEL[l][0]}</span><div class="cx-title">${esc(r.name)}</div></div>
+        <div style="flex:1;min-width:0"><span class="cx-tag">${LEVEL[l][1]}</span><div class="cx-title">${esc(r.name)}</div><div class="cx-st"><i class="${v[2]}"></i>${esc(v[0] === "Scheduled" ? "Scheduled" : on ? "Live" : amStatusWord(r.effective_status || r.status)[0])}</div></div>
         ${real ? `<label class="switch" title="${on ? "Pause on Meta" : "Turn on in Meta"}"><input type="checkbox" ${on ? "checked" : ""} ${busy ? "disabled" : ""} onchange="amSwitch('${lvl}','${r.id}',this)"><span class="sw-track"></span></label>` : ""}</div>
       ${crumb ? `<div class="cx-crumb">${crumb}</div>` : ""}
       ${pic}
@@ -201,19 +262,15 @@
       ${flag ? `<div class="cx-warn"><span>${esc(r.suggestion.reason)}</span><button type="button" onclick="amSetStatus('ad','${r.id}','PAUSED','kill rule suggestion')">Pause</button></div>` : ""}
       <button type="button" class="cx-num" style="margin-top:12px" onclick="cxPick()">${ic.tune}Change numbers</button>
       ${acts ? `<div class="cx-acts">${acts}</div>` : ""}
-      ${jy ? `<button type="button" class="cx-link" onclick="jyAdPanel('${r.id}')"><i>${ic.eye}</i><span><b>${jy.n} ${jy.n === 1 ? "person" : "people"} visited from this ad</b><small>${jy.o ? jy.o + " ordered · " : ""}See what they did</small></span>${ic.chev}</button>` : ""}
-      ${kidsLevel ? `<div class="cx-sec">${LEVEL[kidsLevel][1]}s in this ${LEVEL[l][1].toLowerCase()} (${kids.length})</div>${kids.length ? kids.map((k) => kidRow(kidsLevel, k)).join("") : `<div class="cx-empty">Nothing here yet.</div>`}` : ""}
-      <div class="cx-sec">Details</div>
-      <div class="cx-info"><div><span>Level</span><b>${LEVEL[l][1]}</b></div><div><span>Goal</span><b>${esc(goal)}</b></div>
-        <div><span>Budget</span><b>${r.daily_budget ? fN(r.daily_budget) + " a day" : l === "campaigns" ? "Set on each ad set" : "Set on the ad set"}</b></div>
-        <div><span>${r.start_time ? "Starts" : "Created"}</span><b>${started ? esc(started.toLocaleString("en-NG", { dateStyle: "medium" })) : "—"}</b></div>
-        ${l === "ads" && r.wa_prefill != null ? `<div><span>People send you</span><b>${esc(r.wa_prefill || "—")}</b></div>` : ""}</div></div>`;
+      ${jy ? `<button type="button" class="cx-link" onclick="${l === 'ads' ? `jyAdPanel('${r.id}')` : 'jnOpen()'}"><i>${ic.eye}</i><span><b>${jy.n} ${jy.n === 1 ? "person" : "people"} visited${l === "ads" ? " from this ad" : ""}</b><small>${jy.o ? jy.o + " ordered · " : ""}See what they did</small></span>${ic.chev}</button>` : ""}
+      ${kidsLevel ? `<div class="cx-sec">${LEVEL[kidsLevel][1]}s</div>${kids.length ? kids.map((k) => kidRow(kidsLevel, k, Math.max(...kids.map((x) => Number(x.spend) || 0)))).join("") : `<div class="cx-empty">Nothing here yet.</div>`}` : ""}</div>`;
   }
-  function kidRow(level, k) {
-    const v = verdict(k), hv = heroCost(k);
+  function kidRow(level, k, top) {
+    const v = verdict(k), hv = heroCost(k), col = v[1] === "ok" ? "#18a35a" : v[1] === "bad" ? "#e5484d" : v[1] === "warn" ? "#d98200" : "#8aa9e6", res = Number(k.results) || 0;
     return `<div class="cx-kid" onclick="cxOpen('${level}','${k.id}')">${level === "ads" ? `<img class="cx-th" src="${esc(k.thumbnail_url || "")}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="cx-dot ${v[2]}"></span>`}
-      <div class="cx-nm"><b>${esc(k.name)}</b><small>${fN(k.spend)} spent · ${esc(v[0])}</small></div>
-      <div class="cx-kv"><b>${hv != null ? fN(hv) : "—"}</b><small>${esc(heroLabel(k).toLowerCase())}</small></div></div>`;
+      <div class="cx-kd"><div class="top"><b>${esc(k.name)}</b><span>${hv != null ? fN(hv) : "—"}</span></div>
+        <div class="cx-kbar"><i style="width:${Math.max(4, Math.min(100, (Number(k.spend) || 0) / (top || 1) * 100))}%;background:${col}"></i></div>
+        <small>${fN(k.spend)} spent \u00b7 ${res} ${res === 1 ? "result" : "results"}</small></div></div>`;
   }
 
   // ---------- navigation (the phone's Back button goes up one level, then to the list) ----------
