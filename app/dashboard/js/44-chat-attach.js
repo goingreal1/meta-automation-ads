@@ -58,7 +58,7 @@
   const money = (n) => "₦" + Number(n || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 });
   async function loadProducts() {
     if (D.products) return D.products;
-    const rows = await sbQuery("products", "select=id,product_name,product_image_url,landing_page_url,order_form_url,default_order_value_naira,is_active&is_active=eq.true&order=product_name.asc", { allAccounts: true }).catch(() => []);
+    const rows = await sbQuery("products", "select=id,product_name,product_type,product_image_url,landing_page_url,order_form_url,default_order_value_naira,is_active&is_active=eq.true&order=product_name.asc", { allAccounts: true }).catch(() => []);
     D.products = rows || [];
     if (D.products.length) {
       const t = await sbQuery("product_tiers", `select=product_id,label,quantity,price_naira,is_default,is_active,sort_order&product_id=in.(${D.products.map((p) => p.id).join(",")})&order=sort_order.asc`, { allAccounts: true }).catch(() => []);
@@ -74,6 +74,39 @@
     if (window.myProfile && window.myProfile.role === "buyer" && id) { const r = await sbQuery("media_buyers", `select=code&id=eq.${id}`).catch(() => []); D.code = (r && r[0] && r[0].code) || ""; }
     return D.code;
   }
+
+  window.caProducts = async function () { return loadProducts(); };
+  window.caBuyerCode = buyerCode;
+
+  // The + sheet: what fits this customer first, then everything else you can add.
+  const ROWS = [
+    ["file", "Photo, video or voice note", "From your phone", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12", "#e8f0ff", "#1f6fff"],
+    ["catalog", "My products and prices", "Your own packages and photos", "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0", "#e3f6ec", "#127a43"],
+    ["website", "My website link", "Your live pages", "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7", "#fff2d9", "#8a5600"],
+    ["saved", "Saved replies", "Your own, only you see them", "M4 6h16M4 12h16M4 18h10", "#f0e8ff", "#6d3fd1"],
+    ["template", "WhatsApp-approved template", "To write after the 24-hour window", "M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12z", "#fdecec", "#b3262c"],
+  ];
+  window.caMenu = async function () {
+    shell(`<h3>Add to your reply</h3><p>Everything here comes from your own Revora account.</p><div id="caFor"></div><div style="margin-top:6px">${ROWS.map((r) => `<button type="button" class="ca-row" onclick="caPick('${r[0]}')"><span class="ca-th" style="display:flex;align-items:center;justify-content:center;background:${r[4]};color:${r[5]};border-radius:14px;width:44px;height:44px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${r[3]}"/></svg></span><span class="ca-tx"><b>${r[1]}</b><small>${r[2]}</small></span>${CH}</button>`).join("")}</div>`);
+    if (typeof window.rvChatSuggest !== "function") return;
+    const box = document.getElementById("caFor"); if (box) box.innerHTML = `<div class="fc-box"><small>FOR THIS CUSTOMER</small><p>Checking what they have with you…</p></div>`;
+    const sg = await window.rvChatSuggest().catch(() => null), el = document.getElementById("caFor"); if (!el || !sg) { if (el) el.innerHTML = ""; return; }
+    window._caOpts = sg.opts;
+    el.innerHTML = `<div class="fc-box"><small>FOR THIS CUSTOMER</small><p>${esc(sg.note)}</p>
+      ${sg.primary ? `<button type="button" class="fc-go" onclick="caUse('${esc(sg.primary.label)}')">Send the ${esc(sg.primary.label.toLowerCase())}</button>` : ""}
+      ${sg.askProduct ? `<div class="fc-or">Pick the product</div><div class="fc-ch">${sg.askProduct.map((p) => `<button type="button" onclick="caRemember('${p.id}')">${esc(p.product_name)}</button>`).join("")}</div>` : ""}
+      ${sg.opts.length ? `<div class="fc-or">${sg.primary ? "Or choose another" : "Choose what to send"}</div><div class="fc-ch">${sg.opts.map((o) => `<button type="button" class="${sg.primary && sg.primary.label === o.label ? "on" : ""}" onclick="caUse('${esc(o.label)}')">${esc(o.label)}</button>`).join("")}</div>` : ""}</div>`;
+  };
+  window.caUse = function (label) { const o = (window._caOpts || []).find((x) => x.label === label); if (o) draft(o.text, { label: o.btn, url: o.url }); };
+  window.caPick = function (k) {
+    if (k === "file") { close(); const f = document.getElementById("convFileInput"); if (f) f.click(); }
+    else if (k === "catalog") window.caCatalog();
+    else if (k === "website") window.caWebsite();
+    else if (k === "saved") { close(); if (window.bvSavedReplies) window.bvSavedReplies(); }
+    else if (k === "template") { close(); if (window.bvTemplateModal) window.bvTemplateModal(); }
+  };
+  // The round + opens this sheet instead of the old drop-down.
+  window.bvToggleAttachMenu = function (e) { if (e && e.stopPropagation) e.stopPropagation(); window.caMenu(); };
 
   window.caCatalog = async function () {
     shell(`<h3>My products</h3><p>Pick one to use its real prices, order link or photo.</p><div class="ca-empty"><span class="spin"></span></div>`);
