@@ -62,6 +62,26 @@ html,body{margin:0;padding:0;background:#fff;}
 .rv-bank .acct{font-size:22px;font-weight:700;letter-spacing:.04em}
 .rv-bank button,.rv-bank a.wa{display:block;width:100%;margin-top:12px;padding:12px;border:0;border-radius:12px;background:#1a7a5e;color:#fff;font:600 15px/1.2 inherit;text-align:center;text-decoration:none;cursor:pointer;}
 .rv-bank a.wa{background:#25d366}
+
+/* Revora form look: soft grey fields, white card, one blue. */
+.rv-form{--rv-accent:#1f6fff;--rv-accent-dk:#1859d1;--rv-accent-bg:rgba(31,111,255,.08);--rv-text:#0f1a30;--rv-muted:#667086;--rv-border:#e3e6ea;--rv-radius:14px;}
+.rv-form .rv-card{border:0;border-radius:24px;padding:20px;box-shadow:0 1px 2px rgba(15,30,70,.06),0 6px 20px rgba(15,30,70,.06);}
+.rv-form label{color:#0f1a30;font-weight:650;}
+.rv-form input,.rv-form select{background-color:#eef1f6;border:2px solid transparent;border-radius:14px;min-height:50px;padding:0 14px;}
+.rv-form input:focus,.rv-form select:focus{background-color:#fff;border-color:#1f6fff;box-shadow:0 0 0 4px rgba(31,111,255,.12);}
+.rv-form .rv-tier{border:2px solid transparent;background:#eef1f6;border-radius:18px;padding:14px;}
+.rv-form .rv-tier::before{content:"";order:-1;flex:none;width:22px;height:22px;border-radius:50%;border:2px solid #9aa3b4;box-sizing:border-box;}
+.rv-form .rv-tier.on{border-color:#1f6fff;background:rgba(31,111,255,.07);}
+.rv-form .rv-tier.on::before{border-color:#1f6fff;background:radial-gradient(#1f6fff 0 45%,transparent 50%);}
+.rv-form .rv-tier em{border-color:#1f6fff;color:#1859d1;}
+.rv-form .rv-total{border-top:1px solid #e3e6ea;}
+.rv-form .rv-btn{height:56px;padding:0 16px;border-radius:16px;background:#1f6fff;}
+.rv-form .rv-btn:hover{background:#1859d1;}
+.rv-form .rv-tiersum{border-color:#1f6fff;border-radius:18px;}
+.rv-thanks .rv-check{background:rgba(31,111,255,.12);color:#1f6fff;}
+.rv-bank{border-radius:20px;background:#eef1f6;border-color:#e3e6ea;}
+.rv-bank button{background:#1f6fff;}
+.rv-bank a.wa{background:#25d366;}
 </style>
 </head>
 <body>
