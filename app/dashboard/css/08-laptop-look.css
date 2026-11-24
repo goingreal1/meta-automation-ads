@@ -35,4 +35,9 @@
   .set-body [data-sec="accounts"] tr[id^="connRow-"] .btn{padding:0 16px!important}
   /* the Add form: three fields in a row on a wide screen */
   .set-body #acctForm .fg{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  /* Pages & pixels: Pages on the left, datasets on the right. Automation & alerts: two columns of cards. */
+  .set-body[data-active="pages"],.set-body[data-active="automation"]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+  .set-body[data-active="pages"]>.panel,.set-body[data-active="automation"]>.panel{margin:0}
+  .set-body[data-active="pages"]>:not(.panel):not([data-sec]),.set-body[data-active="automation"]>:not(.panel):not([data-sec]){grid-column:1/-1}
+  @media (max-width:1100px){.set-body[data-active="pages"],.set-body[data-active="automation"]{grid-template-columns:minmax(0,1fr)}}
 }
