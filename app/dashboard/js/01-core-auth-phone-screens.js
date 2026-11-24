@@ -445,8 +445,8 @@ function bvMsDestCards() {
 // ── PHONE AD SETUP: ad accounts, Pages and datasets, each on its own screen ─────────────────────
 // Reached from Settings > Ads setup. List -> one ad account -> its dataset / Page screens. The same backend
 // calls as the desktop Settings are used (events-manager, link-page, ad-account-pool, sync-partner-accounts).
-const BV_ADX_TITLES = { list: "Ad accounts", acct: "Ad account", buy: "Buy account", link: "Link account", pages: "Pages", page: "Link a Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New dataset", dslink: "Link dataset", pgadd: "Add a Page", pglink: "Link Page", auto: "Automation & alerts", autonotif: "Notifications", autowa: "WhatsApp alerts", autoemail: "Email", autokill: "Ad kill rules", autoai: "AI sales agent", autosec: "Sign-in security" };
-const BV_ADX_BACK = { list: "Accounts", acct: "Account", buy: "Buy", link: "Link", pages: "Pages", page: "Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New", dslink: "Dataset", pgadd: "Add", pglink: "Page", auto: "Automation", autonotif: "Alerts", autowa: "Alerts", autoemail: "Alerts", autokill: "Rules", autoai: "AI agent", autosec: "Security" };
+const BV_ADX_TITLES = { list: "Ad accounts", acct: "Ad account", buy: "Buy account", link: "Link account", pages: "Pages", page: "Link a Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New dataset", dslink: "Link dataset", pgadd: "Add a Page", pglink: "Link Page", auto: "Automation & alerts", autonotif: "Notifications", autowa: "WhatsApp alerts", autoemail: "Email", autokill: "Ad kill rules", autoai: "AI sales agent", autosec: "Sign-in security", autopage: "Page messages & comments" };
+const BV_ADX_BACK = { list: "Accounts", acct: "Account", buy: "Buy", link: "Link", pages: "Pages", page: "Page", datasets: "Datasets", dataset: "Dataset", dsnew: "New", dslink: "Dataset", pgadd: "Add", pglink: "Page", auto: "Automation", autonotif: "Alerts", autowa: "Alerts", autoemail: "Alerts", autokill: "Rules", autoai: "AI agent", autosec: "Security", autopage: "Automation" };
 let bvAdx = { screen: "list", id: null, stack: [] };
 function bvAdxOpen(screen, id) {
   document.getElementById("bvBuilderOverlay")?.remove();
@@ -499,6 +499,7 @@ async function renderAdx(c) {
   if (sc === "pgadd") return adxPgAdd(root);
   if (sc === "pglink") return adxPgLink(root);
   if (sc === "auto") return adxAuto(root);
+  if (sc === "autopage") return window.adxAutoPage ? window.adxAutoPage(root) : (root.innerHTML = "");
   if (sc.startsWith("auto")) return adxAutoPanel(root, sc);
 }
 function adxCard(a, target) {
@@ -623,6 +624,7 @@ function adxAuto(root) {
     ${row("autowa", "#18a35a", "M21 12a8 8 0 0 1-12 7l-5 1 1-4.5A8 8 0 1 1 21 12z", "WhatsApp alerts", "Low balance, payments, transfers")}
     ${row("autoemail", "#7a5cff", "M4 6h16v12H4zM4 7l8 6 8-6", "Email", "Reports and sign-in alerts")}
     ${pro ? `<div class="adx-cnt">AUTOMATION</div>
+    ${row("autopage", "#7a5cff", "M21 12a8 8 0 0 1-12 7l-5 1 1-4.5A8 8 0 1 1 21 12z", "Page messages & comments", "Auto-replies on Facebook, with AI or your message")}
     ${row("autokill", "#e5484d", "M12 3v9m0 0 4-4m-4 4-4-4M5 21h14", "Ad kill rules", "Pause ads that spend with no results")}
     ${row("autoai", "#0f2a66", "M12 8a4 4 0 1 0 0 8 4 4 0 0 1 0-8zM3 12h2M19 12h2M12 3v2M12 19v2", "AI sales agent", "Answers customers on WhatsApp")}` : ""}
     <div class="adx-cnt">ACCOUNT</div>
