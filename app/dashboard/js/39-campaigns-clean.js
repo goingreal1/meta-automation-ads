@@ -203,7 +203,7 @@
   function listHtml() {
     const lvl = CP.mlevel, counts = { campaigns: amRows("campaigns").length, adsets: amRows("adsets").length, ads: amRows("ads").length };
     const rows = amRows(lvl), tot = amTotals(rows), word = lvl === "campaigns" ? "campaign" : lvl === "adsets" ? "ad set" : "ad";
-    const rngShort = ({ today: "1d", yesterday: "Yesterday", last3: "3d", last7: "7d", last30: "30d", lifetime: "Lifetime" })[am.range] || "1d";
+    const rngShort = ({ today: "Today", yesterday: "Yesterday", last3: "3d", last7: "7d", last30: "30d", lifetime: "Lifetime" })[am.range] || "Today";
     return `<div class="cx cx-list"><div class="cx-head"><h1>Campaigns</h1>
         <button type="button" class="cx-ib" onclick="cxSearch()" aria-label="Search">${ic.search}</button>
         <button type="button" class="cx-ib" onclick="amFetch()" aria-label="Refresh">${ic.refresh}</button>
@@ -223,7 +223,7 @@
   window.cxRange = function () {
     const old = document.getElementById('cxRng'); if (old) old.remove();
     const w = document.createElement('div'); w.id = 'cxRng';
-    w.innerHTML = `<div class="cx-scrim"></div><div class="cx-sheet" role="dialog" aria-label="Date range"><div class="cx-grab"></div><h3>Date range</h3><div class="cx-chips" style="margin-top:14px">${[["today", "1 day"], ["last7", "7 days"], ["last30", "30 days"], ["lifetime", "Lifetime"], ["yesterday", "Yesterday"], ["last3", "Last 3 days"]].map(([k, l]) => `<button type="button" class="cx-chip${am.range === k ? ' on' : ''}" data-k="${k}">${esc(l)}</button>`).join('')}</div></div>`;
+    w.innerHTML = `<div class="cx-scrim"></div><div class="cx-sheet" role="dialog" aria-label="Date range"><div class="cx-grab"></div><h3>Date range</h3><div class="cx-chips" style="margin-top:14px">${[["today", "Today"], ["last7", "7 days"], ["last30", "30 days"], ["lifetime", "Lifetime"], ["yesterday", "Yesterday"], ["last3", "Last 3 days"]].map(([k, l]) => `<button type="button" class="cx-chip${am.range === k ? ' on' : ''}" data-k="${k}">${esc(l)}</button>`).join('')}</div></div>`;
     w.querySelector('.cx-scrim').onclick = () => w.remove();
     w.querySelectorAll('.cx-chip').forEach((b) => { b.onclick = () => { w.remove(); amSetRange(b.dataset.k); }; });
     document.body.appendChild(w);
