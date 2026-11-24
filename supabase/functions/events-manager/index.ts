@@ -111,7 +111,9 @@ Deno.serve(async (req)=>{
       const { data: c } = await admin.from("meta_connections").select("access_token, status").eq("id", a.meta_connection_id).maybeSingle();
       if (c?.status === "active" && c.access_token) conns.set(a.meta_connection_id, c.access_token);
     }
-    const tokOf = (a: any)=>a?.meta_connection_id ? conns.get(a.meta_connection_id) ?? null : null;
+    // Ad accounts shared with Revora (no login of their own) are read and linked with Revora's access; only the person's own Meta login can reach their business.
+    const ownOf = (a: any)=>!!(a?.meta_connection_id && conns.get(a.meta_connection_id));
+    const tokOf = (a: any)=>(a?.meta_connection_id ? conns.get(a.meta_connection_id) : null) ?? (SHARED_TOKEN || null);
     const actId = (a: any)=>String(a.meta_ad_account_id).replace(/^act_/, "");
     try {
       if (act0 === "list_datasets") {
@@ -124,7 +126,7 @@ Deno.serve(async (req)=>{
         }
         let business_error: string | undefined;
         for (const t of conns.values()) { try { for (const p of await businessDatasets(t, new Set())) put(p.id, p.name, { business_id: p.business_id, business_name: p.business_name }); } catch (e) { business_error = String(e.message ?? e).slice(0, 160); } }
-        return json({ ok: true, datasets: [...ds.values()], accounts: mine.map((a: any)=>({ id: a.id, name: a.nickname ?? a.name ?? a.meta_ad_account_id, own: !!tokOf(a), pixel_id: a.meta_pixel_id ?? null, pixel_name: a.pixel_name ?? null })), can_create: conns.size > 0, business_error });
+        return json({ ok: true, datasets: [...ds.values()], accounts: mine.map((a: any)=>({ id: a.id, name: a.nickname ?? a.name ?? a.meta_ad_account_id, own: ownOf(a), pixel_id: a.meta_pixel_id ?? null, pixel_name: a.pixel_name ?? null })), can_create: conns.size > 0, business_error });
       }
       if (act0 === "create_dataset_biz") {
         const name = String(b?.name ?? "").trim().slice(0, 60);
@@ -145,11 +147,12 @@ Deno.serve(async (req)=>{
         const a = mine.find((x: any)=>x.id === id);
         if (!a) { results.push({ id, ok: false, error: "Ad account not found." }); continue; }
         const t = tokOf(a);
-        if (!t) { results.push({ id, ok: false, error: "Revora manages this ad account, so its dataset is set by Revora." }); continue; }
+        if (!t) { results.push({ id, ok: false, error: "Meta is not connected for this ad account." }); continue; }
         try {
           const have = await g(`/act_${actId(a)}/adspixels?fields=id,name&limit=50`, t);
           const hit = (have?.data ?? []).find((p: any)=>String(p.id) === pid);
           if (!hit) {
+            if (!ownOf(a)) throw new Error("This dataset is not on this ad account, and this ad account is not connected with your own Meta login, so Revora cannot add it.");
             if (!biz) throw new Error("This dataset is not on the ad account yet and its Meta business is unknown.");
             const found = (await businessDatasets(t, new Set())).find((x: any)=>x.id === pid && x.business_id === biz);
             if (!found) throw new Error("That dataset is not in your Meta business.");

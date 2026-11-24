@@ -655,10 +655,11 @@ function adxDsNew(root) {
 function adxDsLink(root) {
   const d = adxCtx.ds; if (!d) { bvAdxBack(); return; }
   const accts = adxAccts(), start = new Set(accts.filter(a => a.pixel_id === d.id).map(a => a.id)), pick = new Set(start);
-  const sub = a => !a.own ? "Revora manages this ad account" : start.has(a.id) ? "Uses this dataset" : a.pixel_id ? "Uses another dataset" + (a.pixel_name ? " (" + a.pixel_name + ")" : "") + ". Will switch to this one." : "No dataset yet";
+  const usable = a => a.own || start.has(a.id) || (d.account_ids || []).includes(a.id);
+  const sub = a => !usable(a) ? "This dataset isn't on this ad account, and Revora can't add it" : start.has(a.id) ? "Uses this dataset" : a.pixel_id ? "Uses another dataset" + (a.pixel_name ? " (" + a.pixel_name + ")" : "") + ". Will switch to this one." : "No dataset yet";
   root.innerHTML = `<div class="adx-hero"><div class="adx-sub">Link to ad accounts</div><h2>${escH(d.name || d.id)}</h2></div>
     <div class="adx-intro"><p>Pick the ad accounts that should use this dataset.</p></div>
-    ${accts.length ? accts.map(a => `<button type="button" class="adx-row ${a.own ? "" : "off"}" data-id="${escH(a.id)}"><span class="tx"><b>${escH(a.name)}</b><small class="${a.own && !start.has(a.id) && a.pixel_id ? "w" : ""}">${escH(sub(a))}</small></span><span class="tick ${start.has(a.id) ? "on" : ""}">${start.has(a.id) ? "✓" : ""}</span></button>`).join("") : `<div class="adx-note">You have no ad accounts yet.</div>`}
+    ${accts.length ? accts.map(a => `<button type="button" class="adx-row ${usable(a) ? "" : "off"}" data-id="${escH(a.id)}"><span class="tx"><b>${escH(a.name)}</b><small class="${usable(a) && !start.has(a.id) && a.pixel_id ? "w" : ""}">${escH(sub(a))}</small></span><span class="tick ${start.has(a.id) ? "on" : ""}">${start.has(a.id) ? "✓" : ""}</span></button>`).join("") : `<div class="adx-note">You have no ad accounts yet.</div>`}
     <div id="adxMsg"></div><button type="button" class="adx-btn" id="adxGo" style="margin-top:14px"></button>`;
   const go = root.querySelector("#adxGo"), paint = () => { go.textContent = `Save · ${pick.size} ad account${pick.size === 1 ? "" : "s"}`; };
   paint();
